@@ -23,8 +23,12 @@ export interface AdhocSalaryResult {
   valorDia: number;
   diasBrutos: number;
   faltasCount: number;
+  /** Dias do período menos faltas (só referência; o bruto não é calculado com este valor). */
   diasLiquidos: number;
+  /** Provento: valor/dia × dias brutos (conforme 3.1 / 3.2 / 3.3), sem subtrair faltas. */
   bruto: number;
+  /** Desconto por faltas: valor/dia × número de faltas. */
+  descontoFaltas: number;
   descontoVale: number;
   descontosOutros: number;
   liquido: number;
@@ -105,27 +109,39 @@ export function calculateAdhocSalary(input: AdhocSalaryInput): { ok: true; data:
   if (error) return { ok: false, error };
 
   const faltasCount = uniqueFaltaCount(input.faltas);
-  const diasLiquidos = Math.max(0, diasBrutos - faltasCount);
+  if (faltasCount > diasBrutos) {
+    return {
+      ok: false,
+      error: `O número de faltas (${faltasCount}) não pode ser maior que os dias do período (${diasBrutos}).`,
+    };
+  }
 
+  const diasLiquidos = Math.max(0, diasBrutos - faltasCount);
   const valorDia = valorDiaFromBase(input.salarioBase);
-  const bruto = Math.round(valorDia * diasLiquidos * 100) / 100;
-  const liquido = Math.round((bruto - input.descontoVale - input.descontosOutros) * 100) / 100;
+  const valorDiaR = Math.round(valorDia * 100) / 100;
+
+  const bruto = Math.round(valorDia * diasBrutos * 100) / 100;
+  const descontoFaltas = Math.round(valorDia * faltasCount * 100) / 100;
+  const liquido = Math.round(
+    (bruto - descontoFaltas - input.descontoVale - input.descontosOutros) * 100
+  ) / 100;
 
   if (liquido < 0) {
     return {
       ok: false,
-      error: "O líquido ficaria negativo. Revise descontos ou faltas.",
+      error: "O líquido ficaria negativo. Revise faltas ou descontos.",
     };
   }
 
   return {
     ok: true,
     data: {
-      valorDia: Math.round(valorDia * 100) / 100,
+      valorDia: valorDiaR,
       diasBrutos,
       faltasCount,
       diasLiquidos,
       bruto,
+      descontoFaltas,
       descontoVale: input.descontoVale,
       descontosOutros: input.descontosOutros,
       liquido,

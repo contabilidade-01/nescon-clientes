@@ -27,7 +27,7 @@ function periodModeLabel(m: PeriodMode): string {
     case "start_in_month":
       return "Início no mês (até o fim do mês, corridos)";
     case "closed_month":
-      return "Mês fechado (30 dias, menos faltas)";
+      return "Mês fechado (30 dias de provento; faltas descontam à parte)";
   }
 }
 
@@ -110,9 +110,9 @@ export function SalaryAdhocFlow() {
     addUser(formatBRL(v));
     addBot(
       "Como calcular os dias do período?\n\n" +
-        "• Dias trabalhados: você informa quantos dias pagar\n" +
-        "• Início no mês: entrou em exercício no meio do mês de referência\n" +
-        "• Mês fechado: 30 dias (descontando só as faltas marcadas)"
+        "• Dias trabalhados: você informa quantos dias entram no provento\n" +
+        "• Início no mês: dias corridos do início até o fim do mês de referência\n" +
+        "• Mês fechado: 30 dias de provento (as faltas marcam desconto à parte, não mudam o bruto)"
     );
     setStep("period_mode");
   };
@@ -145,7 +145,7 @@ export function SalaryAdhocFlow() {
       setStep("start_date_pick");
     } else {
       addBot(
-        "Marque os dias de falta (sem remuneração), se houver. Se não houver faltas, clique em Continuar."
+        "Marque os dias de falta, se houver. Cada falta gera desconto de um dia (valor/dia); o bruto segue os 30 dias de provento. Pode avançar sem marcar."
       );
       setStep("absences");
     }
@@ -156,7 +156,7 @@ export function SalaryAdhocFlow() {
     setWorkedDays(d);
     addUser(`${d} dia(s)`);
     addBot(
-      "Marque no calendário os dias de falta a descontar (cada dia reduz um dia pago). Pode avançar sem marcar."
+      "Marque no calendário os dias de falta (cada um desconta um valor/dia sobre o bruto). Não pode haver mais faltas que dias do período. Pode avançar sem marcar."
     );
     setStep("absences");
   };
@@ -167,7 +167,9 @@ export function SalaryAdhocFlow() {
       return;
     }
     addUser(format(startDateInMonth, "dd/MM/yyyy", { locale: ptBR }));
-    addBot("Marque os dias de falta a descontar, se houver. Pode avançar sem marcar.");
+    addBot(
+      "Marque os dias de falta (cada um desconta um valor/dia). Não pode haver mais faltas que dias do período. Pode avançar sem marcar."
+    );
     setStep("absences");
   };
 
@@ -239,12 +241,13 @@ export function SalaryAdhocFlow() {
         `• Funcionário: ${employeeName.trim()}\n` +
         `• Salário base **contratual** (mês cheio, referência): ${formatBRL(base)}\n` +
         `• Valor de um dia (base ÷ 30): ${formatBRL(r.valorDia)}\n` +
-        `• Dias brutos no período: ${r.diasBrutos} · Faltas: ${r.faltasCount} · **Dias líquidos pagos: ${r.diasLiquidos}**\n` +
-        `• **Bruto do período** (proporcional: valor/dia × dias líquidos): ${formatBRL(r.bruto)}\n` +
+        `• Dias de provento (3.1 / 3.2 / 3.3): **${r.diasBrutos}** · Faltas: **${r.faltasCount}** (ref.: dias após faltas = ${r.diasLiquidos})\n` +
+        `• **Bruto** (valor/dia × dias de provento, **sem** embutir faltas): ${formatBRL(r.bruto)}\n` +
+        `• **Desconto por faltas** (valor/dia × faltas): ${formatBRL(r.descontoFaltas)}\n` +
         `• ${ADHOC_VALE_COMPOSITE_LABEL}: ${formatBRL(r.descontoVale)}\n` +
         `• Outros descontos: ${formatBRL(r.descontosOutros)}\n` +
         `• **Líquido: ${formatBRL(r.liquido)}**\n\n` +
-        `_O bruto costuma ser menor que o salário contratual quando há menos de 30 dias líquidos no período (faltas ou período parcial)._\n` +
+        `_Bruto conforme o modo escolhido; faltas entram só como desconto monetário._\n` +
         `_Cálculo simplificado; confira com DP / contabilidade._`
     );
     if (company) {
@@ -283,6 +286,7 @@ export function SalaryAdhocFlow() {
         diasBrutos: result.diasBrutos,
         faltasCount: result.faltasCount,
         diasLiquidos: result.diasLiquidos,
+        descontoFaltas: result.descontoFaltas,
         valorDia: result.valorDia,
         bruto: result.bruto,
         vale: result.descontoVale,
@@ -374,7 +378,7 @@ export function SalaryAdhocFlow() {
                 3.2 · Data de início no mês de referência
               </Button>
               <Button onClick={() => selectMode("closed_month")} variant="outline" className="w-full">
-                3.3 · Mês fechado (30 dias)
+                3.3 · Mês fechado (30 dias de provento)
               </Button>
             </div>
           )}
@@ -526,7 +530,10 @@ export function SalaryAdhocFlow() {
               <p className="text-sm font-semibold">Resumo numérico</p>
               <ul className="text-xs space-y-1 text-muted-foreground">
                 <li>Salário base (contratual): {formatBRL(parseMoneyBR(baseSalaryRaw) ?? 0)}</li>
-                <li>Bruto proporcional: {formatBRL(result.bruto)}</li>
+                <li>Bruto (dias de provento): {formatBRL(result.bruto)}</li>
+                {result.descontoFaltas > 0 && (
+                  <li>Desconto faltas ({result.faltasCount}): {formatBRL(result.descontoFaltas)}</li>
+                )}
                 <li>Líquido: {formatBRL(result.liquido)}</li>
               </ul>
               <Button className="w-full gap-2" onClick={handleDownloadPayslip}>

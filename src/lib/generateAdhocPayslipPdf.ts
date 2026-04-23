@@ -15,6 +15,7 @@ export interface AdhocPayslipData {
   diasBrutos: number;
   faltasCount: number;
   diasLiquidos: number;
+  descontoFaltas: number;
   valorDia: number;
   bruto: number;
   vale: number;
@@ -48,7 +49,7 @@ type DocWithAutoTable = jsPDF & { lastAutoTable?: { finalY: number } };
 export async function downloadAdhocPayslipPdf(data: AdhocPayslipData): Promise<void> {
   const digits = data.companyCnpjDigits.replace(/\D/g, "").slice(0, 14);
   const cnpjMask = digits.length ? maskCNPJ(digits) : "-";
-  const totalDesc = data.vale + data.outros;
+  const totalDesc = data.descontoFaltas + data.vale + data.outros;
 
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
@@ -56,19 +57,28 @@ export async function downloadAdhocPayslipPdf(data: AdhocPayslipData): Promise<v
   let y = margin;
 
   const descSalario =
-    `SALARIO PROPORCIONAL (base / 30 x dias liquidos)\n` +
+    `SALARIO PROPORCIONAL (base/30 x dias de provento)\n` +
     `Modo: ${data.modoDescricao}\n` +
-    `Faltas (${data.faltasCount}): ${data.faltaDatesText || "-"}`;
+    `Faltas marcadas (${data.faltasCount}): ${data.faltaDatesText || "-"}`;
 
   const bodyRows: string[][] = [
     [
       "8781",
       descSalario,
-      moneyPt(data.diasLiquidos),
+      String(data.diasBrutos),
       moneyPt(data.bruto),
       "-",
     ],
   ];
+  if (data.descontoFaltas > 0) {
+    bodyRows.push([
+      "",
+      `Faltas (desconto ${data.faltasCount} dia(s) x valor/dia)`,
+      String(data.faltasCount),
+      "-",
+      moneyPt(data.descontoFaltas),
+    ]);
+  }
   if (data.vale > 0) {
     bodyRows.push(["", ADHOC_VALE_COMPOSITE_LABEL, "-", "-", moneyPt(data.vale)]);
   }
