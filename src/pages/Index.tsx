@@ -1,17 +1,20 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileText, AlertTriangle, History, ChevronRight, Users, MessageSquare, LogOut, ClipboardList, Calculator } from "lucide-react";
+import { FileText, AlertTriangle, History, ChevronRight, Users, MessageSquare, LogOut, ClipboardList, Calculator, ExternalLink } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
 import { isToolAllowed, mergeClientToolAccess, type CompanyToolKey } from "@/lib/companyTools";
 
+const GCLICK_URL = "https://guias.gestaoempresa.com";
+
 const menuItems: Array<{
   title: string;
   description: string;
   icon: typeof FileText;
-  path: string;
+  path?: string;
+  externalUrl?: string;
   color: string;
   tool: CompanyToolKey;
 }> = [
@@ -69,6 +72,14 @@ const menuItems: Array<{
     icon: History,
     path: "/historico",
     color: "bg-secondary text-secondary-foreground",
+    tool: "history",
+  },
+  {
+    title: "Envio de Guias",
+    description: "Envio de guias fiscais por WhatsApp",
+    icon: ExternalLink,
+    externalUrl: GCLICK_URL,
+    color: "bg-primary text-primary-foreground",
     tool: "history",
   },
 ];
@@ -142,9 +153,15 @@ const Index = () => {
           )}
           {visibleItems.map((item) => (
             <Card
-              key={item.path}
+              key={item.title}
               className="cursor-pointer transition-all hover:shadow-md active:scale-[0.98]"
-              onClick={() => navigate(item.path)}
+              onClick={() => {
+                if (item.externalUrl) {
+                  window.open(item.externalUrl, "_blank", "noopener,noreferrer");
+                } else if (item.path) {
+                  navigate(item.path);
+                }
+              }}
             >
               <CardContent className="flex items-center gap-4 p-4">
                 <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${item.color}`}>
@@ -154,7 +171,11 @@ const Index = () => {
                   <h2 className="font-semibold text-foreground">{item.title}</h2>
                   <p className="text-sm text-muted-foreground">{item.description}</p>
                 </div>
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                {item.externalUrl ? (
+                  <ExternalLink className="h-5 w-5 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                )}
               </CardContent>
             </Card>
           ))}
