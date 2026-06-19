@@ -7,8 +7,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
 import { isToolAllowed, mergeClientToolAccess, type CompanyToolKey } from "@/lib/companyTools";
 
-const GCLICK_URL = "https://guias.gestaoempresa.com";
-
 const menuItems: Array<{
   title: string;
   description: string;
@@ -72,14 +70,6 @@ const menuItems: Array<{
     icon: History,
     path: "/historico",
     color: "bg-secondary text-secondary-foreground",
-    tool: "history",
-  },
-  {
-    title: "Envio de Guias",
-    description: "Envio de guias fiscais por WhatsApp",
-    icon: ExternalLink,
-    externalUrl: GCLICK_URL,
-    color: "bg-primary text-primary-foreground",
     tool: "history",
   },
 ];

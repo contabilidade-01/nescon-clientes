@@ -17,6 +17,7 @@ import ChatbotPage from "./pages/ChatbotPage.tsx";
 import SalaryAdhocPage from "./pages/SalaryAdhocPage.tsx";
 import CertificatesPage from "./pages/CertificatesPage.tsx";
 import AdminPage from "./pages/AdminPage.tsx";
+import GuiasPage from "./pages/GuiasPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -75,6 +76,7 @@ const AppRoutes = () => (
     <Route path="/chatbot" element={<CompanyToolRoute tool="chatbot"><ChatbotPage /></CompanyToolRoute>} />
     <Route path="/salario-avulso" element={<CompanyToolRoute tool="salary_adhoc"><SalaryAdhocPage /></CompanyToolRoute>} />
     <Route path="/atestados" element={<CompanyToolRoute tool="certificates"><CertificatesPage /></CompanyToolRoute>} />
+    <Route path="/guias" element={<AdminOnlyRoute><GuiasPage /></AdminOnlyRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );

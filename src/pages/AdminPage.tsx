@@ -150,6 +150,9 @@ const AdminPage = () => {
               <span className="text-foreground/80">Gestão de empresas, razão social e contactos</span>
             </p>
           </div>
+          <Button variant="outline" size="sm" onClick={() => navigate("/guias")}>
+            📤 Envio de Guias
+          </Button>
           <Button variant="outline" size="sm" onClick={handleLogout}>
             Sair
           </Button>
