@@ -47,6 +47,12 @@ Login da Q4: CNPJ da empresa (ver `db/init.sql`); senha inicial segue a regra ac
 
 Para emitir suspensão/advertência: cadastre os funcionários (seed SQL **ou** importação de planilha), faça login no CNPJ da Q4 e use **Suspensão** / **Advertência**.
 
+**Pelo painel admin (`/admin`):**
+
+1. Botão **Cadastrar Q3 + Q4 (seed)** — cria as empresas Queijeiro se ainda não existirem
+2. Em **Filtrar listas por empresa**, escolha **Queijeiro 4**
+3. Em **Gestão de empresas** → **Importar funcionários (planilha)** — suba o `.xls` / `.xlsx`
+
 ```bash
 # Opcional: funcionários Q4 direto no Postgres
 docker compose exec -T postgres psql -U rhapp -d rhapp < db/seed-queijeiros-q4-employees.sql

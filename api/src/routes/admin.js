@@ -5,6 +5,12 @@ const { authMiddleware } = require("../middleware/auth");
 const { validateUUID, validateEmailFormat, validateString, validateCNPJ } = require("../middleware/validate");
 const { mergeToolAccess } = require("../companyTools");
 const { listCompanies, insertCompanyRow, PG_UNDEFINED_COLUMN } = require("../toolAccessDb");
+const { importEmployeesForCompany } = require("../employeeImport");
+
+const QUEIJEIRO_COMPANY_SEEDS = [
+  { name: "RESTAURANTE DO QUEIJEIRO 3 LIMITADA", cnpj: "52191264000173" },
+  { name: "RESTAURANTE DO QUEIJEIRO 4 LTDA", cnpj: "54803962000108" },
+];
 
 function adminOnly(req, res, next) {
   if (!req.isAdmin) {
@@ -255,6 +261,87 @@ router.patch("/companies/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+router.post("/seed/queijeiros-companies", async (_req, res) => {
+  try {
+    const results = [];
+    for (const seed of QUEIJEIRO_COMPANY_SEEDS) {
+      const passwordHash = await bcrypt.hash(seed.cnpj, 10);
+      try {
+        const created = await insertCompanyRow(db, {
+          name: seed.name,
+          cnpjDigits: seed.cnpj,
+          passwordHash,
+          emailNorm: null,
+          phoneNorm: null,
+        });
+        results.push({ cnpj: seed.cnpj, name: seed.name, status: "created", id: created.id });
+      } catch (err) {
+        if (err.code === "23505") {
+          const { rows } = await db.query(
+            "SELECT id, name, cnpj FROM companies WHERE cnpj = $1 LIMIT 1",
+            [seed.cnpj]
+          );
+          results.push({
+            cnpj: seed.cnpj,
+            name: rows[0]?.name ?? seed.name,
+            status: "exists",
+            id: rows[0]?.id,
+          });
+        } else {
+          throw err;
+        }
+      }
+    }
+    res.json({ ok: true, companies: results });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro interno ao cadastrar empresas Queijeiro" });
+  }
+});
+
+router.post("/companies/:id/import-employees", async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
+
+    const { rows: companyRows } = await db.query(
+      "SELECT id, cnpj FROM companies WHERE id = $1 LIMIT 1",
+      [id]
+    );
+    if (!companyRows.length) return res.status(404).json({ error: "Empresa não encontrada" });
+
+    const company = companyRows[0];
+    const fileCnpj = (req.body?.fileCnpj || "").toString();
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await importEmployeesForCompany(
+        client,
+        company.id,
+        company.cnpj,
+        fileCnpj,
+        rows
+      );
+      if (result.status !== 201) {
+        await client.query("ROLLBACK");
+        return res.status(result.status).json(result.body);
+      }
+      await client.query("COMMIT");
+      return res.status(201).json(result.body);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro interno ao importar funcionários" });
   }
 });
 

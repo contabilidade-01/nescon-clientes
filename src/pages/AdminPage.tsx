@@ -37,6 +37,10 @@ import {
   type CompanyToolKey,
 } from "@/lib/companyTools";
 import { Switch } from "@/components/ui/switch";
+import { AdminEmployeeImport } from "@/components/AdminEmployeeImport";
+
+const Q4_CNPJ = "54803962000108";
+const Q4_NAME = "RESTAURANTE DO QUEIJEIRO 4 LTDA";
 
 const AdminPage = () => {
   const navigate = useNavigate();
@@ -113,6 +117,22 @@ const AdminPage = () => {
       setNewCoCnpj("");
       setNewCoEmail("");
       setNewCoPhone("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const seedQueijeiros = useMutation({
+    mutationFn: () => api.admin.seedQueijeirosCompanies(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-summary"] });
+      const q4 = data.companies.find((c) => c.cnpj === Q4_CNPJ);
+      if (q4?.id) setAdminCompanyFilter(q4.id);
+      const created = data.companies.filter((c) => c.status === "created").length;
+      const exists = data.companies.filter((c) => c.status === "exists").length;
+      toast.success(
+        `Queijeiro: ${created} cadastrada(s), ${exists} já existia(m). Q4 selecionada no filtro.`
+      );
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -233,13 +253,33 @@ const AdminPage = () => {
                 />
               </div>
             </div>
-            <Button
-              type="button"
-              onClick={() => createCompany.mutate()}
-              disabled={createCompany.isPending || !newCoName.trim() || newCoCnpj.replace(/\D/g, "").length !== 14}
-            >
-              Cadastrar empresa
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setNewCoName(Q4_NAME);
+                  setNewCoCnpj(maskCNPJ(Q4_CNPJ));
+                }}
+              >
+                Preencher Queijeiro 4 (Q4)
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => seedQueijeiros.mutate()}
+                disabled={seedQueijeiros.isPending}
+              >
+                {seedQueijeiros.isPending ? "Cadastrando..." : "Cadastrar Q3 + Q4 (seed)"}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => createCompany.mutate()}
+                disabled={createCompany.isPending || !newCoName.trim() || newCoCnpj.replace(/\D/g, "").length !== 14}
+              >
+                Cadastrar empresa
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -385,7 +425,12 @@ const AdminPage = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="max-h-72 overflow-y-auto space-y-2 text-sm">
-            {loadingEmp ? (
+            {!adminCompanyFilter ? (
+              <p className="text-muted-foreground text-xs">
+                Selecione uma empresa no filtro acima para ver funcionários e importar planilha em{" "}
+                <strong>Gestão de empresas</strong>.
+              </p>
+            ) : loadingEmp ? (
               <p className="text-muted-foreground">Carregando...</p>
             ) : employees?.length ? (
               employees.map((e) => (
@@ -398,7 +443,10 @@ const AdminPage = () => {
                 </div>
               ))
             ) : (
-              <p className="text-muted-foreground">Nenhum funcionário</p>
+              <p className="text-muted-foreground text-xs">
+                Nenhum funcionário. Em <strong>Gestão de empresas</strong>, use{" "}
+                <strong>Importar funcionários (planilha)</strong> para subir o arquivo da Relação de Empregados.
+              </p>
             )}
           </CardContent>
         </Card>
@@ -571,6 +619,12 @@ function CompanyManageRow({
           Guardar permissões das ferramentas
         </Button>
       </div>
+
+      <AdminEmployeeImport
+        companyId={company.id}
+        companyCnpj={company.cnpj}
+        companyName={company.name}
+      />
     </div>
   );
 }

@@ -3,6 +3,7 @@ const db = require("../db");
 const { authMiddleware, requireCompanyUser } = require("../middleware/auth");
 const { companyHasAnyTool, companyHasTool, EMPLOYEE_LIST_TOOLS } = require("../middleware/companyToolAccess");
 const { validateCPF, validateString, validateUUID } = require("../middleware/validate");
+const { importEmployeesForCompany } = require("../employeeImport");
 
 // All routes require auth
 router.use(authMiddleware);
@@ -90,68 +91,19 @@ router.post("/import", requireCompanyUser, (req, res, next) => {
 }, async (req, res) => {
   const companyId = req.company.id;
   const companyCnpj = (req.company.cnpj || "").replace(/\D/g, "");
-  const fileCnpj = (req.body?.fileCnpj || "").toString().replace(/\D/g, "");
+  const fileCnpj = (req.body?.fileCnpj || "").toString();
   const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
 
-  if (!fileCnpj || fileCnpj.length !== 14) {
-    return res.status(400).json({ error: "CNPJ do arquivo não identificado" });
-  }
-  if (fileCnpj !== companyCnpj) {
-    return res.status(403).json({ error: "CNPJ do arquivo não corresponde à empresa logada" });
-  }
-  if (!rows.length) {
-    return res.status(400).json({ error: "Nenhum funcionário enviado para importação" });
-  }
-  if (rows.length > 1000) {
-    return res.status(400).json({ error: "Limite de 1000 funcionários por importação" });
-  }
-
   const client = await db.connect();
-  let inserted = 0;
-  let skipped = 0;
-  const errors = [];
-
   try {
     await client.query("BEGIN");
-
-    for (let idx = 0; idx < rows.length; idx += 1) {
-      const item = rows[idx] || {};
-      const name = (item.name || "").toString().trim().toUpperCase();
-      const cpfRaw = (item.cpf || "").toString();
-      const cpf = cpfRaw.replace(/\D/g, "");
-      const pis = item.pis ? item.pis.toString().replace(/\D/g, "") : null;
-
-      if (!validateString(name, 2, 200) || !validateCPF(cpf)) {
-        errors.push({ row: idx + 1, message: "Nome/CPF inválido" });
-        continue;
-      }
-      if (pis && !validateString(pis, 1, 20)) {
-        errors.push({ row: idx + 1, message: "PIS inválido" });
-        continue;
-      }
-      if (item.active === false) {
-        skipped += 1;
-        continue;
-      }
-
-      const exists = await client.query(
-        "SELECT 1 FROM employees WHERE company_id = $1 AND cpf = $2 LIMIT 1",
-        [companyId, cpf]
-      );
-      if (exists.rowCount) {
-        skipped += 1;
-        continue;
-      }
-
-      await client.query(
-        "INSERT INTO employees (company_id, name, cpf, pis, active) VALUES ($1, $2, $3, $4, true)",
-        [companyId, name, cpf, pis]
-      );
-      inserted += 1;
+    const result = await importEmployeesForCompany(client, companyId, companyCnpj, fileCnpj, rows);
+    if (result.status !== 201) {
+      await client.query("ROLLBACK");
+      return res.status(result.status).json(result.body);
     }
-
     await client.query("COMMIT");
-    return res.status(201).json({ inserted, skipped, errors });
+    return res.status(201).json(result.body);
   } catch (err) {
     await client.query("ROLLBACK");
     console.error(err);

@@ -201,6 +201,20 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    seedQueijeirosCompanies: () =>
+      request<{
+        ok: boolean;
+        companies: Array<{ cnpj: string; name: string; status: "created" | "exists"; id?: string }>;
+      }>("/admin/seed/queijeiros-companies", { method: "POST" }),
+    importEmployees: (
+      companyId: string,
+      rows: Array<{ name: string; cpf: string; pis?: string | null }>,
+      fileCnpj: string
+    ) =>
+      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }> }>(
+        `/admin/companies/${companyId}/import-employees`,
+        { method: "POST", body: JSON.stringify({ rows, fileCnpj }) }
+      ),
   },
 
   employees: {
