@@ -17,6 +17,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { maskCPF } from "@/lib/masks";
+import { REASON_PRESETS } from "@/lib/reasonPresets";
 
 interface Employee {
   id: string;
@@ -238,10 +239,10 @@ export function WarningForm() {
               <Button
                 type="button"
                 variant={reasonType === "outro" ? "default" : "outline"}
-                className="w-full justify-start text-left h-auto py-3"
+                className="w-full justify-start text-left h-auto py-3 whitespace-normal"
                 onClick={() => { setReasonType("outro"); setReason(""); }}
               >
-                Outro motivo
+                Outro motivo (má conduta, atrasos, briga...)
               </Button>
             </div>
             {reasonType === "falta" && (
@@ -266,13 +267,32 @@ export function WarningForm() {
               </div>
             )}
             {reasonType === "outro" && (
-              <Textarea
-                id="w-reason"
-                placeholder="Descreva o motivo da advertência..."
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                className="mt-2 min-h-[100px]"
-              />
+              <div className="mt-2 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {REASON_PRESETS.map((preset) => (
+                    <Button
+                      key={preset.label}
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setReason(preset.text)}
+                    >
+                      {preset.label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Modelos prontos — toque para preencher e edite à vontade (acrescente datas e detalhes do ocorrido).
+                </p>
+                <Textarea
+                  id="w-reason"
+                  placeholder="Descreva o motivo da advertência..."
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  className="min-h-[100px]"
+                />
+              </div>
             )}
           </div>
         </CardContent>

@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
 import { downloadSuspensionDoc, type SuspensionData } from "@/lib/generateSuspensionDoc";
 import { downloadWarningDoc, type WarningData } from "@/lib/generateWarningDoc";
+import { REASON_PRESETS } from "@/lib/reasonPresets";
 import { toast } from "sonner";
 
 type Step =
@@ -270,6 +271,8 @@ export function ChatbotFlow() {
           recentAbsenceDate: recentAbsence,
           unjustifiedAbsences,
           isThirdSuspension,
+          // O motivo respondido no chat entra na fundamentação do documento.
+          reason: reason || undefined,
         };
         const endDate = addDays(startDate, days - 1);
         const returnDate = addDays(endDate, 1);
@@ -432,8 +435,22 @@ export function ChatbotFlow() {
 
           {step === "reason_custom" && (
             <div className="space-y-2">
+              <div className="flex flex-wrap gap-1.5">
+                {REASON_PRESETS.map((preset) => (
+                  <Button
+                    key={preset.label}
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setReason(preset.text)}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
               <Textarea
-                placeholder="Descreva o motivo..."
+                placeholder="Descreva o motivo ou toque num modelo acima e edite..."
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 className="min-h-[80px]"

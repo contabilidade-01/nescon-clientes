@@ -17,6 +17,8 @@ export interface SuspensionData {
   recentAbsenceDate: string;
   unjustifiedAbsences: string[];
   isThirdSuspension?: boolean;
+  /** Motivo customizado (má conduta, atrasos, briga etc.). Se vazio, usa o texto de faltas injustificadas. */
+  reason?: string;
 }
 
 function formatDateBR(date: Date): string {
@@ -45,7 +47,18 @@ export function generateSuspensionDoc(data: SuspensionData) {
 
   const justificationRuns: TextRun[] = [];
 
-  if (data.unjustifiedAbsences.length > 0) {
+  // A fundamentação continua na mesma frase (", e após já ter recebido...");
+  // por isso o ponto final do motivo é removido.
+  const customReason = (data.reason || "").trim().replace(/\.+$/, "");
+
+  if (customReason) {
+    justificationRuns.push(
+      new TextRun({
+        text: customReason,
+        font: "Arial", size: F,
+      })
+    );
+  } else if (data.unjustifiedAbsences.length > 0) {
     justificationRuns.push(
       new TextRun({
         text: `Devido às suas ausências não justificadas nos dias `,

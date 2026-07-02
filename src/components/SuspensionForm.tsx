@@ -5,6 +5,7 @@ import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DateField, fromInputDateValue } from "@/components/DateField";
 import { MultiDateField } from "@/components/MultiDateField";
@@ -17,6 +18,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { maskCPF } from "@/lib/masks";
+import { REASON_PRESETS } from "@/lib/reasonPresets";
 
 interface Employee {
   id: string;
@@ -54,6 +56,8 @@ export function SuspensionForm() {
   const [startDate, setStartDate] = useState<Date>();
   const [suspensionDays, setSuspensionDays] = useState(1);
   const [recentAbsence, setRecentAbsence] = useState<Date>();
+  const [reasonType, setReasonType] = useState<"falta" | "outro" | "">("");
+  const [reason, setReason] = useState("");
 
   const [previousWarnings, setPreviousWarnings] = useState<string[]>([]);
   const [previousSuspensionDates, setPreviousSuspensionDates] = useState<Date[]>([]);
@@ -126,8 +130,10 @@ export function SuspensionForm() {
     const missing: string[] = [];
     if (!selectedEmployee) missing.push("o funcionário");
     if (!startDate) missing.push("a data de início");
+    if (!reasonType) missing.push("o motivo");
+    else if (reasonType === "outro" && !reason.trim()) missing.push("a descrição do motivo");
     if (missing.length > 0) {
-      toast.error(`Falta preencher: ${missing.join(" e ")}`);
+      toast.error(`Falta preencher: ${missing.join(", ")}`);
       return;
     }
     if (!selectedEmployee || !startDate) return;
@@ -136,6 +142,7 @@ export function SuspensionForm() {
 
     const sortedSuspensions = [...previousSuspensionDates].sort((a, b) => a.getTime() - b.getTime());
     const sortedAbsences = [...absenceDates].sort((a, b) => a.getTime() - b.getTime());
+    const isOtherReason = reasonType === "outro";
 
     const data: SuspensionData = {
       employeeName: selectedEmployee.name,
@@ -146,9 +153,11 @@ export function SuspensionForm() {
       suspensionDays,
       previousWarnings,
       previousSuspensions: sortedSuspensions.map(formatDateBR),
-      recentAbsenceDate: recentAbsence ? formatDateFull(recentAbsence) : "",
-      unjustifiedAbsences: sortedAbsences.map(formatDateBR),
+      // Campos de falta só valem no motivo "falta"; no motivo customizado o texto vem de `reason`.
+      recentAbsenceDate: !isOtherReason && recentAbsence ? formatDateFull(recentAbsence) : "",
+      unjustifiedAbsences: isOtherReason ? [] : sortedAbsences.map(formatDateBR),
       isThirdSuspension,
+      reason: isOtherReason ? reason : undefined,
     };
 
     try {
@@ -163,7 +172,9 @@ export function SuspensionForm() {
         start_date: format(startDate, "yyyy-MM-dd"),
         suspension_days: suspensionDays,
         return_date: returnDate ? format(returnDate, "yyyy-MM-dd") : null,
-        description: `Suspensão de ${suspensionDays} dia(s)`,
+        description: isOtherReason
+          ? `Suspensão de ${suspensionDays} dia(s): ${reason}`.substring(0, 200)
+          : `Suspensão de ${suspensionDays} dia(s) por faltas injustificadas`,
       });
 
       await downloadSuspensionDoc(data);
@@ -262,15 +273,63 @@ export function SuspensionForm() {
             </div>
           )}
 
-          {absenceDates.length === 0 && (
-            <div>
-              <Label>Data da falta mais recente <span className="text-muted-foreground text-xs">(opcional)</span></Label>
-              <DateField value={recentAbsence} onChange={setRecentAbsence} placeholder="Selecionar data da falta" />
-              <p className="text-xs text-muted-foreground mt-1">
-                Citada na fundamentação. Se preferir listar todas as faltas, use "Faltas sem Justificativa" abaixo.
-              </p>
+          <div>
+            <Label>Motivo da Suspensão *</Label>
+            <div className="mt-2 flex flex-col gap-2">
+              <Button
+                type="button"
+                variant={reasonType === "falta" ? "default" : "outline"}
+                className="w-full justify-start text-left h-auto py-3 whitespace-normal"
+                onClick={() => { setReasonType("falta"); setReason(""); }}
+              >
+                Falta Injustificada
+              </Button>
+              <Button
+                type="button"
+                variant={reasonType === "outro" ? "default" : "outline"}
+                className="w-full justify-start text-left h-auto py-3 whitespace-normal"
+                onClick={() => setReasonType("outro")}
+              >
+                Outro motivo (má conduta, atrasos, briga...)
+              </Button>
             </div>
-          )}
+            {reasonType === "falta" && absenceDates.length === 0 && (
+              <div className="mt-3">
+                <Label>Data da falta mais recente <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+                <DateField value={recentAbsence} onChange={setRecentAbsence} placeholder="Selecionar data da falta" />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Citada na fundamentação. Se preferir listar todas as faltas, use "Faltas sem Justificativa" abaixo.
+                </p>
+              </div>
+            )}
+            {reasonType === "outro" && (
+              <div className="mt-3 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {REASON_PRESETS.map((preset) => (
+                    <Button
+                      key={preset.label}
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setReason(preset.text)}
+                    >
+                      {preset.label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Modelos prontos — toque para preencher e edite à vontade (acrescente datas e detalhes do ocorrido).
+                </p>
+                <Textarea
+                  placeholder="Descreva o motivo da suspensão..."
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  className="min-h-[100px]"
+                />
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -317,20 +376,24 @@ export function SuspensionForm() {
               </div>
             )}
           </div>
-          <Separator />
-          <div>
-            <Label className="text-sm font-medium">Faltas sem Justificativa <span className="text-muted-foreground text-xs font-normal">(datas)</span></Label>
-            <MultiDateField
-              className="mt-2"
-              value={absenceDates}
-              onChange={setAbsenceDates}
-              placeholder="Selecionar datas das faltas"
-              max={startOfToday()}
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Essas datas entram na fundamentação do documento.
-            </p>
-          </div>
+          {reasonType !== "outro" && (
+            <>
+              <Separator />
+              <div>
+                <Label className="text-sm font-medium">Faltas sem Justificativa <span className="text-muted-foreground text-xs font-normal">(datas)</span></Label>
+                <MultiDateField
+                  className="mt-2"
+                  value={absenceDates}
+                  onChange={setAbsenceDates}
+                  placeholder="Selecionar datas das faltas"
+                  max={startOfToday()}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Essas datas entram na fundamentação do documento.
+                </p>
+              </div>
+            </>
+          )}
            <Separator />
            <div className="flex items-start space-x-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
              <Checkbox

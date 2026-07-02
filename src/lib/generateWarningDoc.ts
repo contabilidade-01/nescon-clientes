@@ -39,8 +39,13 @@ const FT = 24; // font size title (12pt)
 export function generateWarningDoc(data: WarningData) {
   const reasonRuns: TextRun[] = [];
 
+  // Garante ponto final — o texto seguinte continua no mesmo parágrafo.
+  const reasonText = data.reason.trim();
   reasonRuns.push(
-    new TextRun({ text: data.reason, font: "Arial", size: F })
+    new TextRun({
+      text: /[.!?]$/.test(reasonText) ? reasonText : `${reasonText}.`,
+      font: "Arial", size: F,
+    })
   );
 
   if (data.previousWarnings.length > 0) {
