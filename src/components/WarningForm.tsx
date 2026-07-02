@@ -7,12 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DateField } from "@/components/DateField";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { EmployeeSelect } from "@/components/EmployeeSelect";
-import { cn } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { downloadWarningDoc, type WarningData } from "@/lib/generateWarningDoc";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -52,13 +50,10 @@ export function WarningForm() {
   }, [company]);
 
   useEffect(() => {
-    if (!selectedEmployeeId) {
-      setPis("");
-      return;
+    if (selectedEmployee) {
+      setPis(selectedEmployee.pis || "");
     }
-    const emp = employees.find((e) => e.id === selectedEmployeeId);
-    setPis(emp?.pis ? String(emp.pis) : "");
-  }, [selectedEmployeeId, employees]);
+  }, [selectedEmployee]);
 
   const addItem = (list: string[], setList: (v: string[]) => void, value: string, setValue: (v: string) => void) => {
     if (value.trim()) {
@@ -113,8 +108,6 @@ export function WarningForm() {
     }
   };
 
-  const formatDateBR = (date: Date) => format(date, "dd/MM/yyyy", { locale: ptBR });
-
   return (
     <div className="space-y-4">
       {/* Employee Select */}
@@ -126,11 +119,21 @@ export function WarningForm() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <EmployeeSelect
-            employees={employees}
-            value={selectedEmployeeId}
-            onChange={setSelectedEmployeeId}
-          />
+          <div>
+            <Label>Selecionar Funcionário *</Label>
+            <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId}>
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Escolha o funcionário" />
+              </SelectTrigger>
+              <SelectContent>
+                {employees.map((emp) => (
+                  <SelectItem key={emp.id} value={emp.id}>
+                    {emp.name} — {emp.cpf}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           {selectedEmployee && (
             <div className="rounded-lg bg-muted p-3 space-y-1">
               <p className="text-sm"><span className="text-muted-foreground">CPF:</span> {selectedEmployee.cpf}</p>
@@ -171,17 +174,7 @@ export function WarningForm() {
         <CardContent className="space-y-4">
           <div>
             <Label>Data da Advertência *</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className={cn("mt-1 w-full justify-start text-left font-normal", !warningDate && "text-muted-foreground")}>
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {warningDate ? formatDateBR(warningDate) : "Selecionar data"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar mode="single" selected={warningDate} onSelect={setWarningDate} locale={ptBR} className="p-3 pointer-events-auto" />
-              </PopoverContent>
-            </Popover>
+            <DateField value={warningDate} onChange={setWarningDate} placeholder="Selecionar data" />
           </div>
           <div>
             <Label>Motivo da Advertência *</Label>
@@ -212,29 +205,17 @@ export function WarningForm() {
             {reasonType === "falta" && (
               <div className="mt-3">
                 <Label>Data da Falta *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn("mt-1 w-full justify-start text-left font-normal", !faltaDate && "text-muted-foreground")}>
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {faltaDate ? format(faltaDate, "dd/MM/yyyy", { locale: ptBR }) : "Selecionar data da falta"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={faltaDate}
-                      onSelect={(d) => {
-                        setFaltaDate(d);
-                        if (d) {
-                          const dateFull = format(d, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-                          setReason(`Falta injustificada ao serviço no dia ${dateFull}, sem apresentação de justificativa válida, em descumprimento às obrigações contratuais e ao dever de assiduidade.`);
-                        }
-                      }}
-                      locale={ptBR}
-                      className="p-3 pointer-events-auto"
-                    />
-                  </PopoverContent>
-                </Popover>
+                <DateField
+                  value={faltaDate}
+                  onChange={(d) => {
+                    setFaltaDate(d);
+                    if (d) {
+                      const dateFull = format(d, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+                      setReason(`Falta injustificada ao serviço no dia ${dateFull}, sem apresentação de justificativa válida, em descumprimento às obrigações contratuais e ao dever de assiduidade.`);
+                    }
+                  }}
+                  placeholder="Selecionar data da falta"
+                />
               </div>
             )}
             {reasonType === "outro" && (
@@ -293,7 +274,7 @@ export function WarningForm() {
       </Card>
 
       {/* Generate Button */}
-      <div className="sticky bottom-0 left-0 right-0 z-10 border-t bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:static md:z-auto md:border-0 md:bg-transparent md:p-0">
+      <div className="fixed bottom-0 left-0 right-0 border-t bg-card/95 backdrop-blur-sm p-4 md:static md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
         <Button onClick={handleGenerate} disabled={isGenerating} className="w-full gap-2 h-12 text-base font-semibold" size="lg">
           <Download className="h-5 w-5" />
           {isGenerating ? "Gerando..." : "Gerar Documento de Advertência"}

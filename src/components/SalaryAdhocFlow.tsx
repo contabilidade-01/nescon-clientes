@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import { CalendarIcon, Check, X, RefreshCw, Download } from "lucide-react";
+import { Check, X, RefreshCw, Download } from "lucide-react";
 import { format, startOfMonth, parse } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Badge } from "@/components/ui/badge";
+import { DateField } from "@/components/DateField";
+import { MultiDateField } from "@/components/MultiDateField";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -415,75 +414,30 @@ export function SalaryAdhocFlow() {
 
           {step === "start_date_pick" && monthBounds && (
             <div className="space-y-2">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn("w-full justify-start", !startDateInMonth && "text-muted-foreground")}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {startDateInMonth
-                      ? format(startDateInMonth, "dd/MM/yyyy", { locale: ptBR })
-                      : "Data de início no mês"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    defaultMonth={refMonthDate}
-                    selected={startDateInMonth}
-                    onSelect={(d) => d && isDateInRefMonth(d) && setStartDateInMonth(d)}
-                    disabled={(d) => !isDateInRefMonth(d)}
-                    locale={ptBR}
-                    className="p-3 pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
+              <DateField
+                value={startDateInMonth}
+                onChange={(d) => d && isDateInRefMonth(d) && setStartDateInMonth(d)}
+                min={monthBounds.start}
+                max={monthBounds.end}
+                placeholder="Data de início no mês"
+                className="mt-0"
+              />
               <Button onClick={submitStartDate} disabled={!startDateInMonth} className="w-full">
                 Continuar
               </Button>
             </div>
           )}
 
-          {step === "absences" && refMonthDate && (
+          {step === "absences" && refMonthDate && monthBounds && (
             <div className="space-y-2">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {faltaDates.length > 0
-                      ? `${faltaDates.length} falta(s) marcada(s)`
-                      : "Marcar dias de falta (opcional)"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="multiple"
-                    defaultMonth={refMonthDate}
-                    selected={faltaDates}
-                    onSelect={(dates) => setFaltaDates(dates || [])}
-                    locale={ptBR}
-                    className="p-3 pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-              {faltaDates.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {[...faltaDates]
-                    .sort((a, b) => a.getTime() - b.getTime())
-                    .map((d, i) => (
-                      <Badge key={`${d.getTime()}-${i}`} variant="secondary" className="text-xs">
-                        {format(d, "dd/MM/yyyy", { locale: ptBR })}
-                        <X
-                          className="h-3 w-3 ml-1 cursor-pointer"
-                          onClick={() =>
-                            setFaltaDates((prev) => prev.filter((x) => x.getTime() !== d.getTime()))
-                          }
-                        />
-                      </Badge>
-                    ))}
-                </div>
-              )}
+              <MultiDateField
+                value={faltaDates}
+                onChange={setFaltaDates}
+                placeholder="Marcar dias de falta (opcional)"
+                min={monthBounds.start}
+                max={monthBounds.end}
+                defaultMonth={refMonthDate}
+              />
               <p className="text-xs text-muted-foreground">
                 Dias marcados:{" "}
                 {[...faltaDates]

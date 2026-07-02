@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Download, CalendarIcon, Check } from "lucide-react";
+import { Plus, X, Download, Check } from "lucide-react";
 import { format, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DateField } from "@/components/DateField";
+import { MultiDateField } from "@/components/MultiDateField";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -352,7 +352,7 @@ export function ChatbotFlow() {
   };
 
   const filteredEmployees = employees.filter((e) =>
-    (e.name ?? "").toLowerCase().includes(searchQuery.toLowerCase())
+    e.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -430,23 +430,7 @@ export function ChatbotFlow() {
 
           {step === "start_date" && (
             <div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn("w-full justify-start", !startDate && "text-muted-foreground")}>
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {startDate ? format(startDate, "dd/MM/yyyy", { locale: ptBR }) : "Selecionar data"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={startDate}
-                    onSelect={(d) => d && submitDate(d)}
-                    locale={ptBR}
-                    className="p-3 pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
+              <DateField onChange={(d) => d && submitDate(d)} placeholder="Selecionar data" className="mt-0" />
             </div>
           )}
 
@@ -477,35 +461,11 @@ export function ChatbotFlow() {
 
           {step === "reason_falta_date" && (
             <div className="space-y-2">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn("w-full justify-start", faltaDates.length === 0 && "text-muted-foreground")}>
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {faltaDates.length > 0
-                      ? `${faltaDates.length} data${faltaDates.length > 1 ? "s" : ""} selecionada${faltaDates.length > 1 ? "s" : ""}`
-                      : "Selecionar data(s) da falta"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="multiple"
-                    selected={faltaDates}
-                    onSelect={(dates) => setFaltaDates(dates || [])}
-                    locale={ptBR}
-                    className="p-3 pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-              {faltaDates.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {[...faltaDates].sort((a, b) => a.getTime() - b.getTime()).map((d, i) => (
-                    <Badge key={i} variant="secondary" className="text-xs">
-                      {format(d, "dd/MM/yyyy", { locale: ptBR })}
-                      <X className="h-3 w-3 ml-1 cursor-pointer" onClick={() => setFaltaDates(faltaDates.filter((_, idx) => idx !== i))} />
-                    </Badge>
-                  ))}
-                </div>
-              )}
+              <MultiDateField
+                value={faltaDates}
+                onChange={setFaltaDates}
+                placeholder="Selecionar data(s) da falta"
+              />
               <Button onClick={submitFaltaDates} disabled={faltaDates.length === 0} className="w-full">
                 Continuar
               </Button>
