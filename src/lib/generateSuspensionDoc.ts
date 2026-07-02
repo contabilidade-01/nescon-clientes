@@ -7,7 +7,6 @@ import { ptBR } from "date-fns/locale";
 
 export interface SuspensionData {
   employeeName: string;
-  pis: string;
   cpf: string;
   companyName: string;
   cnpj: string;
@@ -212,15 +211,6 @@ export function generateSuspensionDoc(data: SuspensionData) {
               new TextRun({ text: data.cpf, font: "Arial", size: F }),
             ],
           }),
-          ...(data.pis ? [
-            new Paragraph({
-              spacing: { after: 40 },
-              children: [
-                new TextRun({ text: "PIS: ", font: "Arial", size: F, bold: true }),
-                new TextRun({ text: data.pis, font: "Arial", size: F }),
-              ],
-            }),
-          ] : []),
           // Period
           new Paragraph({
             spacing: { before: 60, after: 40 },

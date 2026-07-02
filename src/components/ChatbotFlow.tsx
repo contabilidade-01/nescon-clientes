@@ -31,7 +31,6 @@ type Step =
   | "third_suspension"
   | "unjustified_absences_yn"
   | "unjustified_absences"
-  | "pis"
   | "confirm";
 
 interface Message {
@@ -43,7 +42,6 @@ interface Employee {
   id: string;
   name: string;
   cpf: string;
-  pis: string | null;
 }
 
 export function ChatbotFlow() {
@@ -63,7 +61,6 @@ export function ChatbotFlow() {
   const [previousWarnings, setPreviousWarnings] = useState<string[]>([]);
   const [previousSuspensions, setPreviousSuspensions] = useState<string[]>([]);
   const [unjustifiedAbsences, setUnjustifiedAbsences] = useState<string[]>([]);
-  const [pisInput, setPisInput] = useState("");
   const [tempInput, setTempInput] = useState("");
   const [isThirdSuspension, setIsThirdSuspension] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -96,7 +93,6 @@ export function ChatbotFlow() {
 
   const selectEmployee = (emp: Employee) => {
     setSelectedEmployee(emp);
-    setPisInput(emp.pis || "");
     addUserMsg(emp.name);
 
     if (docType === "suspension") {
@@ -148,9 +144,8 @@ export function ChatbotFlow() {
       ? `no dia ${datesFull[0]}`
       : `nos dias ${datesFull.slice(0, -1).join(", ")} e ${datesFull[datesFull.length - 1]}`;
     setReason(`Falta${sorted.length > 1 ? "s" : ""} injustificada${sorted.length > 1 ? "s" : ""} ao serviço ${datesText}, sem apresentação de justificativa válida, em descumprimento às obrigações contratuais e ao dever de assiduidade.`);
-    // Populate unjustifiedAbsences with the falta dates for the document generator
-    const datesFormatted = sorted.map(d => format(d, "dd/MM/yyyy", { locale: ptBR }));
-    setUnjustifiedAbsences(datesFormatted);
+    // As datas já entram por extenso no motivo; repeti-las em unjustifiedAbsences
+    // duplicava a lista no documento final.
     addUserMsg(datesStr);
     goToNextAfterReason();
   };
@@ -221,7 +216,7 @@ export function ChatbotFlow() {
       setStep("unjustified_absences");
     } else {
       addUserMsg("Não");
-      goToPis();
+      goToConfirm();
     }
   };
 
@@ -229,22 +224,15 @@ export function ChatbotFlow() {
     if (previousWarnings.length > 0) addUserMsg(previousWarnings.join(", "));
     // Se o motivo já é falta injustificada, pular a pergunta de faltas
     if (reason.startsWith("Falta injustificada") || reason.startsWith("Faltas injustificadas")) {
-      goToPis();
+      goToConfirm();
     } else {
       addBotMsg("Houve faltas sem justificativa?");
       setStep("unjustified_absences_yn");
     }
   };
 
-  const goToPis = () => {
-    if (unjustifiedAbsences.length > 0) addUserMsg(unjustifiedAbsences.join(", "));
-    addBotMsg(`PIS do funcionário${pisInput ? ` (atual: ${pisInput})` : ""}. Altere ou clique em Pular.`);
-    setStep("pis");
-  };
-
   const goToConfirm = () => {
-    if (pisInput) addUserMsg(`PIS: ${pisInput}`);
-    else addUserMsg("(sem PIS)");
+    if (unjustifiedAbsences.length > 0) addUserMsg(unjustifiedAbsences.join(", "));
     setStep("confirm");
 
     const endDate = startDate && docType === "suspension" ? addDays(startDate, days - 1) : null;
@@ -254,7 +242,6 @@ export function ChatbotFlow() {
     summary += `• Tipo: ${docType === "suspension" ? "Suspensão" : "Advertência"}\n`;
     summary += `• Funcionário: ${selectedEmployee?.name}\n`;
     summary += `• CPF: ${selectedEmployee?.cpf}\n`;
-    if (pisInput) summary += `• PIS: ${pisInput}\n`;
     if (startDate) summary += `• Data: ${format(startDate, "dd/MM/yyyy")}\n`;
     if (docType === "suspension") {
       summary += `• Dias: ${days}\n`;
@@ -273,7 +260,6 @@ export function ChatbotFlow() {
       if (docType === "suspension") {
         const data: SuspensionData = {
           employeeName: selectedEmployee.name,
-          pis: pisInput,
           cpf: selectedEmployee.cpf,
           companyName: company.name,
           cnpj: company.cnpj,
@@ -291,7 +277,7 @@ export function ChatbotFlow() {
           document_type: "suspension",
           employee_name: selectedEmployee.name,
           employee_cpf: selectedEmployee.cpf,
-          employee_pis: pisInput || null,
+          employee_pis: null,
           company_name: company.name,
           company_cnpj: company.cnpj,
           company_id: company.id,
@@ -304,7 +290,6 @@ export function ChatbotFlow() {
       } else {
         const data: WarningData = {
           employeeName: selectedEmployee.name,
-          pis: pisInput,
           cpf: selectedEmployee.cpf,
           companyName: company.name,
           cnpj: company.cnpj,
@@ -317,7 +302,7 @@ export function ChatbotFlow() {
           document_type: "warning",
           employee_name: selectedEmployee.name,
           employee_cpf: selectedEmployee.cpf,
-          employee_pis: pisInput || null,
+          employee_pis: null,
           company_name: company.name,
           company_cnpj: company.cnpj,
           company_id: company.id,
@@ -608,22 +593,8 @@ export function ChatbotFlow() {
                   ))}
                 </div>
               )}
-              <Button onClick={goToPis} variant={unjustifiedAbsences.length > 0 ? "default" : "secondary"} className="w-full">
+              <Button onClick={goToConfirm} variant={unjustifiedAbsences.length > 0 ? "default" : "secondary"} className="w-full">
                 {unjustifiedAbsences.length > 0 ? "Continuar" : "Pular"}
-              </Button>
-            </div>
-          )}
-
-          {step === "pis" && (
-            <div className="flex gap-2">
-              <Input
-                placeholder="000.00000.00-0"
-                value={pisInput}
-                onChange={(e) => setPisInput(e.target.value)}
-                className="flex-1"
-              />
-              <Button onClick={goToConfirm}>
-                {pisInput ? <Check className="h-4 w-4" /> : "Pular"}
               </Button>
             </div>
           )}

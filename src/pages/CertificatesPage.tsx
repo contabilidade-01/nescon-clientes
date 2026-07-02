@@ -40,7 +40,7 @@ const CertificatesPage = () => {
 
   const years = Array.from({ length: 5 }, (_, i) => currentDate.getFullYear() - i);
 
-  const { data: employees } = useQuery({
+  const { data: employees, isLoading: loadingEmployees } = useQuery({
     queryKey: ["employees", company?.id],
     queryFn: () => api.employees.list({ companyId: company!.id }),
     enabled: !!company,
@@ -147,6 +147,7 @@ const CertificatesPage = () => {
               onChange={setSelectedEmployee}
               label="Funcionário *"
               placeholder="Selecione o funcionário"
+              loading={loadingEmployees}
             />
 
             <div>

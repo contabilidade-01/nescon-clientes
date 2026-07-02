@@ -1,99 +1,153 @@
 import { useState, useEffect } from "react";
-import { Plus, X, Download, CalendarIcon, User, Building2, AlertTriangle, ShieldAlert } from "lucide-react";
-import { format, addDays } from "date-fns";
+import { Plus, X, Download, CalendarIcon, User, Building2, AlertTriangle, ShieldAlert, History } from "lucide-react";
+import { format, addDays, startOfToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DateField } from "@/components/DateField";
+import { DateField, fromInputDateValue } from "@/components/DateField";
+import { MultiDateField } from "@/components/MultiDateField";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmployeeSelect } from "@/components/EmployeeSelect";
-import { cn } from "@/lib/utils";
 import { downloadSuspensionDoc, type SuspensionData } from "@/lib/generateSuspensionDoc";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { maskPIS } from "@/lib/masks";
+import { maskCPF } from "@/lib/masks";
 
 interface Employee {
   id: string;
   name: string;
   cpf: string;
-  pis: string | null;
+}
+
+interface IssuedDocument {
+  id: string;
+  document_type: string;
+  employee_cpf: string;
+  start_date: string | null;
+}
+
+const formatDateBR = (date: Date) => format(date, "dd/MM/yyyy", { locale: ptBR });
+const formatDateFull = (date: Date) => format(date, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+const onlyDigits = (v: string) => String(v || "").replace(/\D/g, "");
+
+/** Datas dos documentos já emitidos para o funcionário (deduplicadas, mais antigas primeiro). */
+function datesFromDocs(docs: IssuedDocument[], type: string): Date[] {
+  const dates = docs
+    .filter((d) => d.document_type === type && d.start_date)
+    .map((d) => fromInputDateValue(String(d.start_date).slice(0, 10)))
+    .filter((d): d is Date => !!d);
+  const unique = new Map(dates.map((d) => [d.getTime(), d]));
+  return [...unique.values()].sort((a, b) => a.getTime() - b.getTime());
 }
 
 export function SuspensionForm() {
   const { company } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [issuedDocs, setIssuedDocs] = useState<IssuedDocument[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
-  const [pis, setPis] = useState("");
   const [startDate, setStartDate] = useState<Date>();
   const [suspensionDays, setSuspensionDays] = useState(1);
-  const [recentAbsenceDate, setRecentAbsenceDate] = useState("");
+  const [recentAbsence, setRecentAbsence] = useState<Date>();
 
   const [previousWarnings, setPreviousWarnings] = useState<string[]>([]);
-  const [previousSuspensions, setPreviousSuspensions] = useState<string[]>([]);
-  const [unjustifiedAbsences, setUnjustifiedAbsences] = useState<string[]>([]);
+  const [previousSuspensionDates, setPreviousSuspensionDates] = useState<Date[]>([]);
+  const [absenceDates, setAbsenceDates] = useState<Date[]>([]);
+  const [prefilledFromHistory, setPrefilledFromHistory] = useState(false);
 
   const [newWarning, setNewWarning] = useState("");
-  const [newSuspension, setNewSuspension] = useState("");
-  const [newAbsence, setNewAbsence] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isThirdSuspension, setIsThirdSuspension] = useState(false);
+  const [thirdManuallySet, setThirdManuallySet] = useState(false);
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
   const endDate = startDate ? addDays(startDate, suspensionDays - 1) : null;
   const returnDate = endDate ? addDays(endDate, 1) : null;
 
   useEffect(() => {
-    if (company) {
-      api.employees.list({ companyId: company.id }).then((data) => setEmployees(data));
-    }
+    if (!company) return;
+    setLoadingEmployees(true);
+    api.employees
+      .list({ companyId: company.id })
+      .then((data) => setEmployees(data))
+      .catch(() => toast.error("Erro ao carregar a lista de funcionários"))
+      .finally(() => setLoadingEmployees(false));
+    // Histórico é opcional (pré-preenchimento); se falhar, o usuário preenche à mão.
+    api.documents
+      .list({ companyId: company.id })
+      .then((docs) => setIssuedDocs(docs))
+      .catch(() => setIssuedDocs([]));
   }, [company]);
 
+  // Ao escolher o funcionário, puxa do histórico as suspensões e advertências já emitidas.
   useEffect(() => {
+    setThirdManuallySet(false);
     if (!selectedEmployeeId) {
-      setPis("");
+      setPreviousSuspensionDates([]);
+      setPreviousWarnings([]);
+      setPrefilledFromHistory(false);
       return;
     }
     const emp = employees.find((e) => e.id === selectedEmployeeId);
-    setPis(emp?.pis ? String(emp.pis) : "");
-  }, [selectedEmployeeId, employees]);
+    if (!emp) return;
+    const empDocs = issuedDocs.filter((d) => onlyDigits(d.employee_cpf) === onlyDigits(emp.cpf));
+    const suspensions = datesFromDocs(empDocs, "suspension");
+    const warnings = datesFromDocs(empDocs, "warning").map((d) => `Advertência em ${formatDateBR(d)}`);
+    setPreviousSuspensionDates(suspensions);
+    setPreviousWarnings(warnings);
+    setPrefilledFromHistory(suspensions.length > 0 || warnings.length > 0);
+  }, [selectedEmployeeId, employees, issuedDocs]);
 
-  const addItem = (list: string[], setList: (v: string[]) => void, value: string, setValue: (v: string) => void) => {
-    if (value.trim()) {
-      setList([...list, value.trim()]);
-      setValue("");
+  // Com 2 suspensões anteriores informadas, esta é a 3ª — marca sozinho,
+  // mas respeita a escolha se o usuário mexer na caixa.
+  useEffect(() => {
+    if (!thirdManuallySet) {
+      setIsThirdSuspension(previousSuspensionDates.length >= 2);
+    }
+  }, [previousSuspensionDates.length, thirdManuallySet]);
+
+  const addWarning = () => {
+    if (newWarning.trim()) {
+      setPreviousWarnings([...previousWarnings, newWarning.trim()]);
+      setNewWarning("");
     }
   };
 
-  const removeItem = (list: string[], setList: (v: string[]) => void, index: number) => {
-    setList(list.filter((_, i) => i !== index));
+  const removeWarning = (index: number) => {
+    setPreviousWarnings(previousWarnings.filter((_, i) => i !== index));
   };
 
   const handleGenerate = async () => {
-    if (!selectedEmployee || !startDate) {
-      toast.error("Selecione o funcionário e a data de início");
+    const missing: string[] = [];
+    if (!selectedEmployee) missing.push("o funcionário");
+    if (!startDate) missing.push("a data de início");
+    if (missing.length > 0) {
+      toast.error(`Falta preencher: ${missing.join(" e ")}`);
       return;
     }
+    if (!selectedEmployee || !startDate) return;
 
     setIsGenerating(true);
 
+    const sortedSuspensions = [...previousSuspensionDates].sort((a, b) => a.getTime() - b.getTime());
+    const sortedAbsences = [...absenceDates].sort((a, b) => a.getTime() - b.getTime());
+
     const data: SuspensionData = {
       employeeName: selectedEmployee.name,
-      pis,
       cpf: selectedEmployee.cpf,
       companyName: company?.name || "",
       cnpj: company?.cnpj || "",
       startDate,
       suspensionDays,
       previousWarnings,
-      previousSuspensions,
-      recentAbsenceDate,
-      unjustifiedAbsences,
+      previousSuspensions: sortedSuspensions.map(formatDateBR),
+      recentAbsenceDate: recentAbsence ? formatDateFull(recentAbsence) : "",
+      unjustifiedAbsences: sortedAbsences.map(formatDateBR),
       isThirdSuspension,
     };
 
@@ -102,7 +156,7 @@ export function SuspensionForm() {
         document_type: "suspension",
         employee_name: selectedEmployee.name,
         employee_cpf: selectedEmployee.cpf,
-        employee_pis: pis || null,
+        employee_pis: null,
         company_name: company?.name || "",
         company_cnpj: company?.cnpj || "",
         company_id: company?.id,
@@ -121,8 +175,6 @@ export function SuspensionForm() {
     }
   };
 
-  const formatDateBR = (date: Date) => format(date, "dd/MM/yyyy", { locale: ptBR });
-
   return (
     <div className="space-y-4">
       {/* Employee Select */}
@@ -138,17 +190,13 @@ export function SuspensionForm() {
             employees={employees}
             value={selectedEmployeeId}
             onChange={setSelectedEmployeeId}
+            loading={loadingEmployees}
           />
           {selectedEmployee && (
-            <div className="rounded-lg bg-muted p-3 space-y-1">
-              <p className="text-sm"><span className="text-muted-foreground">CPF:</span> {selectedEmployee.cpf}</p>
-              {selectedEmployee.pis && <p className="text-sm"><span className="text-muted-foreground">PIS:</span> {selectedEmployee.pis}</p>}
+            <div className="rounded-lg bg-muted p-3">
+              <p className="text-sm"><span className="text-muted-foreground">CPF:</span> {maskCPF(String(selectedEmployee.cpf || ""))}</p>
             </div>
           )}
-          <div>
-            <Label htmlFor="pis">PIS <span className="text-muted-foreground text-xs">(opcional)</span></Label>
-            <Input id="pis" placeholder="000.00000.00-0" value={pis} onChange={(e) => setPis(maskPIS(e.target.value))} className="mt-1" />
-          </div>
         </CardContent>
       </Card>
 
@@ -181,10 +229,18 @@ export function SuspensionForm() {
             <div>
               <Label>Data de Início *</Label>
               <DateField value={startDate} onChange={setStartDate} placeholder="Selecionar" />
+              <div className="mt-2 flex gap-2">
+                <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setStartDate(startOfToday())}>
+                  Hoje
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setStartDate(addDays(startOfToday(), 1))}>
+                  Amanhã
+                </Button>
+              </div>
             </div>
             <div>
               <Label htmlFor="days">Dias de Suspensão *</Label>
-              <Input id="days" type="number" min={1} max={30} value={suspensionDays} onChange={(e) => setSuspensionDays(Math.min(30, Math.max(1, parseInt(e.target.value) || 1)))} className="mt-1" />
+              <Input id="days" type="number" inputMode="numeric" min={1} max={30} value={suspensionDays} onChange={(e) => setSuspensionDays(Math.min(30, Math.max(1, parseInt(e.target.value) || 1)))} className="mt-1" />
               <p className="text-xs text-muted-foreground mt-1">Máximo 30 dias (Art. 474 CLT)</p>
             </div>
           </div>
@@ -206,10 +262,15 @@ export function SuspensionForm() {
             </div>
           )}
 
-          <div>
-            <Label htmlFor="recent">Data da falta mais recente</Label>
-            <Input id="recent" placeholder="Ex: 29 de maio de 2025" value={recentAbsenceDate} onChange={(e) => setRecentAbsenceDate(e.target.value)} className="mt-1" />
-          </div>
+          {absenceDates.length === 0 && (
+            <div>
+              <Label>Data da falta mais recente <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+              <DateField value={recentAbsence} onChange={setRecentAbsence} placeholder="Selecionar data da falta" />
+              <p className="text-xs text-muted-foreground mt-1">
+                Citada na fundamentação. Se preferir listar todas as faltas, use "Faltas sem Justificativa" abaixo.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -222,56 +283,63 @@ export function SuspensionForm() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div>
-            <Label className="text-sm font-medium">Suspensões Anteriores</Label>
-            <div className="mt-2 flex gap-2">
-              <Input placeholder="Ex: 04/03/2025" value={newSuspension} onChange={(e) => setNewSuspension(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addItem(previousSuspensions, setPreviousSuspensions, newSuspension, setNewSuspension)} className="flex-1" />
-              <Button size="icon" variant="outline" onClick={() => addItem(previousSuspensions, setPreviousSuspensions, newSuspension, setNewSuspension)}><Plus className="h-4 w-4" /></Button>
+          {prefilledFromHistory && (
+            <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <History className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">Pré-carregado do histórico do sistema.</span>{" "}
+                Documentos já emitidos para este funcionário foram adicionados abaixo — revise e ajuste se necessário.
+              </p>
             </div>
-            {previousSuspensions.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {previousSuspensions.map((item, i) => (
-                  <Badge key={i} variant="secondary" className="gap-1 pr-1">{item}<button onClick={() => removeItem(previousSuspensions, setPreviousSuspensions, i)} className="ml-1 rounded-full hover:bg-muted p-0.5"><X className="h-3 w-3" /></button></Badge>
-                ))}
-              </div>
-            )}
+          )}
+          <div>
+            <Label className="text-sm font-medium">Suspensões Anteriores <span className="text-muted-foreground text-xs font-normal">(datas)</span></Label>
+            <MultiDateField
+              className="mt-2"
+              value={previousSuspensionDates}
+              onChange={setPreviousSuspensionDates}
+              placeholder="Selecionar datas das suspensões"
+              max={startOfToday()}
+            />
           </div>
           <Separator />
           <div>
             <Label className="text-sm font-medium">Advertências Anteriores</Label>
             <div className="mt-2 flex gap-2">
-              <Input placeholder="Ex: Advertência verbal" value={newWarning} onChange={(e) => setNewWarning(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addItem(previousWarnings, setPreviousWarnings, newWarning, setNewWarning)} className="flex-1" />
-              <Button size="icon" variant="outline" onClick={() => addItem(previousWarnings, setPreviousWarnings, newWarning, setNewWarning)}><Plus className="h-4 w-4" /></Button>
+              <Input placeholder="Ex: Advertência verbal em 04/03/2025" value={newWarning} onChange={(e) => setNewWarning(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addWarning()} className="flex-1" />
+              <Button size="icon" variant="outline" onClick={addWarning} aria-label="Adicionar advertência anterior"><Plus className="h-4 w-4" /></Button>
             </div>
             {previousWarnings.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {previousWarnings.map((item, i) => (
-                  <Badge key={i} variant="secondary" className="gap-1 pr-1">{item}<button onClick={() => removeItem(previousWarnings, setPreviousWarnings, i)} className="ml-1 rounded-full hover:bg-muted p-0.5"><X className="h-3 w-3" /></button></Badge>
+                  <Badge key={i} variant="secondary" className="gap-1 pr-1">{item}<button onClick={() => removeWarning(i)} className="ml-1 rounded-full hover:bg-muted p-0.5" aria-label={`Remover ${item}`}><X className="h-3 w-3" /></button></Badge>
                 ))}
               </div>
             )}
           </div>
           <Separator />
           <div>
-            <Label className="text-sm font-medium">Faltas sem Justificativa</Label>
-            <div className="mt-2 flex gap-2">
-              <Input placeholder="Ex: 09/11/2024" value={newAbsence} onChange={(e) => setNewAbsence(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addItem(unjustifiedAbsences, setUnjustifiedAbsences, newAbsence, setNewAbsence)} className="flex-1" />
-              <Button size="icon" variant="outline" onClick={() => addItem(unjustifiedAbsences, setUnjustifiedAbsences, newAbsence, setNewAbsence)}><Plus className="h-4 w-4" /></Button>
-            </div>
-            {unjustifiedAbsences.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {unjustifiedAbsences.map((item, i) => (
-                  <Badge key={i} variant="secondary" className="gap-1 pr-1">{item}<button onClick={() => removeItem(unjustifiedAbsences, setUnjustifiedAbsences, i)} className="ml-1 rounded-full hover:bg-muted p-0.5"><X className="h-3 w-3" /></button></Badge>
-                ))}
-              </div>
-            )}
-           </div>
+            <Label className="text-sm font-medium">Faltas sem Justificativa <span className="text-muted-foreground text-xs font-normal">(datas)</span></Label>
+            <MultiDateField
+              className="mt-2"
+              value={absenceDates}
+              onChange={setAbsenceDates}
+              placeholder="Selecionar datas das faltas"
+              max={startOfToday()}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Essas datas entram na fundamentação do documento.
+            </p>
+          </div>
            <Separator />
            <div className="flex items-start space-x-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
              <Checkbox
                id="thirdSuspension"
                checked={isThirdSuspension}
-               onCheckedChange={(checked) => setIsThirdSuspension(checked === true)}
+               onCheckedChange={(checked) => {
+                 setThirdManuallySet(true);
+                 setIsThirdSuspension(checked === true);
+               }}
                className="mt-0.5"
              />
              <div className="space-y-1">
@@ -282,6 +350,11 @@ export function SuspensionForm() {
                <p className="text-xs text-muted-foreground">
                  Ao marcar, o documento incluirá o aviso: "A próxima falta injustificada pode levar a DEMISSÃO COM JUSTA CAUSA."
                </p>
+               {isThirdSuspension && !thirdManuallySet && previousSuspensionDates.length >= 2 && (
+                 <p className="text-xs font-medium text-destructive">
+                   Marcado automaticamente: há {previousSuspensionDates.length} suspensões anteriores registradas.
+                 </p>
+               )}
              </div>
            </div>
          </CardContent>

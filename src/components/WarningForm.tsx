@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
-import { Plus, X, Download, CalendarIcon, User, Building2 } from "lucide-react";
-import { format } from "date-fns";
+import { Plus, X, Download, CalendarIcon, User, Building2, History } from "lucide-react";
+import { format, startOfToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DateField } from "@/components/DateField";
+import { DateField, fromInputDateValue } from "@/components/DateField";
+import { MultiDateField } from "@/components/MultiDateField";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { EmployeeSelect } from "@/components/EmployeeSelect";
@@ -15,78 +16,132 @@ import { downloadWarningDoc, type WarningData } from "@/lib/generateWarningDoc";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { maskPIS } from "@/lib/masks";
+import { maskCPF } from "@/lib/masks";
 
 interface Employee {
   id: string;
   name: string;
   cpf: string;
-  pis: string | null;
+}
+
+interface IssuedDocument {
+  id: string;
+  document_type: string;
+  employee_cpf: string;
+  start_date: string | null;
+}
+
+const formatDateBR = (date: Date) => format(date, "dd/MM/yyyy", { locale: ptBR });
+const onlyDigits = (v: string) => String(v || "").replace(/\D/g, "");
+
+/** Mesmo texto usado no chatbot — mantém os dois fluxos consistentes. */
+function buildFaltaReason(dates: Date[]): string {
+  const sorted = [...dates].sort((a, b) => a.getTime() - b.getTime());
+  const full = sorted.map((d) => format(d, "dd 'de' MMMM 'de' yyyy", { locale: ptBR }));
+  const plural = sorted.length > 1;
+  const when = plural
+    ? `nos dias ${full.slice(0, -1).join(", ")} e ${full[full.length - 1]}`
+    : `no dia ${full[0]}`;
+  return `Falta${plural ? "s" : ""} injustificada${plural ? "s" : ""} ao serviço ${when}, sem apresentação de justificativa válida, em descumprimento às obrigações contratuais e ao dever de assiduidade.`;
 }
 
 export function WarningForm() {
   const { company } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [issuedDocs, setIssuedDocs] = useState<IssuedDocument[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
-  const [pis, setPis] = useState("");
-  const [warningDate, setWarningDate] = useState<Date>();
+  // A advertência quase sempre é emitida no dia — já vem preenchida com hoje.
+  const [warningDate, setWarningDate] = useState<Date | undefined>(() => startOfToday());
   const [reason, setReason] = useState("");
   const [reasonType, setReasonType] = useState<"falta" | "outro" | "">("");
-  const [faltaDate, setFaltaDate] = useState<Date>();
+  const [faltaDates, setFaltaDates] = useState<Date[]>([]);
 
   const [previousWarnings, setPreviousWarnings] = useState<string[]>([]);
-  const [unjustifiedAbsences, setUnjustifiedAbsences] = useState<string[]>([]);
+  const [absenceDates, setAbsenceDates] = useState<Date[]>([]);
+  const [prefilledFromHistory, setPrefilledFromHistory] = useState(false);
 
   const [newWarning, setNewWarning] = useState("");
-  const [newAbsence, setNewAbsence] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
 
   useEffect(() => {
-    if (company) {
-      api.employees.list({ companyId: company.id }).then((data) => setEmployees(data));
-    }
+    if (!company) return;
+    setLoadingEmployees(true);
+    api.employees
+      .list({ companyId: company.id })
+      .then((data) => setEmployees(data))
+      .catch(() => toast.error("Erro ao carregar a lista de funcionários"))
+      .finally(() => setLoadingEmployees(false));
+    // Histórico é opcional (pré-preenchimento); se falhar, o usuário preenche à mão.
+    api.documents
+      .list({ companyId: company.id })
+      .then((docs) => setIssuedDocs(docs))
+      .catch(() => setIssuedDocs([]));
   }, [company]);
 
+  // Ao escolher o funcionário, puxa do histórico as advertências já emitidas.
   useEffect(() => {
     if (!selectedEmployeeId) {
-      setPis("");
+      setPreviousWarnings([]);
+      setPrefilledFromHistory(false);
       return;
     }
     const emp = employees.find((e) => e.id === selectedEmployeeId);
-    setPis(emp?.pis ? String(emp.pis) : "");
-  }, [selectedEmployeeId, employees]);
+    if (!emp) return;
+    const warningDates = issuedDocs
+      .filter(
+        (d) =>
+          d.document_type === "warning" &&
+          d.start_date &&
+          onlyDigits(d.employee_cpf) === onlyDigits(emp.cpf)
+      )
+      .map((d) => fromInputDateValue(String(d.start_date).slice(0, 10)))
+      .filter((d): d is Date => !!d)
+      .sort((a, b) => a.getTime() - b.getTime());
+    const unique = [...new Map(warningDates.map((d) => [d.getTime(), d])).values()];
+    setPreviousWarnings(unique.map(formatDateBR));
+    setPrefilledFromHistory(unique.length > 0);
+  }, [selectedEmployeeId, employees, issuedDocs]);
 
-  const addItem = (list: string[], setList: (v: string[]) => void, value: string, setValue: (v: string) => void) => {
-    if (value.trim()) {
-      setList([...list, value.trim()]);
-      setValue("");
+  const addWarning = () => {
+    if (newWarning.trim()) {
+      setPreviousWarnings([...previousWarnings, newWarning.trim()]);
+      setNewWarning("");
     }
   };
 
-  const removeItem = (list: string[], setList: (v: string[]) => void, index: number) => {
-    setList(list.filter((_, i) => i !== index));
+  const removeWarning = (index: number) => {
+    setPreviousWarnings(previousWarnings.filter((_, i) => i !== index));
   };
 
   const handleGenerate = async () => {
-    if (!selectedEmployee || !warningDate || !reason) {
-      toast.error("Selecione o funcionário, data e motivo");
+    const missing: string[] = [];
+    if (!selectedEmployee) missing.push("o funcionário");
+    if (!warningDate) missing.push("a data da advertência");
+    if (!reasonType) missing.push("o motivo");
+    else if (reasonType === "falta" && faltaDates.length === 0) missing.push("a(s) data(s) da falta");
+    else if (reasonType === "outro" && !reason.trim()) missing.push("a descrição do motivo");
+    if (missing.length > 0) {
+      toast.error(`Falta preencher: ${missing.join(", ")}`);
       return;
     }
+    if (!selectedEmployee || !warningDate || !reason) return;
 
     setIsGenerating(true);
 
+    const sortedAbsences = [...absenceDates].sort((a, b) => a.getTime() - b.getTime());
+
     const data: WarningData = {
       employeeName: selectedEmployee.name,
-      pis,
       cpf: selectedEmployee.cpf,
       companyName: company?.name || "",
       cnpj: company?.cnpj || "",
       warningDate,
       reason,
       previousWarnings,
-      unjustifiedAbsences,
+      unjustifiedAbsences: sortedAbsences.map(formatDateBR),
     };
 
     try {
@@ -94,7 +149,7 @@ export function WarningForm() {
         document_type: "warning",
         employee_name: selectedEmployee.name,
         employee_cpf: selectedEmployee.cpf,
-        employee_pis: pis || null,
+        employee_pis: null,
         company_name: company?.name || "",
         company_cnpj: company?.cnpj || "",
         company_id: company?.id,
@@ -126,17 +181,13 @@ export function WarningForm() {
             employees={employees}
             value={selectedEmployeeId}
             onChange={setSelectedEmployeeId}
+            loading={loadingEmployees}
           />
           {selectedEmployee && (
-            <div className="rounded-lg bg-muted p-3 space-y-1">
-              <p className="text-sm"><span className="text-muted-foreground">CPF:</span> {selectedEmployee.cpf}</p>
-              {selectedEmployee.pis && <p className="text-sm"><span className="text-muted-foreground">PIS:</span> {selectedEmployee.pis}</p>}
+            <div className="rounded-lg bg-muted p-3">
+              <p className="text-sm"><span className="text-muted-foreground">CPF:</span> {maskCPF(String(selectedEmployee.cpf || ""))}</p>
             </div>
           )}
-          <div>
-            <Label htmlFor="w-pis">PIS <span className="text-muted-foreground text-xs">(opcional)</span></Label>
-            <Input id="w-pis" placeholder="000.00000.00-0" value={pis} onChange={(e) => setPis(maskPIS(e.target.value))} className="mt-1" />
-          </div>
         </CardContent>
       </Card>
 
@@ -168,6 +219,7 @@ export function WarningForm() {
           <div>
             <Label>Data da Advertência *</Label>
             <DateField value={warningDate} onChange={setWarningDate} placeholder="Selecionar data" />
+            <p className="text-xs text-muted-foreground mt-1">Data em que o documento é emitido (já preenchida com hoje).</p>
           </div>
           <div>
             <Label>Motivo da Advertência *</Label>
@@ -178,10 +230,7 @@ export function WarningForm() {
                 className="w-full justify-start text-left h-auto py-3 whitespace-normal"
                 onClick={() => {
                   setReasonType("falta");
-                  if (faltaDate) {
-                    const dateFull = format(faltaDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-                    setReason(`Falta injustificada ao serviço no dia ${dateFull}, sem apresentação de justificativa válida, em descumprimento às obrigações contratuais e ao dever de assiduidade.`);
-                  }
+                  setReason(faltaDates.length > 0 ? buildFaltaReason(faltaDates) : "");
                 }}
               >
                 Falta Injustificada
@@ -197,18 +246,23 @@ export function WarningForm() {
             </div>
             {reasonType === "falta" && (
               <div className="mt-3">
-                <Label>Data da Falta *</Label>
-                <DateField
-                  value={faltaDate}
-                  onChange={(d) => {
-                    setFaltaDate(d);
-                    if (d) {
-                      const dateFull = format(d, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-                      setReason(`Falta injustificada ao serviço no dia ${dateFull}, sem apresentação de justificativa válida, em descumprimento às obrigações contratuais e ao dever de assiduidade.`);
-                    }
+                <Label>Data(s) da Falta *</Label>
+                <MultiDateField
+                  className="mt-1"
+                  value={faltaDates}
+                  onChange={(dates) => {
+                    setFaltaDates(dates);
+                    setReason(dates.length > 0 ? buildFaltaReason(dates) : "");
                   }}
-                  placeholder="Selecionar data da falta"
+                  placeholder="Selecionar data(s) da falta"
+                  max={startOfToday()}
                 />
+                {reason && (
+                  <div className="mt-2 rounded-lg bg-muted p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Texto que entrará no documento:</p>
+                    <p className="text-sm">{reason}</p>
+                  </div>
+                )}
               </div>
             )}
             {reasonType === "outro" && (
@@ -230,16 +284,25 @@ export function WarningForm() {
           <CardTitle className="flex items-center gap-2 text-base">Histórico</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
+          {prefilledFromHistory && (
+            <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <History className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">Pré-carregado do histórico do sistema.</span>{" "}
+                Advertências já emitidas para este funcionário foram adicionadas abaixo — revise e ajuste se necessário.
+              </p>
+            </div>
+          )}
           <div>
             <Label className="text-sm font-medium">Advertências Anteriores</Label>
             <div className="mt-2 flex gap-2">
-              <Input placeholder="Ex: Advertência em 04/03/2025" value={newWarning} onChange={(e) => setNewWarning(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addItem(previousWarnings, setPreviousWarnings, newWarning, setNewWarning)} className="flex-1" />
-              <Button size="icon" variant="outline" onClick={() => addItem(previousWarnings, setPreviousWarnings, newWarning, setNewWarning)}><Plus className="h-4 w-4" /></Button>
+              <Input placeholder="Ex: Advertência em 04/03/2025" value={newWarning} onChange={(e) => setNewWarning(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addWarning()} className="flex-1" />
+              <Button size="icon" variant="outline" onClick={addWarning} aria-label="Adicionar advertência anterior"><Plus className="h-4 w-4" /></Button>
             </div>
             {previousWarnings.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {previousWarnings.map((item, i) => (
-                  <Badge key={i} variant="secondary" className="gap-1 pr-1">{item}<button onClick={() => removeItem(previousWarnings, setPreviousWarnings, i)} className="ml-1 rounded-full hover:bg-muted p-0.5"><X className="h-3 w-3" /></button></Badge>
+                  <Badge key={i} variant="secondary" className="gap-1 pr-1">{item}<button onClick={() => removeWarning(i)} className="ml-1 rounded-full hover:bg-muted p-0.5" aria-label={`Remover ${item}`}><X className="h-3 w-3" /></button></Badge>
                 ))}
               </div>
             )}
@@ -248,18 +311,14 @@ export function WarningForm() {
             <>
               <Separator />
               <div>
-                <Label className="text-sm font-medium">Faltas sem Justificativa</Label>
-                <div className="mt-2 flex gap-2">
-                  <Input placeholder="Ex: 09/11/2024" value={newAbsence} onChange={(e) => setNewAbsence(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addItem(unjustifiedAbsences, setUnjustifiedAbsences, newAbsence, setNewAbsence)} className="flex-1" />
-                  <Button size="icon" variant="outline" onClick={() => addItem(unjustifiedAbsences, setUnjustifiedAbsences, newAbsence, setNewAbsence)}><Plus className="h-4 w-4" /></Button>
-                </div>
-                {unjustifiedAbsences.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {unjustifiedAbsences.map((item, i) => (
-                      <Badge key={i} variant="secondary" className="gap-1 pr-1">{item}<button onClick={() => removeItem(unjustifiedAbsences, setUnjustifiedAbsences, i)} className="ml-1 rounded-full hover:bg-muted p-0.5"><X className="h-3 w-3" /></button></Badge>
-                    ))}
-                  </div>
-                )}
+                <Label className="text-sm font-medium">Faltas sem Justificativa <span className="text-muted-foreground text-xs font-normal">(datas)</span></Label>
+                <MultiDateField
+                  className="mt-2"
+                  value={absenceDates}
+                  onChange={setAbsenceDates}
+                  placeholder="Selecionar datas das faltas"
+                  max={startOfToday()}
+                />
               </div>
             </>
           )}

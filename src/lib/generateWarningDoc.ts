@@ -7,7 +7,6 @@ import { ptBR } from "date-fns/locale";
 
 export interface WarningData {
   employeeName: string;
-  pis: string;
   cpf: string;
   companyName: string;
   cnpj: string;
@@ -140,15 +139,6 @@ export function generateWarningDoc(data: WarningData) {
               new TextRun({ text: data.cpf, font: "Arial", size: F }),
             ],
           }),
-          ...(data.pis ? [
-            new Paragraph({
-              spacing: { after: 40 },
-              children: [
-                new TextRun({ text: "PIS: ", font: "Arial", size: F, bold: true }),
-                new TextRun({ text: data.pis, font: "Arial", size: F }),
-              ],
-            }),
-          ] : []),
           lineSeparator(),
           // Reason
           new Paragraph({
