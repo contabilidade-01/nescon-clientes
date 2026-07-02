@@ -1,0 +1,31 @@
+-- Funcionários RESTAURANTE DO QUEIJEIRO 4 LTDA (CNPJ 54803962000108)
+-- Origem: planilha "RELAÇÃO DE EMPREGADOS.xls" (15 ativos, sem demissão)
+-- Executar após a empresa existir em companies:
+-- docker compose exec -T postgres psql -U rhapp -d rhapp < db/seed-queijeiros-q4-employees.sql
+
+INSERT INTO employees (company_id, name, cpf)
+SELECT c.id, v.name, v.cpf
+FROM companies c
+CROSS JOIN (
+  VALUES
+    ('MATHEUS MATOS ALVES TAKAHASHI', '43140151870'),
+    ('SILVANA ELIZABETH COSTA DE OLIVEIRA', '35740074851'),
+    ('SANDRA GODOY DE SOUZA', '25375162814'),
+    ('MATEUS MAGALHAES DOS SANTOS', '46413500867'),
+    ('PIETRO AUGUSTO TONELLI', '43286908843'),
+    ('SARA PACCANARO DE LIMA', '44142432893'),
+    ('DAYLA APARECIDA BUENO', '51051276845'),
+    ('GILMAR ALVES DE JESUS', '13671547820'),
+    ('JESSICA DURAES DE OLIVEIRA', '42034614801'),
+    ('VICTORIA DE PAULA SOLINA', '57139525846'),
+    ('WEDER ALEXANDRE DIAS XAVIER', '35024029810'),
+    ('JOSE EVERALDO DA SILVA', '36507437875'),
+    ('FERNANDO CESAR DA SILVA LIMA', '07613478521'),
+    ('GABRIEL RODRIGUES SILVA LECI DOS SANTOS', '51018534881'),
+    ('ISABELLE PELEGRINO NASCIMENTO', '57228018877')
+) AS v(name, cpf)
+WHERE c.cnpj = '54803962000108'
+  AND NOT EXISTS (
+    SELECT 1 FROM employees e
+    WHERE e.company_id = c.id AND e.cpf = v.cpf
+  );

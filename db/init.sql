@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS medical_certificates (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Admin: login = CPF 05487541523 | senha inicial = 35736034000123 (não use o CPF como senha)
+-- Admin: login = CPF (abaixo); senha inicial nas anotações locais de acessos — trocar após o primeiro login.
 INSERT INTO platform_admins (cpf, password_hash) VALUES (
   '05487541523',
   '$2a$10$P0E31oAGRjfkNOUZrd5.K..Wch43XC1WcK3HLiSYOQVK6DBlUbSaW'
@@ -76,7 +76,7 @@ INSERT INTO companies (name, cnpj, password_hash) VALUES (
   '$2a$10$LMyi3tOwE.FOi0nn8Q1Qz.NNN40Su8LSWVuBgu7AlQipQ7MoaVviG'
 ) ON CONFLICT (cnpj) DO NOTHING;
 
--- Empresa operacional (senha de login = CNPJ, alinhada a um DB_PASSWORD de exemplo em produção)
+-- Empresa operacional (senha inicial segue a regra do README)
 INSERT INTO companies (name, cnpj, password_hash) VALUES (
   'Gestão Empresa',
   '35736034000123',

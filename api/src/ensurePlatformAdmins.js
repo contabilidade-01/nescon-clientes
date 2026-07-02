@@ -2,13 +2,12 @@
  * Bases criadas antes de platform_admins não repetem init.sql.
  * Garante tabela + utilizador admin padrão no arranque da API (idempotente).
  *
- * Login admin: CPF só dígitos 05487541523 (pode usar máscara no front).
- * Senha inicial padrão (hash abaixo): **35736034000123** — igual ao CNPJ da empresa
- * seed "Gestão Empresa" em db/init.sql; NÃO é o próprio CPF do admin.
+ * Login admin: CPF só dígitos (constante abaixo; pode usar máscara no front).
+ * Senha inicial: nas anotações locais de acessos, fora do repositório.
  * Altere após o primeiro acesso (recuperação de senha com e-mail em platform_admins).
  */
 const ADMIN_CPF = "05487541523";
-// bcrypt cost 10 — plaintext = 35736034000123 (ver comentário acima)
+// bcrypt cost 10 da senha inicial (ver anotações locais de acessos)
 const ADMIN_PASSWORD_HASH =
   "$2a$10$P0E31oAGRjfkNOUZrd5.K..Wch43XC1WcK3HLiSYOQVK6DBlUbSaW";
 

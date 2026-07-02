@@ -1,4 +1,4 @@
--- Correr no Postgres se a BD já existir mas faltar a empresa de login 35736034000123 / senha igual ao CNPJ
+-- Correr no Postgres se a BD já existir mas faltar a empresa "Gestão Empresa" (login = CNPJ abaixo; senha inicial = regra do README)
 -- (o init.sql completo só corre na primeira criação do volume)
 INSERT INTO companies (name, cnpj, password_hash) VALUES (
   'Gestão Empresa',

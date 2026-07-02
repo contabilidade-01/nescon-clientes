@@ -10,7 +10,9 @@ Frontend React (Vite) + API Express + PostgreSQL. O front chama a API em `/api` 
 
 Para produção na VPS com os três serviços, o caminho alinhado ao repo é **Docker Compose na raiz**, não só o `Dockerfile` da raiz.
 
-**Repositório:** `https://github.com/contabilidade-01/queijeiros` (clone SSH: `git@github.com:contabilidade-01/queijeiros.git`).
+**Repositório:** `https://github.com/contabilidade-01/queijeiros`  
+**Pasta local (GitHub Desktop):** `C:\Users\Jeandson\Documents\GitHub\queijeiros`  
+**Push:** feito pelo **GitHub Desktop** (HTTPS — autenticação gerida pelo app)
 
 ### Checklist rápido (Easypanel na VPS)
 
@@ -28,19 +30,33 @@ Se mudares `DB_PASSWORD` no painel **depois** do volume `pgdata` já existir, o 
 
 ### Login inicial (após `init.sql`)
 
-| Empresa (exemplo) | CNPJ (só números) | Senha |
-|-------------------|-------------------|--------|
-| RESTAURANTE DO QUEIJEIRO 3 LIMITADA | `52191264000173` | `52191264000173` |
-| RESTAURANTE DO QUEIJEIRO 4 LTDA | `54803962000108` | `54803962000108` |
-| Gestão Empresa | `35736034000123` | `35736034000123` |
+Regra: login = **CNPJ** (com ou sem máscara); senha inicial = **14 dígitos do CNPJ**. **Troque a senha após o primeiro login.** As empresas seed estão em `db/init.sql`; credenciais ficam em anotações locais, fora do repositório.
+
+### Queijeiro 4 (Q4) — suspensão e advertência
+
+Login da Q4: CNPJ da empresa (ver `db/init.sql`); senha inicial segue a regra acima.
+
+**Qual fonte é mais completa?**
+
+| Fonte | O que tem |
+|-------|-----------|
+| `db/init.sql` | Empresa Q4 + admin (instalação nova) |
+| `db/seed-queijeiros-companies.sql` | Só cadastro Q3/Q4 (BD já existente) |
+| `db/seed-queijeiros-q4-employees.sql` | **15 funcionários** da planilha (melhor para RH) |
+| Planilha `RELAÇÃO DE EMPREGADOS.xls` | Mesmos 15 funcionários — importar na UI |
+
+Para emitir suspensão/advertência: cadastre os funcionários (seed SQL **ou** importação de planilha), faça login no CNPJ da Q4 e use **Suspensão** / **Advertência**.
+
+```bash
+# Opcional: funcionários Q4 direto no Postgres
+docker compose exec -T postgres psql -U rhapp -d rhapp < db/seed-queijeiros-q4-employees.sql
+```
 
 ### Administrador global
 
-| Perfil | Login (campo único) | Senha |
-|--------|---------------------|--------|
-| Administrador | CPF `05487541523` (com ou sem máscara) | `35736034000123` |
+Login = **CPF** do administrador (com ou sem máscara); a senha inicial está nas anotações locais de acessos (fora do repositório). **Troque-a após o primeiro login.**
 
-O administrador acede ao painel `/admin` e vê **todas** as empresas, documentos emitidos, funcionários e atestados. Na primeira subida da API após a atualização, a tabela `platform_admins` é criada automaticamente se ainda não existir. O script **`db/seed-platform-admin.sql`** continua disponível para aplicar manualmente ou repor a palavra-passe do admin.
+Acesso ao painel `/admin` (todas as empresas). Na primeira subida da API, a tabela `platform_admins` é criada automaticamente. Script manual: **`db/seed-platform-admin.sql`**.
 
 ### Recuperação de senha por e-mail
 
@@ -79,11 +95,12 @@ Se a BD já tinha sido criada antes deste seed, corre também **`db/seed-queijei
 docker compose exec -T postgres psql -U rhapp -d rhapp < db/seed-queijeiros-companies.sql
 ```
 
-### Importação de funcionários (CSV)
+### Importação de funcionários (planilha)
 
-Na tela **Funcionários**, use o botão **Importar CSV**:
+Na tela **Funcionários**, use o botão **Importar planilha**:
 
-- O sistema lê `Nome` + `CPF` de arquivos com `;` (como "Relação de Empregados").
+- Aceita **CSV**, **.xls** e **.xlsx** (formato "Relação de Empregados").
+- O sistema lê `Nome` + `CPF` de arquivos com `;` ou colunas equivalentes no Excel.
 - Linhas com **data de demissão** preenchida **não são importadas** (demitidos ficam de fora).
 - Se o CPF já existir na mesma empresa, a linha é ignorada (evita duplicados).
 

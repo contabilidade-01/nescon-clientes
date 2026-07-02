@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { maskCPF, maskPIS } from "@/lib/masks";
+import { parseEmployeeImportFile } from "@/lib/parseEmployeeSpreadsheet";
 
 const EmployeesPage = () => {
   const navigate = useNavigate();
@@ -93,107 +94,28 @@ const EmployeesPage = () => {
     onError: () => toast.error("Erro ao importar funcionários"),
   });
 
-  const extractFileCnpj = (csv: string): string | null => {
-    const lines = csv.split(/\r?\n/).filter(Boolean);
-    const cnpjRegex = /\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/;
-
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
-      if (!line) continue;
-
-      const cells = line
-        .split(/[;,\t]/)
-        .map((cell) => cell.trim())
-        .filter(Boolean);
-
-      // 1) Procura CNPJ em qualquer célula (com máscara ou sem máscara)
-      for (const cell of cells) {
-        const maskedMatch = cell.match(cnpjRegex);
-        if (maskedMatch) {
-          const digits = maskedMatch[0].replace(/\D/g, "");
-          if (digits.length === 14) return digits;
-        }
-
-        const digitsOnly = cell.replace(/\D/g, "");
-        if (digitsOnly.length === 14) return digitsOnly;
-      }
-
-      // 2) Fallback: procura na linha inteira (caso o CSV venha "quebrado")
-      const lineMatch = line.match(cnpjRegex);
-      if (lineMatch) {
-        const digits = lineMatch[0].replace(/\D/g, "");
-        if (digits.length === 14) return digits;
-      }
-    }
-
-    return null;
-  };
-
-  const parseEmployeesCsv = (csv: string): { rows: Array<{ name: string; cpf: string }>; skippedDismissed: number } => {
-    const lines = csv.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const parsed = new Map<string, { name: string; cpf: string }>();
-    let skippedDismissed = 0;
-    const dismissalDate = /\d{2}\/\d{2}\/\d{4}/;
-
-    for (const line of lines) {
-      if (!line.includes(";")) continue;
-      if (/empresa|cnpj|rela/i.test(line)) continue;
-
-      const parts = line.split(";").map((part) => part.trim()).filter((part) => part.length > 0);
-      if (!parts.length) continue;
-
-      let cpf = "";
-      let name = "";
-
-      for (const part of parts) {
-        const digits = part.replace(/\D/g, "");
-        if (!cpf && digits.length === 11) cpf = digits;
-      }
-      for (const part of parts) {
-        if (part.replace(/\D/g, "").length === 11) continue;
-        if (dismissalDate.test(part)) continue;
-        if (/^situa/i.test(part)) continue;
-        if (part.length >= 3) {
-          name = part.replace(/\s+/g, " ").trim().toUpperCase();
-          break;
-        }
-      }
-
-      if (!cpf || !name) continue;
-      // Com data de demissão no arquivo: não importa (não cadastra demitidos)
-      if (parts.some((part) => dismissalDate.test(part))) {
-        skippedDismissed += 1;
-        continue;
-      }
-      parsed.set(cpf, { name, cpf });
-    }
-
-    return { rows: Array.from(parsed.values()), skippedDismissed };
-  };
-
   const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
-      const text = await file.text();
-      const fileCnpj = extractFileCnpj(text);
-      if (!fileCnpj) {
-        toast.error("Não foi possível identificar o CNPJ no arquivo CSV");
+      const parsed = await parseEmployeeImportFile(file);
+      if (!parsed?.fileCnpj) {
+        toast.error("Não foi possível identificar o CNPJ na planilha");
         return;
       }
       const currentCompanyCnpj = (company?.cnpj || "").replace(/\D/g, "");
-      if (!currentCompanyCnpj || fileCnpj !== currentCompanyCnpj) {
-        toast.error("Este arquivo é de outra empresa. Faça login no CNPJ correto para importar.");
+      if (!currentCompanyCnpj || parsed.fileCnpj !== currentCompanyCnpj) {
+        toast.error("Esta planilha é de outra empresa. Faça login no CNPJ correto para importar.");
         return;
       }
 
-      const { rows, skippedDismissed } = parseEmployeesCsv(text);
+      const { rows, skippedDismissed, fileCnpj } = parsed;
       if (!rows.length) {
         if (skippedDismissed > 0) {
           toast.error("Nenhum funcionário ativo: todas as linhas tinham data de demissão ou dados inválidos");
         } else {
-          toast.error("Arquivo sem funcionários válidos para importar");
+          toast.error("Planilha sem funcionários válidos para importar");
         }
         return;
       }
@@ -203,6 +125,8 @@ const EmployeesPage = () => {
         rows,
         skippedDismissed,
       });
+    } catch {
+      toast.error("Não foi possível ler a planilha. Use CSV ou Excel (.xls, .xlsx).");
     } finally {
       event.target.value = "";
     }
@@ -249,7 +173,7 @@ const EmployeesPage = () => {
               <input
                 ref={importInputRef}
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,.xls,.xlsx,.xlsm,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 className="hidden"
                 onChange={handleImportFile}
               />
@@ -259,7 +183,7 @@ const EmployeesPage = () => {
                 onClick={() => importInputRef.current?.click()}
                 disabled={importMutation.isPending}
               >
-                <Upload className="h-4 w-4 mr-1" /> Importar CSV
+                <Upload className="h-4 w-4 mr-1" /> Importar planilha
               </Button>
               <Button size="sm" onClick={() => { setShowAdd(true); setName(""); setCpf(""); setPis(""); }}>
                 <Plus className="h-4 w-4 mr-1" /> Novo

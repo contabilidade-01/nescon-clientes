@@ -1,4 +1,4 @@
--- Bases já existentes: criar tabela + admin (senha = 35736034000123)
+-- Bases já existentes: criar tabela + admin (senha inicial nas anotações locais de acessos)
 CREATE TABLE IF NOT EXISTS platform_admins (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   cpf TEXT UNIQUE NOT NULL,
