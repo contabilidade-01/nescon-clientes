@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { EmployeeSelect } from "@/components/EmployeeSelect";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -140,21 +141,13 @@ const CertificatesPage = () => {
               <Upload className="h-4 w-4" /> Anexar Atestado
             </h2>
 
-            <div>
-              <Label>Funcionário *</Label>
-              <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Selecione o funcionário" />
-                </SelectTrigger>
-                <SelectContent>
-                  {employees?.map((emp) => (
-                    <SelectItem key={emp.id} value={emp.id}>
-                      {emp.name} — {emp.cpf}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <EmployeeSelect
+              employees={employees ?? []}
+              value={selectedEmployee}
+              onChange={setSelectedEmployee}
+              label="Funcionário *"
+              placeholder="Selecione o funcionário"
+            />
 
             <div>
               <Label>Data do Atestado *</Label>

@@ -352,7 +352,7 @@ export function ChatbotFlow() {
   };
 
   const filteredEmployees = employees.filter((e) =>
-    e.name.toLowerCase().includes(searchQuery.toLowerCase())
+    (e.name ?? "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (

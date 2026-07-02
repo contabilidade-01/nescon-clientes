@@ -8,7 +8,7 @@ const SuspensionPage = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 border-b bg-card/80 backdrop-blur-sm">
+      <header className="sticky top-0 z-10 border-b bg-card">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
           <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
             <ArrowLeft className="h-5 w-5" />
