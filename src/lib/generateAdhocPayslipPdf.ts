@@ -22,7 +22,6 @@ export interface AdhocPayslipData {
   outros: number;
   liquido: number;
   faltaDatesText: string;
-  modoDescricao: string;
 }
 
 function moneyPt(n: number): string {
@@ -56,15 +55,12 @@ export async function downloadAdhocPayslipPdf(data: AdhocPayslipData): Promise<v
   const margin = 14;
   let y = margin;
 
-  const descSalario =
-    `SALARIO PROPORCIONAL (base/30 x dias de provento)\n` +
-    `Modo: ${data.modoDescricao}\n` +
-    `Faltas marcadas (${data.faltasCount}): ${data.faltaDatesText || "-"}`;
-
+  // Documento entregue ao funcionário: sem notas internas de cálculo
+  // (modo de escolha de dias, fórmulas, avisos de conferência).
   const bodyRows: string[][] = [
     [
       "8781",
-      descSalario,
+      "SALARIO PROPORCIONAL",
       String(data.diasBrutos),
       moneyPt(data.bruto),
       "-",
@@ -73,7 +69,7 @@ export async function downloadAdhocPayslipPdf(data: AdhocPayslipData): Promise<v
   if (data.descontoFaltas > 0) {
     bodyRows.push([
       "",
-      `Faltas (desconto ${data.faltasCount} dia(s) x valor/dia)`,
+      `Faltas (${data.faltasCount} dia(s))${data.faltaDatesText ? `: ${data.faltaDatesText}` : ""}`,
       String(data.faltasCount),
       "-",
       moneyPt(data.descontoFaltas),
@@ -88,14 +84,8 @@ export async function downloadAdhocPayslipPdf(data: AdhocPayslipData): Promise<v
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("RECIBO DE PAGAMENTO DE SALARIO - CALCULO AVULSO", pageW / 2, y, { align: "center" });
-  y += 6;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(80, 80, 80);
-  doc.text("Experiencia / treino - conferir com DP ou contabilidade.", pageW / 2, y, { align: "center" });
-  doc.setTextColor(0, 0, 0);
-  y += 8;
+  doc.text("RECIBO DE PAGAMENTO DE SALARIO", pageW / 2, y, { align: "center" });
+  y += 10;
 
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
@@ -137,7 +127,7 @@ export async function downloadAdhocPayslipPdf(data: AdhocPayslipData): Promise<v
     startY: y,
     body: [
       [
-        `Salario base (contratual): R$ ${moneyPt(data.salarioBase)}\nDias brutos: ${data.diasBrutos} - Valor/dia (base/30): R$ ${moneyPt(data.valorDia)}`,
+        `Salario base: R$ ${moneyPt(data.salarioBase)}\nDias considerados: ${data.diasBrutos} - Valor/dia: R$ ${moneyPt(data.valorDia)}`,
         `Total vencimentos\nR$ ${moneyPt(data.bruto)}`,
         `Total descontos\nR$ ${moneyPt(totalDesc)}`,
         `Valor liquido\nR$ ${moneyPt(data.liquido)}`,

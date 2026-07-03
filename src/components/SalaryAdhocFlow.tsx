@@ -19,17 +19,6 @@ import {
 import { ADHOC_VALE_COMPOSITE_LABEL, downloadAdhocPayslipPdf } from "@/lib/generateAdhocPayslipPdf";
 import { toast } from "sonner";
 
-function periodModeLabel(m: PeriodMode): string {
-  switch (m) {
-    case "worked_days":
-      return "Quantidade de dias informada";
-    case "start_in_month":
-      return "Início no mês (até o fim do mês, corridos)";
-    case "closed_month":
-      return "Mês fechado (30 dias de provento; faltas descontam à parte)";
-  }
-}
-
 type Step =
   | "employee_name"
   | "base_salary"
@@ -292,7 +281,6 @@ export function SalaryAdhocFlow() {
         outros: result.descontosOutros,
         liquido: result.liquido,
         faltaDatesText,
-        modoDescricao: periodModeLabel(periodMode),
       });
       toast.success("Recibo baixado (PDF)");
     } catch {
