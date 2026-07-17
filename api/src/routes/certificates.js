@@ -1,24 +1,10 @@
 const router = require("express").Router();
-const multer = require("multer");
-const path = require("path");
 const fs = require("fs");
 const db = require("../db");
 const { authMiddleware, requireCompanyUser } = require("../middleware/auth");
 const { companyHasTool } = require("../middleware/companyToolAccess");
 const { validateUUID, validateDate, validateString } = require("../middleware/validate");
-
-const UPLOAD_DIR = process.env.UPLOAD_DIR || "/app/uploads";
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
-  filename: (_req, file, cb) => {
-    // Sanitize filename
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-    cb(null, `${Date.now()}-${safeName}`);
-  },
-});
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+const { uploadAny: upload, resolveUploadPath, removeUploadFile } = require("../uploads");
 
 router.use(authMiddleware);
 
@@ -118,14 +104,8 @@ router.post("/", requireCompanyUser, (req, res, next) => {
 });
 
 router.get("/file/:filename", (req, res) => {
-  // Path traversal protection
-  const filename = path.basename(req.params.filename);
-  const filePath = path.resolve(UPLOAD_DIR, filename);
-
-  if (!filePath.startsWith(path.resolve(UPLOAD_DIR))) {
-    return res.status(403).json({ error: "Acesso negado" });
-  }
-
+  const filePath = resolveUploadPath(req.params.filename);
+  if (!filePath) return res.status(403).json({ error: "Acesso negado" });
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Arquivo não encontrado" });
   res.sendFile(filePath);
 });
@@ -154,10 +134,7 @@ router.delete("/:id", async (req, res) => {
       rows = r.rows;
     }
     if (!rows.length) return res.status(404).json({ error: "Atestado não encontrado" });
-    if (rows[0]?.file_path) {
-      const fp = path.join(UPLOAD_DIR, path.basename(rows[0].file_path));
-      if (fs.existsSync(fp)) fs.unlinkSync(fp);
-    }
+    if (rows[0]?.file_path) removeUploadFile(rows[0].file_path);
     res.json({ ok: true });
   } catch (err) {
     console.error(err);

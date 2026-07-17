@@ -50,6 +50,9 @@ services:
       JWT_SECRET: ${JWT_SECRET:-troque-este-segredo-em-producao}
       PORT: 3001
       UPLOAD_DIR: /app/uploads
+      # Chave que o sistema de guias (GCLICK) usa para publicar entregas no portal.
+      # Vazia = rota /api/fiscal/ingest desligada.
+      INGEST_API_KEY: ${INGEST_API_KEY:-}
       # Recuperação de senha: URL pública do front (HTTPS em produção, sem / no fim)
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}

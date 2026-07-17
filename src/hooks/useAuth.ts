@@ -8,6 +8,8 @@ export type CompanySession = {
   cnpj: string;
   token: string;
   toolAccess: CompanyToolAccess;
+  /** Ainda com a senha inicial (= CNPJ): o portal exige a troca antes de liberar o resto. */
+  mustChangePassword?: boolean;
 };
 
 export type AdminSession = {
@@ -44,6 +46,7 @@ function parseStored(): AuthSession | null {
         cnpj: o.cnpj,
         token: o.token,
         toolAccess: mergeClientToolAccess(o.toolAccess ?? o.tool_access),
+        mustChangePassword: Boolean(o.mustChangePassword ?? o.must_change_password),
       };
     }
 
@@ -61,6 +64,7 @@ function parseStored(): AuthSession | null {
         cnpj: o.cnpj,
         token: o.token,
         toolAccess: mergeClientToolAccess(o.toolAccess ?? o.tool_access),
+        mustChangePassword: Boolean(o.mustChangePassword ?? o.must_change_password),
       };
     }
     return null;

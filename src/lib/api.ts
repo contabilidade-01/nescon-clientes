@@ -1,3 +1,5 @@
+import type { CompanyToolAccess } from "@/lib/companyTools";
+
 const rawApiBase = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || "/api";
 const API_BASE = rawApiBase.replace(/\/+$/, "") || "/api";
 
@@ -94,22 +96,67 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return data as T;
 }
 
-export type CompanyToolAccessApi = {
-  suspension: boolean;
-  warning: boolean;
-  chatbot: boolean;
-  salary_adhoc: boolean;
-  employees: boolean;
-  certificates: boolean;
-  history: boolean;
+/** Busca binária autenticada: `<a href>` não envia o Bearer, então o arquivo vem por fetch. */
+async function requestBlob(path: string): Promise<Blob> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}${path}`, { headers });
+  if (res.status === 401) {
+    localStorage.removeItem("company_session");
+    window.location.href = "/login";
+    throw new Error("Sessão expirada");
+  }
+  if (!res.ok) {
+    throw new Error(res.status === 404 ? "Documento não encontrado" : `HTTP ${res.status}`);
+  }
+  return res.blob();
+}
+
+export type DeliverableCategory = "guia" | "folha" | "outro";
+export type DeliverableStatus = "pending" | "paid";
+
+export type Deliverable = {
+  id: string;
+  company_id: string;
+  category: DeliverableCategory;
+  doc_type: string | null;
+  title: string;
+  competencia: string | null;
+  due_date: string | null;
+  file_name: string;
+  status: DeliverableStatus;
+  paid_at: string | null;
+  source: "gclick" | "manual";
+  created_at: string;
 };
+
+export type PublicDeliverable = {
+  category: DeliverableCategory;
+  doc_type: string | null;
+  title: string;
+  competencia: string | null;
+  due_date: string | null;
+  status: DeliverableStatus;
+  file_name: string;
+  company_name: string;
+};
+
+/** Mesma forma das permissões do cliente — fonte única em companyTools, evita as duas listas divergirem. */
+export type CompanyToolAccessApi = CompanyToolAccess;
 
 export type LoginResponse =
   | { token: string; role: "admin"; admin: { id: string; cpf: string } }
   | {
       token: string;
       role: "company";
-      company: { id: string; name: string; cnpj: string; tool_access?: CompanyToolAccessApi };
+      company: {
+        id: string;
+        name: string;
+        cnpj: string;
+        tool_access?: CompanyToolAccessApi;
+        must_change_password?: boolean;
+      };
     };
 
 export const api = {
@@ -131,6 +178,15 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ token, password }),
       }),
+    /** Trocar a senha estando logado (não depende de e-mail). */
+    changePassword: (current_password: string, new_password: string) =>
+      request<{ message: string }>("/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ current_password, new_password }),
+      }),
+    /** Estando logado, pedir o link de redefinição para o e-mail já cadastrado. */
+    sendResetLink: () =>
+      request<{ message: string }>("/auth/send-reset-link", { method: "POST" }),
     /** Sessão de empresa: devolve tool_access atual (após admin alterar permissões). Requer Bearer. */
     companySession: () =>
       request<{ company: { id: string; name: string; cnpj: string }; tool_access: CompanyToolAccessApi }>(
@@ -309,5 +365,73 @@ export const api = {
     delete: (id: string) =>
       request(`/certificates/${id}`, { method: "DELETE" }),
     fileUrl: (filePath: string) => `${API_BASE}/certificates/file/${filePath}`,
+  },
+
+  /** Entregas da contabilidade: guias fiscais, folha e documentos avulsos. */
+  deliverables: {
+    list: (opts?: {
+      companyId?: string;
+      category?: DeliverableCategory;
+      competencia?: string;
+      status?: DeliverableStatus;
+      from?: string;
+      to?: string;
+    }) => {
+      const params = new URLSearchParams();
+      if (opts?.companyId) params.set("company_id", opts.companyId);
+      if (opts?.category) params.set("category", opts.category);
+      if (opts?.competencia) params.set("competencia", opts.competencia);
+      if (opts?.status) params.set("status", opts.status);
+      if (opts?.from) params.set("from", opts.from);
+      if (opts?.to) params.set("to", opts.to);
+      const q = params.toString();
+      return request<Deliverable[]>(`/deliverables${q ? `?${q}` : ""}`);
+    },
+    calendar: (opts?: { companyId?: string; from?: string; to?: string }) => {
+      const params = new URLSearchParams();
+      if (opts?.companyId) params.set("company_id", opts.companyId);
+      if (opts?.from) params.set("from", opts.from);
+      if (opts?.to) params.set("to", opts.to);
+      const q = params.toString();
+      return request<Deliverable[]>(`/deliverables/calendar${q ? `?${q}` : ""}`);
+    },
+    upcoming: (opts?: { companyId?: string; limit?: number }) => {
+      const params = new URLSearchParams();
+      if (opts?.companyId) params.set("company_id", opts.companyId);
+      if (opts?.limit) params.set("limit", String(opts.limit));
+      const q = params.toString();
+      return request<Deliverable[]>(`/deliverables/upcoming${q ? `?${q}` : ""}`);
+    },
+    setStatus: (id: string, status: DeliverableStatus) =>
+      request<Deliverable>(`/deliverables/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
+    delete: (id: string) => request<{ ok: boolean }>(`/deliverables/${id}`, { method: "DELETE" }),
+    /** Blob autenticado — usar com `openDeliverableFile` (ver lib/openFile.ts). */
+    fetchFile: (id: string) => requestBlob(`/deliverables/${id}/file`),
+    adminUpload: async (formData: FormData) => {
+      const token = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(`${API_BASE}/deliverables`, { method: "POST", body: formData, headers });
+      const data = await parseResponseJson<unknown>(res);
+      if (res.status === 401) {
+        localStorage.removeItem("company_session");
+        window.location.href = "/login";
+        throw new Error("Sessão expirada");
+      }
+      if (!res.ok) {
+        const err = data as { error?: string };
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      // due_date_from_pdf: o portal leu a data do próprio PDF (upload sem data informada).
+      return data as Deliverable & { due_date_from_pdf?: boolean };
+    },
+    /** Link do WhatsApp: token opaco, sem login. */
+    public: {
+      get: (token: string) => publicRequest<PublicDeliverable>(`/deliverables/public/${token}`),
+      fileUrl: (token: string) => `${API_BASE}/deliverables/public/${token}/file`,
+    },
   },
 };

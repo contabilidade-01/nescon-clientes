@@ -3,6 +3,12 @@
  * Valores omitidos no JSON gravado na BD são tratados como true (retrocompatível).
  */
 const DEFAULT_TOOL_ACCESS = {
+  // Portal do Cliente: entregas da contabilidade
+  fiscal_guides: true,
+  payroll_files: true,
+  documents: true,
+  calendar: true,
+  // Departamento pessoal
   suspension: true,
   warning: true,
   chatbot: true,
@@ -10,6 +16,25 @@ const DEFAULT_TOOL_ACCESS = {
   employees: true,
   certificates: true,
   history: true,
+};
+
+/**
+ * Empresas criadas pela sincronização com o sistema de guias: só as seções de entregas.
+ * A maioria desses clientes só recebe guias — o Departamento Pessoal fica desligado e o
+ * admin liga por empresa nas poucas que usam.
+ */
+const PORTAL_ONLY_TOOL_ACCESS = {
+  fiscal_guides: true,
+  payroll_files: true,
+  documents: true,
+  calendar: true,
+  suspension: false,
+  warning: false,
+  chatbot: false,
+  salary_adhoc: false,
+  employees: false,
+  certificates: false,
+  history: false,
 };
 
 function mergeToolAccess(raw) {
@@ -38,6 +63,7 @@ function normalizeToolAccessPatch(body) {
 
 module.exports = {
   DEFAULT_TOOL_ACCESS,
+  PORTAL_ONLY_TOOL_ACCESS,
   mergeToolAccess,
   normalizeToolAccessPatch,
 };

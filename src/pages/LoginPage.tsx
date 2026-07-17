@@ -39,6 +39,7 @@ const LoginPage = () => {
         navigate("/admin");
         return;
       }
+      const precisaTrocarSenha = Boolean(data.company.must_change_password);
       login({
         role: "company",
         id: data.company.id,
@@ -46,7 +47,13 @@ const LoginPage = () => {
         cnpj: data.company.cnpj,
         token: data.token,
         toolAccess: mergeClientToolAccess(data.company.tool_access),
+        mustChangePassword: precisaTrocarSenha,
       });
+      if (precisaTrocarSenha) {
+        // Senha ainda é a inicial (= CNPJ): nada é liberado antes da troca.
+        navigate("/alterar-senha");
+        return;
+      }
       toast.success(`Bem-vindo! ${data.company.name}`);
       navigate("/");
     } catch (err: unknown) {

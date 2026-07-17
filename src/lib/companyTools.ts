@@ -1,4 +1,10 @@
 export const COMPANY_TOOL_KEYS = [
+  // Portal do Cliente: entregas da contabilidade
+  "fiscal_guides",
+  "payroll_files",
+  "documents",
+  "calendar",
+  // Departamento pessoal
   "suspension",
   "warning",
   "chatbot",
@@ -12,26 +18,62 @@ export type CompanyToolKey = (typeof COMPANY_TOOL_KEYS)[number];
 
 export type CompanyToolAccess = Record<CompanyToolKey, boolean>;
 
-export const COMPANY_TOOL_LABELS: Record<CompanyToolKey, { title: string; description: string }> = {
-  suspension: { title: "Suspensão", description: "Gerar termo de suspensão" },
-  warning: { title: "Advertência", description: "Gerar termo de advertência" },
-  chatbot: { title: "Assistente", description: "Gerar documentos via chatbot" },
-  salary_adhoc: { title: "Salário avulso", description: "Cálculo proporcional (experiência / treino)" },
-  employees: { title: "Funcionários", description: "Cadastro de funcionários" },
-  certificates: { title: "Atestados", description: "Gestão de atestados médicos" },
-  history: { title: "Histórico", description: "Documentos emitidos" },
+/** Seções do menu do portal. A ordem define a ordem de exibição. */
+export const TOOL_GROUPS = ["financeiro", "entregas", "dp"] as const;
+export type ToolGroup = (typeof TOOL_GROUPS)[number];
+
+export const TOOL_GROUP_LABELS: Record<ToolGroup, { title: string; description: string }> = {
+  financeiro: { title: "Financeiro e vencimentos", description: "O que vence e quando pagar" },
+  entregas: { title: "Documentos e entregas", description: "Arquivos enviados pela contabilidade" },
+  dp: { title: "Departamento pessoal", description: "Documentos e rotinas de funcionários" },
+};
+
+export const COMPANY_TOOL_LABELS: Record<
+  CompanyToolKey,
+  { title: string; description: string; group: ToolGroup }
+> = {
+  calendar: {
+    title: "Calendário de vencimentos",
+    description: "Agenda com o que precisa ser pago",
+    group: "financeiro",
+  },
+  fiscal_guides: {
+    title: "Guias fiscais",
+    description: "INSS, FGTS, Simples Nacional e demais tributos",
+    group: "financeiro",
+  },
+  payroll_files: {
+    title: "Folha de pagamento",
+    description: "Holerites e relatórios da folha",
+    group: "entregas",
+  },
+  documents: {
+    title: "Documentos",
+    description: "Outros arquivos enviados pelo escritório",
+    group: "entregas",
+  },
+  certificates: {
+    title: "Atestados",
+    description: "Gestão de atestados médicos",
+    group: "entregas",
+  },
+  suspension: { title: "Suspensão", description: "Gerar termo de suspensão", group: "dp" },
+  warning: { title: "Advertência", description: "Gerar termo de advertência", group: "dp" },
+  chatbot: { title: "Assistente", description: "Gerar documentos via chatbot", group: "dp" },
+  salary_adhoc: {
+    title: "Salário avulso",
+    description: "Cálculo proporcional (experiência / treino)",
+    group: "dp",
+  },
+  employees: { title: "Funcionários", description: "Cadastro de funcionários", group: "dp" },
+  history: { title: "Histórico", description: "Documentos emitidos", group: "dp" },
 };
 
 export function defaultToolAccess(): CompanyToolAccess {
-  return {
-    suspension: true,
-    warning: true,
-    chatbot: true,
-    salary_adhoc: true,
-    employees: true,
-    certificates: true,
-    history: true,
-  };
+  return COMPANY_TOOL_KEYS.reduce((acc, key) => {
+    acc[key] = true;
+    return acc;
+  }, {} as CompanyToolAccess);
 }
 
 export function mergeClientToolAccess(raw: unknown): CompanyToolAccess {

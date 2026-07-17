@@ -37,9 +37,29 @@ const resetTokenCheckLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+/** Trocar senha exige a atual: limita tentativa de adivinhação por força bruta. */
+const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_CHANGE_PASSWORD_MAX || 10),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." },
+});
+
 function normalizeEmail(val) {
   if (val == null) return "";
   return String(val).trim().toLowerCase();
+}
+
+/** joao@empresa.com → j***@empresa.com — confirma o destino sem expor o endereço. */
+function maskEmail(email) {
+  const s = String(email || "").trim();
+  const at = s.indexOf("@");
+  if (at < 1) return "seu e-mail";
+  const nome = s.slice(0, at);
+  const dominio = s.slice(at);
+  const visivel = nome.slice(0, 1);
+  return `${visivel}${"*".repeat(Math.max(nome.length - 1, 1))}${dominio}`;
 }
 
 function hashToken(raw) {
@@ -64,6 +84,62 @@ async function bcryptMatches(storedHash, password) {
 
 const GENERIC_FORGOT_MSG =
   "Se os dados estiverem corretos e houver e-mail cadastrado, você receberá um link em instantes.";
+
+/**
+ * Cria o token de redefinição (só o hash fica na BD) e envia o link por e-mail.
+ * Partilhado pelo "esqueci minha senha" (sem login) e pelo botão de quem já está logado.
+ * Lança Error("EMAIL_FALHOU") se o envio falhar — o token é apagado antes.
+ */
+async function emitirLinkDeReset({ companyId, adminId, emailOnRecord, publicUrl }) {
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const tokenHash = hashToken(rawToken);
+  const ttlMin = Math.min(
+    Math.max(parseInt(process.env.PASSWORD_RESET_EXPIRY_MINUTES || "60", 10), 5),
+    24 * 7
+  );
+  const expiresAt = new Date(Date.now() + ttlMin * 60 * 1000);
+
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    if (companyId) {
+      await client.query(
+        "DELETE FROM password_reset_tokens WHERE company_id = $1 AND used_at IS NULL",
+        [companyId]
+      );
+      await client.query(
+        `INSERT INTO password_reset_tokens (token_hash, expires_at, company_id)
+         VALUES ($1, $2, $3)`,
+        [tokenHash, expiresAt, companyId]
+      );
+    } else {
+      await client.query(
+        "DELETE FROM password_reset_tokens WHERE admin_id = $1 AND used_at IS NULL",
+        [adminId]
+      );
+      await client.query(
+        `INSERT INTO password_reset_tokens (token_hash, expires_at, admin_id)
+         VALUES ($1, $2, $3)`,
+        [tokenHash, expiresAt, adminId]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+
+  const resetUrl = `${publicUrl}/reset-password?token=${encodeURIComponent(rawToken)}`;
+  try {
+    await sendPasswordResetEmail({ to: emailOnRecord.trim(), resetUrl });
+  } catch (err) {
+    console.error("sendPasswordResetEmail:", err.message);
+    await db.query("DELETE FROM password_reset_tokens WHERE token_hash = $1", [tokenHash]);
+    throw new Error("EMAIL_FALHOU");
+  }
+}
 
 router.post("/login", async (req, res) => {
   try {
@@ -120,6 +196,8 @@ router.post("/login", async (req, res) => {
           name: company.name,
           cnpj: company.cnpj,
           tool_access: mergeToolAccess(company.tool_access),
+          // Ainda com a senha inicial (= CNPJ): o front leva direto para a troca.
+          must_change_password: Boolean(company.must_change_password),
         },
       });
     }
@@ -196,55 +274,15 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
       });
     }
 
-    const rawToken = crypto.randomBytes(32).toString("hex");
-    const tokenHash = hashToken(rawToken);
-    const ttlMin = Math.min(
-      Math.max(parseInt(process.env.PASSWORD_RESET_EXPIRY_MINUTES || "60", 10), 5),
-      24 * 7
-    );
-    const expiresAt = new Date(Date.now() + ttlMin * 60 * 1000);
-
-    const client = await db.connect();
     try {
-      await client.query("BEGIN");
-      if (companyId) {
-        await client.query(
-          "DELETE FROM password_reset_tokens WHERE company_id = $1 AND used_at IS NULL",
-          [companyId]
-        );
-        await client.query(
-          `INSERT INTO password_reset_tokens (token_hash, expires_at, company_id)
-           VALUES ($1, $2, $3)`,
-          [tokenHash, expiresAt, companyId]
-        );
-      } else {
-        await client.query("DELETE FROM password_reset_tokens WHERE admin_id = $1 AND used_at IS NULL", [
-          adminId,
-        ]);
-        await client.query(
-          `INSERT INTO password_reset_tokens (token_hash, expires_at, admin_id)
-           VALUES ($1, $2, $3)`,
-          [tokenHash, expiresAt, adminId]
-        );
-      }
-      await client.query("COMMIT");
-    } catch (e) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw e;
-    } finally {
-      client.release();
-    }
-
-    const resetUrl = `${publicUrl}/reset-password?token=${encodeURIComponent(rawToken)}`;
-
-    try {
-      await sendPasswordResetEmail({ to: emailOnRecord.trim(), resetUrl });
+      await emitirLinkDeReset({ companyId, adminId, emailOnRecord, publicUrl });
     } catch (err) {
-      console.error("sendPasswordResetEmail:", err.message);
-      await db.query("DELETE FROM password_reset_tokens WHERE token_hash = $1", [tokenHash]);
-      return res.status(502).json({
-        error: "Não foi possível enviar o e-mail. Tente novamente mais tarde.",
-      });
+      if (err.message === "EMAIL_FALHOU") {
+        return res.status(502).json({
+          error: "Não foi possível enviar o e-mail. Tente novamente mais tarde.",
+        });
+      }
+      throw err;
     }
 
     return res.json({ message: GENERIC_FORGOT_MSG });
@@ -299,10 +337,10 @@ router.post("/reset-password", resetPasswordLimiter, async (req, res) => {
       const row = rows[0];
       const passwordHash = await bcrypt.hash(password, 10);
       if (row.company_id) {
-        await client.query("UPDATE companies SET password_hash = $1 WHERE id = $2", [
-          passwordHash,
-          row.company_id,
-        ]);
+        await client.query(
+          "UPDATE companies SET password_hash = $1, must_change_password = false WHERE id = $2",
+          [passwordHash, row.company_id]
+        );
       } else {
         await client.query("UPDATE platform_admins SET password_hash = $1 WHERE id = $2", [
           passwordHash,
@@ -320,6 +358,108 @@ router.post("/reset-password", resetPasswordLimiter, async (req, res) => {
     }
   } catch (err) {
     console.error("reset-password:", err.message);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/**
+ * Trocar a senha estando logado (senha atual + nova). Não depende de e-mail/SMTP —
+ * é o caminho para quem não tem e-mail cadastrado.
+ */
+router.post("/change-password", authMiddleware, changePasswordLimiter, async (req, res) => {
+  try {
+    const current = req.body.current_password;
+    const next = req.body.new_password;
+    if (!current || typeof current !== "string") {
+      return res.status(400).json({ error: "Informe a senha atual" });
+    }
+    if (!validateString(next, 8, 128)) {
+      return res.status(400).json({ error: "A nova senha precisa de pelo menos 8 caracteres" });
+    }
+
+    const tabela = req.isAdmin ? "platform_admins" : "companies";
+    const id = req.isAdmin ? req.admin?.id : req.company?.id;
+    if (!id) return res.status(401).json({ error: "Sessão inválida" });
+
+    const { rows } = await db.query(`SELECT password_hash FROM ${tabela} WHERE id = $1`, [id]);
+    if (!rows.length) return res.status(404).json({ error: "Cadastro não encontrado" });
+
+    if (!(await bcryptMatches(rows[0].password_hash, current))) {
+      return res.status(401).json({ error: "Senha atual incorreta" });
+    }
+    // Bloqueia "trocar" pela mesma senha — senão a marca de 1º acesso cairia à toa.
+    if (await bcryptMatches(rows[0].password_hash, next)) {
+      return res.status(400).json({ error: "A nova senha precisa ser diferente da atual" });
+    }
+
+    const hash = await bcrypt.hash(next, 10);
+    if (req.isAdmin) {
+      await db.query("UPDATE platform_admins SET password_hash = $1 WHERE id = $2", [hash, id]);
+    } else {
+      await db.query(
+        "UPDATE companies SET password_hash = $1, must_change_password = false WHERE id = $2",
+        [hash, id]
+      );
+    }
+    // Links de redefinição pendentes deixam de valer: a senha já mudou.
+    await db.query(
+      `DELETE FROM password_reset_tokens
+       WHERE used_at IS NULL AND ${req.isAdmin ? "admin_id" : "company_id"} = $1`,
+      [id]
+    );
+    res.json({ message: "Senha alterada com sucesso." });
+  } catch (err) {
+    console.error("change-password:", err.message);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/**
+ * Estando logado, pedir o link de redefinição para o e-mail já cadastrado.
+ * Não recebe e-mail no corpo de propósito — evita que a sessão sirva para mandar
+ * link para um endereço qualquer.
+ */
+router.post("/send-reset-link", authMiddleware, forgotPasswordLimiter, async (req, res) => {
+  try {
+    if (!isSmtpConfigured()) {
+      return res.status(503).json({
+        error: "Envio por e-mail não está configurado. Use a troca com a senha atual.",
+      });
+    }
+    const publicUrl = getPublicAppUrl();
+    if (!publicUrl) {
+      return res.status(503).json({ error: "Configuração incompleta do servidor." });
+    }
+
+    const tabela = req.isAdmin ? "platform_admins" : "companies";
+    const id = req.isAdmin ? req.admin?.id : req.company?.id;
+    if (!id) return res.status(401).json({ error: "Sessão inválida" });
+
+    const { rows } = await db.query(`SELECT contact_email FROM ${tabela} WHERE id = $1`, [id]);
+    const email = rows[0]?.contact_email;
+    if (!email) {
+      return res.status(400).json({
+        error: "Não há e-mail cadastrado. Peça à contabilidade para cadastrar, ou troque usando a senha atual.",
+      });
+    }
+
+    try {
+      await emitirLinkDeReset({
+        companyId: req.isAdmin ? null : id,
+        adminId: req.isAdmin ? id : null,
+        emailOnRecord: email,
+        publicUrl,
+      });
+    } catch (err) {
+      if (err.message === "EMAIL_FALHOU") {
+        return res.status(502).json({ error: "Não foi possível enviar o e-mail. Tente mais tarde." });
+      }
+      throw err;
+    }
+    // Mostra o e-mail mascarado: confirma o destino sem expor o endereço todo.
+    res.json({ message: `Link enviado para ${maskEmail(email)}. Verifique a caixa de entrada.` });
+  } catch (err) {
+    console.error("send-reset-link:", err.message);
     res.status(500).json({ error: "Erro interno" });
   }
 });

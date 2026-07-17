@@ -17,7 +17,14 @@ import ChatbotPage from "./pages/ChatbotPage.tsx";
 import SalaryAdhocPage from "./pages/SalaryAdhocPage.tsx";
 import CertificatesPage from "./pages/CertificatesPage.tsx";
 import AdminPage from "./pages/AdminPage.tsx";
-import GuiasPage from "./pages/GuiasPage.tsx";
+import EnvioGuiasAdminPage from "./pages/EnvioGuiasAdminPage.tsx";
+import GuiasFiscaisPage from "./pages/GuiasFiscaisPage.tsx";
+import FolhaPage from "./pages/FolhaPage.tsx";
+import DocumentosPage from "./pages/DocumentosPage.tsx";
+import CalendarioPage from "./pages/CalendarioPage.tsx";
+import ProximosPagamentosPage from "./pages/ProximosPagamentosPage.tsx";
+import EntregaPublicaPage from "./pages/EntregaPublicaPage.tsx";
+import AlterarSenhaPage from "./pages/AlterarSenhaPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -30,9 +37,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 /** Rotas do app empresarial: administrador é redirecionado ao painel /admin */
 function CompanyOnlyRoute({ children }: { children: React.ReactNode }) {
-  const { isLoggedIn, isAdmin } = useAuth();
+  const { isLoggedIn, isAdmin, company } = useAuth();
   if (!isLoggedIn) return <Navigate to="/login" replace />;
   if (isAdmin) return <Navigate to="/admin" replace />;
+  if (company?.mustChangePassword) return <Navigate to="/alterar-senha" replace />;
   return <>{children}</>;
 }
 
@@ -41,6 +49,8 @@ function CompanyToolRoute({ tool, children }: { tool: CompanyToolKey; children: 
   if (!isLoggedIn) return <Navigate to="/login" replace />;
   if (isAdmin) return <Navigate to="/admin" replace />;
   if (!company) return <Navigate to="/login" replace />;
+  // Senha ainda é a inicial (= CNPJ, público): nada é liberado antes da troca.
+  if (company.mustChangePassword) return <Navigate to="/alterar-senha" replace />;
   if (!isToolAllowed(company.toolAccess, tool)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
@@ -51,7 +61,15 @@ function HistoryAccessRoute({ children }: { children: React.ReactNode }) {
   if (!isLoggedIn) return <Navigate to="/login" replace />;
   if (isAdmin) return <>{children}</>;
   if (!company) return <Navigate to="/login" replace />;
+  if (company.mustChangePassword) return <Navigate to="/alterar-senha" replace />;
   if (!isToolAllowed(company.toolAccess, "history")) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
+/** Troca de senha: qualquer sessão válida (é a única tela liberada no 1º acesso). */
+function LoggedInRoute({ children }: { children: React.ReactNode }) {
+  const { isLoggedIn } = useAuth();
+  if (!isLoggedIn) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
@@ -67,7 +85,11 @@ const AppRoutes = () => (
     <Route path="/login" element={<LoginPage />} />
     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
     <Route path="/reset-password" element={<ResetPasswordPage />} />
+    {/* Link do WhatsApp: sem login, identificado por token opaco */}
+    <Route path="/entrega/:token" element={<EntregaPublicaPage />} />
     <Route path="/admin" element={<AdminOnlyRoute><AdminPage /></AdminOnlyRoute>} />
+    {/* Única tela liberada enquanto a senha for a inicial */}
+    <Route path="/alterar-senha" element={<LoggedInRoute><AlterarSenhaPage /></LoggedInRoute>} />
     <Route path="/" element={<CompanyOnlyRoute><Index /></CompanyOnlyRoute>} />
     <Route path="/suspensao" element={<CompanyToolRoute tool="suspension"><SuspensionPage /></CompanyToolRoute>} />
     <Route path="/advertencia" element={<CompanyToolRoute tool="warning"><WarningPage /></CompanyToolRoute>} />
@@ -76,7 +98,14 @@ const AppRoutes = () => (
     <Route path="/chatbot" element={<CompanyToolRoute tool="chatbot"><ChatbotPage /></CompanyToolRoute>} />
     <Route path="/salario-avulso" element={<CompanyToolRoute tool="salary_adhoc"><SalaryAdhocPage /></CompanyToolRoute>} />
     <Route path="/atestados" element={<CompanyToolRoute tool="certificates"><CertificatesPage /></CompanyToolRoute>} />
-    <Route path="/guias" element={<AdminOnlyRoute><GuiasPage /></AdminOnlyRoute>} />
+    {/* Portal do Cliente: entregas da contabilidade */}
+    <Route path="/guias" element={<CompanyToolRoute tool="fiscal_guides"><GuiasFiscaisPage /></CompanyToolRoute>} />
+    <Route path="/folha" element={<CompanyToolRoute tool="payroll_files"><FolhaPage /></CompanyToolRoute>} />
+    <Route path="/documentos" element={<CompanyToolRoute tool="documents"><DocumentosPage /></CompanyToolRoute>} />
+    <Route path="/calendario" element={<CompanyToolRoute tool="calendar"><CalendarioPage /></CompanyToolRoute>} />
+    <Route path="/proximos-pagamentos" element={<CompanyToolRoute tool="calendar"><ProximosPagamentosPage /></CompanyToolRoute>} />
+    {/* Painel do escritório: iframe do sistema de envio de guias (não confundir com /guias) */}
+    <Route path="/admin/envio-guias" element={<AdminOnlyRoute><EnvioGuiasAdminPage /></AdminOnlyRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );

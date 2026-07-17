@@ -38,6 +38,7 @@ import {
 } from "@/lib/companyTools";
 import { Switch } from "@/components/ui/switch";
 import { AdminEmployeeImport } from "@/components/AdminEmployeeImport";
+import { AdminDeliverableUpload } from "@/components/AdminDeliverableUpload";
 
 const Q4_CNPJ = "54803962000108";
 const Q4_NAME = "RESTAURANTE DO QUEIJEIRO 4 LTDA";
@@ -170,8 +171,11 @@ const AdminPage = () => {
               <span className="text-foreground/80">Gestão de empresas, razão social e contactos</span>
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => navigate("/guias")}>
+          <Button variant="outline" size="sm" onClick={() => navigate("/admin/envio-guias")}>
             📤 Envio de Guias
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate("/alterar-senha")}>
+            🔑 Senha
           </Button>
           <Button variant="outline" size="sm" onClick={handleLogout}>
             Sair
@@ -625,6 +629,8 @@ function CompanyManageRow({
         companyCnpj={company.cnpj}
         companyName={company.name}
       />
+
+      <AdminDeliverableUpload companyId={company.id} companyName={company.name} />
     </div>
   );
 }

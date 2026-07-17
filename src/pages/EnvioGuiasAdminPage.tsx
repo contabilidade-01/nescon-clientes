@@ -1,11 +1,13 @@
 /**
- * Página "Envio de Guias" — embute o sistema GCLICK (FastAPI) num iframe.
+ * Página "Envio de Guias" (admin) — embute o sistema GCLICK (FastAPI) num iframe.
  * O sistema roda como app próprio (separado) em https://guias.gestaoempresa.com.
- * Acesso restrito a admin (ver rota /guias com AdminOnlyRoute em App.tsx).
+ * Acesso restrito a admin (ver rota /admin/envio-guias com AdminOnlyRoute em App.tsx).
+ *
+ * Não confundir com /guias, que é a seção de guias fiscais do cliente no portal.
  */
 const GUIAS_URL = "https://guias.gestaoempresa.com";
 
-export default function GuiasPage() {
+export default function EnvioGuiasAdminPage() {
   return (
     <div style={{ position: "fixed", inset: 0, display: "flex", flexDirection: "column" }}>
       <div
@@ -32,11 +34,7 @@ export default function GuiasPage() {
           abrir em nova aba ↗
         </a>
       </div>
-      <iframe
-        src={GUIAS_URL}
-        title="Envio de Guias"
-        style={{ flex: 1, width: "100%", border: 0 }}
-      />
+      <iframe src={GUIAS_URL} title="Envio de Guias" style={{ flex: 1, width: "100%", border: 0 }} />
     </div>
   );
 }

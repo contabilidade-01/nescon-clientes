@@ -6,6 +6,7 @@ const db = require("./db");
 const { ensurePlatformAdmins } = require("./ensurePlatformAdmins");
 const { ensurePasswordResetSchema } = require("./ensurePasswordResetSchema");
 const { ensureToolAccessSchema } = require("./ensureToolAccessSchema");
+const { ensureDeliverablesSchema } = require("./ensureDeliverablesSchema");
 const { deleteInactiveEmployeesOnStartup } = require("./deleteInactiveEmployeesOnStartup");
 
 const app = express();
@@ -19,6 +20,9 @@ app.use("/api/admin", require("./routes/admin"));
 app.use("/api/employees", require("./routes/employees"));
 app.use("/api/documents", require("./routes/documents"));
 app.use("/api/certificates", require("./routes/certificates"));
+app.use("/api/deliverables", require("./routes/deliverables"));
+// Ingestão servidor-a-servidor (sistema de guias): auth própria por X-Ingest-Key.
+app.use("/api/fiscal", require("./routes/fiscalIngest"));
 
 // Health: sempre HTTP 200 para o healthcheck do Docker / proxy não derrubar o contentor.
 // Estado da BD vai no JSON (use database: "down" para diagnosticar login 500).
@@ -43,6 +47,7 @@ async function start() {
     await ensurePlatformAdmins(db);
     await ensurePasswordResetSchema(db);
     await ensureToolAccessSchema(db);
+    await ensureDeliverablesSchema(db);
     await deleteInactiveEmployeesOnStartup(db);
   } catch (err) {
     console.error("Startup DB tasks:", err.message);

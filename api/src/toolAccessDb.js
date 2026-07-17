@@ -24,7 +24,8 @@ async function listCompanies(db) {
 async function getCompanyByCnpjForLogin(db, cnpjDigits) {
   try {
     const { rows } = await db.query(
-      "SELECT id, name, cnpj, password_hash, tool_access FROM companies WHERE cnpj = $1",
+      `SELECT id, name, cnpj, password_hash, tool_access, must_change_password
+       FROM companies WHERE cnpj = $1`,
       [cnpjDigits]
     );
     return rows;
@@ -34,7 +35,7 @@ async function getCompanyByCnpjForLogin(db, cnpjDigits) {
       "SELECT id, name, cnpj, password_hash FROM companies WHERE cnpj = $1",
       [cnpjDigits]
     );
-    return rows.map((r) => ({ ...r, tool_access: null }));
+    return rows.map((r) => ({ ...r, tool_access: null, must_change_password: false }));
   }
 }
 
@@ -50,9 +51,10 @@ async function getToolAccessForCompany(db, companyId) {
 
 async function insertCompanyRow(db, { name, cnpjDigits, passwordHash, emailNorm, phoneNorm }) {
   try {
+    // A senha inicial é o CNPJ (público) — nasce exigindo troca no primeiro acesso.
     const { rows } = await db.query(
-      `INSERT INTO companies (name, cnpj, password_hash, contact_email, phone)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO companies (name, cnpj, password_hash, contact_email, phone, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, true)
        RETURNING id, name, cnpj, contact_email, phone, tool_access, created_at`,
       [name, cnpjDigits, passwordHash, emailNorm, phoneNorm]
     );

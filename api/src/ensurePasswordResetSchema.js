@@ -11,6 +11,13 @@ async function ensurePasswordResetSchema(db) {
   await db.query(`
     ALTER TABLE platform_admins ADD COLUMN IF NOT EXISTS contact_email TEXT;
   `);
+  // Empresa que ainda está com a senha inicial (= CNPJ, informação pública): o portal
+  // obriga a trocar antes de deixar navegar. Empresas antigas ficam em false — só as
+  // criadas a partir daqui (sync/admin) nascem marcadas.
+  await db.query(`
+    ALTER TABLE companies
+      ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false;
+  `);
   await db.query(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
