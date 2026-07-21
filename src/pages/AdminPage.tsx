@@ -24,8 +24,15 @@ import {
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+/** Formata data com seguranca: valor nulo ou invalido nunca derruba a pagina. */
+function formatDateSafe(value: string | null | undefined, pattern: string): string {
+  if (!value) return "";
+  const d = new Date(value);
+  return isValid(d) ? format(d, pattern, { locale: ptBR }) : "";
+}
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { maskCNPJ } from "@/lib/masks";
@@ -325,7 +332,7 @@ const AdminPage = () => {
                     <p className="text-xs text-muted-foreground">
                       CNPJ {row.cnpj}
                       {row.ultima_entrada
-                        ? ` · última: ${format(new Date(row.ultima_entrada), "dd/MM/yyyy HH:mm", { locale: ptBR })}`
+                        ? ` · última: ${formatDateSafe(row.ultima_entrada, "dd/MM/yyyy HH:mm")}`
                         : ""}
                     </p>
                   </div>

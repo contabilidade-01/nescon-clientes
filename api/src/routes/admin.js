@@ -65,7 +65,7 @@ router.get("/deliverables-overview", async (_req, res) => {
               COUNT(d.id)::int AS total,
               COUNT(d.id) FILTER (WHERE d.released_at IS NOT NULL)::int AS liberadas,
               COUNT(d.id) FILTER (WHERE d.released_at IS NULL)::int AS retidas,
-              to_char(MAX(d.created_at), 'YYYY-MM-DD"T"HH24:MI:SSOF') AS ultima_entrada
+              to_char(MAX(d.created_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS ultima_entrada
          FROM companies c
          JOIN deliverables d ON d.company_id = c.id
         GROUP BY c.id, c.name, c.cnpj
