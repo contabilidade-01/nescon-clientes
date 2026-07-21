@@ -49,6 +49,8 @@ async function start() {
     await ensureToolAccessSchema(db);
     await ensureDeliverablesSchema(db);
     await deleteInactiveEmployeesOnStartup(db);
+    // Puxa os documentos do G-Click de tempos em tempos (GCLICK_SYNC_INTERVAL_H).
+    require("./gclick/sync").iniciarAgendador();
   } catch (err) {
     console.error("Startup DB tasks:", err.message);
     throw err;

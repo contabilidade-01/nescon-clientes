@@ -5,6 +5,7 @@
 const DEFAULT_TOOL_ACCESS = {
   // Portal do Cliente: entregas da contabilidade
   fiscal_guides: true,
+  boletos: true,
   payroll_files: true,
   documents: true,
   calendar: true,
@@ -25,6 +26,7 @@ const DEFAULT_TOOL_ACCESS = {
  */
 const PORTAL_ONLY_TOOL_ACCESS = {
   fiscal_guides: true,
+  boletos: true,
   payroll_files: true,
   documents: true,
   calendar: true,

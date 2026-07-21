@@ -1,6 +1,7 @@
 export const COMPANY_TOOL_KEYS = [
   // Portal do Cliente: entregas da contabilidade
   "fiscal_guides",
+  "boletos",
   "payroll_files",
   "documents",
   "calendar",
@@ -40,6 +41,11 @@ export const COMPANY_TOOL_LABELS: Record<
   fiscal_guides: {
     title: "Guias fiscais",
     description: "INSS, FGTS, Simples Nacional e demais tributos",
+    group: "financeiro",
+  },
+  boletos: {
+    title: "Boletos",
+    description: "Boletos a pagar",
     group: "financeiro",
   },
   payroll_files: {

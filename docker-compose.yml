@@ -50,9 +50,18 @@ services:
       JWT_SECRET: ${JWT_SECRET:-troque-este-segredo-em-producao}
       PORT: 3001
       UPLOAD_DIR: /app/uploads
-      # Chave que o sistema de guias (GCLICK) usa para publicar entregas no portal.
-      # Vazia = rota /api/fiscal/ingest desligada.
+      # Chave de serviço partilhada com o sistema de guias (release, sync-companies, access-stats).
+      # Vazia = rotas /api/fiscal/* desligadas.
       INGEST_API_KEY: ${INGEST_API_KEY:-}
+      # Credenciais da API do G-Click: o portal puxa os documentos direto de lá.
+      # São as MESMAS do sistema de guias. Sem elas, o portal fica sem os documentos.
+      GCLICK_CLIENT_ID: ${GCLICK_CLIENT_ID:-}
+      GCLICK_CLIENT_SECRET: ${GCLICK_CLIENT_SECRET:-}
+      # Quantos meses de histórico puxar e de quanto em quanto tempo (0 = só manual).
+      GCLICK_SYNC_MESES: ${GCLICK_SYNC_MESES:-6}
+      GCLICK_SYNC_INTERVAL_H: ${GCLICK_SYNC_INTERVAL_H:-6}
+      # 1ª carga automática ao subir (só se o portal ainda estiver vazio). "false" desliga.
+      GCLICK_SYNC_ON_BOOT: ${GCLICK_SYNC_ON_BOOT:-true}
       # Recuperação de senha: URL pública do front (HTTPS em produção, sem / no fim)
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}

@@ -38,10 +38,10 @@ import {
 } from "@/lib/companyTools";
 import { Switch } from "@/components/ui/switch";
 import { AdminEmployeeImport } from "@/components/AdminEmployeeImport";
+import { AdminExtratoImport } from "@/components/AdminExtratoImport";
 import { AdminDeliverableUpload } from "@/components/AdminDeliverableUpload";
+import { AdminSyncCard } from "@/components/AdminSyncCard";
 
-const Q4_CNPJ = "54803962000108";
-const Q4_NAME = "RESTAURANTE DO QUEIJEIRO 4 LTDA";
 
 const AdminPage = () => {
   const navigate = useNavigate();
@@ -122,22 +122,6 @@ const AdminPage = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const seedQueijeiros = useMutation({
-    mutationFn: () => api.admin.seedQueijeirosCompanies(),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-summary"] });
-      const q4 = data.companies.find((c) => c.cnpj === Q4_CNPJ);
-      if (q4?.id) setAdminCompanyFilter(q4.id);
-      const created = data.companies.filter((c) => c.status === "created").length;
-      const exists = data.companies.filter((c) => c.status === "exists").length;
-      toast.success(
-        `Queijeiro: ${created} cadastrada(s), ${exists} já existia(m). Q4 selecionada no filtro.`
-      );
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   const handleNewCoCnpj = (value: string) => {
     const digits = value.replace(/\D/g, "").slice(0, 14);
     setNewCoCnpj(maskCNPJ(digits));
@@ -184,6 +168,8 @@ const AdminPage = () => {
       </header>
 
       <main className="mx-auto max-w-4xl px-4 py-6 space-y-6">
+        <AdminSyncCard />
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
@@ -258,24 +244,6 @@ const AdminPage = () => {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setNewCoName(Q4_NAME);
-                  setNewCoCnpj(maskCNPJ(Q4_CNPJ));
-                }}
-              >
-                Preencher Queijeiro 4 (Q4)
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => seedQueijeiros.mutate()}
-                disabled={seedQueijeiros.isPending}
-              >
-                {seedQueijeiros.isPending ? "Cadastrando..." : "Cadastrar Q3 + Q4 (seed)"}
-              </Button>
               <Button
                 type="button"
                 onClick={() => createCompany.mutate()}
@@ -629,6 +597,8 @@ function CompanyManageRow({
         companyCnpj={company.cnpj}
         companyName={company.name}
       />
+
+      <AdminExtratoImport companyId={company.id} companyName={company.name} />
 
       <AdminDeliverableUpload companyId={company.id} companyName={company.name} />
     </div>

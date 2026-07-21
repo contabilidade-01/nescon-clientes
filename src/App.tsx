@@ -19,6 +19,7 @@ import CertificatesPage from "./pages/CertificatesPage.tsx";
 import AdminPage from "./pages/AdminPage.tsx";
 import EnvioGuiasAdminPage from "./pages/EnvioGuiasAdminPage.tsx";
 import GuiasFiscaisPage from "./pages/GuiasFiscaisPage.tsx";
+import BoletosPage from "./pages/BoletosPage.tsx";
 import FolhaPage from "./pages/FolhaPage.tsx";
 import DocumentosPage from "./pages/DocumentosPage.tsx";
 import CalendarioPage from "./pages/CalendarioPage.tsx";
@@ -100,6 +101,7 @@ const AppRoutes = () => (
     <Route path="/atestados" element={<CompanyToolRoute tool="certificates"><CertificatesPage /></CompanyToolRoute>} />
     {/* Portal do Cliente: entregas da contabilidade */}
     <Route path="/guias" element={<CompanyToolRoute tool="fiscal_guides"><GuiasFiscaisPage /></CompanyToolRoute>} />
+    <Route path="/boletos" element={<CompanyToolRoute tool="boletos"><BoletosPage /></CompanyToolRoute>} />
     <Route path="/folha" element={<CompanyToolRoute tool="payroll_files"><FolhaPage /></CompanyToolRoute>} />
     <Route path="/documentos" element={<CompanyToolRoute tool="documents"><DocumentosPage /></CompanyToolRoute>} />
     <Route path="/calendario" element={<CompanyToolRoute tool="calendar"><CalendarioPage /></CompanyToolRoute>} />

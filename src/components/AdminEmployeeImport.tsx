@@ -1,5 +1,5 @@
 import { type ChangeEvent, useRef, useState } from "react";
-import { Upload } from "lucide-react";
+import { Upload, Download } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -74,9 +74,17 @@ export function AdminEmployeeImport({ companyId, companyCnpj, companyName }: Pro
       <div>
         <p className="text-xs font-semibold text-foreground">Importar funcionários (planilha)</p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Aceita CSV, .xls ou .xlsx no formato &quot;Relação de Empregados&quot;. O CNPJ no arquivo deve ser{" "}
-          <strong>{maskCNPJ(companyCnpj)}</strong>.
+          Aceita CSV, .xls ou .xlsx. Precisa de <strong>Nome</strong> e <strong>CPF</strong> por linha, e o
+          CNPJ <strong>{maskCNPJ(companyCnpj)}</strong> em algum lugar do arquivo. Quem tiver data de demissão
+          não é importado.
         </p>
+        <a
+          href="/modelo-importar-funcionarios.xlsx"
+          download
+          className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+        >
+          <Download className="h-3.5 w-3.5" /> Baixar modelo de planilha
+        </a>
       </div>
 
       <input

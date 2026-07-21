@@ -40,6 +40,14 @@ function allowedCategories(req) {
   return CATEGORIES.filter((c) => companyHasTool(req, TOOL_BY_CATEGORY[c]));
 }
 
+/**
+ * Documento puxado do G-Click fica retido até o escritório liberar. O cliente só
+ * enxerga o que já foi liberado; o admin vê tudo (para conferir antes de liberar).
+ */
+function onlyReleased(req) {
+  return req.isAdmin ? "" : " AND released_at IS NOT NULL";
+}
+
 function adminOnly(req, res, next) {
   if (!req.isAdmin) return res.status(403).json({ error: "Recurso exclusivo do administrador" });
   next();
@@ -71,7 +79,7 @@ router.get("/public/:token", async (req, res) => {
               d.file_name, c.name AS company_name
        FROM deliverables d
        JOIN companies c ON c.id = d.company_id
-       WHERE d.access_token = $1`,
+       WHERE d.access_token = $1 AND d.released_at IS NOT NULL`,
       [token]
     );
     if (!rows.length) return res.status(404).json({ error: "Documento não encontrado" });
@@ -90,7 +98,8 @@ router.get("/public/:token/file", async (req, res) => {
     const token = String(req.params.token || "");
     if (!validateString(token, 16, 128)) return res.status(404).json({ error: "Documento não encontrado" });
     const { rows } = await db.query(
-      "SELECT id, file_path, file_name FROM deliverables WHERE access_token = $1",
+      `SELECT id, file_path, file_name FROM deliverables
+       WHERE access_token = $1 AND released_at IS NOT NULL`,
       [token]
     );
     if (!rows.length) return res.status(404).json({ error: "Documento não encontrado" });
@@ -133,11 +142,11 @@ router.post("/", adminOnly, uploadPdf.single("file"), async (req, res) => {
       return res.status(404).json({ error: "Empresa não encontrada" });
     }
 
-    // Guia sem data informada: tenta ler do próprio PDF. Se não achar com confiança,
-    // fica sem vencimento (não entra no calendário) e o admin corrige.
+    // Guia/boleto sem data informada: tenta ler do próprio PDF. Se não achar com
+    // confiança, fica sem vencimento (não entra no calendário) e o admin corrige.
     let dueDate = due_date || null;
     let dueDateFromPdf = false;
-    if (!dueDate && category === "guia") {
+    if (!dueDate && (category === "guia" || category === "boleto")) {
       const fullPath = resolveUploadPath(file.filename);
       if (fullPath) {
         const lido = await extrairVencimento(fs.readFileSync(fullPath));
@@ -148,11 +157,13 @@ router.post("/", adminOnly, uploadPdf.single("file"), async (req, res) => {
       }
     }
 
+    // Envio manual do escritório já nasce liberado: o admin subiu de propósito,
+    // não precisa de um segundo passo de liberação.
     const { rows } = await db.query(
       `INSERT INTO deliverables
          (company_id, category, doc_type, title, competencia, due_date,
-          file_path, file_name, source, access_token)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'manual',$9)
+          file_path, file_name, source, access_token, released_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'manual',$9, now())
        RETURNING ${FIELDS}`,
       [
         company_id,
@@ -188,7 +199,7 @@ router.get("/calendar", async (req, res) => {
 
     const params = [cats];
     let sql = `SELECT ${FIELDS} FROM deliverables
-               WHERE due_date IS NOT NULL AND category = ANY($1)`;
+               WHERE due_date IS NOT NULL AND category = ANY($1)${onlyReleased(req)}`;
 
     if (req.isAdmin) {
       const cid = (req.query.company_id || "").toString();
@@ -232,7 +243,7 @@ router.get("/upcoming", async (req, res) => {
     const params = [cats];
     let sql = `SELECT ${FIELDS} FROM deliverables
                WHERE due_date IS NOT NULL AND status = 'pending'
-                 AND category = ANY($1)`;
+                 AND category = ANY($1)${onlyReleased(req)}`;
 
     if (req.isAdmin) {
       const cid = (req.query.company_id || "").toString();
@@ -277,7 +288,7 @@ router.get("/", async (req, res) => {
     if (to && !validateDate(to)) return res.status(400).json({ error: "to inválido" });
 
     const params = [category ? [category] : cats];
-    let sql = `SELECT ${FIELDS} FROM deliverables WHERE category = ANY($1)`;
+    let sql = `SELECT ${FIELDS} FROM deliverables WHERE category = ANY($1)${onlyReleased(req)}`;
 
     if (req.isAdmin) {
       const cid = (req.query.company_id || "").toString();
@@ -324,7 +335,7 @@ router.get("/:id/file", async (req, res) => {
     let sql = "SELECT id, category, file_path, file_name FROM deliverables WHERE id = $1";
     if (!req.isAdmin) {
       params.push(req.company.id);
-      sql += ` AND company_id = $${params.length}`;
+      sql += ` AND company_id = $${params.length}${onlyReleased(req)}`;
     }
     const { rows } = await db.query(sql, params);
     // 404 (e não 403) quando é de outra empresa: não revela que o id existe.
@@ -355,7 +366,7 @@ router.patch("/:id", async (req, res) => {
     let sql = `UPDATE deliverables SET status = $1, paid_at = ${paidAt} WHERE id = $2`;
     if (!req.isAdmin) {
       params.push(req.company.id);
-      sql += ` AND company_id = $${params.length}`;
+      sql += ` AND company_id = $${params.length}${onlyReleased(req)}`;
     }
     sql += ` RETURNING ${FIELDS}`;
 

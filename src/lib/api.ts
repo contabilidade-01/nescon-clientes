@@ -113,7 +113,7 @@ async function requestBlob(path: string): Promise<Blob> {
   return res.blob();
 }
 
-export type DeliverableCategory = "guia" | "folha" | "outro";
+export type DeliverableCategory = "guia" | "boleto" | "folha" | "outro";
 export type DeliverableStatus = "pending" | "paid";
 
 export type Deliverable = {
@@ -257,11 +257,6 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
-    seedQueijeirosCompanies: () =>
-      request<{
-        ok: boolean;
-        companies: Array<{ cnpj: string; name: string; status: "created" | "exists"; id?: string }>;
-      }>("/admin/seed/queijeiros-companies", { method: "POST" }),
     importEmployees: (
       companyId: string,
       rows: Array<{ name: string; cpf: string; pis?: string | null }>,
@@ -271,6 +266,54 @@ export const api = {
         `/admin/companies/${companyId}/import-employees`,
         { method: "POST", body: JSON.stringify({ rows, fileCnpj }) }
       ),
+
+    /** Funcionários lidos do último extrato de folha da empresa (prévia). */
+    extratoEmployees: (companyId: string) =>
+      request<{
+        competencia: string | null;
+        arquivo: string;
+        invalidos: number;
+        total: number;
+        novos: number;
+        funcionarios: Array<{ codigo: string; name: string; cpf: string; jaCadastrado: boolean }>;
+      }>(`/admin/companies/${companyId}/extrato-employees`),
+    /** Cadastra os funcionários do extrato (uma empresa, ou todas se companyId omitido). */
+    importExtratoEmployees: (companyId?: string) =>
+      request<{
+        inseridos: number;
+        pulados: number;
+        empresas: Array<{ name: string; inseridos?: number; pulados?: number; erro?: string }>;
+      }>("/admin/extrato-employees/import", {
+        method: "POST",
+        body: JSON.stringify(companyId ? { company_id: companyId } : {}),
+      }),
+    /** Estado da sincronização com o G-Click. */
+    syncStatus: () =>
+      request<{
+        configurado: boolean;
+        rodando: boolean;
+        ultima: {
+          criados: number;
+          atualizados: number;
+          empresasCriadas: number;
+          erros: number;
+          segundos: number;
+          em: string;
+        } | null;
+      }>("/admin/sync-gclick/status"),
+    /** Dispara a sincronização com o G-Click (traz documentos e cria empresas que faltam). */
+    runSync: (meses?: number) =>
+      request<{ message: string }>("/admin/sync-gclick", {
+        method: "POST",
+        body: JSON.stringify(meses ? { meses } : {}),
+      }),
+    /** Dry-run: quantos funcionários o extrato traria por empresa, sem gravar. */
+    scanExtratoEmployees: () =>
+      request<{
+        empresas_com_extrato: number;
+        total_novos: number;
+        empresas: Array<{ id: string; name: string; competencia: string | null; encontrados: number; novos: number }>;
+      }>("/admin/extrato-employees/scan-all", { method: "POST" }),
   },
 
   employees: {

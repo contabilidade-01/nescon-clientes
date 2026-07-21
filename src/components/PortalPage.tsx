@@ -16,15 +16,21 @@ export function PortalPage({ title, subtitle, children, wide = false }: Props) {
   const width = wide ? "max-w-4xl" : "max-w-2xl";
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 border-b bg-card/80 backdrop-blur-sm">
+    <div className="min-h-screen">
+      <header className="sticky top-0 z-10 border-b border-border/60 bg-card/60 backdrop-blur">
         <div className={`mx-auto flex ${width} items-center gap-3 px-4 py-3`}>
-          <Button variant="ghost" size="icon" onClick={() => navigate("/")} aria-label="Voltar ao início">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+            onClick={() => navigate("/")}
+            aria-label="Voltar ao início"
+          >
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="min-w-0">
+            {subtitle && <p className="eyebrow truncate">{subtitle}</p>}
             <h1 className="truncate text-lg font-bold text-foreground">{title}</h1>
-            {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
           </div>
         </div>
       </header>

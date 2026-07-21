@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Upload } from "lucide-react";
+import { Upload, FileText, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { api, type DeliverableCategory } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -12,13 +13,14 @@ type Props = {
   companyName: string;
 };
 
-const CATEGORY_OPTIONS: Array<{ value: DeliverableCategory; label: string }> = [
-  { value: "guia", label: "Guia fiscal (entra no calendário)" },
-  { value: "folha", label: "Folha de pagamento" },
-  { value: "outro", label: "Documento avulso" },
+const CATEGORY_OPTIONS: Array<{ value: DeliverableCategory; label: string; comVencimento: boolean }> = [
+  { value: "boleto", label: "Boleto (entra no calendário)", comVencimento: true },
+  { value: "guia", label: "Guia fiscal (entra no calendário)", comVencimento: true },
+  { value: "folha", label: "Folha de pagamento", comVencimento: false },
+  { value: "outro", label: "Documento avulso (contrato, relatório...)", comVencimento: false },
 ];
 
-/** Envio manual de uma entrega para a empresa selecionada (o fluxo automático vem do sistema de guias). */
+/** Envio manual do escritório para a empresa (o fluxo automático vem do sistema de guias). */
 export function AdminDeliverableUpload({ companyId, companyName }: Props) {
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -29,6 +31,9 @@ export function AdminDeliverableUpload({ companyId, companyName }: Props) {
   const [competencia, setCompetencia] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const comVencimento = CATEGORY_OPTIONS.find((o) => o.value === category)?.comVencimento;
 
   const reset = () => {
     setTitle("");
@@ -37,6 +42,17 @@ export function AdminDeliverableUpload({ companyId, companyName }: Props) {
     setDueDate("");
     setFile(null);
     if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const escolherArquivo = (f: File | null | undefined) => {
+    if (!f) return;
+    if (!/\.pdf$/i.test(f.name) && f.type !== "application/pdf") {
+      toast.error("Apenas PDF");
+      return;
+    }
+    setFile(f);
+    // Sugere o título pelo nome do arquivo se ainda estiver vazio.
+    if (!title.trim()) setTitle(f.name.replace(/\.pdf$/i, ""));
   };
 
   const upload = useMutation({
@@ -56,9 +72,9 @@ export function AdminDeliverableUpload({ companyId, companyName }: Props) {
       if (doc.due_date_from_pdf && doc.due_date) {
         const [a, m, d] = doc.due_date.split("-");
         toast.success(`Enviado para ${companyName}. Vencimento ${d}/${m}/${a} lido do PDF.`);
-      } else if (category === "guia" && !doc.due_date) {
+      } else if (comVencimento && !doc.due_date) {
         toast.warning(
-          `Enviado para ${companyName}, mas não achei o vencimento no PDF — informe a data para entrar no calendário.`
+          `Enviado para ${companyName}, mas sem vencimento — informe a data para entrar no calendário.`
         );
       } else {
         toast.success(`Documento enviado para ${companyName}`);
@@ -75,9 +91,64 @@ export function AdminDeliverableUpload({ companyId, companyName }: Props) {
       <div>
         <p className="text-xs font-semibold text-foreground">Enviar documento ao portal do cliente</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Só PDF (máx. 10MB). Guias e folha enviadas pelo sistema de guias chegam sozinhas — use aqui
-          para o que for manual (contratos, relatórios, balancetes).
+          Só PDF (máx. 10MB). Boletos e guias entram no calendário de vencimentos; contratos e
+          relatórios ficam em Documentos.
         </p>
+      </div>
+
+      {/* Área de arrastar-e-soltar */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => fileRef.current?.click()}
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && fileRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          escolherArquivo(e.dataTransfer.files?.[0]);
+        }}
+        className={cn(
+          "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors",
+          dragging ? "border-primary bg-primary/10" : "border-border hover:border-primary/40 hover:bg-card/60"
+        )}
+      >
+        {file ? (
+          <div className="flex items-center gap-2 text-sm">
+            <FileText className="h-4 w-4 text-primary" />
+            <span className="max-w-[16rem] truncate font-medium">{file.name}</span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setFile(null);
+                if (fileRef.current) fileRef.current.value = "";
+              }}
+              className="rounded-full p-0.5 text-muted-foreground hover:bg-muted"
+              aria-label="Remover arquivo"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <Upload className="h-5 w-5 text-muted-foreground" />
+            <p className="text-sm">
+              <span className="font-medium text-primary">Arraste o PDF aqui</span> ou clique para escolher
+            </p>
+          </>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          className="hidden"
+          onChange={(e) => escolherArquivo(e.target.files?.[0])}
+        />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -98,20 +169,12 @@ export function AdminDeliverableUpload({ companyId, companyName }: Props) {
 
         <div className="space-y-1 sm:col-span-2">
           <Label className="text-xs">Título *</Label>
-          <Input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Ex.: Balancete de junho"
-          />
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex.: Boleto fornecedor X" />
         </div>
 
         <div className="space-y-1">
           <Label className="text-xs">Sigla (opcional)</Label>
-          <Input
-            value={docType}
-            onChange={(e) => setDocType(e.target.value)}
-            placeholder="Ex.: DAS, INSS"
-          />
+          <Input value={docType} onChange={(e) => setDocType(e.target.value)} placeholder="Ex.: CORA, ENERGIA" />
         </div>
 
         <div className="space-y-1">
@@ -119,28 +182,15 @@ export function AdminDeliverableUpload({ companyId, companyName }: Props) {
           <Input type="month" value={competencia} onChange={(e) => setCompetencia(e.target.value)} />
         </div>
 
-        {category === "guia" && (
+        {comVencimento && (
           <div className="space-y-1 sm:col-span-2">
-            <Label className="text-xs">
-              Vencimento <span className="text-muted-foreground">(opcional)</span>
-            </Label>
+            <Label className="text-xs">Vencimento</Label>
             <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             <p className="text-xs text-muted-foreground">
-              Deixe em branco que o portal tenta ler do próprio PDF. Só preencha para
-              sobrepor a data lida — sem vencimento a guia não entra no calendário.
+              Deixe em branco que o portal tenta ler do PDF. Sem vencimento não entra no calendário.
             </p>
           </div>
         )}
-
-        <div className="space-y-1 sm:col-span-2">
-          <Label className="text-xs">Arquivo PDF *</Label>
-          <Input
-            ref={fileRef}
-            type="file"
-            accept="application/pdf,.pdf"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
-        </div>
       </div>
 
       <Button type="button" size="sm" disabled={!canSubmit} onClick={() => upload.mutate()}>

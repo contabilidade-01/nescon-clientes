@@ -6,11 +6,11 @@ const { validateUUID, validateEmailFormat, validateString, validateCNPJ } = requ
 const { mergeToolAccess } = require("../companyTools");
 const { listCompanies, insertCompanyRow, PG_UNDEFINED_COLUMN } = require("../toolAccessDb");
 const { importEmployeesForCompany } = require("../employeeImport");
-
-const QUEIJEIRO_COMPANY_SEEDS = [
-  { name: "RESTAURANTE DO QUEIJEIRO 3 LIMITADA", cnpj: "52191264000173" },
-  { name: "RESTAURANTE DO QUEIJEIRO 4 LTDA", cnpj: "54803962000108" },
-];
+const { parseExtratoEmployees } = require("../extratoEmployees");
+const { resolveUploadPath } = require("../uploads");
+const sync = require("../gclick/sync");
+const gclickClient = require("../gclick/client");
+const fs = require("fs");
 
 function adminOnly(req, res, next) {
   if (!req.isAdmin) {
@@ -264,41 +264,170 @@ router.patch("/companies/:id", async (req, res) => {
   }
 });
 
-router.post("/seed/queijeiros-companies", async (_req, res) => {
+/** Estado da sincronização com o G-Click (para o painel mostrar). */
+router.get("/sync-gclick/status", (_req, res) => {
+  res.json({
+    configurado: gclickClient.isConfigured(),
+    rodando: sync.estaRodando(),
+    ultima: sync.ultimaExecucao(),
+  });
+});
+
+/** Dispara a sincronização com o G-Click em segundo plano (pode levar minutos). */
+router.post("/sync-gclick", async (req, res) => {
+  if (!gclickClient.isConfigured()) {
+    return res.status(503).json({ error: "G-Click não configurado (GCLICK_CLIENT_ID/SECRET)." });
+  }
+  if (sync.estaRodando()) {
+    return res.status(409).json({ error: "Já existe uma sincronização em andamento." });
+  }
+  const meses = Number(req.body?.meses) || undefined;
+  // Não segura a resposta: a carga pode demorar; o painel acompanha pelo /status.
+  sync.sincronizar({ meses }).catch((e) => console.error("[admin sync]", e.message));
+  res.status(202).json({ message: "Sincronização iniciada." });
+});
+
+/** Localiza o extrato de folha mais recente já hospedado no portal para a empresa. */
+async function ultimoExtrato(companyId) {
+  const { rows } = await db.query(
+    `SELECT id, competencia, file_path, file_name
+     FROM deliverables
+     WHERE company_id = $1 AND doc_type = 'EXTRATO_FOLHA'
+     ORDER BY competencia DESC NULLS LAST, created_at DESC
+     LIMIT 1`,
+    [companyId]
+  );
+  return rows[0] || null;
+}
+
+async function funcionariosDoExtrato(companyId) {
+  const extrato = await ultimoExtrato(companyId);
+  if (!extrato) return { extrato: null, funcionarios: [], invalidos: 0 };
+  const full = resolveUploadPath(extrato.file_path);
+  if (!full || !fs.existsSync(full)) return { extrato, funcionarios: [], invalidos: 0, semArquivo: true };
+  const { funcionarios, invalidos } = await parseExtratoEmployees(fs.readFileSync(full));
+  return { extrato, funcionarios, invalidos };
+}
+
+/**
+ * Prévia: lê o último extrato de folha da empresa e devolve nome+CPF encontrados,
+ * marcando quais já estão cadastrados (para o admin conferir antes de importar).
+ */
+router.get("/companies/:id/extrato-employees", async (req, res) => {
   try {
-    const results = [];
-    for (const seed of QUEIJEIRO_COMPANY_SEEDS) {
-      const passwordHash = await bcrypt.hash(seed.cnpj, 10);
+    const { id } = req.params;
+    if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
+
+    const { rows: co } = await db.query("SELECT id, name FROM companies WHERE id = $1", [id]);
+    if (!co.length) return res.status(404).json({ error: "Empresa não encontrada" });
+
+    const { extrato, funcionarios, invalidos, semArquivo } = await funcionariosDoExtrato(id);
+    if (!extrato) {
+      return res.status(404).json({ error: "Nenhum extrato de folha encontrado no portal para esta empresa." });
+    }
+    if (semArquivo) {
+      return res.status(404).json({ error: "O arquivo do extrato não está disponível no disco." });
+    }
+
+    const { rows: jaTem } = await db.query(
+      "SELECT cpf FROM employees WHERE company_id = $1",
+      [id]
+    );
+    const existentes = new Set(jaTem.map((r) => String(r.cpf).replace(/\D/g, "")));
+    const funcs = funcionarios.map((f) => ({ ...f, jaCadastrado: existentes.has(f.cpf) }));
+
+    res.json({
+      competencia: extrato.competencia,
+      arquivo: extrato.file_name,
+      invalidos,
+      total: funcs.length,
+      novos: funcs.filter((f) => !f.jaCadastrado).length,
+      funcionarios: funcs,
+    });
+  } catch (err) {
+    console.error("[extrato-employees]", err);
+    res.status(500).json({ error: "Erro ao ler o extrato" });
+  }
+});
+
+/**
+ * Varre TODAS as empresas e resume quantos funcionários o extrato traria por empresa,
+ * sem gravar (dry-run). É a "revisão antes" para o cadastro em massa.
+ */
+router.post("/extrato-employees/scan-all", async (_req, res) => {
+  try {
+    const { rows: companies } = await db.query("SELECT id, name, cnpj FROM companies ORDER BY name");
+    const resultados = [];
+    for (const c of companies) {
+      const { extrato, funcionarios } = await funcionariosDoExtrato(c.id);
+      if (!extrato || !funcionarios.length) continue;
+      const { rows: jaTem } = await db.query("SELECT cpf FROM employees WHERE company_id = $1", [c.id]);
+      const existentes = new Set(jaTem.map((r) => String(r.cpf).replace(/\D/g, "")));
+      const novos = funcionarios.filter((f) => !existentes.has(f.cpf)).length;
+      resultados.push({ id: c.id, name: c.name, competencia: extrato.competencia,
+        encontrados: funcionarios.length, novos });
+    }
+    res.json({
+      empresas_com_extrato: resultados.length,
+      total_novos: resultados.reduce((s, r) => s + r.novos, 0),
+      empresas: resultados,
+    });
+  } catch (err) {
+    console.error("[scan-all]", err);
+    res.status(500).json({ error: "Erro na varredura" });
+  }
+});
+
+/**
+ * Cadastra os funcionários do extrato. Sem `id` no corpo, faz para TODAS as empresas.
+ * Reaproveita a mesma validação/inserção da importação por planilha.
+ */
+router.post("/extrato-employees/import", async (req, res) => {
+  try {
+    const alvoId = req.body?.company_id;
+    let companies;
+    if (alvoId) {
+      if (!validateUUID(alvoId)) return res.status(400).json({ error: "company_id inválido" });
+      const { rows } = await db.query("SELECT id, name, cnpj FROM companies WHERE id = $1", [alvoId]);
+      if (!rows.length) return res.status(404).json({ error: "Empresa não encontrada" });
+      companies = rows;
+    } else {
+      const { rows } = await db.query("SELECT id, name, cnpj FROM companies ORDER BY name");
+      companies = rows;
+    }
+
+    let totalInseridos = 0;
+    let totalPulados = 0;
+    const porEmpresa = [];
+
+    for (const c of companies) {
+      const { funcionarios } = await funcionariosDoExtrato(c.id);
+      if (!funcionarios.length) continue;
+      const client = await db.connect();
       try {
-        const created = await insertCompanyRow(db, {
-          name: seed.name,
-          cnpjDigits: seed.cnpj,
-          passwordHash,
-          emailNorm: null,
-          phoneNorm: null,
-        });
-        results.push({ cnpj: seed.cnpj, name: seed.name, status: "created", id: created.id });
-      } catch (err) {
-        if (err.code === "23505") {
-          const { rows } = await db.query(
-            "SELECT id, name, cnpj FROM companies WHERE cnpj = $1 LIMIT 1",
-            [seed.cnpj]
-          );
-          results.push({
-            cnpj: seed.cnpj,
-            name: rows[0]?.name ?? seed.name,
-            status: "exists",
-            id: rows[0]?.id,
-          });
-        } else {
-          throw err;
+        await client.query("BEGIN");
+        const r = await importEmployeesForCompany(client, c.id, c.cnpj, c.cnpj, funcionarios);
+        if (r.status !== 201) {
+          await client.query("ROLLBACK");
+          porEmpresa.push({ name: c.name, erro: r.body.error });
+          continue;
         }
+        await client.query("COMMIT");
+        totalInseridos += r.body.inserted;
+        totalPulados += r.body.skipped;
+        porEmpresa.push({ name: c.name, inseridos: r.body.inserted, pulados: r.body.skipped });
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        porEmpresa.push({ name: c.name, erro: e.message });
+      } finally {
+        client.release();
       }
     }
-    res.json({ ok: true, companies: results });
+
+    res.json({ inseridos: totalInseridos, pulados: totalPulados, empresas: porEmpresa });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Erro interno ao cadastrar empresas Queijeiro" });
+    console.error("[extrato-import]", err);
+    res.status(500).json({ error: "Erro ao cadastrar funcionários do extrato" });
   }
 });
 

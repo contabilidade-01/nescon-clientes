@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS companies (
   password_hash TEXT NOT NULL,
   contact_email TEXT,
   phone TEXT,
-  tool_access JSONB DEFAULT '{"fiscal_guides":true,"payroll_files":true,"documents":true,"calendar":true,"suspension":true,"warning":true,"chatbot":true,"salary_adhoc":true,"employees":true,"certificates":true,"history":true}'::jsonb,
+  tool_access JSONB DEFAULT '{"fiscal_guides":true,"boletos":true,"payroll_files":true,"documents":true,"calendar":true,"suspension":true,"warning":true,"chatbot":true,"salary_adhoc":true,"employees":true,"certificates":true,"history":true}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 

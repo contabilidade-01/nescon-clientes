@@ -26,9 +26,36 @@ async function ensureDeliverablesSchema(db) {
         created_at TIMESTAMPTZ DEFAULT now()
       );
     `);
+    // Documento puxado do G-Click fica RETIDO até o escritório liberar: released_at
+    // nulo = invisível para o cliente. Só a liberação (feita pelo sistema de guias,
+    // no mesmo clique que dispara o aviso no WhatsApp) torna visível.
+    await db.query(`
+      ALTER TABLE deliverables ADD COLUMN IF NOT EXISTS released_at TIMESTAMPTZ;
+    `);
+    // Versão da atividade no G-Click (respondidaEm): detecta retificação sem
+    // rebaixar o PDF a cada sync.
+    await db.query(`
+      ALTER TABLE deliverables ADD COLUMN IF NOT EXISTS gclick_versao_em TEXT;
+    `);
+    await db.query(`
+      ALTER TABLE deliverables ADD COLUMN IF NOT EXISTS gclick_atividade_id TEXT;
+    `);
+    await db.query(`
+      ALTER TABLE deliverables ADD COLUMN IF NOT EXISTS num_versoes INTEGER NOT NULL DEFAULT 1;
+    `);
+    // Entregas que já existiam antes da retenção continuam visíveis (não sumir do
+    // cliente numa atualização). Só vale para linhas antigas: a coluna nasce nula.
+    await db.query(`
+      UPDATE deliverables SET released_at = created_at
+      WHERE released_at IS NULL AND source <> 'gclick';
+    `);
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_deliverables_company_due
         ON deliverables(company_id, due_date);
+    `);
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_deliverables_released
+        ON deliverables(company_id, released_at);
     `);
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_deliverables_token

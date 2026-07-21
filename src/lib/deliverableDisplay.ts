@@ -52,7 +52,22 @@ export function dueText(due: string | null | undefined, status: DeliverableStatu
 export const DUE_TONE_CLASS: Record<DueTone, string> = {
   overdue: "text-destructive font-semibold",
   today: "text-destructive font-semibold",
-  soon: "text-amber-600 dark:text-amber-500 font-medium",
+  soon: "text-warning font-medium",
   future: "text-muted-foreground",
   none: "text-muted-foreground",
 };
+
+/** Selo sólido de urgência ("Vence hoje"), como no topo dos cards de destaque. */
+export const DUE_BADGE_CLASS: Record<DueTone, string> = {
+  overdue: "bg-destructive text-destructive-foreground",
+  today: "bg-destructive text-destructive-foreground",
+  soon: "bg-warning text-warning-foreground",
+  future: "bg-secondary text-secondary-foreground",
+  none: "bg-success text-success-foreground",
+};
+
+/** Data por extenso curta: "18 de jul 2026". */
+export function formatDueLong(due: string | null | undefined): string {
+  const d = parseDue(due);
+  return d ? format(d, "dd 'de' MMM yyyy", { locale: ptBR }) : "—";
+}

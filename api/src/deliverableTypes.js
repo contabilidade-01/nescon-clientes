@@ -2,10 +2,11 @@
  * Categorias de entrega e a ferramenta (tool_access) que libera cada uma.
  * Partilhado entre as rotas do cliente e a ingestão vinda do sistema de guias.
  */
-const CATEGORIES = ["guia", "folha", "outro"];
+const CATEGORIES = ["guia", "boleto", "folha", "outro"];
 
 const TOOL_BY_CATEGORY = {
   guia: "fiscal_guides",
+  boleto: "boletos",
   folha: "payroll_files",
   outro: "documents",
 };

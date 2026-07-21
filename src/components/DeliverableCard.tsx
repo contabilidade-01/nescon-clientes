@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { api, type Deliverable, type DeliverableStatus } from "@/lib/api";
 import { openDeliverableFile } from "@/lib/openFile";
-import { competenciaLabel, formatDue, dueTone, dueText, DUE_TONE_CLASS } from "@/lib/deliverableDisplay";
+import { DueBadge } from "@/components/DueBadge";
+import { competenciaLabel, formatDue, dueTone, DUE_TONE_CLASS } from "@/lib/deliverableDisplay";
 import { toast } from "sonner";
 
 type Props = {
@@ -47,20 +48,29 @@ export function DeliverableCard({ deliverable: d, showPayment = false, showCompe
   };
 
   return (
-    <Card className={cn(tone === "overdue" && "border-destructive/40")}>
+    <Card
+      className={cn(
+        "rounded-2xl border bg-card/70 transition-colors hover:bg-card",
+        tone === "overdue" && "border-destructive/40"
+      )}
+    >
       <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            {d.doc_type && <Badge variant="secondary">{d.doc_type}</Badge>}
-            {d.status === "paid" && <Badge className="bg-emerald-600 hover:bg-emerald-600">Pago</Badge>}
+            {d.doc_type && (
+              <Badge variant="secondary" className="font-mono text-[10px] tracking-wide">
+                {d.doc_type}
+              </Badge>
+            )}
+            {showPayment && <DueBadge dueDate={d.due_date} status={d.status} />}
             {showCompetencia && d.competencia && (
               <span className="text-xs text-muted-foreground">{competenciaLabel(d.competencia)}</span>
             )}
           </div>
-          <p className="mt-1 truncate font-medium">{d.title}</p>
+          <p className="mt-1.5 truncate font-semibold">{d.title}</p>
           {showPayment && d.due_date && (
             <p className={cn("mt-0.5 text-sm", DUE_TONE_CLASS[tone])}>
-              Vencimento {formatDue(d.due_date)} · {dueText(d.due_date, d.status)}
+              Vence em {formatDue(d.due_date)}
             </p>
           )}
         </div>

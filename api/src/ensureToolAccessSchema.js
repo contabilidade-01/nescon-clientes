@@ -2,7 +2,7 @@
  * Garante coluna de permissões por ferramenta (empresas já existentes recebem o default JSON).
  */
 const DEFAULT_TOOL_ACCESS_JSON =
-  '{"fiscal_guides":true,"payroll_files":true,"documents":true,"calendar":true,' +
+  '{"fiscal_guides":true,"boletos":true,"payroll_files":true,"documents":true,"calendar":true,' +
   '"suspension":true,"warning":true,"chatbot":true,"salary_adhoc":true,' +
   '"employees":true,"certificates":true,"history":true}';
 
@@ -27,7 +27,7 @@ async function ensureToolAccessSchema(db) {
       UPDATE companies
       SET tool_access = '${DEFAULT_TOOL_ACCESS_JSON}'::jsonb || tool_access
       WHERE tool_access IS NOT NULL
-        AND NOT (tool_access ?& array['fiscal_guides','payroll_files','documents','calendar']);
+        AND NOT (tool_access ?& array['fiscal_guides','boletos','payroll_files','documents','calendar']);
     `);
     console.log("[DB] tool_access: coluna verificada/atualizada.");
   } catch (err) {
