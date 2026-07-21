@@ -103,7 +103,7 @@ INSERT INTO companies (name, cnpj, password_hash) VALUES (
 
 -- Empresa operacional (senha inicial segue a regra do README)
 INSERT INTO companies (name, cnpj, password_hash) VALUES (
-  'Gestão Empresa',
+  'NESCON CONSULTORIA',
   '35736034000123',
   '$2a$10$4IXJRYObvEzVNQutX51uq.uuQBbijm.k1zfVnLNY2hSSL8aDjPH4a'
 ) ON CONFLICT (cnpj) DO NOTHING;
