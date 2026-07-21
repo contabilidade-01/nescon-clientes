@@ -24,18 +24,54 @@ router.use(adminOnly);
 
 router.get("/summary", async (_req, res) => {
   try {
-    const [c, d, e, cert] = await Promise.all([
+    const [c, d, e, cert, deliv] = await Promise.all([
       db.query("SELECT COUNT(*)::int AS n FROM companies"),
       db.query("SELECT COUNT(*)::int AS n FROM issued_documents"),
       db.query("SELECT COUNT(*)::int AS n FROM employees"),
       db.query("SELECT COUNT(*)::int AS n FROM medical_certificates"),
+      db.query(
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE released_at IS NOT NULL)::int AS liberadas,
+                COUNT(*) FILTER (WHERE released_at IS NULL)::int AS retidas
+           FROM deliverables`
+      ),
     ]);
     res.json({
       companies: c.rows[0].n,
       documents: d.rows[0].n,
       employees: e.rows[0].n,
       certificates: cert.rows[0].n,
+      deliverables: deliv.rows[0].total,
+      deliverables_liberadas: deliv.rows[0].liberadas,
+      deliverables_retidas: deliv.rows[0].retidas,
     });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/**
+ * Painel de entregas: quantas entregas (guias, boletos, folha, documentos) cada
+ * empresa recebeu, separando liberadas (visíveis ao cliente) de retidas (à espera
+ * de o escritório clicar "Enviar" no sistema de guias). Resolve a confusão do
+ * cartão "Documentos emitidos", que conta issued_documents (fluxo antigo de DP),
+ * não a tabela deliverables (guias/folha vindas do G-Click).
+ */
+router.get("/deliverables-overview", async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT c.id, c.name, c.cnpj,
+              COUNT(d.id)::int AS total,
+              COUNT(d.id) FILTER (WHERE d.released_at IS NOT NULL)::int AS liberadas,
+              COUNT(d.id) FILTER (WHERE d.released_at IS NULL)::int AS retidas,
+              to_char(MAX(d.created_at), 'YYYY-MM-DD"T"HH24:MI:SSOF') AS ultima_entrada
+         FROM companies c
+         JOIN deliverables d ON d.company_id = c.id
+        GROUP BY c.id, c.name, c.cnpj
+        ORDER BY total DESC, c.name ASC`
+    );
+    res.json(rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Erro interno" });

@@ -196,9 +196,28 @@ export const api = {
 
   admin: {
     summary: () =>
-      request<{ companies: number; documents: number; employees: number; certificates: number }>(
-        "/admin/summary"
-      ),
+      request<{
+        companies: number;
+        documents: number;
+        employees: number;
+        certificates: number;
+        deliverables: number;
+        deliverables_liberadas: number;
+        deliverables_retidas: number;
+      }>("/admin/summary"),
+    /** Entregas (guias/folha/documentos) por empresa: liberadas × retidas. */
+    deliverablesOverview: () =>
+      request<
+        Array<{
+          id: string;
+          name: string;
+          cnpj: string;
+          total: number;
+          liberadas: number;
+          retidas: number;
+          ultima_entrada: string | null;
+        }>
+      >("/admin/deliverables-overview"),
     me: () =>
       request<{ id: string; cpf: string; contact_email: string | null }>("/admin/me"),
     updateMyContactEmail: (contact_email: string | null) =>

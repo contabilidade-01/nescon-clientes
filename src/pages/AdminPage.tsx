@@ -55,6 +55,11 @@ const AdminPage = () => {
     queryFn: () => api.admin.summary(),
   });
 
+  const { data: deliverablesOverview, isLoading: loadingDeliverables } = useQuery({
+    queryKey: ["admin-deliverables-overview"],
+    queryFn: () => api.admin.deliverablesOverview(),
+  });
+
   const { data: adminMe } = useQuery({
     queryKey: ["admin-me"],
     queryFn: () => api.admin.me(),
@@ -256,7 +261,7 @@ const AdminPage = () => {
         </Card>
 
         {summary && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <Card>
               <CardContent className="pt-4 pb-4">
                 <p className="text-xs text-muted-foreground">Empresas</p>
@@ -265,7 +270,16 @@ const AdminPage = () => {
             </Card>
             <Card>
               <CardContent className="pt-4 pb-4">
-                <p className="text-xs text-muted-foreground">Documentos</p>
+                <p className="text-xs text-muted-foreground">Entregas (guias/folha)</p>
+                <p className="text-2xl font-bold">{summary.deliverables}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {summary.deliverables_liberadas} liberadas · {summary.deliverables_retidas} retidas
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <p className="text-xs text-muted-foreground">Docs DP (susp./advert.)</p>
                 <p className="text-2xl font-bold">{summary.documents}</p>
               </CardContent>
             </Card>
@@ -283,6 +297,53 @@ const AdminPage = () => {
             </Card>
           </div>
         )}
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <FileText className="h-4 w-4" /> Entregas por empresa (G-Click + manual)
+            </CardTitle>
+            <CardDescription>
+              O que a sincronização e os envios manuais trouxeram, por empresa.{" "}
+              <strong>Liberadas</strong> = já visíveis para o cliente no portal;{" "}
+              <strong>retidas</strong> = à espera de o escritório clicar &quot;Enviar&quot; no sistema de
+              guias. Este cartão lê a tabela de <strong>entregas</strong> — diferente de &quot;Docs DP&quot;,
+              que conta suspensões/advertências do fluxo antigo.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="max-h-96 overflow-y-auto space-y-2 text-sm">
+            {loadingDeliverables ? (
+              <p className="text-muted-foreground">Carregando...</p>
+            ) : deliverablesOverview?.length ? (
+              deliverablesOverview.map((row) => (
+                <div
+                  key={row.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{row.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      CNPJ {row.cnpj}
+                      {row.ultima_entrada
+                        ? ` · última: ${format(new Date(row.ultima_entrada), "dd/MM/yyyy HH:mm", { locale: ptBR })}`
+                        : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Badge variant="outline">{row.total} total</Badge>
+                    <Badge variant="default">{row.liberadas} liberadas</Badge>
+                    {row.retidas > 0 && <Badge variant="secondary">{row.retidas} retidas</Badge>}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-muted-foreground">
+                Nenhuma entrega registrada ainda. Rode a sincronização com o G-Click ou envie um documento
+                manualmente em <strong>Gestão de empresas</strong>.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="pb-2">

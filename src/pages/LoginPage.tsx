@@ -71,7 +71,7 @@ const LoginPage = () => {
           <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
             <Building2 className="h-7 w-7" />
           </div>
-          <CardTitle className="text-2xl">Gestão de Documentos</CardTitle>
+          <CardTitle className="text-2xl">Portal do Cliente</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -109,6 +109,10 @@ const LoginPage = () => {
               {loading ? "Entrando..." : "Entrar"}
             </Button>
           </form>
+          <p className="mt-4 rounded-lg bg-muted/60 px-3 py-2 text-center text-xs text-muted-foreground">
+            <strong className="font-medium text-foreground">1º acesso:</strong> o login e a senha são o seu CNPJ
+            (só os números). Você definirá uma nova senha logo após entrar.
+          </p>
         </CardContent>
         <CardFooter className="flex flex-col border-t px-6 pb-6 pt-4">
           <Link
