@@ -284,6 +284,59 @@ export type VacationUpload = {
   criado_em: string;
 };
 
+
+export type VacationSituacao = "vencida" | "a_vencer" | "ok" | "sem_limite";
+
+export type VacationCusto = { bruto: number; umTerco: number; fgts: number; total: number };
+
+/** Um funcionário × período aquisitivo, já com custo e alerta calculados no servidor. */
+export type VacationItem = {
+  id: string;
+  codigo: string | null;
+  nome: string;
+  admissao: string | null;
+  inicio_aquisitivo: string | null;
+  fim_aquisitivo: string | null;
+  inicio_gozo: string | null;
+  limite_gozo: string | null;
+  limite_seguranca: string | null;
+  situacao: VacationSituacao;
+  dias_direito: number;
+  dias_gozados: number;
+  dias_acumulados: number;
+  dias_a_pagar: number;
+  faltas: number;
+  alerta_faltas: {
+    faltasAtuais: number;
+    diasAtuais: number;
+    faltasRestantes: number;
+    diasDepois: number;
+    perde: number;
+  } | null;
+  dias_pela_tabela: number;
+  salario_base: number | null;
+  salario_competencia: string | null;
+  /** Nulo quando não há salário conhecido — a tela mostra em branco, nunca R$ 0,00. */
+  custo: VacationCusto | null;
+};
+
+export type VacationResumo = {
+  funcionarios: number;
+  periodos: number;
+  vencidas: number;
+  a_vencer: number;
+  em_risco_faltas: number;
+  custo: VacationCusto & { semSalario: number };
+};
+
+export type VacationCalendarItem = {
+  data: string;
+  limite_oficial: string;
+  nome: string;
+  dias: number;
+  situacao: VacationSituacao;
+};
+
 export type LgpdTermo = {
   versao: string;
   titulo: string;
@@ -425,6 +478,17 @@ export const api = {
         "/admin/sync-gclick/clientes",
         { method: "POST" }
       ),
+  },
+
+  /** Férias do cliente: previsão, custo e limite de faltas. */
+  ferias: {
+    listar: () =>
+      request<{
+        upload: VacationUpload | null;
+        periodos: VacationItem[];
+        resumo: VacationResumo | null;
+      }>("/ferias"),
+    calendario: () => request<VacationCalendarItem[]>("/ferias/calendario"),
   },
 
   /** Licenças (funcionamento, AVCB/CLCB, vigilância sanitária). Só admin. */

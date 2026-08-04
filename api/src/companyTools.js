@@ -9,6 +9,8 @@ const DEFAULT_TOOL_ACCESS = {
   payroll_files: true,
   documents: true,
   calendar: true,
+  // Férias: previsão, custo e limite de faltas
+  vacations: true,
   // Departamento pessoal
   suspension: true,
   warning: true,
@@ -30,6 +32,7 @@ const PORTAL_ONLY_TOOL_ACCESS = {
   payroll_files: true,
   documents: true,
   calendar: true,
+  vacations: true,
   suspension: false,
   warning: false,
   chatbot: false,

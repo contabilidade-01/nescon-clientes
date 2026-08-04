@@ -62,7 +62,7 @@ e cada rota é uma página em `src/pages/admin/`:
 |------|-----------|
 | `/admin` | Visão geral: números do escritório, licenças que exigem atenção e consentimentos LGPD. Cada cartão leva à área correspondente. |
 | `/admin/empresas` | Cadastro de CNPJ, razão social, contactos, permissões por ferramenta e importações da empresa. |
-| `/admin/funcionarios` | Quadro de pessoal e cadastro em massa pelo extrato de folha. |
+| `/admin/funcionarios` | Quadro de pessoal, cadastro em massa pelo extrato e **avisos de saída da folha**. |
 | `/admin/entregas` | Entregas por empresa (liberadas × retidas), documentos de DP e atestados. |
 | `/admin/licencas` | Licenças e marcação estabelecida × não estabelecida (ver abaixo). |
 | `/admin/taxas-anuais` | Controle das guias de taxa anual da prefeitura. |
@@ -125,6 +125,32 @@ O espelho sempre traz **todos** os clientes, inclusive os desativados — sem el
 perceber que alguém foi desativado. O switch *"alertar só sobre clientes ativos"*
 (`/admin/sincronizacao`, gravado em `app_settings`; `GCLICK_ALERTA_SO_ATIVOS` é o padrão) decide
 apenas **quem vira alerta**.
+
+### Férias (previsão, custo e limite de faltas)
+
+Seção **Férias** no portal do cliente (chave `vacations` em `tool_access`), alimentada pela
+**Programação de Férias** do G-Click — o PDF é importado em `/admin/empresas`, na ficha da
+empresa, porque o G-Click não expõe esse relatório na API.
+
+O que o cliente vê:
+
+- **quem tem direito e quando**, ordenado pelo mais urgente;
+- **quanto vai custar**: `salário/30 × dias × 4/3 × 1,08` (férias + 1/3 + FGTS). O FGTS incide
+  sobre o valor **já com o terço**. Sem salário na folha mais recente, o custo fica **em
+  branco** e o resumo diz quantos ficaram de fora — nunca R$ 0,00;
+- **limite de faltas**: *"com 11 faltas, mais 4 e as férias caem de 24 para 18 dias"*.
+
+**Os dias de direito não são recalculados.** O relatório do G-Click já aplica o Art. 130 e nós
+usamos o número que veio; refazer a conta arriscaria a tela discordar do documento que o
+cliente tem em mãos. A tabela do Art. 130 (`api/src/vacationRules.js`) serve só para dizer
+quantas faltas ainda cabem antes de cair de faixa.
+
+No **calendário** aparece o *limite de segurança* — 30 dias antes do prazo legal —, porque
+marcar o prazo em si seria avisar quando já não dá para agir.
+
+O cruzamento entre a Programação e a folha é por **código** do funcionário dentro da empresa,
+com o nome normalizado como segunda tentativa. O salário vem do Extrato Mensal, lido
+automaticamente a cada sincronização (ver abaixo).
 
 ### Licenças (funcionamento, AVCB/CLCB, vigilância sanitária)
 

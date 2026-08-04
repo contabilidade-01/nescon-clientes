@@ -149,6 +149,12 @@ situacao(limiteGozo, hoje)      // 'vencida' | 'a_vencer' | 'ok'   (mesma ideia 
 | **5** | Seção **Férias** no portal + chave em `tool_access` | Cliente vê os três números |
 | **6** | Limite de gozo no calendário | Aparece junto de guias e boletos |
 
+**Todas as fases foram implementadas em 04/08/2026.** Duas decisões tomadas na execução:
+
+- O calendário marca o **limite de segurança**, não o limite oficial. Avisar no dia do
+  prazo é avisar quando já não há o que fazer.
+- O custo desconta os **dias já gozados**: quem tirou 10 de 24 dias só tem 14 a pagar.
+
 Regra de escopo: pode alterar o que for necessário, desde que não mude o comportamento do
 que já funciona.
 

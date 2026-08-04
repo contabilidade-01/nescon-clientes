@@ -5,6 +5,7 @@ export const COMPANY_TOOL_KEYS = [
   "payroll_files",
   "documents",
   "calendar",
+  "vacations",
   // Departamento pessoal
   "suspension",
   "warning",
@@ -72,6 +73,11 @@ export const COMPANY_TOOL_LABELS: Record<
     group: "dp",
   },
   employees: { title: "Funcionários", description: "Cadastro de funcionários", group: "dp" },
+  vacations: {
+    title: "Férias",
+    description: "Quem tem direito, quanto custa e o limite de faltas",
+    group: "dp",
+  },
   history: { title: "Histórico", description: "Documentos emitidos", group: "dp" },
 };
 

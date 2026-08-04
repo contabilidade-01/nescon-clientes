@@ -2,14 +2,16 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, startOfToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, Palmtree } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
 import { PortalPage } from "@/components/PortalPage";
 import { DeliverableCard } from "@/components/DeliverableCard";
-import { api, type Deliverable } from "@/lib/api";
+import { api, type Deliverable, type VacationCalendarItem } from "@/lib/api";
 import { parseDue, formatDue } from "@/lib/deliverableDisplay";
 import { useAuth } from "@/hooks/useAuth";
+import { isToolAllowed } from "@/lib/companyTools";
+import { formatDateBR } from "@/lib/licenses";
 
 const CalendarioPage = () => {
   const { company } = useAuth();
@@ -20,6 +22,26 @@ const CalendarioPage = () => {
     queryFn: () => api.deliverables.calendar(),
     enabled: !!company,
   });
+
+  // Férias entram no mesmo calendário, mas pela data de SEGURANÇA (30 dias antes do
+  // limite oficial): marcar o limite seria avisar no dia em que já não dá para agir.
+  const podeFerias = isToolAllowed(company?.toolAccess, "vacations");
+  const { data: ferias } = useQuery({
+    queryKey: ["ferias-calendario"],
+    queryFn: () => api.ferias.calendario(),
+    enabled: !!company && podeFerias,
+  });
+
+  const feriasPorDia = useMemo(() => {
+    const map = new Map<string, VacationCalendarItem[]>();
+    for (const f of ferias ?? []) {
+      if (!f.data) continue;
+      const lista = map.get(f.data) ?? [];
+      lista.push(f);
+      map.set(f.data, lista);
+    }
+    return map;
+  }, [ferias]);
 
   const byDay = useMemo(() => {
     const map = new Map<string, Deliverable[]>();
@@ -48,8 +70,14 @@ const CalendarioPage = () => {
     return { overdue, pending, paid };
   }, [byDay]);
 
+  const marcasFerias = useMemo(
+    () => [...feriasPorDia.keys()].map((k) => parseDue(k)).filter((d): d is Date => !!d),
+    [feriasPorDia]
+  );
+
   const selectedKey = selected ? format(selected, "yyyy-MM-dd") : "";
   const dayItems = selectedKey ? byDay.get(selectedKey) ?? [] : [];
+  const feriasDoDia = selectedKey ? feriasPorDia.get(selectedKey) ?? [] : [];
   const totalPendentes = (data ?? []).filter((d) => d.status === "pending").length;
 
   return (
@@ -76,11 +104,13 @@ const CalendarioPage = () => {
                       overdue: marks.overdue,
                       pending: marks.pending,
                       paid: marks.paid,
+                      ferias: marcasFerias,
                     }}
                     modifiersClassNames={{
                       overdue: "bg-destructive/20 text-destructive font-bold rounded-md",
                       pending: "bg-primary/20 text-primary font-bold rounded-md",
                       paid: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded-md",
+                      ferias: "ring-2 ring-amber-500/60 rounded-md",
                     }}
                     className="pointer-events-auto mx-auto"
                   />
@@ -95,11 +125,16 @@ const CalendarioPage = () => {
                   <span className="flex items-center gap-1.5">
                     <span className="h-3 w-3 rounded-sm bg-emerald-500/40" /> Pago
                   </span>
+                  {podeFerias && (
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-3 w-3 rounded-sm ring-2 ring-amber-500/60" /> Programar férias
+                    </span>
+                  )}
                 </div>
               </CardContent>
             </Card>
 
-            {!isLoading && byDay.size === 0 && (
+            {!isLoading && byDay.size === 0 && feriasPorDia.size === 0 && (
               <div className="rounded-lg border border-dashed bg-muted/30 px-4 py-10 text-center">
                 <CalendarDays className="mx-auto h-8 w-8 text-muted-foreground/60" />
                 <p className="mt-2 text-sm text-muted-foreground">
@@ -114,11 +149,28 @@ const CalendarioPage = () => {
                 <h2 className="text-sm font-semibold">
                   {formatDue(selectedKey)}
                   <span className="ml-2 font-normal text-muted-foreground">
-                    {dayItems.length === 0
-                      ? "· nada a pagar neste dia"
-                      : `· ${dayItems.length} ${dayItems.length === 1 ? "documento" : "documentos"}`}
+                    {dayItems.length === 0 && feriasDoDia.length === 0
+                      ? "· nada neste dia"
+                      : dayItems.length > 0
+                        ? `· ${dayItems.length} ${dayItems.length === 1 ? "documento" : "documentos"}`
+                        : ""}
                   </span>
                 </h2>
+                {feriasDoDia.map((f) => (
+                  <div
+                    key={`${f.nome}-${f.limite_oficial}`}
+                    className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+                  >
+                    <Palmtree className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                    <span>
+                      <strong>{f.nome}</strong> — hora de programar as férias ({f.dias} dias).
+                      <span className="block text-xs text-muted-foreground">
+                        O prazo legal termina em {formatDateBR(f.limite_oficial)}; este aviso vem 30
+                        dias antes.
+                      </span>
+                    </span>
+                  </div>
+                ))}
                 {dayItems.map((d) => (
                   <DeliverableCard key={d.id} deliverable={d} showPayment />
                 ))}

@@ -33,6 +33,7 @@ import BoletosPage from "./pages/BoletosPage.tsx";
 import FolhaPage from "./pages/FolhaPage.tsx";
 import DocumentosPage from "./pages/DocumentosPage.tsx";
 import CalendarioPage from "./pages/CalendarioPage.tsx";
+import FeriasPage from "./pages/FeriasPage.tsx";
 import ProximosPagamentosPage from "./pages/ProximosPagamentosPage.tsx";
 import EntregaPublicaPage from "./pages/EntregaPublicaPage.tsx";
 import AlterarSenhaPage from "./pages/AlterarSenhaPage.tsx";
@@ -148,6 +149,7 @@ const AppRoutes = () => (
     <Route path="/folha" element={<CompanyToolRoute tool="payroll_files"><FolhaPage /></CompanyToolRoute>} />
     <Route path="/documentos" element={<CompanyToolRoute tool="documents"><DocumentosPage /></CompanyToolRoute>} />
     <Route path="/calendario" element={<CompanyToolRoute tool="calendar"><CalendarioPage /></CompanyToolRoute>} />
+    <Route path="/ferias" element={<CompanyToolRoute tool="vacations"><FeriasPage /></CompanyToolRoute>} />
     <Route path="/proximos-pagamentos" element={<CompanyToolRoute tool="calendar"><ProximosPagamentosPage /></CompanyToolRoute>} />
     {/* Painel do escritório: iframe do sistema de envio de guias (não confundir com /guias) */}
     <Route path="/admin/envio-guias" element={<AdminAreaRoute area="envio_guias"><EnvioGuiasAdminPage /></AdminAreaRoute>} />
