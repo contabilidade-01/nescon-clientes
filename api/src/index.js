@@ -7,7 +7,6 @@ const { ensurePlatformAdmins } = require("./ensurePlatformAdmins");
 const { ensurePasswordResetSchema } = require("./ensurePasswordResetSchema");
 const { ensureToolAccessSchema } = require("./ensureToolAccessSchema");
 const { ensureDeliverablesSchema } = require("./ensureDeliverablesSchema");
-const { deleteInactiveEmployeesOnStartup } = require("./deleteInactiveEmployeesOnStartup");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -48,7 +47,9 @@ async function start() {
     await ensurePasswordResetSchema(db);
     await ensureToolAccessSchema(db);
     await ensureDeliverablesSchema(db);
-    await deleteInactiveEmployeesOnStartup(db);
+    // Nota: a antiga limpeza de inativos no boot foi REMOVIDA. Demitido agora é
+    // inativado (active=false) e MANTIDO para o admin ver o histórico; some só da
+    // empresa. Ver a detecção de demissão na importação por extrato (routes/admin.js).
     // Puxa os documentos do G-Click de tempos em tempos (GCLICK_SYNC_INTERVAL_H).
     require("./gclick/sync").iniciarAgendador();
   } catch (err) {

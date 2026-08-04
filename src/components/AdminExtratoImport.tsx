@@ -38,7 +38,10 @@ export function AdminExtratoImport({ companyId, companyName }: Props) {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
       queryClient.invalidateQueries({ queryKey: ["admin-summary"] });
       setPreview(null);
-      toast.success(`${r.inseridos} cadastrado(s), ${r.pulados} já existia(m).`);
+      toast.success(
+        `${r.inseridos} cadastrado(s), ${r.pulados} já existia(m)` +
+          (r.inativados ? `, ${r.inativados} inativado(s) (fora do extrato).` : ".")
+      );
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -79,6 +82,15 @@ export function AdminExtratoImport({ companyId, companyName }: Props) {
             )}
           </div>
 
+          {preview.inativar > 0 && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+              <p className="font-medium text-amber-700 dark:text-amber-400">
+                {preview.inativar} funcionário(s) serão inativados — não aparecem neste extrato (demissão):
+              </p>
+              <p className="mt-0.5 text-muted-foreground">{preview.ausentes.join(", ")}</p>
+            </div>
+          )}
+
           <div className="max-h-56 space-y-1 overflow-y-auto text-xs">
             {preview.funcionarios.map((f) => (
               <div
@@ -101,14 +113,18 @@ export function AdminExtratoImport({ companyId, companyName }: Props) {
               size="sm"
               className="gap-1"
               onClick={() => importar.mutate()}
-              disabled={importar.isPending || preview.novos === 0}
+              disabled={importar.isPending || (preview.novos === 0 && preview.inativar === 0)}
             >
               <UserCheck className="h-3.5 w-3.5" />
               {importar.isPending
-                ? "Cadastrando..."
-                : preview.novos === 0
-                  ? "Nada novo a cadastrar"
-                  : `Cadastrar ${preview.novos} funcionário(s)`}
+                ? "Aplicando..."
+                : preview.novos === 0 && preview.inativar === 0
+                  ? "Nada a fazer"
+                  : preview.novos > 0 && preview.inativar > 0
+                    ? `Cadastrar ${preview.novos} e inativar ${preview.inativar}`
+                    : preview.novos > 0
+                      ? `Cadastrar ${preview.novos} funcionário(s)`
+                      : `Inativar ${preview.inativar} funcionário(s)`}
             </Button>
             <Button size="sm" variant="outline" onClick={() => setPreview(null)} disabled={importar.isPending}>
               Cancelar

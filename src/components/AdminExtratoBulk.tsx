@@ -36,7 +36,7 @@ export function AdminExtratoBulk() {
       setScan(null);
       const comErro = r.empresas.filter((e) => e.erro).length;
       toast.success(
-        `${r.inseridos} cadastrado(s) em ${r.empresas.length} empresa(s), ${r.pulados} já existia(m).` +
+        `${r.inseridos} cadastrado(s), ${r.inativados} inativado(s), ${r.pulados} já existia(m).` +
           (comErro ? ` ${comErro} com erro.` : "")
       );
     },
@@ -73,12 +73,19 @@ export function AdminExtratoBulk() {
               <strong>{scan.empresas_com_extrato}</strong>
               <span className="text-muted-foreground"> empresa(s) · </span>
               <strong className="text-primary">{scan.total_novos}</strong>
-              <span className="text-muted-foreground"> funcionário(s) novo(s) a cadastrar</span>
+              <span className="text-muted-foreground"> novo(s)</span>
+              {scan.total_inativar > 0 && (
+                <>
+                  <span className="text-muted-foreground"> · </span>
+                  <strong className="text-amber-600">{scan.total_inativar}</strong>
+                  <span className="text-muted-foreground"> a inativar (demissão)</span>
+                </>
+              )}
             </div>
 
             <div className="max-h-56 space-y-1 overflow-y-auto text-xs">
               {scan.empresas
-                .filter((e) => e.novos > 0)
+                .filter((e) => e.novos > 0 || e.inativar > 0)
                 .map((e) => (
                   <div
                     key={e.id}
@@ -87,9 +94,14 @@ export function AdminExtratoBulk() {
                     <span className="min-w-0 truncate font-medium">{e.name}</span>
                     <span className="flex shrink-0 items-center gap-2">
                       <span className="text-muted-foreground">{competenciaLabel(e.competencia)}</span>
-                      <Badge variant="secondary" className="text-[10px]">
-                        +{e.novos}
-                      </Badge>
+                      {e.novos > 0 && (
+                        <Badge variant="secondary" className="text-[10px]">+{e.novos}</Badge>
+                      )}
+                      {e.inativar > 0 && (
+                        <Badge variant="outline" className="border-amber-500/50 text-[10px] text-amber-600">
+                          −{e.inativar}
+                        </Badge>
+                      )}
                     </span>
                   </div>
                 ))}
@@ -99,14 +111,14 @@ export function AdminExtratoBulk() {
               <Button
                 className="gap-1"
                 onClick={() => importar.mutate()}
-                disabled={importar.isPending || scan.total_novos === 0}
+                disabled={importar.isPending || (scan.total_novos === 0 && scan.total_inativar === 0)}
               >
                 <UserCheck className="h-4 w-4" />
                 {importar.isPending
-                  ? "Cadastrando..."
-                  : scan.total_novos === 0
-                    ? "Nada novo a cadastrar"
-                    : `Cadastrar ${scan.total_novos} em todas`}
+                  ? "Aplicando..."
+                  : scan.total_novos === 0 && scan.total_inativar === 0
+                    ? "Nada a fazer"
+                    : "Aplicar em todas"}
               </Button>
               <Button variant="outline" onClick={() => setScan(null)} disabled={importar.isPending}>
                 Cancelar

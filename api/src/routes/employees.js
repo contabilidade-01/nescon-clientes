@@ -41,8 +41,9 @@ router.get("/", async (req, res) => {
       return res.status(403).json({ error: "Esta ferramenta não está ativa para a sua empresa." });
     }
     const companyId = req.company.id;
+    // A empresa vê só ativos; demitidos (active=false) ficam só para o admin.
     const { rows } = await db.query(
-      "SELECT * FROM employees WHERE company_id = $1 ORDER BY name",
+      "SELECT * FROM employees WHERE company_id = $1 AND active IS TRUE ORDER BY name",
       [companyId]
     );
     res.json(rows);

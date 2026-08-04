@@ -366,11 +366,18 @@ router.get("/companies/:id/extrato-employees", async (req, res) => {
     }
 
     const { rows: jaTem } = await db.query(
-      "SELECT cpf FROM employees WHERE company_id = $1",
+      "SELECT name, cpf, active FROM employees WHERE company_id = $1",
       [id]
     );
     const existentes = new Set(jaTem.map((r) => String(r.cpf).replace(/\D/g, "")));
     const funcs = funcionarios.map((f) => ({ ...f, jaCadastrado: existentes.has(f.cpf) }));
+
+    // Demissão: ativos que NÃO estão no extrato atual = saíram. Serão inativados
+    // (continuam visíveis ao admin, somem para a empresa).
+    const noExtrato = new Set(funcionarios.map((f) => f.cpf));
+    const ausentes = jaTem
+      .filter((r) => r.active && !noExtrato.has(String(r.cpf).replace(/\D/g, "")))
+      .map((r) => r.name);
 
     res.json({
       competencia: extrato.competencia,
@@ -378,6 +385,8 @@ router.get("/companies/:id/extrato-employees", async (req, res) => {
       invalidos,
       total: funcs.length,
       novos: funcs.filter((f) => !f.jaCadastrado).length,
+      inativar: ausentes.length,
+      ausentes,
       funcionarios: funcs,
     });
   } catch (err) {
@@ -397,15 +406,20 @@ router.post("/extrato-employees/scan-all", async (_req, res) => {
     for (const c of companies) {
       const { extrato, funcionarios } = await funcionariosDoExtrato(c.id);
       if (!extrato || !funcionarios.length) continue;
-      const { rows: jaTem } = await db.query("SELECT cpf FROM employees WHERE company_id = $1", [c.id]);
+      const { rows: jaTem } = await db.query("SELECT cpf, active FROM employees WHERE company_id = $1", [c.id]);
       const existentes = new Set(jaTem.map((r) => String(r.cpf).replace(/\D/g, "")));
+      const noExtrato = new Set(funcionarios.map((f) => f.cpf));
       const novos = funcionarios.filter((f) => !existentes.has(f.cpf)).length;
+      const inativar = jaTem.filter(
+        (r) => r.active && !noExtrato.has(String(r.cpf).replace(/\D/g, ""))
+      ).length;
       resultados.push({ id: c.id, name: c.name, competencia: extrato.competencia,
-        encontrados: funcionarios.length, novos });
+        encontrados: funcionarios.length, novos, inativar });
     }
     res.json({
       empresas_com_extrato: resultados.length,
       total_novos: resultados.reduce((s, r) => s + r.novos, 0),
+      total_inativar: resultados.reduce((s, r) => s + r.inativar, 0),
       empresas: resultados,
     });
   } catch (err) {
@@ -434,10 +448,13 @@ router.post("/extrato-employees/import", async (req, res) => {
 
     let totalInseridos = 0;
     let totalPulados = 0;
+    let totalInativados = 0;
     const porEmpresa = [];
 
     for (const c of companies) {
       const { funcionarios } = await funcionariosDoExtrato(c.id);
+      // Guarda: sem funcionários no extrato (parse falhou/vazio), NÃO mexe em nada —
+      // senão inativaria a empresa inteira por engano.
       if (!funcionarios.length) continue;
       const client = await db.connect();
       try {
@@ -448,10 +465,24 @@ router.post("/extrato-employees/import", async (req, res) => {
           porEmpresa.push({ name: c.name, erro: r.body.error });
           continue;
         }
+        // Demissão: ativos que não estão no extrato atual viram inativos.
+        const cpfs = funcionarios.map((f) => f.cpf);
+        const inat = await client.query(
+          `UPDATE employees SET active = false
+           WHERE company_id = $1 AND active IS TRUE AND cpf <> ALL($2::text[])
+           RETURNING name`,
+          [c.id, cpfs]
+        );
         await client.query("COMMIT");
         totalInseridos += r.body.inserted;
         totalPulados += r.body.skipped;
-        porEmpresa.push({ name: c.name, inseridos: r.body.inserted, pulados: r.body.skipped });
+        totalInativados += inat.rowCount;
+        porEmpresa.push({
+          name: c.name,
+          inseridos: r.body.inserted,
+          pulados: r.body.skipped,
+          inativados: inat.rowCount,
+        });
       } catch (e) {
         await client.query("ROLLBACK").catch(() => {});
         porEmpresa.push({ name: c.name, erro: e.message });
@@ -460,7 +491,7 @@ router.post("/extrato-employees/import", async (req, res) => {
       }
     }
 
-    res.json({ inseridos: totalInseridos, pulados: totalPulados, empresas: porEmpresa });
+    res.json({ inseridos: totalInseridos, pulados: totalPulados, inativados: totalInativados, empresas: porEmpresa });
   } catch (err) {
     console.error("[extrato-import]", err);
     res.status(500).json({ error: "Erro ao cadastrar funcionários do extrato" });

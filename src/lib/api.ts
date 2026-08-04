@@ -294,6 +294,8 @@ export const api = {
         invalidos: number;
         total: number;
         novos: number;
+        inativar: number;
+        ausentes: string[];
         funcionarios: Array<{ codigo: string; name: string; cpf: string; jaCadastrado: boolean }>;
       }>(`/admin/companies/${companyId}/extrato-employees`),
     /** Cadastra os funcionários do extrato (uma empresa, ou todas se companyId omitido). */
@@ -301,7 +303,8 @@ export const api = {
       request<{
         inseridos: number;
         pulados: number;
-        empresas: Array<{ name: string; inseridos?: number; pulados?: number; erro?: string }>;
+        inativados: number;
+        empresas: Array<{ name: string; inseridos?: number; pulados?: number; inativados?: number; erro?: string }>;
       }>("/admin/extrato-employees/import", {
         method: "POST",
         body: JSON.stringify(companyId ? { company_id: companyId } : {}),
@@ -326,12 +329,13 @@ export const api = {
         method: "POST",
         body: JSON.stringify(meses ? { meses } : {}),
       }),
-    /** Dry-run: quantos funcionários o extrato traria por empresa, sem gravar. */
+    /** Dry-run: quantos funcionários o extrato traria/inativaria por empresa, sem gravar. */
     scanExtratoEmployees: () =>
       request<{
         empresas_com_extrato: number;
         total_novos: number;
-        empresas: Array<{ id: string; name: string; competencia: string | null; encontrados: number; novos: number }>;
+        total_inativar: number;
+        empresas: Array<{ id: string; name: string; competencia: string | null; encontrados: number; novos: number; inativar: number }>;
       }>("/admin/extrato-employees/scan-all", { method: "POST" }),
   },
 
