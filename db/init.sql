@@ -88,20 +88,8 @@ INSERT INTO platform_admins (cpf, password_hash) VALUES (
   '$2a$10$P0E31oAGRjfkNOUZrd5.K..Wch43XC1WcK3HLiSYOQVK6DBlUbSaW'
 ) ON CONFLICT (cpf) DO NOTHING;
 
--- Seeds (login: CNPJ com/sem máscara; senha = CNPJ só dígitos).
-INSERT INTO companies (name, cnpj, password_hash) VALUES (
-  'RESTAURANTE DO QUEIJEIRO 3 LIMITADA',
-  '52191264000173',
-  '$2a$10$5faaPl2KUgL2HkTo0a2FPOOdHG7wBjhiVE8z.XaJA9SF8HvYUAjJq'
-) ON CONFLICT (cnpj) DO NOTHING;
-
-INSERT INTO companies (name, cnpj, password_hash) VALUES (
-  'RESTAURANTE DO QUEIJEIRO 4 LTDA',
-  '54803962000108',
-  '$2a$10$LMyi3tOwE.FOi0nn8Q1Qz.NNN40Su8LSWVuBgu7AlQipQ7MoaVviG'
-) ON CONFLICT (cnpj) DO NOTHING;
-
--- Empresa operacional (senha inicial segue a regra do README)
+-- Empresa operacional da contabilidade (login: CNPJ com/sem máscara; senha = CNPJ só dígitos).
+-- As demais empresas (clientes) são criadas automaticamente pela sincronização com o G-Click.
 INSERT INTO companies (name, cnpj, password_hash) VALUES (
   'NESCON CONSULTORIA',
   '35736034000123',

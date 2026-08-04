@@ -1,4 +1,9 @@
-# Queijeiros (RH / documentos)
+# Portal do Cliente — Nescon
+
+Portal onde o cliente da contabilidade acessa tudo que o escritório entrega: guias fiscais,
+folha de pagamento, documentos, boletos e um calendário de vencimentos. Os documentos são
+puxados automaticamente do G-Click; o sistema de guias (GCLICK) apenas avisa o cliente por
+WhatsApp com um link para o portal.
 
 Frontend React (Vite) + API Express + PostgreSQL. O front chama a API em `/api` (proxy Nginx) ou em `VITE_API_URL` quando o build aponta para outro domínio.
 
@@ -10,8 +15,8 @@ Frontend React (Vite) + API Express + PostgreSQL. O front chama a API em `/api` 
 
 Para produção na VPS com os três serviços, o caminho alinhado ao repo é **Docker Compose na raiz**, não só o `Dockerfile` da raiz.
 
-**Repositório:** `https://github.com/contabilidade-01/queijeiros`  
-**Pasta local (GitHub Desktop):** `C:\Users\Jeandson\Documents\GitHub\queijeiros`  
+**Repositório:** `https://github.com/contabilidade-01/nescon-clientes`  
+**Pasta local (GitHub Desktop):** `C:\Users\Jeandson\Documents\GitHub\nescon-clientes`  
 **Push:** feito pelo **GitHub Desktop** (HTTPS — autenticação gerida pelo app)
 
 ### Checklist rápido (Easypanel na VPS)
@@ -30,33 +35,13 @@ Se mudares `DB_PASSWORD` no painel **depois** do volume `pgdata` já existir, o 
 
 ### Login inicial (após `init.sql`)
 
-Regra: login = **CNPJ** (com ou sem máscara); senha inicial = **14 dígitos do CNPJ**. **Troque a senha após o primeiro login.** As empresas seed estão em `db/init.sql`; credenciais ficam em anotações locais, fora do repositório.
+Regra: login = **CNPJ** (com ou sem máscara); senha inicial = **14 dígitos do CNPJ**. **Troque a senha após o primeiro login.** As empresas dos clientes são criadas automaticamente pela sincronização com o G-Click; só o admin e a empresa operacional da contabilidade ficam no seed de `db/init.sql`.
 
-### Queijeiro 4 (Q4) — suspensão e advertência
+### Funcionários
 
-Login da Q4: CNPJ da empresa (ver `db/init.sql`); senha inicial segue a regra acima.
-
-**Qual fonte é mais completa?**
-
-| Fonte | O que tem |
-|-------|-----------|
-| `db/init.sql` | Empresa Q4 + admin (instalação nova) |
-| `db/seed-queijeiros-companies.sql` | Só cadastro Q3/Q4 (BD já existente) |
-| `db/seed-queijeiros-q4-employees.sql` | **15 funcionários** da planilha (melhor para RH) |
-| Planilha `RELAÇÃO DE EMPREGADOS.xls` | Mesmos 15 funcionários — importar na UI |
-
-Para emitir suspensão/advertência: cadastre os funcionários (seed SQL **ou** importação de planilha), faça login no CNPJ da Q4 e use **Suspensão** / **Advertência**.
-
-**Pelo painel admin (`/admin`):**
-
-1. Botão **Cadastrar Q3 + Q4 (seed)** — cria as empresas Queijeiro se ainda não existirem
-2. Em **Filtrar listas por empresa**, escolha **Queijeiro 4**
-3. Em **Gestão de empresas** → **Importar funcionários (planilha)** — suba o `.xls` / `.xlsx`
-
-```bash
-# Opcional: funcionários Q4 direto no Postgres
-docker compose exec -T postgres psql -U rhapp -d rhapp < db/seed-queijeiros-q4-employees.sql
-```
+Cadastro por importação de planilha (**Importar funcionários** no painel admin — há um modelo
+para baixar) ou automaticamente lendo o **extrato de folha** já hospedado no portal (botão
+**Ler extrato** no painel admin, por empresa ou em massa).
 
 ### Administrador global
 

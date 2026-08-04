@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Building2, Mail, ArrowLeft } from "lucide-react";
+import { Building2, Mail, ArrowLeft, MessageCircle } from "lucide-react";
 import { maskCNPJ, maskCPF } from "@/lib/masks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+
+// WhatsApp da Nescon para o cliente que não recebeu o e-mail (só dígitos, com DDI 55).
+const NESCON_WHATSAPP = "5511948626605";
+const WHATSAPP_URL = `https://wa.me/${NESCON_WHATSAPP}?text=${encodeURIComponent(
+  "Olá! Não recebi o e-mail de recuperação de senha do portal. Podem me ajudar?"
+)}`;
 
 const ForgotPasswordPage = () => {
   const [loginField, setLoginField] = useState("");
@@ -86,6 +92,23 @@ const ForgotPasswordPage = () => {
               {loading ? "Enviando..." : "Enviar link"}
             </Button>
           </form>
+
+          <div className="rounded-lg border border-emerald-600/30 bg-emerald-600/5 p-3 text-center">
+            <p className="text-sm text-muted-foreground">
+              Não recebeu o e-mail? Verifique o spam ou fale com a Nescon.
+            </p>
+            <Button
+              asChild
+              variant="outline"
+              className="mt-2 w-full gap-2 border-emerald-600/40 text-emerald-600 hover:bg-emerald-600/10 hover:text-emerald-500"
+            >
+              <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
+                <MessageCircle className="h-4 w-4" />
+                Chamar a Nescon no WhatsApp
+              </a>
+            </Button>
+          </div>
+
           <Button variant="ghost" className="w-full gap-2" asChild>
             <Link to="/login">
               <ArrowLeft className="h-4 w-4" />
