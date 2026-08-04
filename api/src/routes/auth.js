@@ -183,14 +183,15 @@ router.post("/login", async (req, res) => {
 
     const clean = raw.replace(/\D/g, "");
 
-    // Administrador: CPF 11 dígitos (tabela platform_admins)
-    if (clean.length === 11) {
+    // Administrador: CPF 11 dígitos (tabela platform_admins). Não achando admin com
+    // esse CPF, o fluxo SEGUE para o login de cliente: alguns clientes do G-Click são
+    // pessoa física e o cadastro deles usa o CPF como identificador.
+    const admins = clean.length === 11 ? await getAdminByCpfForLogin(db, clean) : [];
+    if (admins.length) {
       if (!validateCPF(raw)) {
         return res.status(400).json({ error: "CPF inválido" });
       }
-      const rows = await getAdminByCpfForLogin(db, clean);
-      if (!rows.length) return res.status(401).json({ error: "Acesso não encontrado" });
-      const adm = rows[0];
+      const adm = admins[0];
       if (adm.active === false) {
         return res.status(403).json({ error: "Acesso desativado. Procure o administrador." });
       }
@@ -211,13 +212,13 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // Empresa: CNPJ 14 dígitos
-    if (clean.length === 14) {
-      if (!validateCNPJ(raw)) {
+    // Cliente: CNPJ (14 dígitos) ou, para pessoa física, CPF (11).
+    if (clean.length === 14 || clean.length === 11) {
+      if (clean.length === 14 && !validateCNPJ(raw)) {
         return res.status(400).json({ error: "CNPJ inválido" });
       }
       const rows = await getCompanyByCnpjForLogin(db, clean);
-      if (!rows.length) return res.status(401).json({ error: "Empresa não encontrada" });
+      if (!rows.length) return res.status(401).json({ error: "Acesso não encontrado" });
       const company = rows[0];
       const valid = await bcryptMatches(company.password_hash, password);
       if (!valid) return res.status(401).json({ error: "Senha incorreta" });

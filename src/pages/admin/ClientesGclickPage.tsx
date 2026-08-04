@@ -9,7 +9,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, type GclickPendencia } from "@/lib/api";
-import { maskCNPJ } from "@/lib/masks";
+import { maskDocumento } from "@/lib/masks";
+
+/** CNPJ, CPF ou "Inscrição" quando o G-Click mandou algo que não é nenhum dos dois. */
+function rotuloDoc(v: string) {
+  const d = (v || "").replace(/\D/g, "");
+  if (d.length === 14) return "CNPJ";
+  if (d.length === 11) return "CPF";
+  return "Inscrição";
+}
 
 function dataHora(iso: string | null | undefined) {
   if (!iso) return "";
@@ -139,7 +147,7 @@ function NovoClienteCard({ p, onResolvido }: { p: GclickPendencia; onResolvido: 
           <div className="min-w-0">
             <p className="truncate font-medium">{p.dados?.nome || p.nome || "(sem nome)"}</p>
             <p className="text-xs text-muted-foreground">
-              CNPJ {maskCNPJ(p.cnpj)}
+              {rotuloDoc(p.cnpj)} {maskDocumento(p.cnpj)}
               {p.dados?.email ? ` · ${p.dados.email}` : ""}
               {p.criado_em ? ` · visto em ${dataHora(p.criado_em)}` : ""}
             </p>
@@ -153,7 +161,7 @@ function NovoClienteCard({ p, onResolvido }: { p: GclickPendencia; onResolvido: 
           <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             <span>
-              Este CNPJ <strong>já tem cadastro no portal</strong> (criado automaticamente quando
+              Este cliente <strong>já tem cadastro no portal</strong> (criado automaticamente quando
               chegou uma guia). Cadastrar apenas vincula, sem alterar os dados. Recusar{" "}
               <strong>não remove</strong> o acesso — isso se faz em Empresas.
             </span>
@@ -214,7 +222,7 @@ function MudancaCard({ p, onResolvido }: { p: GclickPendencia; onResolvido: () =
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{p.dados?.nome || p.nome || p.cnpj}</p>
         <p className="text-xs text-muted-foreground">
-          CNPJ {maskCNPJ(p.cnpj)} · {p.dados?.de || "—"} → <strong>{p.dados?.para || "—"}</strong>
+          {rotuloDoc(p.cnpj)} {maskDocumento(p.cnpj)} · {p.dados?.de || "—"} → <strong>{p.dados?.para || "—"}</strong>
           {p.criado_em ? ` · ${dataHora(p.criado_em)}` : ""}
         </p>
         {desativado && (
@@ -285,7 +293,7 @@ function RejeitadosTab({ onResolvido }: { onResolvido: () => void }) {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{c.nome || "(sem nome)"}</p>
                   <p className="text-xs text-muted-foreground">
-                    CNPJ {maskCNPJ(c.cnpj)}
+                    {rotuloDoc(c.cnpj)} {maskDocumento(c.cnpj)}
                     {c.motivo_rejeicao ? ` · ${c.motivo_rejeicao}` : ""}
                     {c.decidido_em ? ` · recusado em ${dataHora(c.decidido_em)}` : ""}
                   </p>

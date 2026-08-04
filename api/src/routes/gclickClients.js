@@ -17,7 +17,8 @@ const bcrypt = require("bcryptjs");
 const db = require("../db");
 const { authMiddleware } = require("../middleware/auth");
 const { requireArea } = require("../middleware/adminArea");
-const { validateUUID, validateString, validateCNPJ } = require("../middleware/validate");
+const { validateUUID, validateString } = require("../middleware/validate");
+const { inscricaoValida, podeVirarEmpresa, tipoInscricao } = require("../gclick/inscricao");
 const { PORTAL_ONLY_TOOL_ACCESS } = require("../companyTools");
 
 function adminOnly(req, res, next) {
@@ -33,6 +34,8 @@ router.use(requireArea("empresas"));
 function limparCnpj(v) {
   return String(v || "").replace(/\D/g, "");
 }
+
+const ERRO_INSCRICAO = "Inscrição inválida (não é CPF nem CNPJ)";
 
 /** Alertas abertos, separados por tipo — é o que o painel consulta ao abrir. */
 router.get("/pendencias", async (_req, res) => {
@@ -120,8 +123,15 @@ async function resolverPendencia(client, cnpj, tipo, resolucao, adminId) {
  */
 router.post("/:cnpj/aceitar", async (req, res) => {
   const cnpj = limparCnpj(req.params.cnpj);
-  if (!validateCNPJ(cnpj) || cnpj.length !== 14) {
-    return res.status(400).json({ error: "CNPJ inválido" });
+  if (!inscricaoValida(cnpj)) return res.status(400).json({ error: ERRO_INSCRICAO });
+  // Lixo do G-Click (ex.: inscrição "0") não pode virar cadastro — mas PODE ser
+  // rejeitado, para sair da lista. A mensagem diz o caminho.
+  if (!podeVirarEmpresa(cnpj)) {
+    return res.status(400).json({
+      error:
+        "Este cliente não tem CPF nem CNPJ válido no G-Click, então não dá para criar o cadastro. " +
+        'Use "Não cadastrar" para tirá-lo da lista, ou corrija a inscrição no G-Click.',
+    });
   }
 
   const client = await db.connect();
@@ -192,8 +202,10 @@ router.post("/:cnpj/aceitar", async (req, res) => {
       company_id: companyId,
       criada,
       message: criada
-        ? "Empresa criada. Login: CNPJ; senha inicial: os 14 dígitos do CNPJ."
-        : "Este CNPJ já tinha cadastro no portal — apenas vinculamos, sem alterar os dados.",
+        ? tipoInscricao(cnpj) === "cpf"
+          ? "Cadastro criado (cliente pessoa física). Login: o CPF; senha inicial: os 11 dígitos do CPF."
+          : "Empresa criada. Login: CNPJ; senha inicial: os 14 dígitos do CNPJ."
+        : "Este cliente já tinha cadastro no portal — apenas vinculamos, sem alterar os dados.",
     });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
@@ -216,9 +228,7 @@ router.post("/:cnpj/aceitar", async (req, res) => {
 router.post("/:cnpj/rejeitar", async (req, res) => {
   try {
     const cnpj = limparCnpj(req.params.cnpj);
-    if (!validateCNPJ(cnpj) || cnpj.length !== 14) {
-      return res.status(400).json({ error: "CNPJ inválido" });
-    }
+    if (!inscricaoValida(cnpj)) return res.status(400).json({ error: ERRO_INSCRICAO });
     const motivo =
       req.body?.motivo === undefined || req.body?.motivo === null || req.body?.motivo === ""
         ? null
@@ -255,9 +265,7 @@ router.post("/:cnpj/rejeitar", async (req, res) => {
 router.post("/:cnpj/reconsiderar", async (req, res) => {
   try {
     const cnpj = limparCnpj(req.params.cnpj);
-    if (!validateCNPJ(cnpj) || cnpj.length !== 14) {
-      return res.status(400).json({ error: "CNPJ inválido" });
-    }
+    if (!inscricaoValida(cnpj)) return res.status(400).json({ error: ERRO_INSCRICAO });
     const { rows, rowCount } = await db.query(
       `UPDATE gclick_clients
           SET decisao = 'pendente', motivo_rejeicao = NULL, decidido_em = NULL, atualizado_em = now()

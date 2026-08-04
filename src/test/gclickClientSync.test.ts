@@ -7,6 +7,11 @@
  */
 import { describe, it, expect } from "vitest";
 import { decidirEventos } from "../../api/src/gclick/clientSync.js";
+import {
+  inscricaoValida,
+  podeVirarEmpresa,
+  tipoInscricao,
+} from "../../api/src/gclick/inscricao.js";
 
 type LinhaEspelho = {
   cnpj: string;
@@ -171,4 +176,33 @@ it("cliente sem CNPJ é ignorado", () => {
   const r = decidirEventos({ espelho: new Map(), clientes: [cliente({ cnpj: "" })] });
   expect(r.inserir).toHaveLength(0);
   expect(r.pendencias).toHaveLength(0);
+});
+
+/**
+ * Nem toda "inscrição" do G-Click é CNPJ: há cliente pessoa física (CPF) e cadastro de
+ * teste com lixo ("0"). Exigir 14 dígitos barrava os dois até para REJEITAR, que é o
+ * que se quer fazer com eles.
+ */
+describe("inscrição do cliente", () => {
+  it("CNPJ e CPF servem para decidir e para virar cadastro", () => {
+    expect(podeVirarEmpresa("35736034000123")).toBe(true);
+    expect(podeVirarEmpresa("05140626659")).toBe(true);
+  });
+
+  it("lixo do G-Click pode ser rejeitado, mas não vira cadastro", () => {
+    expect(inscricaoValida("0")).toBe(true);
+    expect(podeVirarEmpresa("0")).toBe(false);
+  });
+
+  it("não-dígitos e tamanhos impossíveis são recusados", () => {
+    expect(inscricaoValida("")).toBe(false);
+    expect(inscricaoValida("abc")).toBe(false);
+    expect(inscricaoValida("357360340001234")).toBe(false);
+  });
+
+  it("o rótulo segue o tamanho", () => {
+    expect(tipoInscricao("35736034000123")).toBe("cnpj");
+    expect(tipoInscricao("05140626659")).toBe("cpf");
+    expect(tipoInscricao("0")).toBe("invalida");
+  });
 });
