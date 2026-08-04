@@ -99,7 +99,49 @@ implementado**. Resumo: a sync deixa de criar empresa sozinha; cliente novo vira
 admin decidir (cadastrar ou rejeitar, com lista de rejeitados), mudança de status vira **aviso** com
 OK, e o cadastro passa a ser nosso — o G-Click só informa entradas e inativações.
 
-## 7. Ideias para depois (não estão feitas)
+## 7. Anotado, para fazer depois do plano do G-Click
+
+Duas coisas que o Jean pediu para **registrar agora e executar depois** — nesta ordem, depois de
+concluído o [PLANO-CLIENTES-GCLICK.md](PLANO-CLIENTES-GCLICK.md).
+
+### 7.1 Login do Nelson
+
+Criar o acesso do Nelson ao sistema. **Falta definir antes de implementar:**
+
+- É login de **administrador** (CPF, vê todas as empresas) ou de **empresa** (CNPJ)?
+- Se administrador: o CPF dele, e se deve ver tudo ou só algumas áreas do painel. Hoje o admin é
+  tudo-ou-nada — perfil com acesso parcial exigiria um campo de permissões em `platform_admins`,
+  no mesmo espírito do `tool_access` das empresas.
+- Senha inicial e canal de entrega (não colocar no repositório).
+
+Sem perfil parcial, é só um `INSERT` em `platform_admins` (ver `db/seed-platform-admin.sql`). Com
+perfil parcial, vira uma tarefa de verdade — por isso a pergunta vem antes.
+
+### 7.2 Aviso automático de vencimento por WhatsApp (DAS, FGTS, INSS)
+
+Mandar mensagem ao cliente **1 dia antes** do vencimento das guias de DAS, FGTS e INSS.
+
+**Pré-requisito inegociável, e é aqui que mora o risco:** precisamos ter **certeza absoluta de que
+o vencimento está sendo capturado corretamente**. Hoje o vencimento vem de `extrairVencimento()`
+(`api/src/pdfDueDate.js`), que lê a data do **PDF**, e só cai para a data do G-Click se a leitura
+falhar — justamente porque o G-Click erra em alguns casos (FGTS Digital é o exemplo conhecido).
+Uma data errada aqui não é um detalhe de tela: vira uma mensagem errada no WhatsApp do cliente, e
+o erro só aparece depois que o dano está feito.
+
+Antes de escrever uma linha do disparo, fazer uma **auditoria de vencimentos**:
+
+1. Relatório no admin listando, por tipo de documento, a data lida do PDF × a data do G-Click, com
+   destaque para as divergentes e para as que ficaram nulas.
+2. Conferir uma amostra à mão, por tipo (DAS, FGTS, INSS) — são leiautes diferentes, e o parser
+   pode acertar num e errar noutro.
+3. Só liberar o disparo automático para os tipos com 100% de acerto na amostra. Tipo que não passar
+   fica de fora até o parser ser corrigido.
+
+Só depois disso: rotina diária que busca vencimentos de amanhã e dispara pela uazapi (a mesma
+infraestrutura do sistema de guias), com registro do que foi enviado para não mandar duas vezes.
+Vale prever também um "não perturbe" por empresa.
+
+## 8. Ideias para depois (não estão feitas)
 
 Em ordem de utilidade, na minha leitura:
 
