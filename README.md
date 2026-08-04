@@ -69,6 +69,7 @@ e cada rota é uma página em `src/pages/admin/`:
 | `/admin/lgpd` | Auditoria dos consentimentos e o texto do termo em vigor. |
 | `/admin/sincronizacao` | Sincronização com o G-Click e e-mail do administrador. |
 | `/admin/usuarios` | **Só o dono** — usuários do painel e o que cada um pode ver. |
+| `/admin/clientes-gclick` | Clientes novos vindos do G-Click, mudanças de situação e rejeitados. |
 | `/admin/envio-guias` | Iframe do sistema GCLICK (app separado). |
 
 ### Usuários do painel e acesso por área
@@ -96,6 +97,30 @@ de entrada e todo usuário vê; ela mostra só os números das áreas que a pess
 
 Compatibilidade: `areas` **nulo** = acesso total. Os logins que já existiam continuam funcionando
 sem migração, e o CPF do seed vira **dono** no primeiro arranque.
+
+### Clientes vindos do G-Click
+
+O G-Click descobre; **a decisão de cadastrar é do escritório**. Um espelho (`gclick_clients`) guarda
+a cópia crua do que existe lá, junto da decisão (pendente / aceito / rejeitado), e uma fila
+(`gclick_pendencias`) junta os alertas. A sincronização **nunca** escreve em `companies` nem mexe na
+decisão.
+
+- **Cliente novo** → alerta com opção de cadastrar ou recusar. Recusado vai para *Rejeitados* e não
+  volta a ser perguntado enquanto nada mudar; se for reativado no G-Click, o sistema repergunta.
+- **Mudança de situação** (ATIVO ↔ DESATIVADO) → aviso informativo com *OK, ciente*. **Não** bloqueia
+  o acesso do cliente ao portal; rende apenas o selo "inativo no G-Click" no cadastro.
+- O alerta aparece em três lugares: faixa no topo da visão geral, número no menu lateral e um aviso
+  ao abrir o painel (uma vez por sessão).
+
+**Atenção — a criação automática continua ligada.** A sincronização de documentos ainda cria a
+empresa sozinha quando chega uma guia de CNPJ desconhecido. Consequência: o botão *não cadastrar*
+**não remove** um cadastro que já existe; a tela avisa isso quando é o caso. A lista de novos vale
+como aviso, não como porteiro. Desligar isso era a Fase 4 do plano, que ficou fora de escopo.
+
+O espelho sempre traz **todos** os clientes, inclusive os desativados — sem eles não haveria como
+perceber que alguém foi desativado. O switch *"alertar só sobre clientes ativos"*
+(`/admin/sincronizacao`, gravado em `app_settings`; `GCLICK_ALERTA_SO_ATIVOS` é o padrão) decide
+apenas **quem vira alerta**.
 
 ### Licenças (funcionamento, AVCB/CLCB, vigilância sanitária)
 

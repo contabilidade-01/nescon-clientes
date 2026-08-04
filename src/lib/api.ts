@@ -525,6 +525,8 @@ export const api = {
           contact_email: string | null;
           phone: string | null;
           tool_access: CompanyToolAccessApi;
+          /** Situação no G-Click (ATIVO/DESATIVADO). Informativo — não bloqueia nada. */
+          gclick_status: string | null;
           created_at: string;
         }>
       >("/admin/companies"),
@@ -599,6 +601,14 @@ export const api = {
       }>("/admin/extrato-employees/import", {
         method: "POST",
         body: JSON.stringify(companyId ? { company_id: companyId } : {}),
+      }),
+    /** Opções da sincronização mudáveis pela tela (sem redeploy). */
+    configSync: () =>
+      request<{ alerta_so_ativos: boolean }>("/admin/configuracoes/sync"),
+    salvarConfigSync: (alerta_so_ativos: boolean) =>
+      request<{ ok: boolean; alerta_so_ativos: boolean }>("/admin/configuracoes/sync", {
+        method: "PUT",
+        body: JSON.stringify({ alerta_so_ativos }),
       }),
     /** Estado da sincronização com o G-Click. */
     syncStatus: () =>

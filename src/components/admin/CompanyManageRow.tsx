@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import {
   COMPANY_TOOL_KEYS,
@@ -28,6 +29,7 @@ export function CompanyManageRow({
     contact_email: string | null;
     phone: string | null;
     tool_access: CompanyToolAccess;
+    gclick_status?: string | null;
   };
 }) {
   const [name, setName] = useState(company.name);
@@ -75,7 +77,14 @@ export function CompanyManageRow({
 
   return (
     <div className="rounded-lg border bg-card/50 p-4 space-y-3 scroll-mt-2">
-      <p className="text-xs font-mono text-muted-foreground">CNPJ {company.cnpj}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-xs font-mono text-muted-foreground">CNPJ {company.cnpj}</p>
+        {company.gclick_status === "DESATIVADO" && (
+          // Só informa. O cliente continua acessando o portal — desligar é decisão
+          // manual, feita nos switches de ferramentas abaixo.
+          <Badge variant="destructive">Inativo no G-Click</Badge>
+        )}
+      </div>
       <div className="space-y-1">
         <Label htmlFor={`razao-${company.id}`} className="text-xs font-semibold">
           Razão social

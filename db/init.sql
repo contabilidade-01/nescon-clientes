@@ -168,6 +168,13 @@ CREATE TABLE IF NOT EXISTS gclick_pendencias (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gclick_pendencias_abertas
   ON gclick_pendencias(cnpj, tipo) WHERE situacao = 'pendente';
 
+-- Opções que o escritório muda pela tela, sem redeploy (variável de ambiente é o padrão).
+CREATE TABLE IF NOT EXISTS app_settings (
+  chave TEXT PRIMARY KEY,
+  valor TEXT,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Admin: login = CPF (abaixo); senha inicial nas anotações locais de acessos — trocar após o primeiro login.
 INSERT INTO platform_admins (cpf, password_hash, is_owner) VALUES (
   '05487541523',

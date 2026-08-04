@@ -11,12 +11,20 @@
  */
 const db = require("../db");
 const client = require("./client");
+const { getBoolSetting } = require("../appSettings");
 
 const ATIVO = "ATIVO";
 
-/** Padrão: só cliente ativo no G-Click gera alerta de cadastro. */
+const CHAVE_SO_ATIVOS = "gclick_alerta_so_ativos";
+
+/** Padrão vindo do ambiente: só cliente ativo no G-Click gera alerta de cadastro. */
 function alertaSoAtivosPadrao() {
   return process.env.GCLICK_ALERTA_SO_ATIVOS !== "false";
+}
+
+/** A escolha feita na tela vence a variável de ambiente. */
+async function alertaSoAtivosAtual() {
+  return getBoolSetting(db, CHAVE_SO_ATIVOS, alertaSoAtivosPadrao());
 }
 
 /**
@@ -110,7 +118,7 @@ function ultimaExecucao() {
 }
 
 /** Aplica o resultado da regra no banco. */
-async function sincronizarClientes({ alertaSoAtivos = alertaSoAtivosPadrao() } = {}) {
+async function sincronizarClientes({ alertaSoAtivos = null } = {}) {
   if (!client.isConfigured()) {
     return { ok: false, erro: "G-Click não configurado (GCLICK_CLIENT_ID/SECRET)" };
   }
@@ -119,6 +127,7 @@ async function sincronizarClientes({ alertaSoAtivos = alertaSoAtivosPadrao() } =
   emExecucao = true;
   const inicio = Date.now();
   try {
+    const soAtivos = alertaSoAtivos === null ? await alertaSoAtivosAtual() : alertaSoAtivos;
     const brutos = await client.listarClientes();
     const clientes = brutos.map((c) => client.extrairDadosCliente(c)).filter((c) => c.cnpj);
     if (!clientes.length) {
@@ -135,7 +144,7 @@ async function sincronizarClientes({ alertaSoAtivos = alertaSoAtivosPadrao() } =
     );
     const pendenciasAbertas = new Set(abertas.map((p) => `${p.cnpj}|${p.tipo}`));
 
-    const plano = decidirEventos({ espelho, clientes, pendenciasAbertas, alertaSoAtivos });
+    const plano = decidirEventos({ espelho, clientes, pendenciasAbertas, alertaSoAtivos: soAtivos });
 
     for (const c of plano.inserir) {
       await db.query(
@@ -194,6 +203,8 @@ async function sincronizarClientes({ alertaSoAtivos = alertaSoAtivosPadrao() } =
 }
 
 module.exports = {
+  CHAVE_SO_ATIVOS,
+  alertaSoAtivosAtual,
   decidirEventos,
   sincronizarClientes,
   estaRodando,

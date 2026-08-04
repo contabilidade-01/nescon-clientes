@@ -12,6 +12,7 @@ const { resolveUploadPath } = require("../uploads");
 const { LGPD_CONSENT_VERSION } = require("../lgpd");
 const sync = require("../gclick/sync");
 const clientSync = require("../gclick/clientSync");
+const { setSetting } = require("../appSettings");
 const gclickClient = require("../gclick/client");
 const fs = require("fs");
 
@@ -367,6 +368,31 @@ router.post("/sync-gclick/clientes", requireArea("sincronizacao"), async (_req, 
   const r = await clientSync.sincronizarClientes();
   if (!r.ok) return res.status(502).json({ error: r.erro });
   res.json(r);
+});
+
+/** Opções da sincronização que o escritório muda pela tela (sem redeploy). */
+router.get("/configuracoes/sync", requireArea("sincronizacao"), async (_req, res) => {
+  try {
+    res.json({
+      alerta_so_ativos: await clientSync.alertaSoAtivosAtual(),
+    });
+  } catch (err) {
+    console.error("[config sync]", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+router.put("/configuracoes/sync", requireArea("sincronizacao"), async (req, res) => {
+  try {
+    if (typeof req.body?.alerta_so_ativos !== "boolean") {
+      return res.status(400).json({ error: "Envie alerta_so_ativos: true ou false" });
+    }
+    await setSetting(db, clientSync.CHAVE_SO_ATIVOS, req.body.alerta_so_ativos);
+    res.json({ ok: true, alerta_so_ativos: req.body.alerta_so_ativos });
+  } catch (err) {
+    console.error("[config sync gravar]", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
 });
 
 /** Localiza o extrato de folha mais recente já hospedado no portal para a empresa. */

@@ -1,9 +1,10 @@
 # Plano — Cadastro de clientes: o G-Click descobre, nós decidimos
 
-**Status: PLANEJADO, nada implementado ainda.** Este documento existe para que a implementação
-possa ser retomada em outra sessão sem reconstruir o raciocínio.
+**Status: IMPLEMENTADO** (fases 1, 2, 3, 5 e 6). A **Fase 4 saiu de escopo** por decisão do Jean —
+o cadastro automático de cliente quando chega guia continua ligado. O documento fica como registro
+do raciocínio e do que ficou de fora.
 
-Data: 03/08/2026. Base: commit `3f16689`.
+Planejado em 03/08/2026; implementado em 04/08/2026.
 
 ---
 
@@ -363,13 +364,16 @@ Passos:
 
 ---
 
-### Fase 6 — Acabamento
+### Fase 6 — Acabamento — **FEITA**
 
-1. Switch **"trazer só clientes ativos"** em `/admin/sincronizacao`, gravado como configuração (não
-   só variável de ambiente — para não exigir redeploy).
-2. Selo **"inativo no G-Click"** no cadastro da empresa (`CompanyManageRow`), lendo
-   `companies.gclick_status`.
-3. Contador **"guias aguardando cadastro"** no cartão de sincronização.
+1. ✅ Switch **"alertar só sobre clientes ativos"** em `/admin/sincronizacao`, gravado em
+   `app_settings` (a variável de ambiente vira apenas o padrão). Junto veio o botão
+   **Conferir clientes agora**, que atualiza só o espelho — segundos, não minutos.
+2. ✅ Selo **"inativo no G-Click"** no cadastro da empresa, lendo `companies.gclick_status`.
+3. ❌ Contador **"guias aguardando cadastro"**: **não faz sentido e não foi feito**. Ele existia
+   para a Fase 4, que saiu de escopo — com a criação automática ligada, nenhuma guia fica
+   esperando cadastro, então o número seria sempre zero. Se um dia a chave
+   `GCLICK_AUTOCRIAR_EMPRESA` for implementada, este item volta junto.
 
 **Toca:** `src/pages/admin/SincronizacaoPage.tsx`, `src/components/admin/CompanyManageRow.tsx`,
 `src/components/AdminSyncCard.tsx` (+ a rota da configuração).

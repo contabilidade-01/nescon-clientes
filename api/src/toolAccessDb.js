@@ -9,7 +9,7 @@ const PG_UNDEFINED_COLUMN = "42703";
 async function listCompanies(db) {
   try {
     const { rows } = await db.query(
-      "SELECT id, name, cnpj, contact_email, phone, tool_access, created_at FROM companies ORDER BY name"
+      "SELECT id, name, cnpj, contact_email, phone, tool_access, gclick_status, created_at FROM companies ORDER BY name"
     );
     return rows;
   } catch (err) {
@@ -17,7 +17,7 @@ async function listCompanies(db) {
     const { rows } = await db.query(
       "SELECT id, name, cnpj, contact_email, phone, created_at FROM companies ORDER BY name"
     );
-    return rows.map((r) => ({ ...r, tool_access: null }));
+    return rows.map((r) => ({ ...r, tool_access: null, gclick_status: null }));
   }
 }
 
