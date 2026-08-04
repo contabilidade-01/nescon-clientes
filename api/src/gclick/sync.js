@@ -15,6 +15,7 @@ const bcrypt = require("bcryptjs");
 const db = require("../db");
 const client = require("./client");
 const clientSync = require("./clientSync");
+const extratoAuto = require("../extratoAuto");
 const {
   classificar,
   categoriaDe,
@@ -254,6 +255,13 @@ async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = n
         `[sync] ${comp}: ${guias.length} guia(s) — ` +
           `${total.criados} novas, ${total.atualizados} atualizadas até agora`
       );
+    }
+
+    // Extratos novos entram sozinhos: cadastra/atualiza funcionários (código e
+    // salário) e transforma saídas em aviso. Só na carga completa.
+    if (!cnpjFiltro) {
+      const e = await extratoAuto.processarExtratos(db);
+      if (!e.ok) console.error("[sync] extratos:", e.erro);
     }
 
     ultimoResultado = {

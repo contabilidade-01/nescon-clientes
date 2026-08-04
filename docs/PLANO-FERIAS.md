@@ -142,6 +142,7 @@ situacao(limiteGozo, hoje)      // 'vencida' | 'a_vencer' | 'ok'   (mesma ideia 
 | Fase | Entrega | Pronto quando |
 |------|---------|---------------|
 | **1** | Extrato passa a guardar **código** e **salário base** | Importar um extrato e ver as colunas preenchidas |
+| **1b** | **Leitura automática do extrato** ao fim de cada sincronização | Sincronizar e ver código/salário preenchidos sem ninguém clicar |
 | **2** | `vacationRules.js` + testes | Testes cobrindo faixas, fronteiras (5/6, 14/15) e custo |
 | **3** | Parser da Programação + tabelas + rota de upload | Subir o PDF do QUEIJEIRO 3 e ver 15 funcionários e seus períodos |
 | **4** | Card de importação em `/admin/empresas` | Escritório sobe o PDF sem `curl` |
@@ -150,6 +151,26 @@ situacao(limiteGozo, hoje)      // 'vencida' | 'a_vencer' | 'ok'   (mesma ideia 
 
 Regra de escopo: pode alterar o que for necessário, desde que não mude o comportamento do
 que já funciona.
+
+## 8.1 Fase 1b — por que a inativação NÃO é automática
+
+O extrato já chegava sozinho do G-Click; só a leitura era manual. Agora ela roda ao fim
+de cada sincronização, mas com uma separação deliberada:
+
+- **cadastrar e atualizar** quem está no extrato roda sozinho — é aditivo e reversível;
+- **inativar quem sumiu** vira um **aviso** em `/admin/funcionarios`, para alguém confirmar.
+
+O motivo é o modo de falha. Um PDF lido pela metade traz 8 de 15 funcionários; os outros
+7 seriam inativados em silêncio, sumiriam da tela do cliente, e você só descobriria quando
+ele reclamasse. Cadastrar a mais aparece na tela; inativar a menos, não.
+
+Duas salvaguardas juntas: **só processa quando o extrato muda** (a marca é o id da
+entrega, então retificação do mesmo mês também é relida) e **parse vazio não marca como
+processado** — na próxima rodada tenta de novo, em vez de dar o arquivo por lido.
+
+A importação manual continua inativando na hora: ali a revisão humana é o próprio clique.
+Ela também fecha os avisos abertos dessas pessoas, para não pedir a mesma confirmação duas
+vezes.
 
 ## 9. Em aberto
 

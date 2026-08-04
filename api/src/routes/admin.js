@@ -12,6 +12,7 @@ const { resolveUploadPath } = require("../uploads");
 const { LGPD_CONSENT_VERSION } = require("../lgpd");
 const sync = require("../gclick/sync");
 const clientSync = require("../gclick/clientSync");
+const extratoAuto = require("../extratoAuto");
 const { setSetting } = require("../appSettings");
 const gclickClient = require("../gclick/client");
 const fs = require("fs");
@@ -395,6 +396,93 @@ router.put("/configuracoes/sync", requireArea("sincronizacao"), async (req, res)
   }
 });
 
+
+/**
+ * Avisos de saída da folha: quem está cadastrado mas não veio no último extrato.
+ *
+ * A leitura automática do extrato NÃO inativa ninguém — ela abre estes avisos. Um PDF
+ * lido pela metade inativaria gente em silêncio; aqui alguém confirma.
+ */
+router.get("/saidas-folha", requireArea("funcionarios"), async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT a.id, a.nome, a.cpf, a.competencia, a.criado_em,
+              c.id AS company_id, c.name AS company_name, c.cnpj
+         FROM employee_exit_alerts a
+         JOIN companies c ON c.id = a.company_id
+        WHERE a.situacao = 'pendente'
+        ORDER BY c.name, a.nome`
+    );
+    res.json({ total: rows.length, saidas: rows });
+  } catch (err) {
+    console.error("[saidas-folha]", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/** Confirma a saída: inativa o funcionário (some para a empresa, fica para o admin). */
+router.post("/saidas-folha/:id/inativar", requireArea("funcionarios"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const { rows } = await client.query(
+        "SELECT employee_id FROM employee_exit_alerts WHERE id = $1 AND situacao = 'pendente'",
+        [id]
+      );
+      if (!rows.length) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Aviso não encontrado ou já resolvido" });
+      }
+      await client.query("UPDATE employees SET active = false WHERE id = $1", [rows[0].employee_id]);
+      await client.query(
+        `UPDATE employee_exit_alerts
+            SET situacao = 'resolvido', resolucao = 'inativado', resolvido_em = now(), resolvido_por = $2
+          WHERE id = $1`,
+        [id, req.admin.id]
+      );
+      await client.query("COMMIT");
+      res.json({ ok: true });
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error("[saidas-folha inativar]", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/** Falso alarme (afastamento, extrato parcial): mantém ativo e fecha o aviso. */
+router.post("/saidas-folha/:id/manter", requireArea("funcionarios"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
+    const { rowCount } = await db.query(
+      `UPDATE employee_exit_alerts
+          SET situacao = 'resolvido', resolucao = 'mantido', resolvido_em = now(), resolvido_por = $2
+        WHERE id = $1 AND situacao = 'pendente'`,
+      [id, req.admin.id]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Aviso não encontrado ou já resolvido" });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[saidas-folha manter]", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/** Lê agora os extratos que mudaram, sem esperar a próxima sincronização. */
+router.post("/extratos/processar", requireArea("funcionarios"), async (_req, res) => {
+  const r = await extratoAuto.processarExtratos(db);
+  if (!r.ok) return res.status(409).json({ error: r.erro });
+  res.json(r);
+});
+
 /** Localiza o extrato de folha mais recente já hospedado no portal para a empresa. */
 async function ultimoExtrato(companyId) {
   const { rows } = await db.query(
@@ -546,9 +634,19 @@ router.post("/extrato-employees/import", requireArea("funcionarios"), async (req
         const inat = await client.query(
           `UPDATE employees SET active = false
            WHERE company_id = $1 AND active IS TRUE AND cpf <> ALL($2::text[])
-           RETURNING name`,
+           RETURNING id, name`,
           [c.id, cpfs]
         );
+        // A importação manual É a revisão humana: fecha os avisos abertos dessas
+        // pessoas para não pedir a mesma confirmação duas vezes.
+        if (inat.rowCount) {
+          await client.query(
+            `UPDATE employee_exit_alerts
+                SET situacao = 'resolvido', resolucao = 'inativado', resolvido_em = now()
+              WHERE situacao = 'pendente' AND employee_id = ANY($1::uuid[])`,
+            [inat.rows.map((r) => r.id)]
+          );
+        }
         await client.query("COMMIT");
         totalInseridos += r.body.inserted;
         totalPulados += r.body.skipped;

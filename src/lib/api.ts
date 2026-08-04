@@ -610,6 +610,35 @@ export const api = {
         method: "PUT",
         body: JSON.stringify({ alerta_so_ativos }),
       }),
+    /** Quem está cadastrado mas não veio no último extrato — aguarda confirmação. */
+    saidasFolha: () =>
+      request<{
+        total: number;
+        saidas: Array<{
+          id: string;
+          nome: string;
+          cpf: string;
+          competencia: string | null;
+          criado_em: string;
+          company_id: string;
+          company_name: string;
+          cnpj: string;
+        }>;
+      }>("/admin/saidas-folha"),
+    inativarSaida: (id: string) =>
+      request<{ ok: boolean }>(`/admin/saidas-folha/${id}/inativar`, { method: "POST" }),
+    manterSaida: (id: string) =>
+      request<{ ok: boolean }>(`/admin/saidas-folha/${id}/manter`, { method: "POST" }),
+    /** Lê agora os extratos que mudaram, sem esperar a sincronização. */
+    processarExtratos: () =>
+      request<{
+        empresas: number;
+        inseridos: number;
+        atualizados: number;
+        avisos: number;
+        erros: number;
+        pulados: number;
+      }>("/admin/extratos/processar", { method: "POST" }),
     /** Estado da sincronização com o G-Click. */
     syncStatus: () =>
       request<{
