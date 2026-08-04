@@ -149,7 +149,14 @@ aviso quando houver divergência), segunda esteira vinda do **Central Pendência
 DCTFWeb, que aquele sistema já emite em lote) e **parcelamentos** — Prefeitura, PGFN e Receita, que
 hoje **não existem** no portal.
 
-## 9. Ideias para depois (não estão feitas)
+## 9. Férias na palma da mão do cliente
+
+Planejado em **[PLANO-FERIAS.md](PLANO-FERIAS.md)**: previsão de férias, custo (férias +
+1/3 + FGTS) e limite de faltas, trazidos do app que estava no Lovable. Entra por upload da
+Programação de Férias — o G-Click não expõe isso na API hoje. Sem tela nova de admin: o
+upload fica dentro de `/admin/empresas`.
+
+## 10. Ideias para depois (não estão feitas)
 
 Em ordem de utilidade, na minha leitura:
 
