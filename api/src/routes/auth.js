@@ -13,6 +13,7 @@ const {
   validateEmailFormat,
 } = require("../middleware/validate");
 const { isSmtpConfigured, getPublicAppUrl, sendPasswordResetEmail } = require("../mailer");
+const { LGPD_CONSENT_VERSION, lgpdTermo } = require("../lgpd");
 
 const forgotPasswordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -465,12 +466,32 @@ router.post("/send-reset-link", authMiddleware, forgotPasswordLimiter, async (re
 });
 
 /** Atualizar nome da empresa e permissões (tool_access) sem novo login — usa o mesmo Bearer. */
-router.get("/company-session", authMiddleware, (req, res) => {
+router.get("/company-session", authMiddleware, async (req, res) => {
   if (req.isAdmin) {
     return res.status(400).json({ error: "Este recurso é só para login de empresa (CNPJ)." });
   }
   if (!req.company?.id) {
     return res.status(401).json({ error: "Sessão inválida" });
+  }
+  // O estado do LGPD vem da base (não do token): o aviso do primeiro acesso some
+  // assim que o cliente responde, sem precisar de novo login.
+  let lgpd = { consent_at: null, prompt_seen_at: null, versao: null };
+  try {
+    const { rows } = await db.query(
+      `SELECT lgpd_consent_at, lgpd_prompt_seen_at, lgpd_consent_version
+         FROM companies WHERE id = $1`,
+      [req.company.id]
+    );
+    if (rows.length) {
+      lgpd = {
+        consent_at: rows[0].lgpd_consent_at,
+        prompt_seen_at: rows[0].lgpd_prompt_seen_at,
+        versao: rows[0].lgpd_consent_version,
+      };
+    }
+  } catch (err) {
+    // Base ainda sem as colunas (migração por rodar): o portal segue normalmente.
+    console.error("company-session lgpd:", err.message);
   }
   res.json({
     company: {
@@ -479,7 +500,61 @@ router.get("/company-session", authMiddleware, (req, res) => {
       cnpj: req.company.cnpj,
     },
     tool_access: req.companyToolAccess,
+    lgpd,
   });
+});
+
+/** Texto do termo LGPD (fonte única, ver src/lgpd.js). Público: é o que o cliente lê. */
+router.get("/lgpd-termo", (_req, res) => {
+  res.json(lgpdTermo());
+});
+
+/**
+ * Registro do aceite. Idempotente: se já houver aceite, mantém a data original —
+ * o consentimento é dado uma vez, não a cada visita.
+ */
+router.post("/lgpd-consent", authMiddleware, async (req, res) => {
+  try {
+    if (req.isAdmin || !req.company?.id) {
+      return res.status(403).json({ error: "Recurso exclusivo para login de empresa" });
+    }
+    const ip = (req.ip || "").slice(0, 60) || null;
+    const { rows } = await db.query(
+      `UPDATE companies
+          SET lgpd_consent_at = COALESCE(lgpd_consent_at, now()),
+              lgpd_consent_ip = COALESCE(lgpd_consent_ip, $1),
+              lgpd_consent_version = COALESCE(lgpd_consent_version, $2),
+              lgpd_prompt_seen_at = COALESCE(lgpd_prompt_seen_at, now())
+        WHERE id = $3
+        RETURNING lgpd_consent_at, lgpd_consent_version`,
+      [ip, LGPD_CONSENT_VERSION, req.company.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Empresa não encontrada" });
+    res.json({ ok: true, consent_at: rows[0].lgpd_consent_at, versao: rows[0].lgpd_consent_version });
+  } catch (err) {
+    console.error("lgpd-consent:", err.message);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/**
+ * Cliente viu o aviso e fechou sem aceitar. O aviso não bloqueia o portal e não
+ * volta a aparecer; o admin vê "visto, sem aceite" na auditoria.
+ */
+router.post("/lgpd-visto", authMiddleware, async (req, res) => {
+  try {
+    if (req.isAdmin || !req.company?.id) {
+      return res.status(403).json({ error: "Recurso exclusivo para login de empresa" });
+    }
+    await db.query(
+      "UPDATE companies SET lgpd_prompt_seen_at = COALESCE(lgpd_prompt_seen_at, now()) WHERE id = $1",
+      [req.company.id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("lgpd-visto:", err.message);
+    res.status(500).json({ error: "Erro interno" });
+  }
 });
 
 module.exports = router;

@@ -8,6 +8,7 @@ const { listCompanies, insertCompanyRow, PG_UNDEFINED_COLUMN } = require("../too
 const { importEmployeesForCompany } = require("../employeeImport");
 const { parseExtratoEmployees } = require("../extratoEmployees");
 const { resolveUploadPath } = require("../uploads");
+const { LGPD_CONSENT_VERSION } = require("../lgpd");
 const sync = require("../gclick/sync");
 const gclickClient = require("../gclick/client");
 const fs = require("fs");
@@ -74,6 +75,32 @@ router.get("/deliverables-overview", async (_req, res) => {
     res.json(rows);
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/**
+ * Auditoria LGPD: quem já concordou com o tratamento de dados, quando e em que versão
+ * do termo. 'visto' = o aviso foi exibido e fechado sem aceite (não bloqueamos o portal).
+ */
+router.get("/lgpd-consents", async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT id, name, cnpj, lgpd_consent_at, lgpd_consent_version, lgpd_consent_ip,
+              lgpd_prompt_seen_at,
+              CASE
+                WHEN lgpd_consent_at IS NOT NULL THEN 'aceito'
+                WHEN lgpd_prompt_seen_at IS NOT NULL THEN 'visto'
+                ELSE 'pendente'
+              END AS situacao
+         FROM companies
+        ORDER BY (lgpd_consent_at IS NOT NULL), name`
+    );
+    const resumo = { aceito: 0, visto: 0, pendente: 0 };
+    for (const r of rows) resumo[r.situacao] += 1;
+    res.json({ versao_atual: LGPD_CONSENT_VERSION, resumo, total: rows.length, empresas: rows });
+  } catch (err) {
+    console.error("[lgpd-consents]", err);
     res.status(500).json({ error: "Erro interno" });
   }
 });

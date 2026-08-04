@@ -9,6 +9,14 @@ CREATE TABLE IF NOT EXISTS companies (
   contact_email TEXT,
   phone TEXT,
   tool_access JSONB DEFAULT '{"fiscal_guides":true,"boletos":true,"payroll_files":true,"documents":true,"calendar":true,"suspension":true,"warning":true,"chatbot":true,"salary_adhoc":true,"employees":true,"certificates":true,"history":true}'::jsonb,
+  -- Estabelecida = tem ponto físico e por isso precisa de licenças. Não estabelecida
+  -- fica fora do painel de licenças.
+  established BOOLEAN NOT NULL DEFAULT true,
+  -- LGPD: carimbo do aceite (nulo = ainda não concordou) e de quando o aviso foi exibido.
+  lgpd_consent_at TIMESTAMPTZ,
+  lgpd_consent_ip TEXT,
+  lgpd_consent_version TEXT,
+  lgpd_prompt_seen_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -81,6 +89,39 @@ CREATE INDEX IF NOT EXISTS idx_deliverables_company_due ON deliverables(company_
 CREATE INDEX IF NOT EXISTS idx_deliverables_token ON deliverables(access_token);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_deliverables_company_external_ref
   ON deliverables(company_id, external_ref) WHERE external_ref IS NOT NULL;
+
+-- Licenças do cliente. Só guardamos a data de vencimento: "ativa/a vencer/vencida" é
+-- calculado na leitura (api/src/licenseStatus.js). Renovar = inserir nova linha.
+CREATE TABLE IF NOT EXISTS company_licenses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  tipo TEXT NOT NULL CHECK (tipo IN ('funcionamento', 'avcb_clcb', 'sanitaria')),
+  numero TEXT,
+  orgao TEXT,
+  emitida_em DATE,
+  vence_em DATE NOT NULL,
+  observacao TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_company_licenses_vigente
+  ON company_licenses(company_id, tipo, vence_em DESC);
+
+-- Guia da taxa anual da prefeitura: uma linha por empresa e ano.
+CREATE TABLE IF NOT EXISTS annual_tax_receipts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  ano INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente', 'enviado', 'confirmado')),
+  enviado_em TIMESTAMPTZ,
+  confirmado_em TIMESTAMPTZ,
+  observacao TEXT,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (company_id, ano)
+);
+
+CREATE INDEX IF NOT EXISTS idx_annual_tax_receipts_ano ON annual_tax_receipts(ano, status);
 
 -- Admin: login = CPF (abaixo); senha inicial nas anotações locais de acessos — trocar após o primeiro login.
 INSERT INTO platform_admins (cpf, password_hash) VALUES (

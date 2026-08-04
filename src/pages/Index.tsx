@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -36,6 +36,7 @@ import {
   type ToolGroup,
 } from "@/lib/companyTools";
 import { competenciaLabel, formatDueLong } from "@/lib/deliverableDisplay";
+import { LgpdConsentDialog } from "@/components/LgpdConsentDialog";
 
 type MenuItem = {
   key: string;
@@ -78,6 +79,8 @@ const GROUP_SUBTITLE: Record<ToolGroup, string> = {
 const Index = () => {
   const navigate = useNavigate();
   const { company, logout, login } = useAuth();
+  // Aviso de LGPD: só abre se o servidor disser que a empresa nunca respondeu.
+  const [mostrarLgpd, setMostrarLgpd] = useState(false);
 
   useEffect(() => {
     if (!company?.id || !company.token) return;
@@ -87,6 +90,7 @@ const Index = () => {
       try {
         const data = await api.auth.companySession();
         if (cancelled) return;
+        setMostrarLgpd(!data.lgpd?.consent_at && !data.lgpd?.prompt_seen_at);
         login({
           role: "company",
           id,
@@ -139,6 +143,8 @@ const Index = () => {
 
   return (
     <div className="min-h-screen">
+      <LgpdConsentDialog aberto={mostrarLgpd} onResolvido={() => setMostrarLgpd(false)} />
+
       <header className="border-b border-border/60 bg-card/40 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/80 to-primary/30 text-primary-foreground">

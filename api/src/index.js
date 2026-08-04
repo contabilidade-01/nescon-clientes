@@ -7,6 +7,7 @@ const { ensurePlatformAdmins } = require("./ensurePlatformAdmins");
 const { ensurePasswordResetSchema } = require("./ensurePasswordResetSchema");
 const { ensureToolAccessSchema } = require("./ensureToolAccessSchema");
 const { ensureDeliverablesSchema } = require("./ensureDeliverablesSchema");
+const { ensureLicensesSchema } = require("./ensureLicensesSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -20,6 +21,9 @@ app.use("/api/employees", require("./routes/employees"));
 app.use("/api/documents", require("./routes/documents"));
 app.use("/api/certificates", require("./routes/certificates"));
 app.use("/api/deliverables", require("./routes/deliverables"));
+// Licenças (funcionamento, AVCB/CLCB, sanitária) e taxa anual da prefeitura: só admin.
+app.use("/api/licencas", require("./routes/licenses"));
+app.use("/api/taxas-anuais", require("./routes/annualTaxes"));
 // Ingestão servidor-a-servidor (sistema de guias): auth própria por X-Ingest-Key.
 app.use("/api/fiscal", require("./routes/fiscalIngest"));
 
@@ -47,6 +51,7 @@ async function start() {
     await ensurePasswordResetSchema(db);
     await ensureToolAccessSchema(db);
     await ensureDeliverablesSchema(db);
+    await ensureLicensesSchema(db);
     // Nota: a antiga limpeza de inativos no boot foi REMOVIDA. Demitido agora é
     // inativado (active=false) e MANTIDO para o admin ver o histórico; some só da
     // empresa. Ver a detecção de demissão na importação por extrato (routes/admin.js).

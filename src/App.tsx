@@ -16,7 +16,14 @@ import EmployeesPage from "./pages/EmployeesPage.tsx";
 import ChatbotPage from "./pages/ChatbotPage.tsx";
 import SalaryAdhocPage from "./pages/SalaryAdhocPage.tsx";
 import CertificatesPage from "./pages/CertificatesPage.tsx";
-import AdminPage from "./pages/AdminPage.tsx";
+import VisaoGeralPage from "./pages/admin/VisaoGeralPage.tsx";
+import EmpresasPage from "./pages/admin/EmpresasPage.tsx";
+import FuncionariosAdminPage from "./pages/admin/FuncionariosPage.tsx";
+import EntregasPage from "./pages/admin/EntregasPage.tsx";
+import LicencasPage from "./pages/admin/LicencasPage.tsx";
+import TaxasAnuaisPage from "./pages/admin/TaxasAnuaisPage.tsx";
+import LgpdPage from "./pages/admin/LgpdPage.tsx";
+import SincronizacaoPage from "./pages/admin/SincronizacaoPage.tsx";
 import EnvioGuiasAdminPage from "./pages/EnvioGuiasAdminPage.tsx";
 import GuiasFiscaisPage from "./pages/GuiasFiscaisPage.tsx";
 import BoletosPage from "./pages/BoletosPage.tsx";
@@ -88,7 +95,15 @@ const AppRoutes = () => (
     <Route path="/reset-password" element={<ResetPasswordPage />} />
     {/* Link do WhatsApp: sem login, identificado por token opaco */}
     <Route path="/entrega/:token" element={<EntregaPublicaPage />} />
-    <Route path="/admin" element={<AdminOnlyRoute><AdminPage /></AdminOnlyRoute>} />
+    {/* Painel do escritório: uma página por área, com menu lateral retrátil (AdminLayout) */}
+    <Route path="/admin" element={<AdminOnlyRoute><VisaoGeralPage /></AdminOnlyRoute>} />
+    <Route path="/admin/empresas" element={<AdminOnlyRoute><EmpresasPage /></AdminOnlyRoute>} />
+    <Route path="/admin/funcionarios" element={<AdminOnlyRoute><FuncionariosAdminPage /></AdminOnlyRoute>} />
+    <Route path="/admin/entregas" element={<AdminOnlyRoute><EntregasPage /></AdminOnlyRoute>} />
+    <Route path="/admin/licencas" element={<AdminOnlyRoute><LicencasPage /></AdminOnlyRoute>} />
+    <Route path="/admin/taxas-anuais" element={<AdminOnlyRoute><TaxasAnuaisPage /></AdminOnlyRoute>} />
+    <Route path="/admin/lgpd" element={<AdminOnlyRoute><LgpdPage /></AdminOnlyRoute>} />
+    <Route path="/admin/sincronizacao" element={<AdminOnlyRoute><SincronizacaoPage /></AdminOnlyRoute>} />
     {/* Única tela liberada enquanto a senha for a inicial */}
     <Route path="/alterar-senha" element={<LoggedInRoute><AlterarSenhaPage /></LoggedInRoute>} />
     <Route path="/" element={<CompanyOnlyRoute><Index /></CompanyOnlyRoute>} />

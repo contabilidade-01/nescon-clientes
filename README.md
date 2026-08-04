@@ -49,6 +49,71 @@ Login = **CPF** do administrador (com ou sem máscara); a senha inicial está na
 
 Acesso ao painel `/admin` (todas as empresas). Na primeira subida da API, a tabela `platform_admins` é criada automaticamente. Script manual: **`db/seed-platform-admin.sql`**.
 
+## Painel do escritório: uma página por área
+
+O `/admin` é dividido por segmento de trabalho, com **menu lateral que retrai** (botão no topo ou
+`Ctrl`/`Cmd` + `B`; no celular vira gaveta). O layout está em `src/components/admin/AdminLayout.tsx`
+e cada rota é uma página em `src/pages/admin/`:
+
+| Rota | O que faz |
+|------|-----------|
+| `/admin` | Visão geral: números do escritório, licenças que exigem atenção e consentimentos LGPD. Cada cartão leva à área correspondente. |
+| `/admin/empresas` | Cadastro de CNPJ, razão social, contactos, permissões por ferramenta e importações da empresa. |
+| `/admin/funcionarios` | Quadro de pessoal e cadastro em massa pelo extrato de folha. |
+| `/admin/entregas` | Entregas por empresa (liberadas × retidas), documentos de DP e atestados. |
+| `/admin/licencas` | Licenças e marcação estabelecida × não estabelecida (ver abaixo). |
+| `/admin/taxas-anuais` | Controle das guias de taxa anual da prefeitura. |
+| `/admin/lgpd` | Auditoria dos consentimentos e o texto do termo em vigor. |
+| `/admin/sincronizacao` | Sincronização com o G-Click e e-mail do administrador. |
+| `/admin/envio-guias` | Iframe do sistema GCLICK (app separado). |
+
+### Licenças (funcionamento, AVCB/CLCB, vigilância sanitária)
+
+**A situação de uma licença nunca é gravada.** A base guarda só a **data de vencimento**; ativa,
+a vencer, vencida ou ausente é **calculado na leitura** por `api/src/licenseStatus.js` — a mesma
+regra em SQL (`statusSql`, usada pelo painel e pela listagem) e em JS (`statusOf`, testada em
+`src/test/licenseStatus.test.ts`). Consequência prática: nada envelhece na base, não existe rotina
+para "expirar" licença e o resumo nunca discorda da lista.
+
+- **Janela de aviso:** 60 dias antes do vencimento a licença entra em *a vencer*. Muda com a
+  variável `LICENSE_WARN_DAYS` na API (1 a 365).
+- **Renovação:** cadastre uma **nova** licença do mesmo tipo. A vigente é sempre a de vencimento
+  mais distante; as anteriores ficam como histórico.
+- **Empresa não estabelecida** (sem ponto físico) não precisa de licença: desmarque em
+  *Licenças → Empresas estabelecidas* e ela sai do painel de licenças **e** do controle de taxa
+  anual. As licenças já cadastradas continuam guardadas. Toda empresa nasce **estabelecida**.
+- O dashboard é clicável e o filtro vive na URL (`/admin/licencas?status=vencida&tipo=avcb_clcb`),
+  então dá para guardar o link e o "voltar" do browser funciona.
+
+Rotas da API (todas exigem admin): `GET /api/licencas/overview`, `GET /api/licencas/itens`,
+`GET /api/licencas/empresas`, `POST /api/licencas`, `PATCH|DELETE /api/licencas/:id`,
+`PATCH /api/licencas/empresas/:id/estabelecida`.
+
+### Taxas anuais da prefeitura
+
+Uma linha por **empresa e ano**, com estado `pendente` → `enviado` → `confirmado`. Empresa sem
+marcação conta como pendente (não criamos registros em branco). O carimbo do primeiro envio não se
+move nos cliques seguintes; voltar para *pendente* limpa as datas, para o histórico não afirmar um
+envio desfeito. API: `GET /api/taxas-anuais?ano=2026` e `PUT /api/taxas-anuais` (upsert).
+
+### Consentimento LGPD
+
+No primeiro acesso o cliente vê o termo **uma vez** e **sem bloqueio**: pode concordar ou fechar em
+"Agora não". Concordar grava `lgpd_consent_at` + IP + versão do termo; fechar grava
+`lgpd_prompt_seen_at` e o aviso não volta. O admin acompanha em `/admin/lgpd` (aceito / visto sem
+aceite / pendente).
+
+O **texto do termo é fonte única** em `api/src/lgpd.js` e é servido por `GET /api/auth/lgpd-termo` —
+o que o cliente lê é o mesmo que aparece na auditoria. **Ao alterar o texto, suba a versão**
+(`LGPD_CONSENT_VERSION`): aceites antigos continuam registrados com a versão da época.
+
+### Migração destas tabelas
+
+`api/src/ensureLicensesSchema.js` roda **no arranque da API** (idempotente, mesmo padrão dos outros
+`ensure*`): cria `company_licenses` e `annual_tax_receipts` e adiciona em `companies` as colunas
+`established` e `lgpd_consent_at/_ip/_version` + `lgpd_prompt_seen_at`. Instalações novas já vêm
+com tudo em `db/init.sql`. **Não há passo manual no deploy.**
+
 ### Recuperação de senha por e-mail
 
 - No login, **Esqueci minha senha** pede CNPJ ou CPF + e-mail. Só envia o link se o e-mail for **igual** ao cadastrado para essa empresa ou administrador.

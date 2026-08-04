@@ -142,6 +142,87 @@ export type PublicDeliverable = {
   company_name: string;
 };
 
+export type LicenseType = "funcionamento" | "avcb_clcb" | "sanitaria";
+/** Estado é sempre calculado a partir do vencimento — nunca vem gravado. */
+export type LicenseStatus = "ativa" | "a_vencer" | "vencida" | "ausente";
+
+/** Uma empresa × um tipo de licença: a licença vigente e o estado de hoje. */
+export type LicenseItem = {
+  company_id: string;
+  name: string;
+  cnpj: string;
+  tipo: LicenseType;
+  license_id: string | null;
+  numero: string | null;
+  orgao: string | null;
+  emitida_em: string | null;
+  vence_em: string | null;
+  observacao: string | null;
+  status: LicenseStatus;
+  dias_restantes: number | null;
+};
+
+export type LicenseOverview = {
+  dias_aviso: number;
+  estabelecidas: number;
+  nao_estabelecidas: number;
+  por_status: Record<LicenseStatus, number>;
+  por_tipo: Array<{ tipo: LicenseType } & Record<LicenseStatus, number>>;
+};
+
+export type CompanyWithLicenses = {
+  id: string;
+  name: string;
+  cnpj: string;
+  established: boolean;
+  licencas: Array<{
+    id: string;
+    tipo: LicenseType;
+    numero: string | null;
+    orgao: string | null;
+    emitida_em: string | null;
+    vence_em: string;
+    observacao: string | null;
+    status: LicenseStatus;
+  }>;
+};
+
+export type LicenseInput = {
+  company_id: string;
+  tipo: LicenseType;
+  numero?: string | null;
+  orgao?: string | null;
+  emitida_em?: string | null;
+  vence_em: string;
+  observacao?: string | null;
+};
+
+export type AnnualTaxStatus = "pendente" | "enviado" | "confirmado";
+
+export type AnnualTaxRow = {
+  company_id: string;
+  name: string;
+  cnpj: string;
+  status: AnnualTaxStatus;
+  enviado_em: string | null;
+  confirmado_em: string | null;
+  observacao: string | null;
+  atualizado_em: string | null;
+};
+
+export type LgpdTermo = {
+  versao: string;
+  titulo: string;
+  paragrafos: string[];
+  checkbox: string;
+};
+
+export type LgpdState = {
+  consent_at: string | null;
+  prompt_seen_at: string | null;
+  versao: string | null;
+};
+
 /** Mesma forma das permissões do cliente — fonte única em companyTools, evita as duas listas divergirem. */
 export type CompanyToolAccessApi = CompanyToolAccess;
 
@@ -189,9 +270,64 @@ export const api = {
       request<{ message: string }>("/auth/send-reset-link", { method: "POST" }),
     /** Sessão de empresa: devolve tool_access atual (após admin alterar permissões). Requer Bearer. */
     companySession: () =>
-      request<{ company: { id: string; name: string; cnpj: string }; tool_access: CompanyToolAccessApi }>(
-        "/auth/company-session"
-      ),
+      request<{
+        company: { id: string; name: string; cnpj: string };
+        tool_access: CompanyToolAccessApi;
+        lgpd?: LgpdState;
+      }>("/auth/company-session"),
+  },
+
+  /** Consentimento LGPD do cliente (texto servido pela API — fonte única). */
+  lgpd: {
+    termo: () => publicRequest<LgpdTermo>("/auth/lgpd-termo"),
+    concordar: () =>
+      request<{ ok: boolean; consent_at: string; versao: string }>("/auth/lgpd-consent", {
+        method: "POST",
+      }),
+    /** Fechou sem aceitar: o aviso não volta a aparecer e o admin vê "visto". */
+    marcarVisto: () => request<{ ok: boolean }>("/auth/lgpd-visto", { method: "POST" }),
+  },
+
+  /** Licenças (funcionamento, AVCB/CLCB, vigilância sanitária). Só admin. */
+  licencas: {
+    overview: () => request<LicenseOverview>("/licencas/overview"),
+    itens: (opts?: { status?: LicenseStatus; tipo?: LicenseType; companyId?: string; q?: string }) => {
+      const params = new URLSearchParams();
+      if (opts?.status) params.set("status", opts.status);
+      if (opts?.tipo) params.set("tipo", opts.tipo);
+      if (opts?.companyId) params.set("company_id", opts.companyId);
+      if (opts?.q) params.set("q", opts.q);
+      const q = params.toString();
+      return request<LicenseItem[]>(`/licencas/itens${q ? `?${q}` : ""}`);
+    },
+    empresas: () => request<CompanyWithLicenses[]>("/licencas/empresas"),
+    criar: (data: LicenseInput) =>
+      request<{ id: string }>("/licencas", { method: "POST", body: JSON.stringify(data) }),
+    atualizar: (id: string, data: Omit<LicenseInput, "company_id" | "tipo">) =>
+      request<{ id: string }>(`/licencas/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    apagar: (id: string) => request<{ ok: boolean }>(`/licencas/${id}`, { method: "DELETE" }),
+    marcarEstabelecida: (companyId: string, established: boolean) =>
+      request<{ id: string; established: boolean }>(`/licencas/empresas/${companyId}/estabelecida`, {
+        method: "PATCH",
+        body: JSON.stringify({ established }),
+      }),
+  },
+
+  /** Guias da taxa anual da prefeitura: controle por empresa e ano. Só admin. */
+  taxasAnuais: {
+    listar: (ano: number) =>
+      request<{
+        ano: number;
+        resumo: Record<AnnualTaxStatus, number>;
+        total: number;
+        empresas: AnnualTaxRow[];
+      }>(`/taxas-anuais?ano=${ano}`),
+    marcar: (data: {
+      company_id: string;
+      ano: number;
+      status: AnnualTaxStatus;
+      observacao?: string | null;
+    }) => request<AnnualTaxRow>("/taxas-anuais", { method: "PUT", body: JSON.stringify(data) }),
   },
 
   admin: {
@@ -218,6 +354,23 @@ export const api = {
           ultima_entrada: string | null;
         }>
       >("/admin/deliverables-overview"),
+    /** Auditoria LGPD: quem concordou, quando e em que versão do termo. */
+    lgpdConsents: () =>
+      request<{
+        versao_atual: string;
+        resumo: { aceito: number; visto: number; pendente: number };
+        total: number;
+        empresas: Array<{
+          id: string;
+          name: string;
+          cnpj: string;
+          lgpd_consent_at: string | null;
+          lgpd_consent_version: string | null;
+          lgpd_consent_ip: string | null;
+          lgpd_prompt_seen_at: string | null;
+          situacao: "aceito" | "visto" | "pendente";
+        }>;
+      }>("/admin/lgpd-consents"),
     me: () =>
       request<{ id: string; cpf: string; contact_email: string | null }>("/admin/me"),
     updateMyContactEmail: (contact_email: string | null) =>
