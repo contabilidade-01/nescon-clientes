@@ -48,6 +48,7 @@ import { AdminEmployeeImport } from "@/components/AdminEmployeeImport";
 import { AdminExtratoImport } from "@/components/AdminExtratoImport";
 import { AdminDeliverableUpload } from "@/components/AdminDeliverableUpload";
 import { AdminSyncCard } from "@/components/AdminSyncCard";
+import { AdminExtratoBulk } from "@/components/AdminExtratoBulk";
 
 
 const AdminPage = () => {
@@ -181,6 +182,8 @@ const AdminPage = () => {
 
       <main className="mx-auto max-w-4xl px-4 py-6 space-y-6">
         <AdminSyncCard />
+
+        <AdminExtratoBulk />
 
         <Card>
           <CardHeader className="pb-2">
