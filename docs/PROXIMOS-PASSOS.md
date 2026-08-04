@@ -92,7 +92,14 @@ sanitária (só quem precisa — alimentação, saúde, estética).
 
 ---
 
-## 6. Ideias para depois (não estão feitas)
+## 6. Em fila: cadastro de clientes vindos do G-Click
+
+Planejado e documentado em **[PLANO-CLIENTES-GCLICK.md](PLANO-CLIENTES-GCLICK.md)** — ainda **não
+implementado**. Resumo: a sync deixa de criar empresa sozinha; cliente novo vira **alerta** para o
+admin decidir (cadastrar ou rejeitar, com lista de rejeitados), mudança de status vira **aviso** com
+OK, e o cadastro passa a ser nosso — o G-Click só informa entradas e inativações.
+
+## 7. Ideias para depois (não estão feitas)
 
 Em ordem de utilidade, na minha leitura:
 
