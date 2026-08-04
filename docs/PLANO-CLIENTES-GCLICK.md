@@ -261,6 +261,14 @@ cliente do G-Click e `SELECT count(*) FROM gclick_pendencias` devolve **0**.
 
 **Objetivo:** detectar cliente novo e mudança de status, sem ainda decidir nada.
 
+> **Herança da Fase 1, não esquecer.** O backfill deixou no espelho clientes com
+> `decisao='pendente'` (existem no G-Click, não existem em `companies`) e **nenhuma
+> pendência criada**. Como esses CNPJs já estão no espelho, o ramo "se não existe no
+> espelho" do pseudocódigo abaixo nunca os alcançaria e eles ficariam invisíveis para
+> sempre. A sincronização precisa, portanto, abrir `novo_cliente` para **toda linha com
+> `decisao='pendente'` sem pendência aberta** — e não só para quem apareceu agora. Isso
+> também deixa o processo auto-corretivo: alerta apagado por engano volta sozinho.
+
 Passos:
 
 1. Criar `api/src/gclick/clientSync.js` com `sincronizarClientes()` — o pseudocódigo de 6.1.

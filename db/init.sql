@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS companies (
   lgpd_consent_ip TEXT,
   lgpd_consent_version TEXT,
   lgpd_prompt_seen_at TIMESTAMPTZ,
+  -- Informativo: situação no G-Click (ATIVO/DESATIVADO). Não bloqueia nada.
+  gclick_status TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -130,6 +132,41 @@ CREATE TABLE IF NOT EXISTS annual_tax_receipts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_annual_tax_receipts_ano ON annual_tax_receipts(ano, status);
+
+-- Espelho dos clientes do G-Click + decisão do escritório. O G-Click escreve aqui,
+-- nunca em companies: a empresa só nasce quando o admin aceita.
+CREATE TABLE IF NOT EXISTS gclick_clients (
+  cnpj TEXT PRIMARY KEY,
+  nome TEXT,
+  email TEXT,
+  phone TEXT,
+  status_gclick TEXT,
+  decisao TEXT NOT NULL DEFAULT 'pendente' CHECK (decisao IN ('pendente', 'aceito', 'rejeitado')),
+  company_id UUID REFERENCES companies(id) ON DELETE SET NULL,
+  decidido_em TIMESTAMPTZ,
+  motivo_rejeicao TEXT,
+  primeiro_visto_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_gclick_clients_decisao ON gclick_clients(decisao, status_gclick);
+
+-- Caixa de alertas: cliente novo (decisão) e mudança de status (ciência).
+CREATE TABLE IF NOT EXISTS gclick_pendencias (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  cnpj TEXT NOT NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('novo_cliente', 'status_alterado')),
+  dados JSONB NOT NULL DEFAULT '{}',
+  situacao TEXT NOT NULL DEFAULT 'pendente' CHECK (situacao IN ('pendente', 'resolvido')),
+  resolucao TEXT CHECK (resolucao IN ('cadastrado', 'rejeitado', 'ciente')),
+  resolvido_em TIMESTAMPTZ,
+  resolvido_por UUID REFERENCES platform_admins(id) ON DELETE SET NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Uma pendência aberta por CNPJ e tipo: sincronizar de novo não duplica alerta.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gclick_pendencias_abertas
+  ON gclick_pendencias(cnpj, tipo) WHERE situacao = 'pendente';
 
 -- Admin: login = CPF (abaixo); senha inicial nas anotações locais de acessos — trocar após o primeiro login.
 INSERT INTO platform_admins (cpf, password_hash, is_owner) VALUES (

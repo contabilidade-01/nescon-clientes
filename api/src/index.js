@@ -9,6 +9,10 @@ const { ensureToolAccessSchema } = require("./ensureToolAccessSchema");
 const { ensureDeliverablesSchema } = require("./ensureDeliverablesSchema");
 const { ensureLicensesSchema } = require("./ensureLicensesSchema");
 const { ensureAdminUsersSchema } = require("./ensureAdminUsersSchema");
+const {
+  ensureGclickClientsSchema,
+  backfillGclickClients,
+} = require("./ensureGclickClientsSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -56,6 +60,12 @@ async function start() {
     await ensureDeliverablesSchema(db);
     await ensureLicensesSchema(db);
     await ensureAdminUsersSchema(db);
+    await ensureGclickClientsSchema(db);
+    // Primeira carga do espelho de clientes do G-Click. Fora do await: depende de
+    // rede e pode demorar; o arranque não espera nem cai se o G-Click estiver fora.
+    setTimeout(() => {
+      backfillGclickClients(db).catch((e) => console.error("[backfill gclick]", e.message));
+    }, 5000).unref();
     // Nota: a antiga limpeza de inativos no boot foi REMOVIDA. Demitido agora é
     // inativado (active=false) e MANTIDO para o admin ver o histórico; some só da
     // empresa. Ver a detecção de demissão na importação por extrato (routes/admin.js).
