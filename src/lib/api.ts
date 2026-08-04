@@ -423,6 +423,8 @@ export const api = {
       request<{
         company: { id: string; name: string; cnpj: string };
         tool_access: CompanyToolAccessApi;
+        /** Falso quando a empresa só tem pró-labore: a seção Férias não aparece. */
+        tem_funcionarios?: boolean;
         lgpd?: LgpdState;
       }>("/auth/company-session"),
   },

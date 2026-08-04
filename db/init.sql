@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS employees (
   codigo TEXT,
   salario_base NUMERIC(12,2),
   salario_competencia TEXT,
+  -- Cargo separa funcionário de pró-labore (api/src/payrollRoles.js).
+  cargo TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 

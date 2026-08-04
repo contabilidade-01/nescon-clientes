@@ -14,6 +14,8 @@ async function ensureEmployeePayrollFields(db) {
     await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS codigo TEXT;`);
     await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS salario_base NUMERIC(12,2);`);
     await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS salario_competencia TEXT;`);
+    // Cargo separa funcionário de pró-labore — ver api/src/payrollRoles.js.
+    await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS cargo TEXT;`);
     // Casamento por código dentro da empresa (a Programação de Férias traz o mesmo código).
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_employees_company_codigo

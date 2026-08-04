@@ -21,6 +21,8 @@ const RE_CPF = /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g;
 const RE_MARKER = /Situa[çc][ãa]o|Empr\.:|Adm:/i;
 /** Salário base: aparece no bloco do empregado, às vezes na própria linha dele. */
 const RE_SALARIO = /Sal[áa]rio:\s*([\d.]*\d(?:,\d+)?)/i;
+/** Cargo: distingue funcionário de pró-labore (ver payrollRoles.js). */
+const RE_CARGO = /Cargo:\s*(?:\d+\s+)?([^\t\n]+?)\s*(?:C\.?B\.?O|$)/i;
 /** Competência da folha, no cabeçalho do extrato. */
 const RE_COMPETENCIA = /Compet[êe]ncia:\s*(\d{2}\/\d{4})/i;
 
@@ -107,6 +109,14 @@ function extrairDoTexto(texto) {
     atual.salarioBase = v && v > 0 ? v : null;
   };
 
+  const capturarCargo = (linha) => {
+    if (!atual || atual.cargo) return;
+    const m = linha.match(RE_CARGO);
+    if (!m) return;
+    const c = m[1].replace(/\s+/g, " ").trim();
+    if (c) atual.cargo = c;
+  };
+
   for (const linha of String(texto || "").split(/\r?\n/)) {
     if (!competencia) {
       const mc = linha.match(RE_COMPETENCIA);
@@ -121,9 +131,10 @@ function extrairDoTexto(texto) {
           atual = null;
         } else {
           vistos.add(emp.cpf);
-          atual = { ...emp, salarioBase: null };
+          atual = { ...emp, salarioBase: null, cargo: null };
           funcionarios.push(atual);
           capturarSalario(linha);
+          capturarCargo(linha);
         }
         continue;
       }
@@ -134,6 +145,7 @@ function extrairDoTexto(texto) {
     }
 
     capturarSalario(linha);
+    capturarCargo(linha);
   }
   return { funcionarios, invalidos, competencia };
 }

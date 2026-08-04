@@ -15,6 +15,7 @@ const {
 const { isSmtpConfigured, getPublicAppUrl, sendPasswordResetEmail } = require("../mailer");
 const { LGPD_CONSENT_VERSION, lgpdTermo } = require("../lgpd");
 const { mergeAreas } = require("../adminAreas");
+const { funcionarioRealSql } = require("../payrollRoles");
 
 /**
  * Admin no login. Base antiga sem as colunas de permissão (42703) devolve o mínimo e
@@ -514,6 +515,19 @@ router.get("/company-session", authMiddleware, async (req, res) => {
   if (!req.company?.id) {
     return res.status(401).json({ error: "Sessão inválida" });
   }
+  // Férias só faz sentido para quem tem funcionário celetista: empresa só com
+  // pró-labore não vê a seção. A regra vive em payrollRoles.js.
+  let temFuncionarios = false;
+  try {
+    const { rows } = await db.query(
+      `SELECT EXISTS (SELECT 1 FROM employees e WHERE e.company_id = $1 AND ${funcionarioRealSql("e")}) AS tem`,
+      [req.company.id]
+    );
+    temFuncionarios = Boolean(rows[0]?.tem);
+  } catch (err) {
+    console.error("company-session funcionarios:", err.message);
+  }
+
   // O estado do LGPD vem da base (não do token): o aviso do primeiro acesso some
   // assim que o cliente responde, sem precisar de novo login.
   let lgpd = { consent_at: null, prompt_seen_at: null, versao: null };
@@ -541,6 +555,7 @@ router.get("/company-session", authMiddleware, async (req, res) => {
       cnpj: req.company.cnpj,
     },
     tool_access: req.companyToolAccess,
+    tem_funcionarios: temFuncionarios,
     lgpd,
   });
 });

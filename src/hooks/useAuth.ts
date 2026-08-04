@@ -11,6 +11,8 @@ export type CompanySession = {
   toolAccess: CompanyToolAccess;
   /** Ainda com a senha inicial (= CNPJ): o portal exige a troca antes de liberar o resto. */
   mustChangePassword?: boolean;
+  /** Tem funcionário celetista (não só pró-labore). Decide se "Férias" aparece. */
+  temFuncionarios?: boolean;
 };
 
 export type AdminSession = {
@@ -65,6 +67,8 @@ function parseStored(): AuthSession | null {
         token: o.token,
         toolAccess: mergeClientToolAccess(o.toolAccess ?? o.tool_access),
         mustChangePassword: Boolean(o.mustChangePassword ?? o.must_change_password),
+        // Ausente em sessões antigas: assume que tem, para não esconder à toa.
+        temFuncionarios: o.temFuncionarios === undefined ? true : Boolean(o.temFuncionarios),
       };
     }
 

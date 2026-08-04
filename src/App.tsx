@@ -67,6 +67,21 @@ function CompanyToolRoute({ tool, children }: { tool: CompanyToolKey; children: 
   return <>{children}</>;
 }
 
+/**
+ * Férias: além da permissão, exige funcionário celetista. Empresa só com pró-labore
+ * não tem férias a programar — a regra vive em api/src/payrollRoles.js.
+ */
+function VacationRoute({ children }: { children: React.ReactNode }) {
+  const { isLoggedIn, isAdmin, company } = useAuth();
+  if (!isLoggedIn) return <Navigate to="/login" replace />;
+  if (isAdmin) return <Navigate to="/admin" replace />;
+  if (!company) return <Navigate to="/login" replace />;
+  if (company.mustChangePassword) return <Navigate to="/alterar-senha" replace />;
+  if (!isToolAllowed(company.toolAccess, "vacations")) return <Navigate to="/" replace />;
+  if (company.temFuncionarios === false) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 /** Histórico: admin vê tudo; empresa só se a ferramenta estiver ativa */
 function HistoryAccessRoute({ children }: { children: React.ReactNode }) {
   const { isLoggedIn, isAdmin, company } = useAuth();
@@ -149,7 +164,7 @@ const AppRoutes = () => (
     <Route path="/folha" element={<CompanyToolRoute tool="payroll_files"><FolhaPage /></CompanyToolRoute>} />
     <Route path="/documentos" element={<CompanyToolRoute tool="documents"><DocumentosPage /></CompanyToolRoute>} />
     <Route path="/calendario" element={<CompanyToolRoute tool="calendar"><CalendarioPage /></CompanyToolRoute>} />
-    <Route path="/ferias" element={<CompanyToolRoute tool="vacations"><FeriasPage /></CompanyToolRoute>} />
+    <Route path="/ferias" element={<VacationRoute><FeriasPage /></VacationRoute>} />
     <Route path="/proximos-pagamentos" element={<CompanyToolRoute tool="calendar"><ProximosPagamentosPage /></CompanyToolRoute>} />
     {/* Painel do escritório: iframe do sistema de envio de guias (não confundir com /guias) */}
     <Route path="/admin/envio-guias" element={<AdminAreaRoute area="envio_guias"><EnvioGuiasAdminPage /></AdminAreaRoute>} />

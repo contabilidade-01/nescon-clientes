@@ -103,6 +103,7 @@ const Index = () => {
           toolAccess: mergeClientToolAccess(data.tool_access),
           // Preserva a marca: este refresh é só de nome/permissões.
           mustChangePassword,
+          temFuncionarios: data.tem_funcionarios !== false,
         });
       } catch {
         /* sessão inválida ou rede: mantém estado local */
@@ -127,9 +128,13 @@ const Index = () => {
     enabled: !!company,
   });
 
-  const visibleItems = MENU_ITEMS.filter((item) =>
-    company ? isToolAllowed(company.toolAccess, item.tool) : true
-  );
+  const visibleItems = MENU_ITEMS.filter((item) => {
+    if (company && !isToolAllowed(company.toolAccess, item.tool)) return false;
+    // Férias só para quem tem funcionário celetista: empresa só com pró-labore não
+    // tem o que programar, e um menu vazio parece serviço faltando.
+    if (item.tool === "vacations" && company?.temFuncionarios === false) return false;
+    return true;
+  });
 
   const groups: Array<{ group: ToolGroup; items: MenuItem[] }> = TOOL_GROUPS.map((group) => ({
     group,
