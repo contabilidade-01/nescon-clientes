@@ -226,27 +226,152 @@ registro de auditoria — quem registra é `gclick_pendencias`.
 
 ---
 
-## 9. Ordem de implementação
+## 9. Fases de implementação
 
-Cada fase fecha um commit que sobe sozinho, sem quebrar o que está no ar.
+Seis fases. **Cada uma é um commit que sobe sozinho sem quebrar o que está no ar** — dá para parar
+em qualquer ponto. A ordem não é estética: cada fase depende da anterior e a Fase 4 (a única
+arriscada) só entra depois que já existe um caminho para cadastrar cliente.
 
-| Fase | O que entra | Por que nesta ordem |
-|------|-------------|---------------------|
-| **1** | Schema (`ensureGclickClientsSchema.js`) + backfill | Sem o backfill, qualquer coisa depois gera alarme falso |
-| **2** | `clientSync.js` + rota `POST /sincronizar-clientes` | Dá para validar o espelho e as pendências pela API antes de existir tela |
-| **3** | Rotas de decisão (aceitar/rejeitar/ciente/reconsiderar) | Backend fechado e testável |
-| **4** | `sync.js` para de criar empresa; contadores novos | Só depois que existe um caminho para cadastrar, senão cliente novo ficaria sem porta de entrada |
-| **5** | Página `/admin/clientes-gclick` + badge + modal | Interface por cima de um backend já pronto |
-| **6** | Switch "só ativos" na tela de sincronização; selo "inativo no G-Click" no cadastro | Acabamento |
+Regra de escopo, válida para todas: **só tocar nos arquivos listados em "Toca"**. O que estiver em
+"Não toca" fica de fora mesmo que pareça uma melhoria óbvia — vira item separado.
 
-**Testes** (`src/test/`), no mesmo espírito de `licenseStatus.test.ts` — testar a regra de decisão,
-que é onde mora o risco:
+---
 
-- cliente novo ativo → gera pendência; novo já desativado → não gera (com a opção ligada);
-- rodar a sync duas vezes → uma pendência só;
-- rejeitado que continua igual → nada; rejeitado que é reativado → volta a perguntar;
-- primeira carga com empresas já existentes → zero pendências;
-- mudança de status em cliente aceito → pendência informativa.
+### Fase 1 — Espelho e backfill
+
+**Objetivo:** as tabelas existirem e a primeira carga não gerar alarme falso.
+
+Passos:
+
+1. Criar `api/src/ensureGclickClientsSchema.js` com `gclick_clients`, `gclick_pendencias`, o índice
+   único parcial e `companies.gclick_status` (SQL da seção 4).
+2. Registrar no boot em `api/src/index.js`, depois de `ensureLicensesSchema`.
+3. Replicar em `db/init.sql` para instalações novas.
+4. Implementar o backfill (seção 5) dentro do próprio `ensure*`: se `gclick_clients` estiver vazia,
+   popular do G-Click e marcar como `aceito` quem já existe em `companies`, **sem criar pendência**.
+
+**Toca:** `api/src/ensureGclickClientsSchema.js` (novo), `api/src/index.js`, `db/init.sql`.
+**Não toca:** `sync.js`, rotas, front.
+**Pronto quando:** a API sobe, o log mostra a linha do schema, `gclick_clients` tem uma linha por
+cliente do G-Click e `SELECT count(*) FROM gclick_pendencias` devolve **0**.
+
+---
+
+### Fase 2 — Sincronização de clientes
+
+**Objetivo:** detectar cliente novo e mudança de status, sem ainda decidir nada.
+
+Passos:
+
+1. Criar `api/src/gclick/clientSync.js` com `sincronizarClientes()` — o pseudocódigo de 6.1.
+2. Extrair a regra de decisão para uma função **pura** (`decidirEventos(espelho, doGclick, opts)`)
+   que devolve o que fazer, sem tocar no banco. É o que torna a Fase 2 testável de verdade.
+3. Ler `GCLICK_ALERTA_SO_ATIVOS` (padrão `true`) e documentar em `.env.example`.
+4. Chamar `sincronizarClientes()` no início de `sincronizar()` (documentos), para uma sync só
+   atualizar as duas coisas.
+5. Testes em `src/test/gclickClientSync.test.ts` sobre a função pura:
+   - cliente novo ativo → gera pendência; novo já desativado → não gera (opção ligada);
+   - rodar duas vezes → **uma** pendência só (idempotência);
+   - rejeitado que continua igual → nada; rejeitado **reativado** → volta a perguntar;
+   - mudança de status em cliente aceito → pendência informativa;
+   - primeira carga com empresas já existentes → zero pendências.
+
+**Toca:** `api/src/gclick/clientSync.js` (novo), `api/src/gclick/sync.js` (só a chamada),
+`.env.example`, `src/test/gclickClientSync.test.ts` (novo).
+**Não toca:** `mapaEmpresas()` ainda continua criando empresa — muda só na Fase 4.
+**Pronto quando:** os testes passam e, rodando a sync duas vezes seguidas, o número de pendências
+não muda.
+
+---
+
+### Fase 3 — Rotas de decisão
+
+**Objetivo:** aceitar, rejeitar, reconsiderar e dar ciente — pela API.
+
+Passos:
+
+1. Criar `api/src/routes/gclickClients.js` com as 7 rotas da seção 7, todas atrás de `adminOnly`.
+2. `aceitar` roda em **transação**: cria a empresa via `insertCompanyRow()`, grava `company_id` e
+   `decisao='aceito'`, resolve a pendência. Se qualquer passo falhar, nada fica pela metade.
+3. `aceitar` em CNPJ que já virou empresa por fora: não duplicar — vincular a existente.
+4. Montar em `/api/gclick-clientes` no `index.js`.
+
+**Toca:** `api/src/routes/gclickClients.js` (novo), `api/src/index.js` (uma linha).
+**Não toca:** front, `sync.js`.
+**Pronto quando:** dá para aceitar e rejeitar um cliente por `curl` e o efeito aparece em
+`companies` e em `gclick_clients`.
+
+---
+
+### Fase 4 — A sync para de criar empresa
+
+**Objetivo:** fechar a porta dos fundos. **É a fase de risco** — só depois das 1 a 3.
+
+Passos:
+
+1. Em `mapaEmpresas()`: trocar o `INSERT` por resolução **apenas** de quem tem `decisao='aceito'`.
+2. CNPJ desconhecido: registrar no espelho + abrir pendência `novo_cliente` e **pular a guia**.
+3. Trocar o contador `empresasCriadas` (que passa a ser sempre 0) por `clientesNovos` e
+   `guiasAguardando`, no retorno de `sincronizar()`, em `GET /admin/sync-gclick/status`, no tipo
+   `syncStatus` de `src/lib/api.ts` e no `AdminSyncCard`. **Senão o painel passa a mentir.**
+
+**Toca:** `api/src/gclick/sync.js`, `api/src/routes/admin.js` (status), `src/lib/api.ts` (tipo),
+`src/components/AdminSyncCard.tsx` (rótulos).
+**Não toca:** gravação de guias, retenção (`released_at`), rotas `/api/fiscal/*`.
+**Pronto quando:** uma sync com CNPJ desconhecido **não** cria empresa, abre pendência, e a guia
+entra normalmente na sync seguinte depois do aceite.
+
+> Confirmar as 3 decisões da seção 10 **antes** de começar esta fase.
+
+---
+
+### Fase 5 — Tela
+
+**Objetivo:** o admin resolver as pendências sem `curl`.
+
+Passos:
+
+1. Métodos em `src/lib/api.ts` (bloco `gclickClientes`), seguindo o padrão dos blocos existentes.
+2. `src/pages/admin/ClientesGclickPage.tsx` com as três abas da seção 8, usando `AdminLayout`.
+3. Rota em `App.tsx` + item no `AdminLayout` (seção **Cadastro**) com badge do total de pendências.
+4. `GclickAlertaDialog`: modal automático uma vez por sessão (`sessionStorage`), disparado na
+   Visão geral. Fechar não resolve — o badge continua.
+5. Bloco de pendências na Visão geral, no mesmo formato dos cartões clicáveis que já existem lá.
+
+**Toca:** `src/pages/admin/ClientesGclickPage.tsx` e `src/components/admin/GclickAlertaDialog.tsx`
+(novos), `src/lib/api.ts`, `src/App.tsx`, `src/components/admin/AdminLayout.tsx`,
+`src/pages/admin/VisaoGeralPage.tsx`.
+**Não toca:** as outras páginas do admin, o portal do cliente.
+**Pronto quando:** o roteiro de validação da seção 9.1 passa inteiro.
+
+---
+
+### Fase 6 — Acabamento
+
+1. Switch **"trazer só clientes ativos"** em `/admin/sincronizacao`, gravado como configuração (não
+   só variável de ambiente — para não exigir redeploy).
+2. Selo **"inativo no G-Click"** no cadastro da empresa (`CompanyManageRow`), lendo
+   `companies.gclick_status`.
+3. Contador **"guias aguardando cadastro"** no cartão de sincronização.
+
+**Toca:** `src/pages/admin/SincronizacaoPage.tsx`, `src/components/admin/CompanyManageRow.tsx`,
+`src/components/AdminSyncCard.tsx` (+ a rota da configuração).
+
+---
+
+### 9.1 Roteiro de validação (depois da Fase 5)
+
+| # | Ação | Esperado |
+|---|------|----------|
+| 1 | Subir com o banco já populado | Zero pendências (backfill funcionou) |
+| 2 | Rodar a sync duas vezes | O número de pendências não muda |
+| 3 | Entrar no `/admin` com pendências | Modal aparece uma vez; badge no menu |
+| 4 | Trocar de página e voltar | Modal **não** reaparece; badge continua |
+| 5 | Cadastrar um cliente novo | Vira empresa, some de *Novos*, login por CNPJ funciona |
+| 6 | Rejeitar outro | Vai para *Rejeitados*; sync seguinte **não** o traz de volta |
+| 7 | *Cadastrar agora* num rejeitado | Vira empresa normalmente |
+| 8 | Simular desativação no G-Click | Alerta informativo; **cliente continua acessando o portal** |
+| 9 | Dar OK no alerta | Some da lista e fica no histórico |
 
 ---
 
