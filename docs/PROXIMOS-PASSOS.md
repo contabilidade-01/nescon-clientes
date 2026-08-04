@@ -141,7 +141,15 @@ Só depois disso: rotina diária que busca vencimentos de amanhã e dispara pela
 infraestrutura do sistema de guias), com registro do que foi enviado para não mandar duas vezes.
 Vale prever também um "não perturbe" por empresa.
 
-## 8. Ideias para depois (não estão feitas)
+## 8. Independência do G-Click (fases futuras)
+
+Documentado em **[PLANO-INDEPENDENCIA-GCLICK.md](PLANO-INDEPENDENCIA-GCLICK.md)**: reconhecer o
+documento no upload manual (identifica a empresa por CNPJ → CPF → nome e o tipo, aloca sozinho com
+aviso quando houver divergência), segunda esteira vinda do **Central Pendências e-CAC** (DAS e DARF
+DCTFWeb, que aquele sistema já emite em lote) e **parcelamentos** — Prefeitura, PGFN e Receita, que
+hoje **não existem** no portal.
+
+## 9. Ideias para depois (não estão feitas)
 
 Em ordem de utilidade, na minha leitura:
 

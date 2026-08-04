@@ -303,7 +303,16 @@ Passos:
 
 ---
 
-### Fase 4 — A sync para de criar empresa
+### Fase 4 — A sync para de criar empresa — **FORA DO ESCOPO (decidido em 04/08/2026)**
+
+> **Não implementar.** O Jean decidiu **manter** o cadastro automático de cliente quando chega
+> guia. Consequência assumida: o botão "não cadastrar" **não segura** cliente que já tenha guia —
+> a lista de novos vira **aviso**, não porteiro. Se um dia mudar de ideia, isto volta atrás de uma
+> chave `GCLICK_AUTOCRIAR_EMPRESA` (padrão ligada), sem refazer as outras fases.
+>
+> As fases 5 e 6 continuam valendo e não dependem desta.
+>
+> O texto abaixo fica como registro do desenho, caso a chave seja implementada.
 
 **Objetivo:** fechar a porta dos fundos. **É a fase de risco** — só depois das 1 a 3.
 
