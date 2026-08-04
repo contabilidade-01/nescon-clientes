@@ -1,11 +1,12 @@
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpRight, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, ShieldCheck, UserPlus } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { canSeeArea } from "@/lib/adminAreas";
+import { useGclickPendencias } from "@/hooks/useGclickPendencias";
 import { LICENSE_STATUS_LABELS } from "@/lib/licenses";
 
 /** Cartão-número clicável: leva ao segmento correspondente do painel. */
@@ -44,6 +45,7 @@ const VisaoGeralPage = () => {
   const podeEmpresas = canSeeArea("empresas", admin?.areas, admin?.isOwner);
   const podeEntregas = canSeeArea("entregas", admin?.areas, admin?.isOwner);
   const podeFuncionarios = canSeeArea("funcionarios", admin?.areas, admin?.isOwner);
+  const { data: pendencias } = useGclickPendencias();
 
   const { data: summary } = useQuery({
     queryKey: ["admin-summary"],
@@ -69,6 +71,32 @@ const VisaoGeralPage = () => {
       title="Visão geral"
       description="Resumo do escritório: cadastro, entregas, licenças e conformidade"
     >
+      {/* Faixa fixa: fica no topo até a decisão ser tomada. O aviso ao entrar pode ser
+          fechado; esta não sai sozinha — é a única forma de saber que entrou cliente novo. */}
+      {(pendencias?.total ?? 0) > 0 && (
+        <button
+          type="button"
+          onClick={() => navigate("/admin/clientes-gclick")}
+          className="flex w-full items-center gap-3 rounded-xl border-2 border-primary bg-primary/10 px-4 py-4 text-left"
+        >
+          <UserPlus className="h-6 w-6 shrink-0 text-primary" />
+          <span className="flex-1">
+            <span className="block font-semibold">
+              {pendencias!.novos_count > 0
+                ? `${pendencias!.novos_count} cliente(s) novo(s) do G-Click aguardando decisão`
+                : `${pendencias!.mudancas_count} mudança(s) de situação para revisar`}
+            </span>
+            <span className="block text-sm text-muted-foreground">
+              {pendencias!.novos_count > 0 && pendencias!.mudancas_count > 0
+                ? `E mais ${pendencias!.mudancas_count} mudança(s) de situação. `
+                : ""}
+              Clique para cadastrar, recusar ou dar ciência.
+            </span>
+          </span>
+          <ArrowUpRight className="h-5 w-5 shrink-0 text-primary" />
+        </button>
+      )}
+
       <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <StatCard
           label="Empresas"

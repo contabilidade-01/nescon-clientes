@@ -211,6 +211,48 @@ export type AnnualTaxRow = {
   atualizado_em: string | null;
 };
 
+
+export type GclickDecisao = "pendente" | "aceito" | "rejeitado";
+
+/** Alerta aberto na fila: cliente novo (decisão) ou mudança de status (ciência). */
+export type GclickPendencia = {
+  id: string;
+  cnpj: string;
+  tipo: "novo_cliente" | "status_alterado";
+  dados: {
+    nome?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    status?: string | null;
+    de?: string | null;
+    para?: string | null;
+  };
+  criado_em: string;
+  nome: string | null;
+  status_gclick: string | null;
+  decisao: GclickDecisao | null;
+  company_id: string | null;
+  /** Cadastro que a sincronização já criou sozinha, se houver. */
+  empresa_existente_id: string | null;
+  empresa_existente_nome: string | null;
+};
+
+export type GclickCliente = {
+  cnpj: string;
+  nome: string | null;
+  email: string | null;
+  phone: string | null;
+  status_gclick: string | null;
+  decisao: GclickDecisao;
+  company_id: string | null;
+  decidido_em: string | null;
+  motivo_rejeicao: string | null;
+  primeiro_visto_em: string;
+  atualizado_em: string;
+  empresa_existente_id: string | null;
+  empresa_existente_nome: string | null;
+};
+
 export type LgpdTermo = {
   versao: string;
   titulo: string;
@@ -310,6 +352,48 @@ export const api = {
       }),
     /** Fechou sem aceitar: o aviso não volta a aparecer e o admin vê "visto". */
     marcarVisto: () => request<{ ok: boolean }>("/auth/lgpd-visto", { method: "POST" }),
+  },
+
+  /** Clientes vindos do G-Click: espelho, alertas e decisão do escritório. */
+  gclickClientes: {
+    pendencias: () =>
+      request<{
+        total: number;
+        novos_count: number;
+        mudancas_count: number;
+        novos: GclickPendencia[];
+        mudancas: GclickPendencia[];
+      }>("/gclick-clientes/pendencias"),
+    listar: (opts?: { decisao?: GclickDecisao; status?: string; q?: string }) => {
+      const params = new URLSearchParams();
+      if (opts?.decisao) params.set("decisao", opts.decisao);
+      if (opts?.status) params.set("status", opts.status);
+      if (opts?.q) params.set("q", opts.q);
+      const q = params.toString();
+      return request<GclickCliente[]>(`/gclick-clientes${q ? `?${q}` : ""}`);
+    },
+    aceitar: (cnpj: string) =>
+      request<{ ok: boolean; company_id: string; criada: boolean; message: string }>(
+        `/gclick-clientes/${cnpj}/aceitar`,
+        { method: "POST" }
+      ),
+    rejeitar: (cnpj: string, motivo?: string | null) =>
+      request<{ ok: boolean; empresa_existente: boolean; message: string }>(
+        `/gclick-clientes/${cnpj}/rejeitar`,
+        { method: "POST", body: JSON.stringify({ motivo: motivo || null }) }
+      ),
+    reconsiderar: (cnpj: string) =>
+      request<{ ok: boolean; message: string }>(`/gclick-clientes/${cnpj}/reconsiderar`, {
+        method: "POST",
+      }),
+    ciente: (id: string) =>
+      request<{ ok: boolean }>(`/gclick-clientes/pendencias/${id}/ciente`, { method: "POST" }),
+    /** Atualiza só o espelho de clientes (rápido — não baixa documentos). */
+    sincronizar: () =>
+      request<{ clientes: number; novos: number; atualizados: number; alertas: number }>(
+        "/admin/sync-gclick/clientes",
+        { method: "POST" }
+      ),
   },
 
   /** Licenças (funcionamento, AVCB/CLCB, vigilância sanitária). Só admin. */

@@ -19,6 +19,7 @@ import SalaryAdhocPage from "./pages/SalaryAdhocPage.tsx";
 import CertificatesPage from "./pages/CertificatesPage.tsx";
 import VisaoGeralPage from "./pages/admin/VisaoGeralPage.tsx";
 import EmpresasPage from "./pages/admin/EmpresasPage.tsx";
+import ClientesGclickPage from "./pages/admin/ClientesGclickPage.tsx";
 import FuncionariosAdminPage from "./pages/admin/FuncionariosPage.tsx";
 import EntregasPage from "./pages/admin/EntregasPage.tsx";
 import LicencasPage from "./pages/admin/LicencasPage.tsx";
@@ -123,6 +124,7 @@ const AppRoutes = () => (
     {/* Painel do escritório: uma página por área, com menu lateral retrátil (AdminLayout) */}
     <Route path="/admin" element={<AdminOnlyRoute><VisaoGeralPage /></AdminOnlyRoute>} />
     <Route path="/admin/empresas" element={<AdminAreaRoute area="empresas"><EmpresasPage /></AdminAreaRoute>} />
+    <Route path="/admin/clientes-gclick" element={<AdminAreaRoute area="empresas"><ClientesGclickPage /></AdminAreaRoute>} />
     <Route path="/admin/funcionarios" element={<AdminAreaRoute area="funcionarios"><FuncionariosAdminPage /></AdminAreaRoute>} />
     <Route path="/admin/entregas" element={<AdminAreaRoute area="entregas"><EntregasPage /></AdminAreaRoute>} />
     <Route path="/admin/licencas" element={<AdminAreaRoute area="licencas"><LicencasPage /></AdminAreaRoute>} />

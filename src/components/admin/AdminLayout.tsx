@@ -5,6 +5,7 @@ import {
   Building2,
   CalendarCheck,
   UserCog,
+  UserPlus,
   FileCheck2,
   KeyRound,
   LayoutDashboard,
@@ -24,6 +25,7 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
@@ -34,6 +36,8 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
 import { canSeeArea, mergeAdminAreas, type AdminArea } from "@/lib/adminAreas";
+import { useGclickPendencias } from "@/hooks/useGclickPendencias";
+import { GclickAlertaDialog } from "@/components/admin/GclickAlertaDialog";
 
 /**
  * Painel do escritório dividido por área. Cada item é uma rota própria — nada de uma
@@ -48,6 +52,8 @@ type NavItem = {
   /** Área exigida. Sem área = todo administrador vê. `owner` = só o dono. */
   area?: AdminArea;
   ownerOnly?: boolean;
+  /** Mostra o número de pendências dos clientes do G-Click ao lado do item. */
+  badgePendencias?: boolean;
 };
 
 const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
@@ -59,6 +65,13 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
     label: "Cadastro",
     items: [
       { to: "/admin/empresas", label: "Empresas", icon: Building2, area: "empresas" },
+      {
+        to: "/admin/clientes-gclick",
+        label: "Clientes do G-Click",
+        icon: UserPlus,
+        area: "empresas",
+        badgePendencias: true,
+      },
       { to: "/admin/funcionarios", label: "Funcionários", icon: Users, area: "funcionarios" },
     ],
   },
@@ -103,6 +116,7 @@ export function AdminLayout({
   const navigate = useNavigate();
   const { admin, logout, login } = useAuth();
   const { pathname } = useLocation();
+  const { total: pendenciasGclick } = useGclickPendencias();
 
   // Permissões podem ter mudado desde o login: o painel busca as atuais e atualiza a
   // sessão. Quem manda de verdade é o servidor; isto só mantém o menu honesto.
@@ -175,6 +189,11 @@ export function AdminLayout({
                             <span>{item.label}</span>
                           </NavLink>
                         </SidebarMenuButton>
+                        {item.badgePendencias && pendenciasGclick > 0 && (
+                          <SidebarMenuBadge className="bg-destructive text-destructive-foreground">
+                            {pendenciasGclick}
+                          </SidebarMenuBadge>
+                        )}
                       </SidebarMenuItem>
                     );
                   })}
@@ -216,7 +235,11 @@ export function AdminLayout({
             Sair
           </Button>
         </header>
-        <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6">{children}</main>
+        <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6">
+          {/* Aviso de entrada: abre uma vez por sessão em qualquer página do painel. */}
+          <GclickAlertaDialog />
+          {children}
+        </main>
       </SidebarInset>
     </SidebarProvider>
   );
