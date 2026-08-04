@@ -11,6 +11,7 @@ const { parseExtratoEmployees } = require("../extratoEmployees");
 const { resolveUploadPath } = require("../uploads");
 const { LGPD_CONSENT_VERSION } = require("../lgpd");
 const sync = require("../gclick/sync");
+const clientSync = require("../gclick/clientSync");
 const gclickClient = require("../gclick/client");
 const fs = require("fs");
 
@@ -353,6 +354,19 @@ router.post("/sync-gclick", requireArea("sincronizacao"), async (req, res) => {
   // Não segura a resposta: a carga pode demorar; o painel acompanha pelo /status.
   sync.sincronizar({ meses }).catch((e) => console.error("[admin sync]", e.message));
   res.status(202).json({ message: "Sincronização iniciada." });
+});
+
+/**
+ * Atualiza só o espelho de clientes do G-Click (sem baixar documentos): traz clientes
+ * novos e mudanças de status para a fila de alertas. Rápido — não varre competências.
+ */
+router.post("/sync-gclick/clientes", requireArea("sincronizacao"), async (_req, res) => {
+  if (!gclickClient.isConfigured()) {
+    return res.status(503).json({ error: "G-Click não configurado (GCLICK_CLIENT_ID/SECRET)." });
+  }
+  const r = await clientSync.sincronizarClientes();
+  if (!r.ok) return res.status(502).json({ error: r.erro });
+  res.json(r);
 });
 
 /** Localiza o extrato de folha mais recente já hospedado no portal para a empresa. */

@@ -14,6 +14,7 @@ const path = require("path");
 const bcrypt = require("bcryptjs");
 const db = require("../db");
 const client = require("./client");
+const clientSync = require("./clientSync");
 const {
   classificar,
   categoriaDe,
@@ -187,6 +188,14 @@ async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = n
   const cnpjFiltro = cnpj ? String(cnpj).replace(/\D/g, "") : null;
 
   try {
+    // Carga completa também atualiza o espelho de clientes (novos e mudanças de
+    // status viram alertas no painel). Fica de fora quando a sync é de uma empresa
+    // só — nesse caso ela roda na liberação de um documento e precisa ser rápida.
+    if (!cnpjFiltro) {
+      const r = await clientSync.sincronizarClientes();
+      if (!r.ok) console.error("[sync] clientes:", r.erro);
+    }
+
     for (const comp of comps) {
       const { inicio: dIni, fim: dFim } = rangeCompetencia(comp);
       let tarefas;
