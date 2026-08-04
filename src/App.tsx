@@ -124,7 +124,7 @@ const AppRoutes = () => (
     {/* Painel do escritório: uma página por área, com menu lateral retrátil (AdminLayout) */}
     <Route path="/admin" element={<AdminOnlyRoute><VisaoGeralPage /></AdminOnlyRoute>} />
     <Route path="/admin/empresas" element={<AdminAreaRoute area="empresas"><EmpresasPage /></AdminAreaRoute>} />
-    <Route path="/admin/clientes-gclick" element={<AdminAreaRoute area="empresas"><ClientesGclickPage /></AdminAreaRoute>} />
+    <Route path="/admin/clientes-gclick" element={<OwnerOnlyRoute><ClientesGclickPage /></OwnerOnlyRoute>} />
     <Route path="/admin/funcionarios" element={<AdminAreaRoute area="funcionarios"><FuncionariosAdminPage /></AdminAreaRoute>} />
     <Route path="/admin/entregas" element={<AdminAreaRoute area="entregas"><EntregasPage /></AdminAreaRoute>} />
     <Route path="/admin/licencas" element={<AdminAreaRoute area="licencas"><LicencasPage /></AdminAreaRoute>} />

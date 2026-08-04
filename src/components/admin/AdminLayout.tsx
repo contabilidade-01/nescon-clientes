@@ -69,7 +69,7 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
         to: "/admin/clientes-gclick",
         label: "Clientes do G-Click",
         icon: UserPlus,
-        area: "empresas",
+        ownerOnly: true,
         badgePendencias: true,
       },
       { to: "/admin/funcionarios", label: "Funcionários", icon: Users, area: "funcionarios" },

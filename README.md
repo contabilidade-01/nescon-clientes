@@ -69,7 +69,7 @@ e cada rota é uma página em `src/pages/admin/`:
 | `/admin/lgpd` | Auditoria dos consentimentos e o texto do termo em vigor. |
 | `/admin/sincronizacao` | Sincronização com o G-Click e e-mail do administrador. |
 | `/admin/usuarios` | **Só o dono** — usuários do painel e o que cada um pode ver. |
-| `/admin/clientes-gclick` | Clientes novos vindos do G-Click, mudanças de situação e rejeitados. |
+| `/admin/clientes-gclick` | **Só o dono** — clientes novos vindos do G-Click, mudanças de situação e rejeitados. |
 | `/admin/envio-guias` | Iframe do sistema GCLICK (app separado). |
 
 ### Usuários do painel e acesso por área
@@ -111,6 +111,10 @@ decisão.
   o acesso do cliente ao portal; rende apenas o selo "inativo no G-Click" no cadastro.
 - O alerta aparece em três lugares: faixa no topo da visão geral, número no menu lateral e um aviso
   ao abrir o painel (uma vez por sessão).
+- **Tudo isto é exclusivo do dono.** Decidir quem entra no portal é decisão de dono, não de
+  operador: os demais usuários do painel não veem o item no menu, não recebem o alerta e a API
+  responde 403 para eles. Não há área liberável para isso — é o mesmo critério de
+  `/admin/usuarios`.
 
 **Atenção — a criação automática continua ligada.** A sincronização de documentos ainda cria a
 empresa sozinha quando chega uma guia de CNPJ desconhecido. Consequência: o botão *não cadastrar*

@@ -16,7 +16,7 @@ const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const db = require("../db");
 const { authMiddleware } = require("../middleware/auth");
-const { requireArea } = require("../middleware/adminArea");
+const { requireOwner } = require("../middleware/adminArea");
 const { validateUUID, validateString } = require("../middleware/validate");
 const { inscricaoValida, podeVirarEmpresa, tipoInscricao } = require("../gclick/inscricao");
 const { PORTAL_ONLY_TOOL_ACCESS } = require("../companyTools");
@@ -28,8 +28,9 @@ function adminOnly(req, res, next) {
 
 router.use(authMiddleware);
 router.use(adminOnly);
-// Aceitar cria empresa: é a mesma responsabilidade da área de cadastro.
-router.use(requireArea("empresas"));
+// Só o DONO. Decidir quem entra no portal é decisão de dono, não de operador —
+// e é ele quem recebe o alerta de cliente novo.
+router.use(requireOwner);
 
 function limparCnpj(v) {
   return String(v || "").replace(/\D/g, "");
