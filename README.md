@@ -51,6 +51,9 @@ Acesso ao painel `/admin` (todas as empresas). Na primeira subida da API, a tabe
 
 ## Painel do escritório: uma página por área
 
+> Passo a passo de deploy, validação e cadastro inicial deste módulo:
+> **[docs/PROXIMOS-PASSOS.md](docs/PROXIMOS-PASSOS.md)**.
+
 O `/admin` é dividido por segmento de trabalho, com **menu lateral que retrai** (botão no topo ou
 `Ctrl`/`Cmd` + `B`; no celular vira gaveta). O layout está em `src/components/admin/AdminLayout.tsx`
 e cada rota é uma página em `src/pages/admin/`:
