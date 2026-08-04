@@ -253,6 +253,37 @@ export type GclickCliente = {
   empresa_existente_nome: string | null;
 };
 
+
+export type VacationPeriod = {
+  id: string;
+  codigo: string | null;
+  nome: string;
+  admissao: string | null;
+  ferias_vencidas: number;
+  inicio_aquisitivo: string | null;
+  fim_aquisitivo: string | null;
+  inicio_gozo: string | null;
+  limite_gozo: string | null;
+  dias_acumulados: string | number;
+  dias_gozados: string | number;
+  /** Dias a que tem direito — vem pronto do relatório, não recalculamos. */
+  dias_direito: string | number;
+  dias_afastamento: number;
+  faltas: number;
+  ordem: number;
+};
+
+export type VacationUpload = {
+  id: string;
+  data_base: string | null;
+  emissao: string | null;
+  arquivo_nome: string | null;
+  total_empregados: number | null;
+  total_declarado: number | null;
+  source: string;
+  criado_em: string;
+};
+
 export type LgpdTermo = {
   versao: string;
   titulo: string;
@@ -610,6 +641,44 @@ export const api = {
         method: "PUT",
         body: JSON.stringify({ alerta_so_ativos }),
       }),
+    /** Programação de Férias: sobe o PDF e lê a última importação da empresa. */
+    ferias: {
+      ultima: (companyId: string) =>
+        request<{ upload: VacationUpload | null; periodos: VacationPeriod[] }>(
+          `/admin/ferias/${companyId}`
+        ),
+      upload: async (companyId: string, file: File) => {
+        const token = getToken();
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch(`${API_BASE}/admin/ferias/${companyId}`, {
+          method: "POST",
+          body: fd,
+          headers,
+        });
+        const data = await parseResponseJson<unknown>(res);
+        if (res.status === 401) {
+          localStorage.removeItem("company_session");
+          window.location.href = "/login";
+          throw new Error("Sessão expirada");
+        }
+        if (!res.ok) throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+        return data as {
+          uploadId: string;
+          funcionarios: number;
+          periodos: number;
+          empresa: string;
+          data_base: string | null;
+          emissao: string | null;
+          total_declarado: number | null;
+          /** Falso = lemos menos gente do que o rodapé do PDF declara. */
+          confere: boolean;
+        };
+      },
+    },
+
     /** Quem está cadastrado mas não veio no último extrato — aguarda confirmação. */
     saidasFolha: () =>
       request<{

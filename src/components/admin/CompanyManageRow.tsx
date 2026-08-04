@@ -17,6 +17,7 @@ import {
 import { AdminEmployeeImport } from "@/components/AdminEmployeeImport";
 import { AdminExtratoImport } from "@/components/AdminExtratoImport";
 import { AdminDeliverableUpload } from "@/components/AdminDeliverableUpload";
+import { AdminVacationImport } from "@/components/admin/AdminVacationImport";
 
 /** Cadastro de uma empresa: razão social, contactos, permissões e importações. */
 export function CompanyManageRow({
@@ -165,6 +166,8 @@ export function CompanyManageRow({
       />
 
       <AdminExtratoImport companyId={company.id} companyName={company.name} />
+
+      <AdminVacationImport companyId={company.id} companyName={company.name} />
 
       <AdminDeliverableUpload companyId={company.id} companyName={company.name} />
     </div>
