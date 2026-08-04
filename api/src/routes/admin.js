@@ -413,8 +413,9 @@ async function funcionariosDoExtrato(companyId) {
   if (!extrato) return { extrato: null, funcionarios: [], invalidos: 0 };
   const full = resolveUploadPath(extrato.file_path);
   if (!full || !fs.existsSync(full)) return { extrato, funcionarios: [], invalidos: 0, semArquivo: true };
-  const { funcionarios, invalidos } = await parseExtratoEmployees(fs.readFileSync(full));
-  return { extrato, funcionarios, invalidos };
+  const { funcionarios, invalidos, competencia } = await parseExtratoEmployees(fs.readFileSync(full));
+  // A competência do próprio PDF manda; a da entrega é o segundo palpite.
+  return { extrato, funcionarios, invalidos, competencia: competencia || extrato.competencia || null };
 }
 
 /**
@@ -454,6 +455,7 @@ router.get("/companies/:id/extrato-employees", requireArea("funcionarios"), asyn
     res.json({
       competencia: extrato.competencia,
       arquivo: extrato.file_name,
+      com_salario: funcs.filter((f) => f.salarioBase).length,
       invalidos,
       total: funcs.length,
       novos: funcs.filter((f) => !f.jaCadastrado).length,
@@ -524,14 +526,16 @@ router.post("/extrato-employees/import", requireArea("funcionarios"), async (req
     const porEmpresa = [];
 
     for (const c of companies) {
-      const { funcionarios } = await funcionariosDoExtrato(c.id);
+      const { funcionarios, competencia } = await funcionariosDoExtrato(c.id);
       // Guarda: sem funcionários no extrato (parse falhou/vazio), NÃO mexe em nada —
       // senão inativaria a empresa inteira por engano.
       if (!funcionarios.length) continue;
       const client = await db.connect();
       try {
         await client.query("BEGIN");
-        const r = await importEmployeesForCompany(client, c.id, c.cnpj, c.cnpj, funcionarios);
+        const r = await importEmployeesForCompany(client, c.id, c.cnpj, c.cnpj, funcionarios, {
+          competencia,
+        });
         if (r.status !== 201) {
           await client.query("ROLLBACK");
           porEmpresa.push({ name: c.name, erro: r.body.error });

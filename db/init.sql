@@ -45,8 +45,15 @@ CREATE TABLE IF NOT EXISTS employees (
   cpf TEXT NOT NULL,
   pis TEXT,
   active BOOLEAN DEFAULT true,
+  -- Vindos do Extrato Mensal: o código casa com a Programação de Férias e o salário
+  -- é a base do custo das férias. Ver api/src/ensureEmployeePayrollFields.js.
+  codigo TEXT,
+  salario_base NUMERIC(12,2),
+  salario_competencia TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS idx_employees_company_codigo ON employees(company_id, codigo);
 
 CREATE TABLE IF NOT EXISTS issued_documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

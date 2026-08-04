@@ -19,6 +19,10 @@ const RE_NOME_INICIO = /^\s*(\d+)\s+([A-Za-zÀ-ÿ][^\t]*?)(?:\t|\s{2,}|Empr\.|Si
 const RE_CPF = /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g;
 /** Marca que a linha é de um empregado (e não de proventos/descontos). */
 const RE_MARKER = /Situa[çc][ãa]o|Empr\.:|Adm:/i;
+/** Salário base: aparece no bloco do empregado, às vezes na própria linha dele. */
+const RE_SALARIO = /Sal[áa]rio:\s*([\d.]*\d(?:,\d+)?)/i;
+/** Competência da folha, no cabeçalho do extrato. */
+const RE_COMPETENCIA = /Compet[êe]ncia:\s*(\d{2}\/\d{4})/i;
 
 /** Dígito verificador do CPF — rejeita 111.111.111-11 e afins. */
 function cpfValido(cpf) {
@@ -32,6 +36,12 @@ function cpfValido(cpf) {
     return resto === 10 ? 0 : resto;
   };
   return calc(10) === Number(d[9]) && calc(11) === Number(d[10]);
+}
+
+/** "1.412,00" → 1412. Devolve null para o que não é número. */
+function numeroBR(bruto) {
+  const n = Number(String(bruto || "").replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
 }
 
 function limparNome(bruto) {
@@ -83,21 +93,49 @@ function extrairDoTexto(texto) {
   const vistos = new Set();
   const funcionarios = [];
   let invalidos = 0;
+  let competencia = null;
+  // O salário NÃO está na linha do empregado: vem no bloco abaixo dela, até começar o
+  // próximo empregado. Por isso a varredura acompanha o bloco corrente.
+  let atual = null;
+
+  const capturarSalario = (linha) => {
+    if (!atual || atual.salarioBase !== null) return;
+    const m = linha.match(RE_SALARIO);
+    if (!m) return;
+    const v = numeroBR(m[1]);
+    // Salário zero não existe: melhor deixar em branco do que afirmar R$ 0,00.
+    atual.salarioBase = v && v > 0 ? v : null;
+  };
 
   for (const linha of String(texto || "").split(/\r?\n/)) {
-    if (!RE_MARKER.test(linha)) continue;
-    const emp = extrairLinha(linha);
-    if (!emp) {
+    if (!competencia) {
+      const mc = linha.match(RE_COMPETENCIA);
+      if (mc) competencia = mc[1];
+    }
+
+    if (RE_MARKER.test(linha)) {
+      const emp = extrairLinha(linha);
+      if (emp) {
+        if (vistos.has(emp.cpf)) {
+          // Duplicado (extrato repetido): não abre bloco novo, para não sobrescrever.
+          atual = null;
+        } else {
+          vistos.add(emp.cpf);
+          atual = { ...emp, salarioBase: null };
+          funcionarios.push(atual);
+          capturarSalario(linha);
+        }
+        continue;
+      }
       // Linha parece de empregado mas não deu CPF válido — conta como ilegível,
       // desde que tenha ALGUM número com cara de CPF (evita contar cabeçalhos).
       if (/\d{3}\.?\d{3}\.?\d{3}-?\d{2}/.test(linha)) invalidos += 1;
       continue;
     }
-    if (vistos.has(emp.cpf)) continue;
-    vistos.add(emp.cpf);
-    funcionarios.push(emp);
+
+    capturarSalario(linha);
   }
-  return { funcionarios, invalidos };
+  return { funcionarios, invalidos, competencia };
 }
 
 /** Lê o PDF (via pdf-parse) e extrai os funcionários. */

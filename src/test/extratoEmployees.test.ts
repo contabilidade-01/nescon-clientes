@@ -67,3 +67,49 @@ describe("parser do extrato de folha", () => {
     expect(funcionarios).toHaveLength(0);
   });
 });
+
+/**
+ * Salário e competência: base do custo das férias. O salário NÃO vem na linha do
+ * empregado — está no bloco abaixo dela, então o parser precisa acompanhar o bloco.
+ */
+describe("salário base e competência", () => {
+  const COM_SALARIO = [
+    "Competência: 07/2026",
+    "Empr.: 15DAYLA APARECIDA BUENO Situação: Trabalhando CPF:510.512.768-45",
+    "Cargo: 5 COZINHEIRA C.B.O: 5132-05",
+    "Salário: 2.100,00 Admissão: 18/09/2025",
+    "8781 1.995,66 P\tDIAS NORMAIS 30,00",
+    "Empr.: 16JOSE DA SILVA Situação: Trabalhando CPF:529.982.247-25",
+    "Salário: 1.412,00",
+  ].join("\n");
+
+  it("associa o salário ao empregado do bloco", () => {
+    const { funcionarios } = extrairDoTexto(COM_SALARIO);
+    expect(funcionarios).toHaveLength(2);
+    expect(funcionarios[0]).toMatchObject({ name: "DAYLA APARECIDA BUENO", salarioBase: 2100 });
+    expect(funcionarios[1]).toMatchObject({ name: "JOSE DA SILVA", salarioBase: 1412 });
+  });
+
+  it("lê a competência do cabeçalho", () => {
+    expect(extrairDoTexto(COM_SALARIO).competencia).toBe("07/2026");
+  });
+
+  it("sem salário no bloco, fica nulo em vez de zero", () => {
+    const { funcionarios } = extrairDoTexto(
+      "Empr.: 15DAYLA APARECIDA BUENO Situação: Trabalhando CPF:510.512.768-45"
+    );
+    expect(funcionarios[0].salarioBase).toBeNull();
+  });
+
+  it("salário zerado também vira nulo — zero mente, branco pergunta", () => {
+    const { funcionarios } = extrairDoTexto(
+      "Empr.: 15DAYLA APARECIDA BUENO Situação: Trabalhando CPF:510.512.768-45\nSalário: 0,00"
+    );
+    expect(funcionarios[0].salarioBase).toBeNull();
+  });
+
+  it("o salário do próximo empregado não vaza para o anterior", () => {
+    const { funcionarios } = extrairDoTexto(COM_SALARIO);
+    expect(funcionarios[0].salarioBase).not.toBe(1412);
+  });
+});
