@@ -29,6 +29,8 @@ app.use("/api/documents", require("./routes/documents"));
 app.use("/api/certificates", require("./routes/certificates"));
 app.use("/api/deliverables", require("./routes/deliverables"));
 // Licenças (funcionamento, AVCB/CLCB, sanitária) e taxa anual da prefeitura: só admin.
+// Clientes vindos do G-Click: espelho, alertas e a decisão do escritório.
+app.use("/api/gclick-clientes", require("./routes/gclickClients"));
 app.use("/api/licencas", require("./routes/licenses"));
 app.use("/api/taxas-anuais", require("./routes/annualTaxes"));
 // Ingestão servidor-a-servidor (sistema de guias): auth própria por X-Ingest-Key.
