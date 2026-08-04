@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { mergeClientToolAccess } from "@/lib/companyTools";
+import { mergeAdminAreas } from "@/lib/adminAreas";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
@@ -34,7 +35,22 @@ const LoginPage = () => {
     try {
       const data = await api.auth.login(loginField, password);
       if (data.role === "admin") {
-        login({ role: "admin", id: data.admin.id, cpf: data.admin.cpf, token: data.token });
+        const trocarSenhaAdmin = Boolean(data.admin.must_change_password);
+        login({
+          role: "admin",
+          id: data.admin.id,
+          cpf: data.admin.cpf,
+          token: data.token,
+          nome: data.admin.nome ?? null,
+          isOwner: Boolean(data.admin.is_owner),
+          areas: mergeAdminAreas(data.admin.areas ?? null),
+          mustChangePassword: trocarSenhaAdmin,
+        });
+        if (trocarSenhaAdmin) {
+          // Senha veio do dono: trocar antes de usar o painel.
+          navigate("/alterar-senha");
+          return;
+        }
         toast.success("Painel administrador");
         navigate("/admin");
         return;

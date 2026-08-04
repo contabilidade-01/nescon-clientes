@@ -2,6 +2,7 @@ const router = require("express").Router();
 const fs = require("fs");
 const db = require("../db");
 const { authMiddleware, requireCompanyUser } = require("../middleware/auth");
+const { adminHasArea } = require("../middleware/adminArea");
 const { companyHasTool } = require("../middleware/companyToolAccess");
 const { validateUUID, validateDate, validateString } = require("../middleware/validate");
 const { uploadAny: upload, resolveUploadPath, removeUploadFile } = require("../uploads");
@@ -16,6 +17,9 @@ router.get("/", async (req, res) => {
     const params = [];
 
     if (req.isAdmin) {
+      if (!adminHasArea(req, "entregas")) {
+        return res.status(403).json({ error: "Você não tem acesso a esta área do painel" });
+      }
       sql = `SELECT mc.*, e.name AS employee_name, c.name AS company_name, c.cnpj AS company_cnpj
              FROM medical_certificates mc
              JOIN employees e ON mc.employee_id = e.id
@@ -117,6 +121,9 @@ router.delete("/:id", async (req, res) => {
     }
     let rows;
     if (req.isAdmin) {
+      if (!adminHasArea(req, "entregas")) {
+        return res.status(403).json({ error: "Você não tem acesso a esta área do painel" });
+      }
       const r = await db.query(
         "DELETE FROM medical_certificates WHERE id=$1 RETURNING file_path",
         [req.params.id]

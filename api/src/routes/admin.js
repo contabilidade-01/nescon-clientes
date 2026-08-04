@@ -2,6 +2,7 @@ const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const db = require("../db");
 const { authMiddleware } = require("../middleware/auth");
+const { requireArea } = require("../middleware/adminArea");
 const { validateUUID, validateEmailFormat, validateString, validateCNPJ } = require("../middleware/validate");
 const { mergeToolAccess } = require("../companyTools");
 const { listCompanies, insertCompanyRow, PG_UNDEFINED_COLUMN } = require("../toolAccessDb");
@@ -83,7 +84,7 @@ router.get("/deliverables-overview", async (_req, res) => {
  * Auditoria LGPD: quem já concordou com o tratamento de dados, quando e em que versão
  * do termo. 'visto' = o aviso foi exibido e fechado sem aceite (não bloqueamos o portal).
  */
-router.get("/lgpd-consents", async (_req, res) => {
+router.get("/lgpd-consents", requireArea("lgpd"), async (_req, res) => {
   try {
     const { rows } = await db.query(
       `SELECT id, name, cnpj, lgpd_consent_at, lgpd_consent_version, lgpd_consent_ip,
@@ -123,7 +124,7 @@ function normalizePhone(val) {
 }
 
 /** Senha inicial = CNPJ só dígitos (igual aos seeds). */
-router.post("/companies", async (req, res) => {
+router.post("/companies", requireArea("empresas"), async (req, res) => {
   try {
     const { name, cnpj, contact_email, phone } = req.body;
     if (!validateString(name, 2, 200)) {
@@ -174,14 +175,18 @@ function normalizeEmailField(val) {
   return String(val).trim().toLowerCase();
 }
 
+/**
+ * Perfil do administrador logado. Devolve também as permissões, para o painel esconder
+ * o que a pessoa não pode ver sem depender do que ficou guardado no login.
+ */
 router.get("/me", async (req, res) => {
   try {
     const { rows } = await db.query(
-      "SELECT id, cpf, contact_email FROM platform_admins WHERE id = $1",
+      "SELECT id, cpf, nome, contact_email FROM platform_admins WHERE id = $1",
       [req.admin.id]
     );
     if (!rows.length) return res.status(404).json({ error: "Não encontrado" });
-    res.json(rows[0]);
+    res.json({ ...rows[0], is_owner: Boolean(req.admin.isOwner), areas: req.admin.areas });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Erro interno" });
@@ -208,7 +213,7 @@ router.patch("/me/contact-email", async (req, res) => {
   }
 });
 
-router.patch("/companies/:id", async (req, res) => {
+router.patch("/companies/:id", requireArea("empresas"), async (req, res) => {
   try {
     const { id } = req.params;
     if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
@@ -328,7 +333,7 @@ router.patch("/companies/:id", async (req, res) => {
 });
 
 /** Estado da sincronização com o G-Click (para o painel mostrar). */
-router.get("/sync-gclick/status", (_req, res) => {
+router.get("/sync-gclick/status", requireArea("sincronizacao"), (_req, res) => {
   res.json({
     configurado: gclickClient.isConfigured(),
     rodando: sync.estaRodando(),
@@ -337,7 +342,7 @@ router.get("/sync-gclick/status", (_req, res) => {
 });
 
 /** Dispara a sincronização com o G-Click em segundo plano (pode levar minutos). */
-router.post("/sync-gclick", async (req, res) => {
+router.post("/sync-gclick", requireArea("sincronizacao"), async (req, res) => {
   if (!gclickClient.isConfigured()) {
     return res.status(503).json({ error: "G-Click não configurado (GCLICK_CLIENT_ID/SECRET)." });
   }
@@ -376,7 +381,7 @@ async function funcionariosDoExtrato(companyId) {
  * Prévia: lê o último extrato de folha da empresa e devolve nome+CPF encontrados,
  * marcando quais já estão cadastrados (para o admin conferir antes de importar).
  */
-router.get("/companies/:id/extrato-employees", async (req, res) => {
+router.get("/companies/:id/extrato-employees", requireArea("funcionarios"), async (req, res) => {
   try {
     const { id } = req.params;
     if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
@@ -426,7 +431,7 @@ router.get("/companies/:id/extrato-employees", async (req, res) => {
  * Varre TODAS as empresas e resume quantos funcionários o extrato traria por empresa,
  * sem gravar (dry-run). É a "revisão antes" para o cadastro em massa.
  */
-router.post("/extrato-employees/scan-all", async (_req, res) => {
+router.post("/extrato-employees/scan-all", requireArea("funcionarios"), async (_req, res) => {
   try {
     const { rows: companies } = await db.query("SELECT id, name, cnpj FROM companies ORDER BY name");
     const resultados = [];
@@ -459,7 +464,7 @@ router.post("/extrato-employees/scan-all", async (_req, res) => {
  * Cadastra os funcionários do extrato. Sem `id` no corpo, faz para TODAS as empresas.
  * Reaproveita a mesma validação/inserção da importação por planilha.
  */
-router.post("/extrato-employees/import", async (req, res) => {
+router.post("/extrato-employees/import", requireArea("funcionarios"), async (req, res) => {
   try {
     const alvoId = req.body?.company_id;
     let companies;
@@ -525,7 +530,7 @@ router.post("/extrato-employees/import", async (req, res) => {
   }
 });
 
-router.post("/companies/:id/import-employees", async (req, res) => {
+router.post("/companies/:id/import-employees", requireArea("funcionarios"), async (req, res) => {
   try {
     const { id } = req.params;
     if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });

@@ -14,7 +14,9 @@ import { toast } from "sonner";
 const AlterarSenhaPage = () => {
   const navigate = useNavigate();
   const { company, admin, login, logout } = useAuth();
-  const obrigatorio = Boolean(company?.mustChangePassword);
+  // Vale para os dois: empresa com senha = CNPJ, e usuário do painel com senha
+  // definida pelo dono.
+  const obrigatorio = Boolean(company?.mustChangePassword || admin?.mustChangePassword);
 
   const [atual, setAtual] = useState("");
   const [nova, setNova] = useState("");
@@ -26,6 +28,7 @@ const AlterarSenhaPage = () => {
       toast.success(r.message);
       // Some a marca de 1º acesso — sem isto a guarda continuaria a barrar a navegação.
       if (company) login({ ...company, mustChangePassword: false });
+      if (admin) login({ ...admin, mustChangePassword: false });
       setAtual("");
       setNova("");
       setConfirma("");

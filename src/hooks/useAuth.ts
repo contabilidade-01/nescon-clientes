@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { mergeClientToolAccess, type CompanyToolAccess } from "@/lib/companyTools";
+import { mergeAdminAreas, type AdminAreaAccess } from "@/lib/adminAreas";
 
 export type CompanySession = {
   role: "company";
@@ -17,6 +18,13 @@ export type AdminSession = {
   id: string;
   cpf: string;
   token: string;
+  nome?: string | null;
+  /** Dono do sistema: vê todas as áreas e é o único que gerencia usuários. */
+  isOwner?: boolean;
+  /** Áreas do painel liberadas. Ausente = login antigo, tratado como acesso total. */
+  areas?: AdminAreaAccess;
+  /** Senha definida pelo dono: troca obrigatória no 1º acesso. */
+  mustChangePassword?: boolean;
 };
 
 export type AuthSession = CompanySession | AdminSession;
@@ -31,7 +39,17 @@ function parseStored(): AuthSession | null {
     if (!o?.token || typeof o.token !== "string") return null;
 
     if (o.role === "admin" && typeof o.id === "string" && typeof o.cpf === "string") {
-      return { role: "admin", id: o.id, cpf: o.cpf, token: o.token };
+      return {
+        role: "admin",
+        id: o.id,
+        cpf: o.cpf,
+        token: o.token,
+        nome: typeof o.nome === "string" ? o.nome : null,
+        isOwner: Boolean(o.isOwner ?? o.is_owner),
+        // Sessão gravada antes das permissões existirem: acesso total, como era.
+        areas: mergeAdminAreas(o.areas ?? null),
+        mustChangePassword: Boolean(o.mustChangePassword ?? o.must_change_password),
+      };
     }
     if (
       o.role === "company" &&

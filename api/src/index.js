@@ -8,6 +8,7 @@ const { ensurePasswordResetSchema } = require("./ensurePasswordResetSchema");
 const { ensureToolAccessSchema } = require("./ensureToolAccessSchema");
 const { ensureDeliverablesSchema } = require("./ensureDeliverablesSchema");
 const { ensureLicensesSchema } = require("./ensureLicensesSchema");
+const { ensureAdminUsersSchema } = require("./ensureAdminUsersSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -16,6 +17,8 @@ app.use(express.json());
 
 // Routes
 app.use("/api/auth", require("./routes/auth"));
+// Gestão de usuários do painel (só o dono). Antes de /api/admin: rota mais específica.
+app.use("/api/admin/usuarios", require("./routes/adminUsers"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/employees", require("./routes/employees"));
 app.use("/api/documents", require("./routes/documents"));
@@ -52,6 +55,7 @@ async function start() {
     await ensureToolAccessSchema(db);
     await ensureDeliverablesSchema(db);
     await ensureLicensesSchema(db);
+    await ensureAdminUsersSchema(db);
     // Nota: a antiga limpeza de inativos no boot foi REMOVIDA. Demitido agora é
     // inativado (active=false) e MANTIDO para o admin ver o histórico; some só da
     // empresa. Ver a detecção de demissão na importação por extrato (routes/admin.js).

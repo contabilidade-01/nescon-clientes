@@ -11,6 +11,7 @@ const crypto = require("crypto");
 const multer = require("multer");
 const db = require("../db");
 const { authMiddleware } = require("../middleware/auth");
+const { adminHasArea } = require("../middleware/adminArea");
 const { companyHasTool } = require("../middleware/companyToolAccess");
 const { validateUUID, validateDate, validateString } = require("../middleware/validate");
 const { uploadPdf, resolveUploadPath, removeUploadFile } = require("../uploads");
@@ -48,8 +49,12 @@ function onlyReleased(req) {
   return req.isAdmin ? "" : " AND released_at IS NOT NULL";
 }
 
+// Upload manual do escritório: exige a área de entregas, não só "ser admin".
 function adminOnly(req, res, next) {
   if (!req.isAdmin) return res.status(403).json({ error: "Recurso exclusivo do administrador" });
+  if (!adminHasArea(req, "entregas")) {
+    return res.status(403).json({ error: "Você não tem acesso a esta área do painel" });
+  }
   next();
 }
 

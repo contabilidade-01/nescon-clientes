@@ -4,6 +4,8 @@ import { AlertTriangle, ArrowUpRight, ShieldCheck } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
+import { canSeeArea } from "@/lib/adminAreas";
 import { LICENSE_STATUS_LABELS } from "@/lib/licenses";
 
 /** Cartão-número clicável: leva ao segmento correspondente do painel. */
@@ -34,6 +36,14 @@ function StatCard({
 
 const VisaoGeralPage = () => {
   const navigate = useNavigate();
+  const { admin } = useAuth();
+  // Usuário sem a área não deve nem consultar: a rota responderia 403 e a tela
+  // mostraria erro por algo que ele simplesmente não pode ver.
+  const podeLicencas = canSeeArea("licencas", admin?.areas, admin?.isOwner);
+  const podeLgpd = canSeeArea("lgpd", admin?.areas, admin?.isOwner);
+  const podeEmpresas = canSeeArea("empresas", admin?.areas, admin?.isOwner);
+  const podeEntregas = canSeeArea("entregas", admin?.areas, admin?.isOwner);
+  const podeFuncionarios = canSeeArea("funcionarios", admin?.areas, admin?.isOwner);
 
   const { data: summary } = useQuery({
     queryKey: ["admin-summary"],
@@ -43,11 +53,13 @@ const VisaoGeralPage = () => {
   const { data: licencas } = useQuery({
     queryKey: ["licencas-overview"],
     queryFn: () => api.licencas.overview(),
+    enabled: podeLicencas,
   });
 
   const { data: lgpd } = useQuery({
     queryKey: ["lgpd-consents"],
     queryFn: () => api.admin.lgpdConsents(),
+    enabled: podeLgpd,
   });
 
   const atencao = (licencas?.por_status.vencida ?? 0) + (licencas?.por_status.a_vencer ?? 0);
@@ -58,7 +70,11 @@ const VisaoGeralPage = () => {
       description="Resumo do escritório: cadastro, entregas, licenças e conformidade"
     >
       <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <StatCard label="Empresas" value={summary?.companies ?? "—"} onClick={() => navigate("/admin/empresas")} />
+        <StatCard
+          label="Empresas"
+          value={summary?.companies ?? "—"}
+          onClick={podeEmpresas ? () => navigate("/admin/empresas") : undefined}
+        />
         <StatCard
           label="Entregas (guias/folha)"
           value={summary?.deliverables ?? "—"}
@@ -67,13 +83,26 @@ const VisaoGeralPage = () => {
               ? `${summary.deliverables_liberadas} liberadas · ${summary.deliverables_retidas} retidas`
               : undefined
           }
-          onClick={() => navigate("/admin/entregas")}
+          onClick={podeEntregas ? () => navigate("/admin/entregas") : undefined}
         />
-        <StatCard label="Docs DP (susp./advert.)" value={summary?.documents ?? "—"} onClick={() => navigate("/admin/entregas")} />
-        <StatCard label="Funcionários" value={summary?.employees ?? "—"} onClick={() => navigate("/admin/funcionarios")} />
-        <StatCard label="Atestados" value={summary?.certificates ?? "—"} onClick={() => navigate("/admin/entregas")} />
+        <StatCard
+          label="Docs DP (susp./advert.)"
+          value={summary?.documents ?? "—"}
+          onClick={podeEntregas ? () => navigate("/admin/entregas") : undefined}
+        />
+        <StatCard
+          label="Funcionários"
+          value={summary?.employees ?? "—"}
+          onClick={podeFuncionarios ? () => navigate("/admin/funcionarios") : undefined}
+        />
+        <StatCard
+          label="Atestados"
+          value={summary?.certificates ?? "—"}
+          onClick={podeEntregas ? () => navigate("/admin/entregas") : undefined}
+        />
       </section>
 
+      {podeLicencas && (
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
@@ -102,8 +131,9 @@ const VisaoGeralPage = () => {
           ))}
         </CardContent>
       </Card>
+      )}
 
-      {atencao > 0 && (
+      {podeLicencas && atencao > 0 && (
         <button
           type="button"
           onClick={() => navigate("/admin/licencas?status=vencida")}
@@ -117,6 +147,7 @@ const VisaoGeralPage = () => {
         </button>
       )}
 
+      {podeLgpd && (
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Consentimentos LGPD</CardTitle>
@@ -138,6 +169,7 @@ const VisaoGeralPage = () => {
           ))}
         </CardContent>
       </Card>
+      )}
     </AdminLayout>
   );
 };

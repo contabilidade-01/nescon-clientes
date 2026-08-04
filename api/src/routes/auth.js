@@ -14,6 +14,36 @@ const {
 } = require("../middleware/validate");
 const { isSmtpConfigured, getPublicAppUrl, sendPasswordResetEmail } = require("../mailer");
 const { LGPD_CONSENT_VERSION, lgpdTermo } = require("../lgpd");
+const { mergeAreas } = require("../adminAreas");
+
+/**
+ * Admin no login. Base antiga sem as colunas de permissão (42703) devolve o mínimo e
+ * o login continua funcionando — a migração roda no arranque, mas nunca dependemos dela.
+ */
+async function getAdminByCpfForLogin(dbConn, cpfDigits) {
+  try {
+    const { rows } = await dbConn.query(
+      `SELECT id, cpf, nome, password_hash, areas, is_owner, active, must_change_password
+         FROM platform_admins WHERE cpf = $1`,
+      [cpfDigits]
+    );
+    return rows;
+  } catch (err) {
+    if (err.code !== "42703") throw err;
+    const { rows } = await dbConn.query(
+      "SELECT id, cpf, password_hash FROM platform_admins WHERE cpf = $1",
+      [cpfDigits]
+    );
+    return rows.map((r) => ({
+      ...r,
+      nome: null,
+      areas: null,
+      is_owner: true,
+      active: true,
+      must_change_password: false,
+    }));
+  }
+}
 
 const forgotPasswordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -158,19 +188,26 @@ router.post("/login", async (req, res) => {
       if (!validateCPF(raw)) {
         return res.status(400).json({ error: "CPF inválido" });
       }
-      const { rows } = await db.query(
-        "SELECT id, cpf, password_hash FROM platform_admins WHERE cpf = $1",
-        [clean]
-      );
+      const rows = await getAdminByCpfForLogin(db, clean);
       if (!rows.length) return res.status(401).json({ error: "Acesso não encontrado" });
       const adm = rows[0];
+      if (adm.active === false) {
+        return res.status(403).json({ error: "Acesso desativado. Procure o administrador." });
+      }
       const ok = await bcryptMatches(adm.password_hash, password);
       if (!ok) return res.status(401).json({ error: "Senha incorreta" });
       const token = generateAdminToken({ id: adm.id, cpf: adm.cpf });
       return res.json({
         token,
         role: "admin",
-        admin: { id: adm.id, cpf: adm.cpf },
+        admin: {
+          id: adm.id,
+          cpf: adm.cpf,
+          nome: adm.nome || null,
+          is_owner: Boolean(adm.is_owner),
+          areas: mergeAreas(adm.areas),
+          must_change_password: Boolean(adm.must_change_password),
+        },
       });
     }
 
@@ -395,7 +432,10 @@ router.post("/change-password", authMiddleware, changePasswordLimiter, async (re
 
     const hash = await bcrypt.hash(next, 10);
     if (req.isAdmin) {
-      await db.query("UPDATE platform_admins SET password_hash = $1 WHERE id = $2", [hash, id]);
+      await db.query(
+        "UPDATE platform_admins SET password_hash = $1, must_change_password = false WHERE id = $2",
+        [hash, id]
+      );
     } else {
       await db.query(
         "UPDATE companies SET password_hash = $1, must_change_password = false WHERE id = $2",

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { isToolAllowed, type CompanyToolKey } from "@/lib/companyTools";
+import { canSeeArea, type AdminArea } from "@/lib/adminAreas";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -24,6 +25,7 @@ import LicencasPage from "./pages/admin/LicencasPage.tsx";
 import TaxasAnuaisPage from "./pages/admin/TaxasAnuaisPage.tsx";
 import LgpdPage from "./pages/admin/LgpdPage.tsx";
 import SincronizacaoPage from "./pages/admin/SincronizacaoPage.tsx";
+import UsuariosPage from "./pages/admin/UsuariosPage.tsx";
 import EnvioGuiasAdminPage from "./pages/EnvioGuiasAdminPage.tsx";
 import GuiasFiscaisPage from "./pages/GuiasFiscaisPage.tsx";
 import BoletosPage from "./pages/BoletosPage.tsx";
@@ -82,9 +84,32 @@ function LoggedInRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AdminOnlyRoute({ children }: { children: React.ReactNode }) {
-  const { isLoggedIn, isAdmin } = useAuth();
+  const { isLoggedIn, isAdmin, admin } = useAuth();
   if (!isLoggedIn) return <Navigate to="/login" replace />;
   if (!isAdmin) return <Navigate to="/" replace />;
+  // Senha definida pelo dono: trocar antes de usar o painel.
+  if (admin?.mustChangePassword) return <Navigate to="/alterar-senha" replace />;
+  return <>{children}</>;
+}
+
+/**
+ * Página do painel restrita a uma área. Isto é conforto de navegação — quem impede
+ * de fato o acesso aos dados é o servidor (api/src/middleware/adminArea.js).
+ */
+function AdminAreaRoute({ area, children }: { area: AdminArea; children: React.ReactNode }) {
+  const { isLoggedIn, isAdmin, admin } = useAuth();
+  if (!isLoggedIn) return <Navigate to="/login" replace />;
+  if (!isAdmin) return <Navigate to="/" replace />;
+  if (admin?.mustChangePassword) return <Navigate to="/alterar-senha" replace />;
+  if (!canSeeArea(area, admin?.areas, admin?.isOwner)) return <Navigate to="/admin" replace />;
+  return <>{children}</>;
+}
+
+/** Gestão de usuários: só o dono. */
+function OwnerOnlyRoute({ children }: { children: React.ReactNode }) {
+  const { isLoggedIn, isAdmin, admin } = useAuth();
+  if (!isLoggedIn) return <Navigate to="/login" replace />;
+  if (!isAdmin || !admin?.isOwner) return <Navigate to="/admin" replace />;
   return <>{children}</>;
 }
 
@@ -97,13 +122,14 @@ const AppRoutes = () => (
     <Route path="/entrega/:token" element={<EntregaPublicaPage />} />
     {/* Painel do escritório: uma página por área, com menu lateral retrátil (AdminLayout) */}
     <Route path="/admin" element={<AdminOnlyRoute><VisaoGeralPage /></AdminOnlyRoute>} />
-    <Route path="/admin/empresas" element={<AdminOnlyRoute><EmpresasPage /></AdminOnlyRoute>} />
-    <Route path="/admin/funcionarios" element={<AdminOnlyRoute><FuncionariosAdminPage /></AdminOnlyRoute>} />
-    <Route path="/admin/entregas" element={<AdminOnlyRoute><EntregasPage /></AdminOnlyRoute>} />
-    <Route path="/admin/licencas" element={<AdminOnlyRoute><LicencasPage /></AdminOnlyRoute>} />
-    <Route path="/admin/taxas-anuais" element={<AdminOnlyRoute><TaxasAnuaisPage /></AdminOnlyRoute>} />
-    <Route path="/admin/lgpd" element={<AdminOnlyRoute><LgpdPage /></AdminOnlyRoute>} />
-    <Route path="/admin/sincronizacao" element={<AdminOnlyRoute><SincronizacaoPage /></AdminOnlyRoute>} />
+    <Route path="/admin/empresas" element={<AdminAreaRoute area="empresas"><EmpresasPage /></AdminAreaRoute>} />
+    <Route path="/admin/funcionarios" element={<AdminAreaRoute area="funcionarios"><FuncionariosAdminPage /></AdminAreaRoute>} />
+    <Route path="/admin/entregas" element={<AdminAreaRoute area="entregas"><EntregasPage /></AdminAreaRoute>} />
+    <Route path="/admin/licencas" element={<AdminAreaRoute area="licencas"><LicencasPage /></AdminAreaRoute>} />
+    <Route path="/admin/taxas-anuais" element={<AdminAreaRoute area="taxas_anuais"><TaxasAnuaisPage /></AdminAreaRoute>} />
+    <Route path="/admin/lgpd" element={<AdminAreaRoute area="lgpd"><LgpdPage /></AdminAreaRoute>} />
+    <Route path="/admin/sincronizacao" element={<AdminAreaRoute area="sincronizacao"><SincronizacaoPage /></AdminAreaRoute>} />
+    <Route path="/admin/usuarios" element={<OwnerOnlyRoute><UsuariosPage /></OwnerOnlyRoute>} />
     {/* Única tela liberada enquanto a senha for a inicial */}
     <Route path="/alterar-senha" element={<LoggedInRoute><AlterarSenhaPage /></LoggedInRoute>} />
     <Route path="/" element={<CompanyOnlyRoute><Index /></CompanyOnlyRoute>} />
@@ -122,7 +148,7 @@ const AppRoutes = () => (
     <Route path="/calendario" element={<CompanyToolRoute tool="calendar"><CalendarioPage /></CompanyToolRoute>} />
     <Route path="/proximos-pagamentos" element={<CompanyToolRoute tool="calendar"><ProximosPagamentosPage /></CompanyToolRoute>} />
     {/* Painel do escritório: iframe do sistema de envio de guias (não confundir com /guias) */}
-    <Route path="/admin/envio-guias" element={<AdminOnlyRoute><EnvioGuiasAdminPage /></AdminOnlyRoute>} />
+    <Route path="/admin/envio-guias" element={<AdminAreaRoute area="envio_guias"><EnvioGuiasAdminPage /></AdminAreaRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );

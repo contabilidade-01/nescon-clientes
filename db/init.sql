@@ -25,6 +25,14 @@ CREATE TABLE IF NOT EXISTS platform_admins (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   cpf TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  nome TEXT,
+  -- Áreas do painel liberadas. NULO = acesso total (compatível com logins antigos).
+  areas JSONB,
+  -- Dono: vê tudo e é o único que gerencia usuários.
+  is_owner BOOLEAN NOT NULL DEFAULT false,
+  active BOOLEAN NOT NULL DEFAULT true,
+  must_change_password BOOLEAN NOT NULL DEFAULT false,
+  created_by UUID REFERENCES platform_admins(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -124,9 +132,10 @@ CREATE TABLE IF NOT EXISTS annual_tax_receipts (
 CREATE INDEX IF NOT EXISTS idx_annual_tax_receipts_ano ON annual_tax_receipts(ano, status);
 
 -- Admin: login = CPF (abaixo); senha inicial nas anotações locais de acessos — trocar após o primeiro login.
-INSERT INTO platform_admins (cpf, password_hash) VALUES (
+INSERT INTO platform_admins (cpf, password_hash, is_owner) VALUES (
   '05487541523',
-  '$2a$10$P0E31oAGRjfkNOUZrd5.K..Wch43XC1WcK3HLiSYOQVK6DBlUbSaW'
+  '$2a$10$P0E31oAGRjfkNOUZrd5.K..Wch43XC1WcK3HLiSYOQVK6DBlUbSaW',
+  true
 ) ON CONFLICT (cpf) DO NOTHING;
 
 -- Empresa operacional da contabilidade (login: CNPJ com/sem máscara; senha = CNPJ só dígitos).

@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const db = require("../db");
 const { authMiddleware } = require("../middleware/auth");
+const { requireArea } = require("../middleware/adminArea");
 const { validateUUID, validateString, validateDate } = require("../middleware/validate");
 const {
   LICENSE_TYPES,
@@ -20,6 +21,7 @@ function adminOnly(req, res, next) {
 
 router.use(authMiddleware);
 router.use(adminOnly);
+router.use(requireArea("licencas"));
 
 /**
  * Base do painel: para cada empresa ESTABELECIDA e cada um dos 3 tipos, a licença

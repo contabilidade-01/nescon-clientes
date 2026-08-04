@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const db = require("../db");
 const { authMiddleware, requireCompanyUser } = require("../middleware/auth");
+const { adminHasArea } = require("../middleware/adminArea");
 const { companyHasTool } = require("../middleware/companyToolAccess");
 const { validateString, validateUUID, validateDate } = require("../middleware/validate");
 
@@ -17,6 +18,9 @@ const DOC_TYPE_ALIASES = {
 router.get("/", async (req, res) => {
   try {
     if (req.isAdmin) {
+      if (!adminHasArea(req, "entregas")) {
+        return res.status(403).json({ error: "Você não tem acesso a esta área do painel" });
+      }
       const filterId = (req.query.company_id || "").toString();
       if (filterId) {
         if (!validateUUID(filterId)) {
@@ -100,6 +104,9 @@ router.delete("/:id", async (req, res) => {
       return res.status(400).json({ error: "ID inválido" });
     }
     if (req.isAdmin) {
+      if (!adminHasArea(req, "entregas")) {
+        return res.status(403).json({ error: "Você não tem acesso a esta área do painel" });
+      }
       const { rowCount } = await db.query("DELETE FROM issued_documents WHERE id=$1", [req.params.id]);
       if (!rowCount) return res.status(404).json({ error: "Documento não encontrado" });
       return res.json({ ok: true });

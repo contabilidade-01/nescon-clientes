@@ -1,4 +1,5 @@
 import type { CompanyToolAccess } from "@/lib/companyTools";
+import type { AdminAreaAccess } from "@/lib/adminAreas";
 
 const rawApiBase = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || "/api";
 const API_BASE = rawApiBase.replace(/\/+$/, "") || "/api";
@@ -226,8 +227,31 @@ export type LgpdState = {
 /** Mesma forma das permissões do cliente — fonte única em companyTools, evita as duas listas divergirem. */
 export type CompanyToolAccessApi = CompanyToolAccess;
 
+export type AdminUser = {
+  id: string;
+  cpf: string;
+  nome: string | null;
+  areas: AdminAreaAccess;
+  is_owner: boolean;
+  active: boolean;
+  must_change_password: boolean;
+  contact_email: string | null;
+  created_at: string;
+};
+
 export type LoginResponse =
-  | { token: string; role: "admin"; admin: { id: string; cpf: string } }
+  | {
+      token: string;
+      role: "admin";
+      admin: {
+        id: string;
+        cpf: string;
+        nome?: string | null;
+        is_owner?: boolean;
+        areas?: AdminAreaAccess;
+        must_change_password?: boolean;
+      };
+    }
   | {
       token: string;
       role: "company";
@@ -372,7 +396,37 @@ export const api = {
         }>;
       }>("/admin/lgpd-consents"),
     me: () =>
-      request<{ id: string; cpf: string; contact_email: string | null }>("/admin/me"),
+      request<{
+        id: string;
+        cpf: string;
+        nome: string | null;
+        contact_email: string | null;
+        is_owner: boolean;
+        areas: AdminAreaAccess;
+      }>("/admin/me"),
+
+    /** Usuários do painel (login por CPF). Só o dono usa estas rotas. */
+    usuarios: {
+      listar: () => request<AdminUser[]>("/admin/usuarios"),
+      criar: (data: { cpf: string; nome: string; areas: AdminAreaAccess; senha?: string }) =>
+        request<{ usuario: AdminUser; senha_inicial: string }>("/admin/usuarios", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      atualizar: (
+        id: string,
+        data: { nome?: string; areas?: AdminAreaAccess; active?: boolean }
+      ) =>
+        request<AdminUser>(`/admin/usuarios/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      redefinirSenha: (id: string, senha?: string) =>
+        request<{ ok: boolean; senha_inicial: string }>(`/admin/usuarios/${id}/senha`, {
+          method: "POST",
+          body: JSON.stringify(senha ? { senha } : {}),
+        }),
+    },
     updateMyContactEmail: (contact_email: string | null) =>
       request<{ ok: boolean; contact_email: string | null }>("/admin/me/contact-email", {
         method: "PATCH",

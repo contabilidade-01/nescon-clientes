@@ -68,7 +68,34 @@ e cada rota é uma página em `src/pages/admin/`:
 | `/admin/taxas-anuais` | Controle das guias de taxa anual da prefeitura. |
 | `/admin/lgpd` | Auditoria dos consentimentos e o texto do termo em vigor. |
 | `/admin/sincronizacao` | Sincronização com o G-Click e e-mail do administrador. |
+| `/admin/usuarios` | **Só o dono** — usuários do painel e o que cada um pode ver. |
 | `/admin/envio-guias` | Iframe do sistema GCLICK (app separado). |
+
+### Usuários do painel e acesso por área
+
+O administrador deixou de ser tudo-ou-nada. Existem dois papéis:
+
+- **Dono** (`is_owner`): vê todas as áreas e é o **único** que cria e edita usuários. As permissões
+  dele não são editáveis — senão daria para se trancar para fora.
+- **Usuário**: entra por **CPF** e vê só as áreas que o dono marcar. Nasce **sem nenhuma**.
+
+Gerido em **`/admin/usuarios`** (só o dono enxerga o item no menu). Ao criar, o sistema **gera a
+senha inicial e mostra uma única vez** — anote e passe por canal seguro; a pessoa é obrigada a
+trocá-la no primeiro acesso. Também dá para desativar um acesso (o login passa a ser recusado) e
+redefinir a senha.
+
+**A trava é no servidor, não no menu.** Esconder o item da barra lateral é conforto; quem impede o
+acesso aos dados é `requireArea()` em `api/src/middleware/adminArea.js`, aplicado rota a rota — o
+menu escondido sozinho seria contornável chamando a API direto. As permissões são lidas do banco a
+cada requisição, então tirar o acesso de alguém tem efeito imediato, sem esperar o token expirar.
+
+Áreas disponíveis: `empresas`, `funcionarios`, `entregas`, `licencas`, `taxas_anuais`, `lgpd`,
+`sincronizacao`, `envio_guias` (lista em `api/src/adminAreas.js`, espelhada em
+`src/lib/adminAreas.ts` — ao acrescentar uma, mexer nos dois e no menu). A **visão geral** é a porta
+de entrada e todo usuário vê; ela mostra só os números das áreas que a pessoa tem.
+
+Compatibilidade: `areas` **nulo** = acesso total. Os logins que já existiam continuam funcionando
+sem migração, e o CPF do seed vira **dono** no primeiro arranque.
 
 ### Licenças (funcionamento, AVCB/CLCB, vigilância sanitária)
 

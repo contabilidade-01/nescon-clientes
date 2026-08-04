@@ -1,7 +1,10 @@
+import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Building2,
   CalendarCheck,
+  UserCog,
   FileCheck2,
   KeyRound,
   LayoutDashboard,
@@ -29,13 +32,23 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { api } from "@/lib/api";
+import { canSeeArea, mergeAdminAreas, type AdminArea } from "@/lib/adminAreas";
 
 /**
  * Painel do escritório dividido por área. Cada item é uma rota própria — nada de uma
  * página só com tudo empilhado. O menu lateral retrai para ícones (botão no topo ou
  * Ctrl/Cmd+B) e vira gaveta no celular.
  */
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; end?: boolean };
+type NavItem = {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  end?: boolean;
+  /** Área exigida. Sem área = todo administrador vê. `owner` = só o dono. */
+  area?: AdminArea;
+  ownerOnly?: boolean;
+};
 
 const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
   {
@@ -45,29 +58,30 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
   {
     label: "Cadastro",
     items: [
-      { to: "/admin/empresas", label: "Empresas", icon: Building2 },
-      { to: "/admin/funcionarios", label: "Funcionários", icon: Users },
+      { to: "/admin/empresas", label: "Empresas", icon: Building2, area: "empresas" },
+      { to: "/admin/funcionarios", label: "Funcionários", icon: Users, area: "funcionarios" },
     ],
   },
   {
     label: "Entregas",
     items: [
-      { to: "/admin/entregas", label: "Documentos e entregas", icon: FileCheck2 },
-      { to: "/admin/envio-guias", label: "Envio de guias", icon: Send },
+      { to: "/admin/entregas", label: "Documentos e entregas", icon: FileCheck2, area: "entregas" },
+      { to: "/admin/envio-guias", label: "Envio de guias", icon: Send, area: "envio_guias" },
     ],
   },
   {
     label: "Licenças e taxas",
     items: [
-      { to: "/admin/licencas", label: "Licenças", icon: ShieldCheck },
-      { to: "/admin/taxas-anuais", label: "Taxas anuais", icon: CalendarCheck },
+      { to: "/admin/licencas", label: "Licenças", icon: ShieldCheck, area: "licencas" },
+      { to: "/admin/taxas-anuais", label: "Taxas anuais", icon: CalendarCheck, area: "taxas_anuais" },
     ],
   },
   {
     label: "Conformidade",
     items: [
-      { to: "/admin/lgpd", label: "Consentimentos LGPD", icon: ShieldCheck },
-      { to: "/admin/sincronizacao", label: "Sincronização", icon: RefreshCw },
+      { to: "/admin/lgpd", label: "Consentimentos LGPD", icon: ShieldCheck, area: "lgpd" },
+      { to: "/admin/sincronizacao", label: "Sincronização", icon: RefreshCw, area: "sincronizacao" },
+      { to: "/admin/usuarios", label: "Usuários do painel", icon: UserCog, ownerOnly: true },
     ],
   },
 ];
@@ -87,13 +101,44 @@ export function AdminLayout({
   children: React.ReactNode;
 }) {
   const navigate = useNavigate();
-  const { admin, logout } = useAuth();
+  const { admin, logout, login } = useAuth();
   const { pathname } = useLocation();
+
+  // Permissões podem ter mudado desde o login: o painel busca as atuais e atualiza a
+  // sessão. Quem manda de verdade é o servidor; isto só mantém o menu honesto.
+  const { data: perfil } = useQuery({
+    queryKey: ["admin-me"],
+    queryFn: () => api.admin.me(),
+    enabled: Boolean(admin?.token),
+  });
+
+  useEffect(() => {
+    if (!perfil || !admin) return;
+    const areas = mergeAdminAreas(perfil.areas ?? null);
+    const mudou =
+      Boolean(perfil.is_owner) !== Boolean(admin.isOwner) ||
+      JSON.stringify(areas) !== JSON.stringify(admin.areas ?? null) ||
+      (perfil.nome ?? null) !== (admin.nome ?? null);
+    if (mudou) {
+      login({ ...admin, nome: perfil.nome ?? null, isOwner: Boolean(perfil.is_owner), areas });
+    }
+  }, [perfil, admin, login]);
 
   const handleLogout = () => {
     logout();
     navigate("/login");
   };
+
+  const podeVer = (item: NavItem) => {
+    if (item.ownerOnly) return Boolean(admin?.isOwner);
+    if (!item.area) return true;
+    return canSeeArea(item.area, admin?.areas, admin?.isOwner);
+  };
+
+  const secoesVisiveis = NAV_SECTIONS.map((s) => ({
+    ...s,
+    items: s.items.filter(podeVer),
+  })).filter((s) => s.items.length > 0);
 
   return (
     <SidebarProvider>
@@ -104,7 +149,9 @@ export function AdminLayout({
               <LayoutDashboard className="h-4 w-4" />
             </div>
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <p className="truncate text-sm font-semibold leading-tight">Painel Nescon</p>
+              <p className="truncate text-sm font-semibold leading-tight">
+                {admin?.nome || "Painel Nescon"}
+              </p>
               <p className="truncate text-xs text-muted-foreground">
                 CPF {formatCpf(admin?.cpf)}
               </p>
@@ -113,7 +160,7 @@ export function AdminLayout({
         </SidebarHeader>
 
         <SidebarContent>
-          {NAV_SECTIONS.map((section) => (
+          {secoesVisiveis.map((section) => (
             <SidebarGroup key={section.label}>
               <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
               <SidebarGroupContent>

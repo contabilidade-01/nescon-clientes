@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const db = require("../db");
 const { authMiddleware } = require("../middleware/auth");
+const { requireArea } = require("../middleware/adminArea");
 const { validateUUID, validateString } = require("../middleware/validate");
 
 const STATUSES = ["pendente", "enviado", "confirmado"];
@@ -14,6 +15,7 @@ function adminOnly(req, res, next) {
 
 router.use(authMiddleware);
 router.use(adminOnly);
+router.use(requireArea("taxas_anuais"));
 
 /** Ano do controle: só aceita algo plausível para taxa de prefeitura. */
 function lerAno(valor, fallback = new Date().getFullYear()) {

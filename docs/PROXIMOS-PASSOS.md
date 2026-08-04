@@ -104,18 +104,18 @@ OK, e o cadastro passa a ser nosso — o G-Click só informa entradas e inativa�
 Duas coisas que o Jean pediu para **registrar agora e executar depois** — nesta ordem, depois de
 concluído o [PLANO-CLIENTES-GCLICK.md](PLANO-CLIENTES-GCLICK.md).
 
-### 7.1 Login do Nelson
+### 7.1 Login do Nelson — **infraestrutura PRONTA, falta criar o usuário**
 
-Criar o acesso do Nelson ao sistema. **Falta definir antes de implementar:**
+O acesso por CPF com permissão por área foi implementado (ver
+[README](../README.md#usuários-do-painel-e-acesso-por-área)). Só falta o cadastro em si, que é
+trabalho de tela, não de código:
 
-- É login de **administrador** (CPF, vê todas as empresas) ou de **empresa** (CNPJ)?
-- Se administrador: o CPF dele, e se deve ver tudo ou só algumas áreas do painel. Hoje o admin é
-  tudo-ou-nada — perfil com acesso parcial exigiria um campo de permissões em `platform_admins`,
-  no mesmo espírito do `tool_access` das empresas.
-- Senha inicial e canal de entrega (não colocar no repositório).
-
-Sem perfil parcial, é só um `INSERT` em `platform_admins` (ver `db/seed-platform-admin.sql`). Com
-perfil parcial, vira uma tarefa de verdade — por isso a pergunta vem antes.
+1. Entrar como dono em **`/admin/usuarios`**.
+2. **Novo usuário**: nome e CPF do Nelson.
+3. Marcar as áreas dele. Sugestão inicial: **Licenças** e **Taxas anuais**; ajusta depois sem
+   precisar recriar nada.
+4. **Criar usuário** → o sistema mostra a senha inicial **uma vez**. Anotar e passar por canal
+   seguro (não colocar no repositório). Ele troca no primeiro acesso, obrigatoriamente.
 
 ### 7.2 Aviso automático de vencimento por WhatsApp (DAS, FGTS, INSS)
 

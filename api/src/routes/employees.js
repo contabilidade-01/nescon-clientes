@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const db = require("../db");
 const { authMiddleware, requireCompanyUser } = require("../middleware/auth");
+const { adminHasArea } = require("../middleware/adminArea");
 const { companyHasAnyTool, companyHasTool, EMPLOYEE_LIST_TOOLS } = require("../middleware/companyToolAccess");
 const { validateCPF, validateString, validateUUID } = require("../middleware/validate");
 const { importEmployeesForCompany } = require("../employeeImport");
@@ -11,6 +12,9 @@ router.use(authMiddleware);
 router.get("/", async (req, res) => {
   try {
     if (req.isAdmin) {
+      if (!adminHasArea(req, "funcionarios")) {
+        return res.status(403).json({ error: "Você não tem acesso a esta área do painel" });
+      }
       const filterId = (req.query.company_id || "").toString();
       if (filterId) {
         if (!validateUUID(filterId)) {
@@ -138,6 +142,9 @@ router.put("/:id", async (req, res) => {
     if (!sets.length) return res.status(400).json({ error: "Nenhum campo para atualizar" });
 
     if (req.isAdmin) {
+      if (!adminHasArea(req, "funcionarios")) {
+        return res.status(403).json({ error: "Você não tem acesso a esta área do painel" });
+      }
       vals.push(req.params.id);
       const { rows } = await db.query(
         `UPDATE employees SET ${sets.join(",")} WHERE id=$${i} RETURNING *`,
@@ -171,6 +178,9 @@ router.delete("/:id", async (req, res) => {
       return res.status(400).json({ error: "ID inválido" });
     }
     if (req.isAdmin) {
+      if (!adminHasArea(req, "funcionarios")) {
+        return res.status(403).json({ error: "Você não tem acesso a esta área do painel" });
+      }
       const { rowCount } = await db.query("DELETE FROM employees WHERE id=$1", [req.params.id]);
       if (!rowCount) return res.status(404).json({ error: "Funcionário não encontrado" });
       return res.json({ ok: true });
