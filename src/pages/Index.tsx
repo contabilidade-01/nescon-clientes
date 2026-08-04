@@ -302,7 +302,7 @@ const Index = () => {
                     key={item.key}
                     type="button"
                     onClick={() => navigate(item.path)}
-                    className="group flex items-center gap-4 rounded-2xl border bg-card/70 p-4 text-left transition-colors hover:border-primary/40 hover:bg-card"
+                    className="group flex min-w-0 items-center gap-4 rounded-2xl border bg-card/70 p-4 text-left transition-colors hover:border-primary/40 hover:bg-card"
                   >
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
                       <item.icon className="h-5 w-5" />

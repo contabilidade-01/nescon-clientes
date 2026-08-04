@@ -222,7 +222,10 @@ export function AdminLayout({
         <SidebarRail />
       </Sidebar>
 
-      <SidebarInset>
+      {/* min-w-0: sem isto o inset é um flex item com min-width auto e NÃO encolhe
+          abaixo do conteúdo mais largo — um e-mail comprido empurrava a página toda
+          para a direita no celular. */}
+      <SidebarInset className="min-w-0">
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-background/85 px-4 py-3 backdrop-blur">
           <SidebarTrigger />
           <div className="min-w-0 flex-1">
@@ -235,11 +238,11 @@ export function AdminLayout({
             Sair
           </Button>
         </header>
-        <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6">
+        <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6">
           {/* Aviso de entrada: abre uma vez por sessão em qualquer página do painel. */}
           <GclickAlertaDialog />
           {children}
-        </main>
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );

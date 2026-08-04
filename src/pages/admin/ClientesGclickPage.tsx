@@ -192,10 +192,20 @@ function NovoClienteCard({ p, onResolvido }: { p: GclickPendencia; onResolvido: 
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={() => aceitar.mutate()} disabled={aceitar.isPending}>
+            <Button
+              type="button"
+              onClick={() => aceitar.mutate()}
+              disabled={aceitar.isPending}
+              className="flex-1 sm:flex-none"
+            >
               <UserPlus className="mr-1 h-4 w-4" /> Cadastrar no portal
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => setPedindoMotivo(true)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPedindoMotivo(true)}
+              className="flex-1 sm:flex-none"
+            >
               <X className="mr-1 h-4 w-4" /> Não cadastrar
             </Button>
           </div>

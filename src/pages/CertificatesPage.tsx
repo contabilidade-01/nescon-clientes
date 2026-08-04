@@ -126,7 +126,7 @@ const CertificatesPage = () => {
           <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <h1 className="text-lg font-bold text-foreground">Atestados</h1>
             <p className="text-xs text-muted-foreground">{company?.name}</p>
           </div>

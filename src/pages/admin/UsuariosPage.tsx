@@ -174,9 +174,11 @@ function AreasEditor({
       {ADMIN_AREAS.map((key) => {
         const meta = ADMIN_AREA_LABELS[key];
         return (
+          // min-w-0: item de grid também nasce com min-width auto e não encolhe abaixo
+          // do texto — sem isso a linha empurrava a página inteira no celular.
           <div
             key={key}
-            className="flex items-center justify-between gap-3 rounded-md border bg-background/60 px-3 py-2"
+            className="flex min-w-0 items-center justify-between gap-3 rounded-md border bg-background/60 px-3 py-2"
           >
             <div className="min-w-0">
               <p className="text-sm font-medium leading-tight">{meta.title}</p>

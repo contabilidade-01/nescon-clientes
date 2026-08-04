@@ -139,9 +139,9 @@ const TaxasAnuaisPage = () => {
                         : ""}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto">
                     <Badge variant={BADGE[c.status]}>{ANNUAL_TAX_LABELS[c.status].title}</Badge>
-                    <div className="flex gap-1">
+                    <div className="flex flex-1 gap-1 sm:flex-none">
                       {STATUSES.map((s) => (
                         <Button
                           key={s}
@@ -150,6 +150,7 @@ const TaxasAnuaisPage = () => {
                           variant={c.status === s ? "default" : "outline"}
                           disabled={marcar.isPending || c.status === s}
                           onClick={() => marcar.mutate({ company_id: c.company_id, status: s })}
+                          className="flex-1 sm:flex-none"
                         >
                           {ANNUAL_TAX_LABELS[s].title}
                         </Button>
