@@ -16,6 +16,7 @@ const {
 const { ensureAppSettings } = require("./appSettings");
 const { ensureEmployeePayrollFields } = require("./ensureEmployeePayrollFields");
 const { ensureExtratoAutoSchema } = require("./ensureExtratoAutoSchema");
+const { ensureVacationSchema } = require("./ensureVacationSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -69,6 +70,7 @@ async function start() {
     await ensureAppSettings(db);
     await ensureEmployeePayrollFields(db);
     await ensureExtratoAutoSchema(db);
+    await ensureVacationSchema(db);
     // Primeira carga do espelho de clientes do G-Click. Fora do await: depende de
     // rede e pode demorar; o arranque não espera nem cai se o G-Click estiver fora.
     setTimeout(() => {

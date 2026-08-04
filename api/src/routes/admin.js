@@ -8,11 +8,17 @@ const { mergeToolAccess } = require("../companyTools");
 const { listCompanies, insertCompanyRow, PG_UNDEFINED_COLUMN } = require("../toolAccessDb");
 const { importEmployeesForCompany } = require("../employeeImport");
 const { parseExtratoEmployees } = require("../extratoEmployees");
-const { resolveUploadPath } = require("../uploads");
+const { resolveUploadPath, uploadPdf, removeUploadFile } = require("../uploads");
 const { LGPD_CONSENT_VERSION } = require("../lgpd");
 const sync = require("../gclick/sync");
 const clientSync = require("../gclick/clientSync");
 const extratoAuto = require("../extratoAuto");
+const { parseVacationPdf } = require("../vacationParser");
+const {
+  conferirEmpresa,
+  salvarProgramacao,
+  ultimaProgramacao,
+} = require("../vacationImport");
 const { setSetting } = require("../appSettings");
 const gclickClient = require("../gclick/client");
 const fs = require("fs");
@@ -396,6 +402,80 @@ router.put("/configuracoes/sync", requireArea("sincronizacao"), async (req, res)
   }
 });
 
+
+/**
+ * Programação de Férias: upload do PDF e leitura da última importação.
+ *
+ * O CNPJ do PDF é conferido contra o da empresa antes de gravar — mandar o arquivo
+ * para a empresa errada mostraria os funcionários de um cliente para outro.
+ */
+router.post(
+  "/ferias/:companyId",
+  requireArea("funcionarios"),
+  uploadPdf.single("file"),
+  async (req, res) => {
+    const arquivo = req.file;
+    try {
+      const { companyId } = req.params;
+      if (!validateUUID(companyId)) return res.status(400).json({ error: "ID inválido" });
+      if (!arquivo) return res.status(400).json({ error: "Envie o PDF da Programação de Férias" });
+
+      const { rows: co } = await db.query("SELECT id, name, cnpj FROM companies WHERE id = $1", [
+        companyId,
+      ]);
+      if (!co.length) return res.status(404).json({ error: "Empresa não encontrada" });
+
+      const caminho = resolveUploadPath(arquivo.filename);
+      const parsed = await parseVacationPdf(fs.readFileSync(caminho));
+      if (!parsed.funcionarios.length) {
+        return res.status(422).json({
+          error: "Não consegui ler nenhum funcionário neste PDF. Confira se é a Programação de Férias do G-Click.",
+        });
+      }
+
+      const conf = conferirEmpresa(parsed.cnpj, co[0].cnpj);
+      if (!conf.ok) return res.status(409).json({ error: conf.erro });
+
+      const r = await salvarProgramacao(db, {
+        companyId,
+        parsed,
+        arquivoNome: arquivo.originalname || arquivo.filename,
+        source: "manual",
+        adminId: req.admin.id,
+      });
+
+      res.status(201).json({
+        ...r,
+        empresa: parsed.empresa,
+        data_base: parsed.dataBase,
+        emissao: parsed.emissao,
+        total_declarado: parsed.totalDeclarado,
+        // Divergência entre o que o rodapé declara e o que conseguimos ler é o sinal
+        // de leitura parcial — a tela mostra em vez de esconder.
+        confere: parsed.totalDeclarado === null || parsed.totalDeclarado === parsed.funcionarios.length,
+      });
+    } catch (err) {
+      console.error("[ferias upload]", err);
+      res.status(500).json({ error: "Erro ao importar a Programação de Férias" });
+    } finally {
+      // O PDF já virou linhas na base; não guardamos o arquivo.
+      if (arquivo) removeUploadFile(arquivo.filename);
+    }
+  }
+);
+
+router.get("/ferias/:companyId", requireArea("funcionarios"), async (req, res) => {
+  try {
+    const { companyId } = req.params;
+    if (!validateUUID(companyId)) return res.status(400).json({ error: "ID inválido" });
+    const r = await ultimaProgramacao(db, companyId);
+    if (!r) return res.json({ upload: null, periodos: [] });
+    res.json(r);
+  } catch (err) {
+    console.error("[ferias listar]", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
 
 /**
  * Avisos de saída da folha: quem está cadastrado mas não veio no último extrato.

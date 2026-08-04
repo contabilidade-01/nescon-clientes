@@ -175,6 +175,49 @@ CREATE TABLE IF NOT EXISTS gclick_pendencias (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gclick_pendencias_abertas
   ON gclick_pendencias(cnpj, tipo) WHERE situacao = 'pendente';
 
+-- Programação de Férias importada. Cada importação é uma versão; a última é a que vale.
+-- `source` já existe pensando na tarefa futura do G-Click (hoje só 'manual').
+CREATE TABLE IF NOT EXISTS vacation_uploads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  data_base DATE,
+  emissao DATE,
+  arquivo_nome TEXT,
+  total_empregados INTEGER,
+  total_declarado INTEGER,
+  source TEXT NOT NULL DEFAULT 'manual',
+  criado_por UUID REFERENCES platform_admins(id) ON DELETE SET NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_vacation_uploads_empresa
+  ON vacation_uploads(company_id, criado_em DESC);
+
+-- Uma linha por funcionário x período aquisitivo. Nada é calculado aqui: os dias de
+-- direito vêm prontos do relatório do G-Click.
+CREATE TABLE IF NOT EXISTS vacation_periods (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  upload_id UUID NOT NULL REFERENCES vacation_uploads(id) ON DELETE CASCADE,
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  codigo TEXT,
+  nome TEXT NOT NULL,
+  admissao DATE,
+  ferias_vencidas INTEGER NOT NULL DEFAULT 0,
+  inicio_aquisitivo DATE,
+  fim_aquisitivo DATE,
+  inicio_gozo DATE,
+  limite_gozo DATE,
+  dias_acumulados NUMERIC(5,1) NOT NULL DEFAULT 0,
+  dias_gozados NUMERIC(5,1) NOT NULL DEFAULT 0,
+  dias_direito NUMERIC(5,1) NOT NULL DEFAULT 0,
+  dias_afastamento INTEGER NOT NULL DEFAULT 0,
+  faltas INTEGER NOT NULL DEFAULT 0,
+  ordem INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_vacation_periods_upload ON vacation_periods(upload_id, ordem);
+CREATE INDEX IF NOT EXISTS idx_vacation_periods_limite ON vacation_periods(company_id, limite_gozo);
+
 -- Opções que o escritório muda pela tela, sem redeploy (variável de ambiente é o padrão).
 CREATE TABLE IF NOT EXISTS app_settings (
   chave TEXT PRIMARY KEY,
