@@ -43,6 +43,21 @@ async function ensureDeliverablesSchema(db) {
     await db.query(`
       ALTER TABLE deliverables ADD COLUMN IF NOT EXISTS num_versoes INTEGER NOT NULL DEFAULT 1;
     `);
+    /**
+     * Documento de CARGA HISTÓRICA: entra para o cliente ter o arquivo, não para ser
+     * cobrado.
+     *
+     * Sem esta marca, puxar de janeiro encheria "próximos pagamentos" com meses de
+     * guias atrasadas — `/deliverables/upcoming` inclui vencidas de propósito, porque
+     * "o que pagar a seguir" começa pelo que já passou. O cliente abriria o portal e
+     * veria uma dívida que não existe.
+     *
+     * Marcar como `paid` seria mais fácil e seria mentira: afirmaria um pagamento que
+     * ninguém conferiu. `historico` diz o que é de verdade — documento de arquivo.
+     */
+    await db.query(`
+      ALTER TABLE deliverables ADD COLUMN IF NOT EXISTS historico BOOLEAN NOT NULL DEFAULT false;
+    `);
     // Entregas que já existiam antes da retenção continuam visíveis (não sumir do
     // cliente numa atualização). Só vale para linhas antigas: a coluna nasce nula.
     await db.query(`

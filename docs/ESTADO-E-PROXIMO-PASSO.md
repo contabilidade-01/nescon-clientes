@@ -410,6 +410,37 @@ painel, o campo edita a exceção e mostra o número do espelho como marca-d'ág
 
 ---
 
+## 4e. Carga histórica: arquivo, não cobrança
+
+`/admin/sincronizacao` → **Carga histórica**. Escolhe-se a competência inicial (padrão:
+janeiro do ano corrente) e o portal traz tudo o que existe na esteira do G-Click daquele
+período — folha, INSS, FGTS, DAS e o que mais houver.
+
+Duas diferenças em relação à sincronização normal, e as duas são o ponto:
+
+1. **Entram já liberados.** O objetivo é o cliente ter o arquivo; retido ele não veria nada.
+2. **Entram marcados como `historico`** e por isso **não viram cobrança**.
+
+A segunda existe porque `/deliverables/upcoming` inclui vencidos **de propósito** — "o que
+pagar a seguir" começa pelo que já passou. Sem a marca, puxar de janeiro encheria o portal
+do cliente com meses de guias em vermelho, e ele não teria como distinguir dívida real de
+documento de arquivo.
+
+**Por que uma coluna e não `status = 'paid'`:** marcar como pago seria mais fácil e seria
+mentira — afirmaria um pagamento que ninguém conferiu. `historico` diz o que a linha é.
+
+No cartão do cliente, documento histórico troca o selo vermelho de atraso por um selo
+neutro "histórico", mostra *"Venceu em … · documento de arquivo"* e **perde o botão
+"Paguei"**, que não faz sentido ali.
+
+**O mês corrente fica de fora** da carga: guia deste mês pode estar realmente a vencer, e
+marcá-la como histórico esconderia uma cobrança de verdade.
+
+**Os alertas não são afetados**: a previsão só olha guia com `due_date >= hoje`, então
+competência passada nunca entra no que sai por WhatsApp.
+
+---
+
 ## 5. Pendências que não são código
 
 1. **Redeploy no Easypanel.** São **25 commits** fora do ar. As migrações rodam sozinhas no

@@ -129,6 +129,8 @@ export type Deliverable = {
   status: DeliverableStatus;
   paid_at: string | null;
   source: "gclick" | "manual";
+  /** Carga histórica: arquivo para consulta, nunca conta a pagar. */
+  historico?: boolean;
   created_at: string;
 };
 
@@ -1142,6 +1144,16 @@ export const api = {
       request<{ message: string }>("/admin/sync-gclick", {
         method: "POST",
         body: JSON.stringify(meses ? { meses } : {}),
+      }),
+    /**
+     * Carga histórica: traz as competências já encerradas a partir de `desde` (AAAA-MM).
+     * Os documentos entram liberados e marcados como histórico — arquivo para o cliente,
+     * não cobrança. O mês corrente fica de fora.
+     */
+    runSyncHistorico: (desde: string) =>
+      request<{ message: string; competencias: string[] }>("/admin/sync-gclick/historico", {
+        method: "POST",
+        body: JSON.stringify({ desde }),
       }),
     /** Dry-run: quantos funcionários o extrato traria/inativaria por empresa, sem gravar. */
     scanExtratoEmployees: () =>

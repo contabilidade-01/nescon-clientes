@@ -366,6 +366,62 @@ router.post("/sync-gclick", requireArea("sincronizacao"), async (req, res) => {
 });
 
 /**
+ * Carga HISTÓRICA: traz as competências passadas para o cliente ter o arquivo.
+ *
+ * Diferente da sincronização normal em duas coisas, e as duas importam:
+ *  - os documentos entram **já liberados** (o objetivo é o cliente ver);
+ *  - entram marcados como `historico`, então **não viram cobrança**. Sem isso, puxar
+ *    de janeiro encheria "próximos pagamentos" de guias vencidas que ninguém deve
+ *    pagar — `/deliverables/upcoming` inclui atrasados de propósito.
+ *
+ * O mês corrente fica de fora: guia deste mês pode estar realmente a vencer, e marcá-la
+ * como histórico esconderia uma cobrança de verdade.
+ */
+router.post("/sync-gclick/historico", requireArea("sincronizacao"), async (req, res) => {
+  if (!gclickClient.isConfigured()) {
+    return res.status(503).json({ error: "G-Click não configurado (GCLICK_CLIENT_ID/SECRET)." });
+  }
+  if (sync.estaRodando()) {
+    return res.status(409).json({ error: "Já existe uma sincronização em andamento." });
+  }
+
+  const desde = String(req.body?.desde || "");
+  if (!/^\d{4}-\d{2}$/.test(desde)) {
+    return res.status(400).json({ error: "Informe `desde` no formato AAAA-MM (ex.: 2026-01)." });
+  }
+
+  const hoje = new Date();
+  const anoAtual = hoje.getUTCFullYear();
+  const mesAtual = hoje.getUTCMonth() + 1;
+  const [ano0, mes0] = desde.split("-").map(Number);
+  if (ano0 > anoAtual || (ano0 === anoAtual && mes0 >= mesAtual)) {
+    return res.status(400).json({ error: "A carga histórica só cobre competências já encerradas." });
+  }
+
+  // Lista as competências de `desde` até o mês ANTERIOR ao corrente.
+  const competencias = [];
+  let a = ano0;
+  let m = mes0;
+  while (a < anoAtual || (a === anoAtual && m < mesAtual)) {
+    competencias.push(`${a}-${String(m).padStart(2, "0")}`);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      a += 1;
+    }
+    if (competencias.length > 36) break; // guarda contra pedido absurdo
+  }
+  if (!competencias.length) {
+    return res.status(400).json({ error: "Nenhuma competência encerrada nesse intervalo." });
+  }
+
+  sync
+    .sincronizar({ competencias, historico: true })
+    .catch((e) => console.error("[admin sync histórico]", e.message));
+  res.status(202).json({ message: "Carga histórica iniciada.", competencias });
+});
+
+/**
  * Atualiza só o espelho de clientes do G-Click (sem baixar documentos): traz clientes
  * novos e mudanças de status para a fila de alertas. Rápido — não varre competências.
  */

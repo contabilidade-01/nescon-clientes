@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Mail, UserPlus } from "lucide-react";
+import { History, Mail, UserPlus } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { AdminSyncCard } from "@/components/AdminSyncCard";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,17 @@ const SincronizacaoPage = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Padrão: janeiro do ano corrente — que é o pedido típico ("desde janeiro").
+  const [desde, setDesde] = useState(`${new Date().getFullYear()}-01`);
+
+  const cargaHistorica = useMutation({
+    mutationFn: () => api.admin.runSyncHistorico(desde),
+    onSuccess: (r) => {
+      toast.success(`Carga iniciada: ${r.competencias.length} competência(s).`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const conferirClientes = useMutation({
     mutationFn: () => api.gclickClientes.sincronizar(),
     onSuccess: (r) => {
@@ -69,6 +80,48 @@ const SincronizacaoPage = () => {
       description="Carga de documentos do G-Click e dados do administrador"
     >
       <AdminSyncCard />
+
+      {/* Carga de arquivo, não de cobrança. A distinção é o ponto do cartão inteiro. */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <History className="h-4 w-4" /> Carga histórica
+          </CardTitle>
+          <p className="text-xs font-normal text-muted-foreground">
+            Traz as competências já encerradas para o cliente ter o arquivo no portal —
+            folha, INSS, FGTS, DAS e o que mais existir na esteira. Os documentos entram
+            <strong> visíveis e marcados como histórico</strong>: aparecem na listagem e no
+            calendário, mas <strong>não entram em "próximos pagamentos"</strong> nem contam
+            como atrasados. O mês corrente fica de fora, porque guia deste mês pode estar
+            realmente a vencer.
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="hist-desde" className="text-xs">
+              A partir da competência
+            </Label>
+            <Input
+              id="hist-desde"
+              type="month"
+              className="h-9 w-44"
+              value={desde}
+              onChange={(e) => setDesde(e.target.value)}
+            />
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => cargaHistorica.mutate()}
+            disabled={!desde || cargaHistorica.isPending}
+          >
+            {cargaHistorica.isPending ? "Iniciando…" : "Trazer histórico"}
+          </Button>
+          <p className="w-full text-xs text-muted-foreground">
+            A carga roda em segundo plano e pode levar minutos — acompanhe pelo cartão de
+            sincronização acima.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-2">

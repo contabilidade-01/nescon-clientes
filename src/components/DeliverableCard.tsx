@@ -24,6 +24,11 @@ export function DeliverableCard({ deliverable: d, showPayment = false, showCompe
   const queryClient = useQueryClient();
   const [opening, setOpening] = useState(false);
   const tone = dueTone(d.due_date, d.status);
+  // Documento de carga histórica: é arquivo, não conta a pagar. Sem esta distinção o
+  // selo diria "Venceu há 200 dias" em vermelho para uma guia de janeiro que o cliente
+  // trouxe justamente para consultar — e o portal passaria a acusar dívida inexistente.
+  const ehHistorico = Boolean(d.historico);
+  const mostrarCobranca = showPayment && !ehHistorico;
 
   const setStatus = useMutation({
     mutationFn: (next: DeliverableStatus) => api.deliverables.setStatus(d.id, next),
@@ -51,7 +56,7 @@ export function DeliverableCard({ deliverable: d, showPayment = false, showCompe
     <Card
       className={cn(
         "rounded-2xl border bg-card/70 transition-colors hover:bg-card",
-        tone === "overdue" && "border-destructive/40"
+        tone === "overdue" && !ehHistorico && "border-destructive/40"
       )}
     >
       <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
@@ -62,15 +67,26 @@ export function DeliverableCard({ deliverable: d, showPayment = false, showCompe
                 {d.doc_type}
               </Badge>
             )}
-            {showPayment && <DueBadge dueDate={d.due_date} status={d.status} />}
+            {ehHistorico ? (
+              <Badge variant="outline" className="text-[10px]">
+                histórico
+              </Badge>
+            ) : (
+              showPayment && <DueBadge dueDate={d.due_date} status={d.status} />
+            )}
             {showCompetencia && d.competencia && (
               <span className="text-xs text-muted-foreground">{competenciaLabel(d.competencia)}</span>
             )}
           </div>
           <p className="mt-1.5 truncate font-semibold">{d.title}</p>
-          {showPayment && d.due_date && (
+          {mostrarCobranca && d.due_date && (
             <p className={cn("mt-0.5 text-sm", DUE_TONE_CLASS[tone])}>
               Vence em {formatDue(d.due_date)}
+            </p>
+          )}
+          {ehHistorico && d.due_date && (
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Venceu em {formatDue(d.due_date)} · documento de arquivo
             </p>
           )}
         </div>
@@ -84,7 +100,7 @@ export function DeliverableCard({ deliverable: d, showPayment = false, showCompe
               </>
             )}
           </Button>
-          {showPayment && (
+          {mostrarCobranca && (
             <Button
               variant={d.status === "paid" ? "ghost" : "default"}
               size="sm"

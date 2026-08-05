@@ -112,7 +112,7 @@ async function mapaEmpresas(cnpjsNecessarios) {
 }
 
 /** Grava (ou atualiza) uma guia. Devolve 'criado' | 'atualizado' | 'sem-mudanca' | 'erro'. */
-async function gravarGuia(guia, companyId) {
+async function gravarGuia(guia, companyId, { historico = false } = {}) {
   const cls = classificar(guia.arquivoNome, guia.atividadeNome, guia.obrigacaoNome);
   const docType = cls?.codigo || null;
   const categoria = categoriaDe(docType);
@@ -157,16 +157,19 @@ async function gravarGuia(guia, companyId) {
     return "atualizado";
   }
 
+  // Carga histórica entra JÁ LIBERADA: o objetivo é o cliente ter o arquivo. E entra
+  // marcada como histórico, para não virar cobrança de guia vencida meses atrás.
   await db.query(
     `INSERT INTO deliverables
        (company_id, category, doc_type, title, competencia, due_date,
         file_path, file_name, source, external_ref, access_token,
-        gclick_versao_em, gclick_atividade_id, num_versoes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'gclick',$9,$10,$11,$12,$13)`,
+        gclick_versao_em, gclick_atividade_id, num_versoes, historico, released_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'gclick',$9,$10,$11,$12,$13,$14,
+             CASE WHEN $14 THEN now() ELSE NULL END)`,
     [companyId, categoria, docType, titulo, guia.competencia || null, dueDate,
      fileName, guia.arquivoNome || fileName, guia.chave,
      crypto.randomBytes(24).toString("hex"), guia.respondidaEm || "",
-     String(guia.atividadeId || ""), guia.numVersoes || 1]
+     String(guia.atividadeId || ""), guia.numVersoes || 1, historico]
   );
   return "criado";
 }
@@ -176,7 +179,7 @@ async function gravarGuia(guia, companyId) {
  * `cnpj` limita a uma empresa — usado na liberação, para trazer o dado fresco antes
  * de publicar sem varrer a base toda.
  */
-async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = null } = {}) {
+async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = null, historico = false } = {}) {
   if (!client.isConfigured()) {
     return { ok: false, erro: "G-Click não configurado (GCLICK_CLIENT_ID/SECRET)" };
   }
@@ -240,7 +243,7 @@ async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = n
           return;
         }
         try {
-          const r = await gravarGuia(g, companyId);
+          const r = await gravarGuia(g, companyId, { historico });
           if (r === "criado") total.criados++;
           else if (r === "atualizado") total.atualizados++;
           else if (r === "sem-mudanca") total.semMudanca++;

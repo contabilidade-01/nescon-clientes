@@ -29,7 +29,7 @@ const {
 // deslocar o dia. Ordenar pelo texto 'YYYY-MM-DD' é equivalente a ordenar cronologicamente.
 const FIELDS = `id, company_id, category, doc_type, title, competencia,
                 to_char(due_date, 'YYYY-MM-DD') AS due_date,
-                file_name, status, paid_at, source, created_at`;
+                file_name, status, paid_at, source, historico, created_at`;
 
 function isCompetencia(value) {
   return typeof value === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
@@ -244,10 +244,14 @@ router.get("/upcoming", async (req, res) => {
     const cats = allowedCategories(req);
     if (!cats.length) return res.json([]);
 
-    // Inclui as vencidas de propósito: "o que pagar a seguir" começa pelo que já está atrasado.
+    // Inclui as vencidas de propósito: "o que pagar a seguir" começa pelo que já está
+    // atrasado. Mas EXCLUI a carga histórica: documento trazido para o cliente ter o
+    // arquivo não é dívida. Sem este filtro, puxar de janeiro encheria a tela de
+    // "atrasados" que ninguém deve pagar — e o cliente não teria como distinguir.
     const params = [cats];
     let sql = `SELECT ${FIELDS} FROM deliverables
                WHERE due_date IS NOT NULL AND status = 'pending'
+                 AND historico IS NOT TRUE
                  AND category = ANY($1)${onlyReleased(req)}`;
 
     if (req.isAdmin) {
