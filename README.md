@@ -7,6 +7,9 @@ WhatsApp com um link para o portal.
 
 Frontend React (Vite) + API Express + PostgreSQL. O front chama a API em `/api` (proxy Nginx) ou em `VITE_API_URL` quando o build aponta para outro domínio.
 
+> **Retomando o projeto?** Comece por **[docs/ESTADO-E-PROXIMO-PASSO.md](docs/ESTADO-E-PROXIMO-PASSO.md)**
+> — estado atual, o que foi feito e o próximo passo detalhado.
+
 ## O que o projeto diz hoje sobre deploy
 
 - **`docker-compose.yml`**: sobe `postgres`, `api` (porta interna 3001) e **`web`** (Nginx na **80**, com proxy `/api` → `api:3001`).
