@@ -1155,6 +1155,19 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ desde }),
       }),
+    /** Quantas entregas apontam para PDF que não está mais no disco. */
+    integridadeArquivos: () =>
+      request<{
+        total: number;
+        ok: number;
+        faltando: number;
+        recuperaveis: number;
+        perdidos: number;
+        exemplos: Array<{ empresa: string; title: string; competencia: string | null; source: string }>;
+      }>("/admin/arquivos/integridade"),
+    /** Marca as órfãs do G-Click para a próxima sincronização rebaixar. */
+    rebaixarArquivos: () =>
+      request<{ marcadas: number; message: string }>("/admin/arquivos/rebaixar", { method: "POST" }),
     /** Dry-run: quantos funcionários o extrato traria/inativaria por empresa, sem gravar. */
     scanExtratoEmployees: () =>
       request<{

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { History, Mail, UserPlus } from "lucide-react";
+import { HardDrive, History, Mail, UserPlus } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { AdminSyncCard } from "@/components/AdminSyncCard";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,20 @@ const SincronizacaoPage = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const integridade = useQuery({
+    queryKey: ["arquivos-integridade"],
+    queryFn: () => api.admin.integridadeArquivos(),
+  });
+
+  const rebaixar = useMutation({
+    mutationFn: () => api.admin.rebaixarArquivos(),
+    onSuccess: (r) => {
+      toast.success(r.message);
+      queryClient.invalidateQueries({ queryKey: ["arquivos-integridade"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const conferirClientes = useMutation({
     mutationFn: () => api.gclickClientes.sincronizar(),
     onSuccess: (r) => {
@@ -119,6 +133,51 @@ const SincronizacaoPage = () => {
           <p className="w-full text-xs text-muted-foreground">
             A carga roda em segundo plano e pode levar minutos — acompanhe pelo cartão de
             sincronização acima.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* O volume de uploads nao tem backup. A saida nao e copiar PDF: e saber que
+          quase tudo dele volta do G-Click. O que nao volta e o BANCO. */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <HardDrive className="h-4 w-4" /> Arquivos no disco
+          </CardTitle>
+          <p className="text-xs font-normal text-muted-foreground">
+            Confere se cada entrega ainda tem o PDF no volume. O que veio do G-Click é
+            recuperável — dá para baixar de novo. Upload manual do escritório, não: se o
+            arquivo sumiu, só reenviando.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: "Entregas", valor: integridade.data?.total ?? 0 },
+              { label: "Com arquivo", valor: integridade.data?.ok ?? 0 },
+              { label: "Recuperáveis", valor: integridade.data?.recuperaveis ?? 0 },
+              { label: "Perdidos", valor: integridade.data?.perdidos ?? 0 },
+            ].map((c) => (
+              <div key={c.label} className="rounded-md border p-3">
+                <p className="text-xl font-bold tabular-nums">{c.valor}</p>
+                <p className="text-xs text-muted-foreground">{c.label}</p>
+              </div>
+            ))}
+          </div>
+          {(integridade.data?.recuperaveis ?? 0) > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => rebaixar.mutate()}
+              disabled={rebaixar.isPending}
+            >
+              Marcar {integridade.data?.recuperaveis} para rebaixar
+            </Button>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Marcar não baixa nada: apaga a marca de versão, e a próxima sincronização
+            refaz o download pelo caminho de sempre.
           </p>
         </CardContent>
       </Card>

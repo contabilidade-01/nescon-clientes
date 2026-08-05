@@ -457,6 +457,32 @@ cobrança de verdade, e escondê-lo apagaria uma dívida real da vista do client
 
 ---
 
+## 4f. Backup: o que é recuperável e o que não é
+
+`docker-compose.yml` declara dois volumes Docker, **nenhum com backup**: `pgdata` e
+`uploads`. A assimetria entre eles decide a prioridade.
+
+**`uploads` é recuperável.** Quase todo PDF veio do G-Click e pode ser baixado de novo.
+`/admin/sincronizacao` → **Arquivos no disco** confere cada entrega contra o volume e
+separa o que voltaria (origem `gclick`) do que não voltaria (upload manual do escritório).
+
+O reparo é indireto de propósito: em vez de uma segunda via de download, o botão apaga a
+marca de versão (`gclick_versao_em`) das linhas órfãs. A sincronização seguinte deixa de
+ver aquilo como "já tenho" e refaz o download **pelo caminho de sempre** — o mesmo código
+já testado, sem uma rotina paralela para manter em dia.
+
+**`pgdata` NÃO é recuperável, e é o que importa.** Decisões do escritório sobre
+obrigações, consentimentos LGPD, preferências do cliente, dispensas de férias, histórico
+de envio e de falhas — nada disso existe em outro lugar. Perder o banco é perder o
+trabalho; perder os arquivos é perder uma tarde de sincronização.
+
+**Medição de volume** (120 guias e 23 extratos reais): guia mediana **152 KB**, Extrato
+Mensal mediana **195 KB**. Para 60 empresas, um ano fica entre **0,4 e 1,0 GB** conforme
+o número de guias por mês. Retificação **substitui** o arquivo (`removerPdf` em
+`gclick/sync.js`), então versões não acumulam. Espaço não é o risco aqui — backup é.
+
+---
+
 ## 5. Pendências que não são código
 
 1. **Redeploy no Easypanel.** São **25 commits** fora do ar. As migrações rodam sozinhas no

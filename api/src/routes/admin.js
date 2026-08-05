@@ -9,6 +9,7 @@ const { listCompanies, insertCompanyRow, PG_UNDEFINED_COLUMN } = require("../too
 const { importEmployeesForCompany } = require("../employeeImport");
 const { parseExtratoEmployees } = require("../extratoEmployees");
 const { resolveUploadPath, uploadPdf, removeUploadFile } = require("../uploads");
+const arquivosIntegridade = require("../arquivosIntegridade");
 const { LGPD_CONSENT_VERSION } = require("../lgpd");
 const sync = require("../gclick/sync");
 const clientSync = require("../gclick/clientSync");
@@ -363,6 +364,38 @@ router.post("/sync-gclick", requireArea("sincronizacao"), async (req, res) => {
   // Não segura a resposta: a carga pode demorar; o painel acompanha pelo /status.
   sync.sincronizar({ meses }).catch((e) => console.error("[admin sync]", e.message));
   res.status(202).json({ message: "Sincronização iniciada." });
+});
+
+/**
+ * Integridade dos arquivos: quantas entregas apontam para PDF que não está no disco.
+ * O volume de uploads não tem backup — mas quase tudo dele é recuperável do G-Click.
+ */
+router.get("/arquivos/integridade", requireArea("sincronizacao"), async (_req, res) => {
+  try {
+    res.json(await arquivosIntegridade.conferir(db));
+  } catch (err) {
+    console.error("[admin] integridade:", err.message);
+    res.status(500).json({ error: "Erro ao conferir os arquivos" });
+  }
+});
+
+/**
+ * Marca as entregas órfãs do G-Click para rebaixar. Não baixa aqui: apaga a marca de
+ * versão, e a sincronização seguinte refaz o download pelo caminho de sempre.
+ */
+router.post("/arquivos/rebaixar", requireArea("sincronizacao"), async (_req, res) => {
+  try {
+    const r = await arquivosIntegridade.marcarParaRebaixar(db);
+    res.json({
+      ...r,
+      message: r.marcadas
+        ? `${r.marcadas} documento(s) marcado(s). Rode a sincronização para baixá-los de novo.`
+        : "Nenhum arquivo órfão do G-Click.",
+    });
+  } catch (err) {
+    console.error("[admin] rebaixar:", err.message);
+    res.status(500).json({ error: "Erro ao marcar os arquivos" });
+  }
 });
 
 /**
