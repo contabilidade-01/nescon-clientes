@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { api, type AlertSendResult } from "@/lib/api";
+import { api, type AlertCompanyRow, type AlertSendResult } from "@/lib/api";
 
 const ESFERA_LABEL: Record<string, string> = {
   federal: "Federal",
@@ -237,6 +237,46 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
   );
 }
 
+/**
+ * Campo de WhatsApp editável na própria lista.
+ *
+ * Salva ao sair do campo, e só quando mudou. O servidor recusa fixo e número torto com
+ * motivo próprio, e é esse motivo que aparece no toast — o admin corrige o cadastro na
+ * hora, em vez de descobrir semanas depois que aquele cliente nunca recebeu nada.
+ */
+function WhatsappInline({ company }: { company: AlertCompanyRow }) {
+  const queryClient = useQueryClient();
+  const [valor, setValor] = useState(company.whatsapp ?? "");
+
+  const salvar = useMutation({
+    mutationFn: (v: string) => api.alertas.preferencias(company.id, { whatsapp: v }),
+    onSuccess: (r) => {
+      setValor(r.whatsapp ?? "");
+      toast.success(`WhatsApp de ${company.name} salvo.`);
+      queryClient.invalidateQueries({ queryKey: ["alertas", "panorama"] });
+    },
+    onError: (e: Error) => {
+      toast.error(e.message);
+      setValor(company.whatsapp ?? "");
+    },
+  });
+
+  return (
+    <Input
+      className={`h-8 w-40 text-xs ${!company.whatsapp ? "border-amber-500/60" : ""}`}
+      placeholder="WhatsApp"
+      inputMode="numeric"
+      value={valor}
+      onChange={(e) => setValor(e.target.value)}
+      onBlur={() => {
+        if (valor.trim() === (company.whatsapp ?? "")) return;
+        salvar.mutate(valor.trim());
+      }}
+      disabled={salvar.isPending}
+    />
+  );
+}
+
 const AlertasPage = () => {
   const queryClient = useQueryClient();
   const [busca, setBusca] = useState("");
@@ -252,9 +292,13 @@ const AlertasPage = () => {
     queryFn: () => api.alertas.catalogo(),
   });
 
+  // A API sempre aceitou uma data; faltava a tela deixar escolher. Ver a semana à frente
+  // é o que permite conferir a régua sem esperar o dia chegar.
+  const [dataPrevisao, setDataPrevisao] = useState("");
+
   const previsao = useQuery({
-    queryKey: ["alertas", "previsao"],
-    queryFn: () => api.alertas.previsao(),
+    queryKey: ["alertas", "previsao", dataPrevisao],
+    queryFn: () => api.alertas.previsao(dataPrevisao || undefined),
   });
 
   const whatsapp = useQuery({
@@ -262,6 +306,12 @@ const AlertasPage = () => {
     queryFn: () => api.alertas.whatsapp(),
   });
 
+  const retidos = useQuery({
+    queryKey: ["alertas", "retidos"],
+    queryFn: () => api.alertas.retidos(7),
+  });
+
+  const [soSemWhatsapp, setSoSemWhatsapp] = useState(false);
   const [confirmarEnvio, setConfirmarEnvio] = useState(false);
   const [resultado, setResultado] = useState<AlertSendResult | null>(null);
 
@@ -293,12 +343,20 @@ const AlertasPage = () => {
 
   const termo = busca.trim().toLowerCase();
   const empresas = (panorama.data?.empresas ?? []).filter((c) => {
+    if (soSemWhatsapp && c.whatsapp) return false;
     if (!termo) return true;
     return (
       c.name.toLowerCase().includes(termo) ||
       c.cnpj.replace(/\D/g, "").includes(termo.replace(/\D/g, ""))
     );
   });
+
+  /** Sem WhatsApp o alerta não tem para onde ir — daí o botão de enviar ficar travado. */
+  const motivoEnvioTravado = !whatsapp.data?.ok
+    ? (whatsapp.data?.mensagem ?? "Verificando a conexão do WhatsApp…")
+    : (previsao.data?.total ?? 0) === 0
+      ? "Não há nenhum vencimento com alerta para esta data."
+      : null;
 
   return (
     <AdminLayout
@@ -340,6 +398,12 @@ const AlertasPage = () => {
               />
             </div>
             <Button
+              variant={soSemWhatsapp ? "default" : "outline"}
+              onClick={() => setSoSemWhatsapp((v) => !v)}
+            >
+              Só sem WhatsApp
+            </Button>
+            <Button
               variant="outline"
               onClick={() => automaticas.mutate()}
               disabled={automaticas.isPending}
@@ -360,25 +424,25 @@ const AlertasPage = () => {
               ) : (
                 <ul className="divide-y">
                   {empresas.map((c) => (
-                    <li key={c.id}>
+                    <li key={c.id} className="flex flex-wrap items-center gap-2 p-3">
                       <button
-                        className="flex w-full flex-wrap items-center justify-between gap-2 p-3 text-left hover:bg-muted/50"
+                        className="min-w-0 flex-1 text-left hover:underline"
                         onClick={() => setAberta(c.id)}
                       >
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium">{c.name}</span>
-                          <span className="block text-xs text-muted-foreground">
-                            {c.cnpj} · último alerta: {formatarData(c.ultimo_alerta_em)}
-                          </span>
-                        </span>
-                        <span className="flex items-center gap-2">
-                          {!c.alertas_ativos && <Badge variant="outline">desligado</Badge>}
-                          {!c.whatsapp && <Badge variant="outline">sem WhatsApp</Badge>}
-                          <Badge variant={c.marcadas ? "secondary" : "outline"}>
-                            {c.marcadas} obrigação(ões)
-                          </Badge>
+                        <span className="block truncate font-medium">{c.name}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {c.cnpj} · último alerta: {formatarData(c.ultimo_alerta_em)}
                         </span>
                       </button>
+                      {/* WhatsApp direto na lista: preencher 60 empresas abrindo um
+                          diálogo por vez é o tipo de trabalho que ninguém termina. */}
+                      <WhatsappInline company={c} />
+                      <span className="flex items-center gap-2">
+                        {!c.alertas_ativos && <Badge variant="outline">desligado</Badge>}
+                        <Badge variant={c.marcadas ? "secondary" : "outline"}>
+                          {c.marcadas} obrigação(ões)
+                        </Badge>
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -429,6 +493,34 @@ const AlertasPage = () => {
         </TabsContent>
 
         <TabsContent value="hoje" className="space-y-4">
+          {/* Antes de qualquer coisa: o que vai ser cobrado e ainda não está no ar.
+              Liberar aqui evita o cliente receber o aviso e achar o portal vazio. */}
+          {(retidos.data?.total ?? 0) > 0 && (
+            <Card className="border-amber-500/50">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">
+                  {retidos.data?.total} guia(s) vencem em 7 dias e ainda estão retidas
+                </CardTitle>
+                <CardDescription>
+                  {retidos.data?.vence_amanha
+                    ? `${retidos.data.vence_amanha} vence(m) amanhã — o alerta sai hoje e o cliente não vai encontrar o documento.`
+                    : "O cliente ainda não consegue ver estes documentos."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-1">
+                {retidos.data?.itens.slice(0, 12).map((g) => (
+                  <div key={g.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-1.5 text-sm last:border-0">
+                    <span className="min-w-0 truncate">
+                      <span className="font-medium">{g.empresa}</span>{" "}
+                      <span className="text-muted-foreground">· {g.title}</span>
+                    </span>
+                    <Badge variant="outline">{formatarData(g.due_date)}</Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
               <div className="flex items-center gap-2">
@@ -444,7 +536,19 @@ const AlertasPage = () => {
                   </p>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  type="date"
+                  className="h-9 w-auto"
+                  value={dataPrevisao}
+                  onChange={(e) => setDataPrevisao(e.target.value)}
+                  title="Ver o que sairia noutro dia"
+                />
+                {dataPrevisao && (
+                  <Button variant="ghost" size="sm" onClick={() => setDataPrevisao("")}>
+                    Hoje
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={() => enviar.mutate({ simular: true })}
@@ -454,12 +558,17 @@ const AlertasPage = () => {
                 </Button>
                 <Button
                   onClick={() => setConfirmarEnvio(true)}
-                  disabled={enviar.isPending || !whatsapp.data?.ok || (previsao.data?.total ?? 0) === 0}
+                  disabled={enviar.isPending || Boolean(motivoEnvioTravado)}
+                  // Botão desabilitado sem explicação vira chamado de suporte.
+                  title={motivoEnvioTravado ?? "Enviar os alertas de hoje"}
                 >
                   <Send className="mr-2 h-4 w-4" />
                   Enviar agora
                 </Button>
               </div>
+              {motivoEnvioTravado && (
+                <p className="w-full text-xs text-muted-foreground">{motivoEnvioTravado}</p>
+              )}
             </CardContent>
           </Card>
 

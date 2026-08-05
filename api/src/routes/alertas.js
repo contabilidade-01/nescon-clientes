@@ -20,9 +20,27 @@ const {
   previsao,
   registrarEnvio,
   salvarPreferencias,
+  guiasRetidas,
+  falhasRecentes,
 } = require("../alertas");
 const { enviarAlertasDoDia } = require("../alertasEnvio");
 const { statusInstancia } = require("../uazapi");
+
+/**
+ * Rótulo humano da regra de vencimento. Mapa explícito, não cadeia de ternários: com a
+ * cadeia, um tipo novo herdava calado o rótulo do último ramo — foi assim que a regra
+ * de férias apareceu na tela escrita como "5º dia útil".
+ */
+function rotuloDaRegra(regra) {
+  if (regra.tipo === "dia_fixo") {
+    const ajuste = regra.ajuste === "proximo" ? "próximo dia bancário" : "dia bancário anterior";
+    return `dia ${regra.dia} — ${ajuste}`;
+  }
+  if (regra.tipo === "ultimo_dia_bancario") return "último dia bancário do mês";
+  if (regra.tipo === "quinto_dia_util") return "5º dia útil";
+  if (regra.tipo === "ferias_prazo") return "por funcionário, pela Programação de Férias";
+  return regra.tipo;
+}
 
 function adminOnly(req, res, next) {
   if (!req.isAdmin) return res.status(403).json({ error: "Acesso restrito a administradores" });
@@ -49,12 +67,7 @@ router.get("/catalogo", (req, res) => {
         codigo: o.codigo,
         nome: o.nome,
         esfera: o.esfera,
-        regra:
-          o.regra.tipo === "dia_fixo"
-            ? `dia ${o.regra.dia} — ${o.regra.ajuste === "proximo" ? "próximo dia bancário" : "dia bancário anterior"}`
-            : o.regra.tipo === "ultimo_dia_bancario"
-              ? "último dia bancário do mês"
-              : "5º dia útil",
+        regra: rotuloDaRegra(o.regra),
         automatica: Boolean(o.auto),
         avisar_dias_antes: o.avisarDiasAntes,
         vencimento_no_mes: v?.data ?? null,
@@ -187,6 +200,30 @@ router.post("/registrar-envio", async (req, res) => {
   } catch (err) {
     console.error("[alertas] registrar-envio:", err.message);
     res.status(500).json({ error: "Erro ao registrar o envio" });
+  }
+});
+
+/**
+ * Guias que vencem em breve e ainda não foram liberadas ao cliente.
+ * O alerta do escritório: dá tempo de liberar antes do aviso sair.
+ */
+router.get("/retidos", async (req, res) => {
+  const dias = Math.min(30, Math.max(1, Number(req.query.dias) || 7));
+  try {
+    res.json(await guiasRetidas(db, { dias }));
+  } catch (err) {
+    console.error("[alertas] retidos:", err.message);
+    res.status(500).json({ error: "Erro ao listar as guias retidas" });
+  }
+});
+
+/** Por que cada cliente não foi avisado. O escritório vê sem abrir log de contentor. */
+router.get("/falhas", async (req, res) => {
+  try {
+    res.json(await falhasRecentes(db, { limite: Number(req.query.limite) || 50 }));
+  } catch (err) {
+    console.error("[alertas] falhas:", err.message);
+    res.status(500).json({ error: "Erro ao listar as falhas" });
   }
 });
 

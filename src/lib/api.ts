@@ -476,6 +476,61 @@ export interface AlertPreview {
   }>;
 }
 
+export interface DocUploadCompany {
+  id: string;
+  name: string;
+  cnpj: string;
+}
+
+export interface DocUploadFile {
+  filename: string;
+  storedName: string;
+  cnpjs: string[];
+  empresa: DocUploadCompany | null;
+  /** Todas as empresas cujo CNPJ apareceu no PDF, na ordem de aparição. */
+  candidatas: DocUploadCompany[];
+  /** 'texto' = parser determinístico, 'ia' = fallback, 'nao_encontrado' = ninguém achou. */
+  origem: "texto" | "ia" | "nao_encontrado";
+  observacao: string | null;
+}
+
+export interface DocUploadAnalysis {
+  ia_ligada: boolean;
+  arquivos: DocUploadFile[];
+}
+
+export interface DocUploadConfirmItem {
+  storedName: string;
+  company_id: string;
+  title?: string;
+  doc_type?: string;
+  /** Nome que o cliente vê ao baixar — não o nome interno do arquivo. */
+  originalName?: string;
+}
+
+export interface DocUploadAiState {
+  habilitada: boolean;
+  configurada: boolean;
+  modelo?: string;
+}
+
+/** Guia retida com vencimento próximo — o alerta do escritório, não do cliente. */
+export interface AlertHeldGuides {
+  referencia: string;
+  dias: number;
+  total: number;
+  vence_amanha: number;
+  itens: Array<{
+    id: string;
+    company_id: string;
+    empresa: string;
+    doc_type: string | null;
+    title: string;
+    competencia: string | null;
+    due_date: string;
+  }>;
+}
+
 export interface AlertWhatsappStatus {
   ok: boolean;
   categoria: "ok" | "nao_configurado" | "token_invalido" | "desconectado" | "rede";
@@ -630,6 +685,52 @@ export const api = {
   },
 
   /**
+   * Upload de documentos avulsos com reconhecimento de CNPJ.
+   *
+   * `analisar` envia FormData, então não passa pelo `request()` — mas usa a MESMA base
+   * e o MESMO token. Montar a chamada à mão com `fetch("/api/...")` quebra em produção,
+   * onde o front é servido separado da API (ver o comentário de `parseResponseJson`).
+   */
+  docUpload: {
+    analisar: async (files: File[]) => {
+      const form = new FormData();
+      for (const f of files) form.append("files", f);
+      const token = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(`${API_BASE}/doc-upload/analisar`, {
+        method: "POST",
+        body: form,
+        headers,
+      });
+      const data = await parseResponseJson<unknown>(res);
+      if (res.status === 401) {
+        localStorage.removeItem("company_session");
+        window.location.href = "/login";
+        throw new Error("Sessão expirada");
+      }
+      if (!res.ok) throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+      return data as DocUploadAnalysis;
+    },
+    confirmar: (items: DocUploadConfirmItem[]) =>
+      request<{ gravados: Array<{ id: string; title: string }>; erros: Array<{ storedName: string; error: string }> }>(
+        "/doc-upload/confirmar",
+        { method: "POST", body: JSON.stringify({ items }) }
+      ),
+    descartar: (storedNames: string[]) =>
+      request<{ removidos: number }>("/doc-upload/descartar", {
+        method: "POST",
+        body: JSON.stringify({ storedNames }),
+      }),
+    ia: () => request<DocUploadAiState>("/doc-upload/ia"),
+    definirIa: (habilitada: boolean) =>
+      request<DocUploadAiState>("/doc-upload/ia", {
+        method: "PUT",
+        body: JSON.stringify({ habilitada }),
+      }),
+  },
+
+  /**
    * Alertas de vencimento: quais obrigações cada empresa recebe e o que sai hoje.
    * O envio em si ainda não é do portal — `previsao` só mostra, nunca manda.
    */
@@ -659,6 +760,8 @@ export const api = {
       }),
     previsao: (data?: string) =>
       request<AlertPreview>(`/alertas/previsao${data ? `?data=${data}` : ""}`),
+    /** Guias que vencem em breve e ainda não foram liberadas ao cliente. */
+    retidos: (dias = 7) => request<AlertHeldGuides>(`/alertas/retidos?dias=${dias}`),
     /** Estado da instância de WhatsApp (uazapi). Nunca lança por instância caída. */
     whatsapp: () => request<AlertWhatsappStatus>("/alertas/whatsapp"),
     /** `simular: true` (padrão no servidor) ensaia sem mandar nada. */

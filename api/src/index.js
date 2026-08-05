@@ -43,6 +43,7 @@ app.use("/api/taxas-anuais", require("./routes/annualTaxes"));
 // Ingestão servidor-a-servidor (sistema de guias): auth própria por X-Ingest-Key.
 app.use("/api/fiscal", require("./routes/fiscalIngest"));
 app.use("/api/alertas", require("./routes/alertas"));
+app.use("/api/doc-upload", require("./routes/documentUpload"));
 app.use("/api/mensagens", require("./routes/engagement"));
 
 // Health: sempre HTTP 200 para o healthcheck do Docker / proxy não derrubar o contentor.
@@ -81,6 +82,9 @@ async function start() {
     // Alerta de vencimento pelo WhatsApp. Só liga com ALERTAS_ENVIO_ATIVO=true —
     // ninguém deve começar a mandar mensagem para cliente por acidente de deploy.
     require("./alertasEnvio").iniciarAgendadorAlertas(db);
+    // Varre PDFs que ficaram no volume sem dono (análise abandonada, gravação que
+    // falhou). Conservadora: só o que ninguém referencia e já passou do TTL.
+    require("./uploadsLimpeza").iniciarLimpezaUploads(db);
     // Primeira carga do espelho de clientes do G-Click. Fora do await: depende de
     // rede e pode demorar; o arranque não espera nem cai se o G-Click estiver fora.
     setTimeout(() => {

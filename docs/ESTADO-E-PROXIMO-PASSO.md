@@ -312,6 +312,41 @@ vencimentos, regras de marcação/mensagem e validação de número.
 
 ---
 
+## 4c. Upload de documentos com reconhecimento de CNPJ
+
+`/admin/doc-upload`. O admin arrasta os PDFs, o portal lê o CNPJ e sugere o cliente, e a
+pessoa confirma. Duas etapas de propósito: **analisar não grava nada**. Alocar documento
+de um cliente para outro é o pior erro deste fluxo.
+
+**A leitura é determinística por padrão** (regex sobre o texto do PDF). O fallback de IA
+(`api/src/pdfIa.js`, porte da estratégia do app do Lovable, mesma chave `ai_parsing` em
+`app_settings`) só roda quando o parser não acha nada **e** o escritório ligou a opção
+**e** existe chave no ambiente. A ordem não é detalhe: o parser erra de forma previsível
+— não acha, e avisa; a IA erra de forma plausível, devolvendo um CNPJ com cara de certo
+tirado do rodapé errado. O que a IA ler entra marcado na tela para conferência.
+
+Cuidados que valem a pena conhecer antes de mexer:
+
+- **Âncoras no regex de CNPJ** (`(?<!\d)…(?!\d)`). A linha digitável de uma guia tem 44 a
+  48 dígitos seguidos; sem as âncoras o padrão recorta pedaços dela, e cerca de **1%** de
+  qualquer sequência de 14 dígitos passa no dígito verificador. Há teste com uma linha
+  digitável real.
+- **CNPJ do escritório é excluído** (`ESCRITORIO_CNPJ`): ele aparece no rodapé das guias
+  que o próprio escritório emite.
+- **A ordem de aparição decide a sugestão.** `= ANY($1)` não preserva ordem — a consulta
+  traz os candidatos e a escolha é feita em JS, na ordem em que os CNPJs aparecem no PDF.
+- **`file_name` é o nome que o cliente vê.** Guardar ali o nome interno entregaria
+  `1754400000000-guia.pdf` para ele.
+- **Sempre dá para escolher a empresa à mão**, inclusive quando nenhum CNPJ foi lido: PDF
+  digitalizado sem camada de texto não pode virar beco sem saída.
+
+**Varredura de órfãos** (`api/src/uploadsLimpeza.js`): o arquivo vai para o disco já na
+análise, então lote abandonado vazava para sempre. A regra é conservadora — só remove o
+que **nenhuma** linha de `deliverables`/`medical_certificates` referencia e que já passou
+de `UPLOADS_TTL_HORAS` (48h); qualquer falha na consulta aborta sem apagar nada.
+
+---
+
 ## 5. Pendências que não são código
 
 1. **Redeploy no Easypanel.** São **25 commits** fora do ar. As migrações rodam sozinhas no

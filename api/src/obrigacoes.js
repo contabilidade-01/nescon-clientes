@@ -224,6 +224,16 @@ const OBRIGACOES = [
     docTypes: [],
     padrao: /parcelament/i,
   },
+  {
+    codigo: "FERIAS_LIMITE",
+    nome: "Limite de férias",
+    esfera: "trabalhista",
+    regra: { tipo: "ferias_prazo" },
+    avisarDiasAntes: 90,
+    auto: null,
+    docTypes: [],
+    padrao: null,
+  },
 ];
 
 const POR_CODIGO = new Map(OBRIGACOES.map((o) => [o.codigo, o]));
@@ -249,6 +259,12 @@ function calcularVencimento(codigo, ano, mes) {
   const a = Number(ano);
   const m = Number(mes);
   if (!Number.isInteger(a) || !Number.isInteger(m) || m < 1 || m > 12) return null;
+
+  // Férias não têm data de calendário: o limite é por FUNCIONÁRIO e sai da programação
+  // importada (`vacation_periods`, ver alertas.feriasPorAvisar). Devolver null aqui é a
+  // resposta certa — o perigo seria cair no ramo de dia fixo e produzir data inválida
+  // em silêncio, que foi exatamente o que aconteceu antes desta guarda existir.
+  if (o.regra.tipo === "ferias_prazo") return null;
 
   if (o.regra.tipo === "ultimo_dia_bancario") {
     return { data: ultimoDiaBancarioDoMes(a, m), observacao: null };

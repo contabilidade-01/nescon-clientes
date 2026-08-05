@@ -78,6 +78,21 @@ describe("sugerirPorEntregas", () => {
     expect(codigos(r)).toEqual(["COFINS"]);
   });
 
+  it("guia já classificada NÃO casa por texto — senão a DCTF Web sugeriria GPS", () => {
+    // O título gravado pelo sync é literalmente "INSS (DCTF Web)"; o padrão da GPS
+    // (/INSS|GPS/) casaria com ele e sugeriria GPS para toda empresa com folha.
+    const r = sugerirPorEntregas(
+      [{ doc_type: "DCTF_WEB", title: "INSS (DCTF Web)", competencia: "2026-07" }],
+      []
+    );
+    expect(r).toEqual([]);
+  });
+
+  it("mas o tipo certo continua sugerindo", () => {
+    const r = sugerirPorEntregas([{ doc_type: "INSS", title: "INSS / GPS", competencia: "2026-07" }], []);
+    expect(codigos(r)).toEqual(["INSS_GPS"]);
+  });
+
   it("ordena pelo que aparece mais — o mais provável primeiro", () => {
     const r = sugerirPorEntregas(entregas, []);
     expect(r[0].codigo).toBe("ICMS");
@@ -178,5 +193,45 @@ describe("montarMensagemAlerta", () => {
 
   it("sem itens não existe mensagem", () => {
     expect(montarMensagemAlerta({ ...base, itens: [] })).toBeNull();
+  });
+
+  it("avisa quando a guia ainda não está no portal, em vez de mandar o cliente ao vazio", () => {
+    const texto = montarMensagemAlerta({
+      ...base,
+      itens: [
+        { codigo: "FGTS", nome: "FGTS", vencimento: "2026-08-20", observacao: null, temGuiaNoPortal: false, semGuia: true },
+      ],
+    })!;
+    expect(texto).toMatch(/ainda não está no portal/);
+    expect(texto).not.toContain("As guias estão no portal");
+  });
+
+  it("com guias parciais, nomeia qual está faltando", () => {
+    const texto = montarMensagemAlerta({
+      ...base,
+      itens: [
+        { codigo: "FGTS", nome: "FGTS", vencimento: "2026-08-20", observacao: null, temGuiaNoPortal: true },
+        { codigo: "COFINS", nome: "COFINS", vencimento: "2026-08-20", observacao: null, temGuiaNoPortal: false, semGuia: true },
+      ],
+    })!;
+    expect(texto).toContain("As guias estão no portal");
+    expect(texto).toMatch(/Ainda falta a guia de: COFINS/);
+  });
+
+  it("férias: diz quantos dias faltam, que é o que gera urgência", () => {
+    const texto = montarMensagemAlerta({
+      ...base,
+      itens: [
+        {
+          codigo: "FERIAS_LIMITE",
+          nome: "MARIA DA SILVA",
+          vencimento: "2026-11-12",
+          observacao: null,
+          diasRestantes: 90,
+        },
+      ],
+    })!;
+    expect(texto).toContain("MARIA DA SILVA — limite em 12/11 (faltam 90 dias)");
+    expect(texto).toMatch(/passivo trabalhista/);
   });
 });

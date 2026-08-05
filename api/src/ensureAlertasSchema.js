@@ -66,14 +66,40 @@ async function ensureAlertasSchema(db) {
         enviado_em TIMESTAMPTZ NOT NULL DEFAULT now()
       );
     `);
-    // A trava contra mandar duas vezes o mesmo aviso.
+    // A trava contra mandar duas vezes o mesmo aviso: UMA mensagem por cliente por dia.
+    //
+    // A chave já incluiu `obrigacoes`, e isso tinha um furo: bastava alguém marcar uma
+    // obrigação nova entre duas execuções do dia para a lista de códigos mudar, a chave
+    // virar outra e o cliente receber a segunda mensagem. O que queremos garantir não é
+    // "não repetir a mesma lista", é "não falar duas vezes no mesmo dia".
+    await db.query(`DROP INDEX IF EXISTS idx_alert_sends_unico;`);
     await db.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_sends_unico
-        ON alert_sends(company_id, dia_alerta, obrigacoes);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_sends_dia
+        ON alert_sends(company_id, dia_alerta);
     `);
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_alert_sends_empresa
         ON alert_sends(company_id, enviado_em DESC);
+    `);
+
+    // Falha de envio precisa ficar registrada. Sem isto, um disparo que quebrou às 8h
+    // some no log do contentor e ninguém no escritório descobre que a carteira não foi
+    // avisada naquele dia — que é justamente o dia em que alguém devia ligar para o
+    // cliente à mão.
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS alert_failures (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+        dia_alerta DATE NOT NULL,
+        motivo TEXT NOT NULL,
+        -- 'ignorado' (cadastro), 'falhou' (envio) ou 'interrompido' (instância caiu)
+        tipo TEXT NOT NULL DEFAULT 'falhou',
+        criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_alert_failures_dia
+        ON alert_failures(dia_alerta DESC, criado_em DESC);
     `);
 
     console.log("[DB] alertas: tabelas verificadas/criadas.");

@@ -65,8 +65,12 @@ function sugerirPorEntregas(entregas = [], decididas = []) {
       if (jaResolvidas.has(o.codigo)) continue;
       // Sugestão automática já é marcação: não faz sentido sugerir o que se marca só.
       if (o.auto) continue;
+      // Entrega JÁ CLASSIFICADA só casa pelo tipo. O padrão de texto existe para o que
+      // o G-Click não classificou — usá-lo numa guia classificada gera falso positivo
+      // garantido: o título da DCTF Web é literalmente "INSS (DCTF Web)", e o padrão da
+      // GPS (/INSS|GPS/) casaria com ele, sugerindo GPS para toda empresa com folha.
       const casaTipo = o.docTypes.includes(tipo);
-      const casaTexto = o.padrao ? o.padrao.test(titulo) : false;
+      const casaTexto = !tipo && o.padrao ? o.padrao.test(titulo) : false;
       if (!casaTipo && !casaTexto) continue;
 
       const atual = achados.get(o.codigo) || {
@@ -103,7 +107,7 @@ function textoDaEvidencia(s) {
  * Uma mensagem por dia, nunca uma por tributo: três guias vencendo no dia 20 viram
  * três linhas, não três WhatsApps.
  *
- * `itens` = [{ codigo, nome, vencimento, observacao, temGuiaNoPortal }]
+ * `itens` = [{ codigo, nome, vencimento, observacao, temGuiaNoPortal, isFeria? }]
  * `incentivo` = texto já escolhido (ou null). Entra no fim, sem título e sem separador
  * gritante — é o cliente lendo o aviso que ele quis receber e encontrando uma frase a
  * mais no final, não um anúncio.
@@ -111,38 +115,69 @@ function textoDaEvidencia(s) {
 function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = "", incentivo = null } = {}) {
   if (!itens.length) return null;
 
-  const datas = new Set(itens.map((i) => i.vencimento));
-  const todasHoje = datas.size === 1 && itens[0].vencimento === hoje;
+  const ferias = itens.filter((i) => i.codigo === "FERIAS_LIMITE");
+  const obrigNormais = itens.filter((i) => i.codigo !== "FERIAS_LIMITE");
   const linhas = [];
 
   const saudacao = empresaNome ? `Olá, ${empresaNome}!` : "Olá!";
   linhas.push(saudacao);
   linhas.push("");
 
-  if (todasHoje) {
-    linhas.push(`*Vence hoje (${ddmm(itens[0].vencimento)}):*`);
-  } else if (datas.size === 1) {
-    linhas.push(`*Vence amanhã (${ddmm(itens[0].vencimento)}):*`);
-  } else {
-    linhas.push("*Vencimentos próximos:*");
+  // Bloco de obrigações normais (tributos, guias)
+  if (obrigNormais.length) {
+    const datas = new Set(obrigNormais.map((i) => i.vencimento));
+    const todasHoje = datas.size === 1 && obrigNormais[0].vencimento === hoje;
+
+    if (todasHoje) {
+      linhas.push(`*Vence hoje (${ddmm(obrigNormais[0].vencimento)}):*`);
+    } else if (datas.size === 1) {
+      linhas.push(`*Vence amanhã (${ddmm(obrigNormais[0].vencimento)}):*`);
+    } else {
+      linhas.push("*Vencimentos próximos:*");
+    }
+
+    for (const i of obrigNormais) {
+      const quando = datas.size === 1 ? "" : ` — ${ddmm(i.vencimento)}`;
+      linhas.push(`• ${i.nome}${quando}`);
+    }
   }
 
-  for (const i of itens) {
-    const quando = datas.size === 1 ? "" : ` — ${ddmm(i.vencimento)}`;
-    linhas.push(`• ${i.nome}${quando}`);
+  // Bloco de férias
+  if (ferias.length) {
+    if (obrigNormais.length) linhas.push("");
+    linhas.push("*⚠️ Atenção — férias próximas do limite:*");
+    for (const f of ferias) {
+      // Dizer quantos dias faltam é o que transforma a data em urgência: "12/11" não
+      // move ninguém em agosto; "faltam 90 dias" move.
+      const faltam = f.diasRestantes ? ` (faltam ${f.diasRestantes} dias)` : "";
+      linhas.push(`• ${f.nome} — limite em ${ddmm(f.vencimento)}${faltam}`);
+    }
+    linhas.push("");
+    linhas.push("Providencie a programação para evitar passivo trabalhista.");
   }
 
-  // Observação de regra (hoje: salário no sábado) vem logo abaixo da lista, porque
-  // muda o que o cliente tem de fazer.
-  const observacoes = itens.map((i) => i.observacao).filter(Boolean);
+  // Observação de regra (hoje: salário no sábado)
+  const observacoes = obrigNormais.map((i) => i.observacao).filter(Boolean);
   if (observacoes.length) {
     linhas.push("");
     for (const o of observacoes) linhas.push(`⚠️ ${o}`);
   }
 
-  if (itens.some((i) => i.temGuiaNoPortal) && portalUrl) {
+  if (obrigNormais.some((i) => i.temGuiaNoPortal) && portalUrl) {
     linhas.push("");
     linhas.push(`As guias estão no portal: ${portalUrl}`);
+  }
+
+  // Aviso sem documento: o cliente entraria no portal, não acharia nada e concluiria
+  // que o portal está furado. Melhor dizer que o documento ainda vem.
+  const faltando = obrigNormais.filter((i) => i.semGuia);
+  if (faltando.length) {
+    linhas.push("");
+    linhas.push(
+      faltando.length === obrigNormais.length
+        ? "A guia ainda não está no portal — assim que sair, enviamos."
+        : `Ainda falta a guia de: ${faltando.map((i) => i.nome).join(", ")}. Assim que sair, enviamos.`
+    );
   }
 
   if (incentivo) {

@@ -31,7 +31,7 @@
  */
 const uazapi = require("./uazapi");
 const numeroWpp = require("./whatsappNumero");
-const { previsao, registrarEnvio } = require("./alertas");
+const { previsao, registrarEnvio, registrarFalha } = require("./alertas");
 const { trechoDeIncentivo } = require("./engagement");
 const { hojeSP } = require("./diasBancarios");
 
@@ -94,20 +94,25 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false } = {
   let ignorados = 0;
 
   for (const m of mensagens) {
+    // Registrar o motivo de NÃO ter avisado é tão importante quanto registrar o envio:
+    // é o que o escritório precisa ver para corrigir cadastro em vez de descobrir o
+    // problema pelo cliente reclamando que não recebeu.
+    const anotar = async (motivo, tipo = "ignorado") => {
+      if (!apenasSimular) await registrarFalha(db, { companyId: m.company_id, diaAlerta: dia, motivo, tipo });
+    };
+
     const v = numeroWpp.validar(m.whatsapp);
     if (!v.ok) {
       ignorados += 1;
       resultados.push({ empresa: m.empresa, company_id: m.company_id, status: "ignorado", motivo: v.motivo });
+      await anotar(v.motivo);
       continue;
     }
     if (meuNumero && v.numero === meuNumero) {
       ignorados += 1;
-      resultados.push({
-        empresa: m.empresa,
-        company_id: m.company_id,
-        status: "ignorado",
-        motivo: "É o próprio número da instância — o envio falharia em silêncio.",
-      });
+      const motivo = "É o próprio número da instância — o envio falharia em silêncio.";
+      resultados.push({ empresa: m.empresa, company_id: m.company_id, status: "ignorado", motivo });
+      await anotar(motivo);
       continue;
     }
 
@@ -124,12 +129,9 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false } = {
 
     if (!sobOTeto()) {
       ignorados += 1;
-      resultados.push({
-        empresa: m.empresa,
-        company_id: m.company_id,
-        status: "adiado",
-        motivo: `Teto de ${MAX_POR_HORA} envios/hora atingido. O que sobrou sai na próxima execução.`,
-      });
+      const motivo = `Teto de ${MAX_POR_HORA} envios/hora atingido. O que sobrou sai na próxima execução.`;
+      resultados.push({ empresa: m.empresa, company_id: m.company_id, status: "adiado", motivo });
+      await anotar(motivo, "adiado");
       continue;
     }
 
@@ -163,10 +165,13 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false } = {
         status: "falhou",
         motivo: err.message,
       });
+      await anotar(err.message, "falhou");
       // Token inválido/desconectado não melhora na próxima empresa: para tudo aqui em
       // vez de colecionar o mesmo erro sessenta vezes.
       if (tokenRuim) {
-        resultados.push({ status: "interrompido", motivo: "Envio interrompido: a instância precisa de atenção." });
+        const motivo = "Envio interrompido: a instância precisa de atenção.";
+        resultados.push({ status: "interrompido", motivo });
+        await registrarFalha(db, { companyId: null, diaAlerta: dia, motivo, tipo: "interrompido" });
         break;
       }
     }

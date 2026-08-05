@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Send,
   ShieldCheck,
+  Upload,
   Users,
 } from "lucide-react";
 import {
@@ -80,6 +81,7 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
     label: "Entregas",
     items: [
       { to: "/admin/entregas", label: "Documentos e entregas", icon: FileCheck2, area: "entregas" },
+      { to: "/admin/doc-upload", label: "Upload de documentos", icon: Upload, area: "entregas" },
       { to: "/admin/envio-guias", label: "Envio de guias", icon: Send, area: "envio_guias" },
       { to: "/admin/alertas", label: "Alertas de vencimento", icon: BellRing, area: "alertas" },
     ],
