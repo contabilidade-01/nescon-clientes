@@ -3,6 +3,17 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -20,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAdminCompanies } from "@/hooks/useAdminCompanies";
+import { CompanyPicker } from "@/components/admin/CompanyPicker";
 import { api, type LicenseType } from "@/lib/api";
 import { LICENSE_TYPES, LICENSE_TYPE_LABELS } from "@/lib/licenses";
 
@@ -51,7 +62,6 @@ export function LicenseDialog({
   value: LicenseDialogValue;
 }) {
   const queryClient = useQueryClient();
-  const { data: companies } = useAdminCompanies();
   const editando = Boolean(value.licenseId);
 
   const [companyId, setCompanyId] = useState("");
@@ -126,19 +136,18 @@ export function LicenseDialog({
         <div className="space-y-3">
           <div className="space-y-1">
             <Label className="text-xs">Empresa</Label>
-            <Select value={companyId} onValueChange={setCompanyId} disabled={editando}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione a empresa" />
-              </SelectTrigger>
-              <SelectContent>
-                {companies?.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    <span className="font-medium">{c.name}</span>
-                    <span className="text-muted-foreground"> · {c.cnpj}</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {editando ? (
+              <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                Empresa não muda na edição.
+              </p>
+            ) : (
+              <CompanyPicker
+                value={companyId}
+                onChange={setCompanyId}
+                allowAll={false}
+                placeholder="Selecione a empresa"
+              />
+            )}
           </div>
 
           <div className="space-y-1">
@@ -200,15 +209,27 @@ export function LicenseDialog({
 
         <DialogFooter className="gap-2 sm:justify-between">
           {editando ? (
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={() => apagar.mutate()}
-              disabled={apagar.isPending}
-            >
-              Remover
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button type="button" variant="destructive" size="sm" disabled={apagar.isPending}>
+                  Remover
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remover esta licença?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    O histórico dela some. Se a licença foi renovada, o certo é{" "}
+                    <strong>cadastrar a nova</strong> em vez de apagar esta — a de vencimento mais
+                    distante passa a valer sozinha.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => apagar.mutate()}>Remover</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           ) : (
             <span />
           )}

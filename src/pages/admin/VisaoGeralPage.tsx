@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpRight, ShieldCheck, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, ClipboardCheck, ShieldCheck, UserPlus } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
@@ -46,6 +46,11 @@ const VisaoGeralPage = () => {
   const podeEntregas = canSeeArea("entregas", admin?.areas, admin?.isOwner);
   const podeFuncionarios = canSeeArea("funcionarios", admin?.areas, admin?.isOwner);
   const { data: pendencias } = useGclickPendencias();
+
+  const { data: cobertura } = useQuery({
+    queryKey: ["cobertura"],
+    queryFn: () => api.admin.cobertura(),
+  });
 
   const { data: summary } = useQuery({
     queryKey: ["admin-summary"],
@@ -175,6 +180,43 @@ const VisaoGeralPage = () => {
         </button>
       )}
 
+      {/* Cobertura: cada número aqui é uma fila de trabalho. Antes, saber quais
+          empresas faltavam exigia abrir uma a uma. */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <ClipboardCheck className="h-4 w-4" /> Cobertura operacional
+          </CardTitle>
+          <CardDescription>
+            O que ainda falta cadastrar. Licenças só contam empresas estabelecidas; férias, só
+            quem tem funcionário celetista.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Pendencia
+            rotulo="Sem licença cadastrada"
+            total={cobertura?.sem_licenca.total}
+            de={cobertura?.estabelecidas}
+            empresas={cobertura?.sem_licenca.empresas}
+            onClick={podeLicencas ? () => navigate("/admin/licencas?status=ausente") : undefined}
+          />
+          <Pendencia
+            rotulo="Sem programação de férias"
+            total={cobertura?.sem_programacao_ferias.total}
+            de={cobertura?.com_funcionarios}
+            empresas={cobertura?.sem_programacao_ferias.empresas}
+            onClick={podeEmpresas ? () => navigate("/admin/empresas") : undefined}
+          />
+          <Pendencia
+            rotulo="Extrato ainda não lido"
+            total={cobertura?.sem_extrato_lido.total}
+            de={cobertura?.empresas}
+            empresas={cobertura?.sem_extrato_lido.empresas}
+            onClick={podeFuncionarios ? () => navigate("/admin/funcionarios") : undefined}
+          />
+        </CardContent>
+      </Card>
+
       {podeLgpd && (
       <Card>
         <CardHeader className="pb-2">
@@ -201,5 +243,48 @@ const VisaoGeralPage = () => {
     </AdminLayout>
   );
 };
+
+/**
+ * Um item de cobertura: o número que falta, sobre quantos, e os primeiros nomes —
+ * saber "12 empresas" sem saber quais não ajuda a começar o trabalho.
+ */
+function Pendencia({
+  rotulo,
+  total,
+  de,
+  empresas,
+  onClick,
+}: {
+  rotulo: string;
+  total?: number;
+  de?: number;
+  empresas?: Array<{ id: string; name: string }>;
+  onClick?: () => void;
+}) {
+  const emDia = total === 0;
+  return (
+    <div
+      onClick={onClick}
+      className={`rounded-xl border p-3 ${onClick ? "cursor-pointer transition-colors hover:border-primary/40" : ""} ${
+        emDia ? "bg-emerald-500/5" : "bg-card"
+      }`}
+    >
+      <p className="text-xs text-muted-foreground">{rotulo}</p>
+      <p className={`mt-1 text-2xl font-bold tabular-nums ${emDia ? "text-emerald-600" : ""}`}>
+        {total ?? "—"}
+        {de !== undefined && total !== undefined && (
+          <span className="ml-1 text-sm font-normal text-muted-foreground">de {de}</span>
+        )}
+      </p>
+      {empresas && empresas.length > 0 && (
+        <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
+          {empresas.slice(0, 3).map((e) => e.name).join(" · ")}
+          {empresas.length > 3 ? ` e mais ${empresas.length - 3}` : ""}
+        </p>
+      )}
+      {emDia && <p className="mt-1 text-[11px] text-emerald-600">Tudo em dia</p>}
+    </div>
+  );
+}
 
 export default VisaoGeralPage;

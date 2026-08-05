@@ -250,7 +250,7 @@ function UsuarioRow({
             {usuario.must_change_password ? " · senha a trocar no 1º acesso" : ""}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto">
           {usuario.is_owner && (
             <Badge variant="default" className="gap-1">
               <ShieldCheck className="h-3 w-3" /> Dono
@@ -261,6 +261,7 @@ function UsuarioRow({
             type="button"
             variant="outline"
             size="sm"
+            className="flex-1 sm:flex-none"
             onClick={() => redefinir.mutate()}
             disabled={redefinir.isPending}
           >
@@ -272,12 +273,19 @@ function UsuarioRow({
                 type="button"
                 variant="outline"
                 size="sm"
+                className="flex-1 sm:flex-none"
                 onClick={() => alternarAtivo.mutate()}
                 disabled={alternarAtivo.isPending}
               >
                 {usuario.active ? "Desativar" : "Reativar"}
               </Button>
-              <Button type="button" variant="secondary" size="sm" onClick={() => setAberto((v) => !v)}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="flex-1 sm:flex-none"
+                onClick={() => setAberto((v) => !v)}
+              >
                 {aberto ? "Fechar" : "Permissões"}
               </Button>
             </>

@@ -559,6 +559,25 @@ export const api = {
           ultima_entrada: string | null;
         }>
       >("/admin/deliverables-overview"),
+    /**
+     * Cobertura operacional: onde o escritório está em dia e onde falta. Cada número
+     * é uma fila de trabalho — antes só dava para saber abrindo empresa por empresa.
+     */
+    cobertura: () =>
+      request<{
+        empresas: number;
+        com_funcionarios: number;
+        estabelecidas: number;
+        sem_licenca: { total: number; empresas: Array<{ id: string; name: string; cnpj: string }> };
+        sem_programacao_ferias: {
+          total: number;
+          empresas: Array<{ id: string; name: string; cnpj: string }>;
+        };
+        sem_extrato_lido: {
+          total: number;
+          empresas: Array<{ id: string; name: string; cnpj: string }>;
+        };
+      }>("/admin/cobertura"),
     /** Auditoria LGPD: quem concordou, quando e em que versão do termo. */
     lgpdConsents: () =>
       request<{

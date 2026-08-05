@@ -13,6 +13,7 @@ const { LGPD_CONSENT_VERSION } = require("../lgpd");
 const sync = require("../gclick/sync");
 const clientSync = require("../gclick/clientSync");
 const extratoAuto = require("../extratoAuto");
+const { funcionarioRealSql } = require("../payrollRoles");
 const { parseVacationPdf } = require("../vacationParser");
 const {
   conferirEmpresa,
@@ -402,6 +403,54 @@ router.put("/configuracoes/sync", requireArea("sincronizacao"), async (req, res)
   }
 });
 
+
+/**
+ * Cobertura operacional: onde o escritório está em dia e onde falta.
+ *
+ * Nasceu de uma pergunta que antes só se respondia abrindo empresa por empresa:
+ * "quais clientes ainda não têm licença cadastrada / programação de férias / extrato
+ * lido?". Cada número aqui é uma fila de trabalho, não um enfeite.
+ */
+router.get("/cobertura", async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `WITH base AS (
+         SELECT c.id, c.name, c.cnpj, c.established, c.extrato_processado_competencia,
+                EXISTS (SELECT 1 FROM company_licenses l WHERE l.company_id = c.id) AS tem_licenca,
+                EXISTS (SELECT 1 FROM vacation_uploads v WHERE v.company_id = c.id) AS tem_ferias,
+                EXISTS (SELECT 1 FROM employees e
+                         WHERE e.company_id = c.id AND ${funcionarioRealSql("e")}) AS tem_funcionarios,
+                EXISTS (SELECT 1 FROM deliverables d
+                         WHERE d.company_id = c.id AND d.doc_type = 'EXTRATO_FOLHA') AS tem_extrato
+           FROM companies c
+       )
+       SELECT * FROM base ORDER BY name`
+    );
+
+    const comFuncionarios = rows.filter((r) => r.tem_funcionarios);
+    const estabelecidas = rows.filter((r) => r.established);
+
+    const lista = (arr) => arr.slice(0, 50).map((r) => ({ id: r.id, name: r.name, cnpj: r.cnpj }));
+
+    const semLicenca = estabelecidas.filter((r) => !r.tem_licenca);
+    // Só cobra Programação de quem tem funcionário celetista: empresa de pró-labore
+    // não tem férias a programar.
+    const semFerias = comFuncionarios.filter((r) => !r.tem_ferias);
+    const semExtratoLido = rows.filter((r) => r.tem_extrato && !r.extrato_processado_competencia);
+
+    res.json({
+      empresas: rows.length,
+      com_funcionarios: comFuncionarios.length,
+      estabelecidas: estabelecidas.length,
+      sem_licenca: { total: semLicenca.length, empresas: lista(semLicenca) },
+      sem_programacao_ferias: { total: semFerias.length, empresas: lista(semFerias) },
+      sem_extrato_lido: { total: semExtratoLido.length, empresas: lista(semExtratoLido) },
+    });
+  } catch (err) {
+    console.error("[cobertura]", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
 
 /**
  * Programação de Férias: upload do PDF e leitura da última importação.

@@ -122,6 +122,16 @@ const Index = () => {
     enabled: !!company && canSeePayments,
   });
 
+  // Férias urgentes na porta de entrada: sem isto o cliente precisa descobrir o menu
+  // sozinho para saber que alguém está prestes a perder dias.
+  const podeFerias =
+    isToolAllowed(company?.toolAccess, "vacations") && company?.temFuncionarios !== false;
+  const { data: ferias } = useQuery({
+    queryKey: ["ferias", "home"],
+    queryFn: () => api.ferias.listar(),
+    enabled: !!company && podeFerias,
+  });
+
   const { data: docCount } = useQuery({
     queryKey: ["deliverables", "home-count"],
     queryFn: () => api.deliverables.list(),
@@ -287,6 +297,31 @@ const Index = () => {
               </div>
             )}
           </section>
+        )}
+
+        {/* Só aparece quando há o que resolver — cartão vazio vira ruído. */}
+        {podeFerias && ferias?.resumo && (ferias.resumo.vencidas > 0 || ferias.resumo.em_risco_faltas > 0) && (
+          <button
+            type="button"
+            onClick={() => navigate("/ferias")}
+            className="flex w-full items-center gap-3 rounded-2xl border-2 border-amber-500/50 bg-amber-500/10 px-5 py-4 text-left"
+          >
+            <Palmtree className="h-6 w-6 shrink-0 text-amber-600" />
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">
+                {ferias.resumo.vencidas > 0
+                  ? `${ferias.resumo.vencidas} férias vencida(s)`
+                  : `${ferias.resumo.em_risco_faltas} funcionário(s) prestes a perder dias de férias`}
+              </span>
+              <span className="block text-sm text-muted-foreground">
+                {ferias.resumo.vencidas > 0 && ferias.resumo.em_risco_faltas > 0
+                  ? `E ${ferias.resumo.em_risco_faltas} prestes a perder dias por faltas. `
+                  : ""}
+                Toque para ver quem, quando e quanto custa.
+              </span>
+            </span>
+            <ArrowUpRight className="h-5 w-5 shrink-0 text-amber-600" />
+          </button>
         )}
 
         {groups.length === 0 && (

@@ -79,8 +79,14 @@ async function processarEmpresa(db, empresa) {
     }
 
     // Saídas viram AVISO, não inativação.
+    //
+    // Só entram no aviso os que TÊM CÓDIGO, ou seja, que já apareceram num extrato
+    // antes. Isso resolve dois problemas de uma vez: a primeira execução não gera
+    // enxurrada (quem falta ainda não tem código) e quem foi cadastrado por planilha,
+    // e nunca esteve no extrato, não é cobrado como se tivesse sumido.
     const { rows: ativos } = await client.query(
-      "SELECT id, name, cpf FROM employees WHERE company_id = $1 AND active IS TRUE",
+      `SELECT id, name, cpf FROM employees
+        WHERE company_id = $1 AND active IS TRUE AND codigo IS NOT NULL`,
       [empresa.id]
     );
     const saidas = calcularSaidas(ativos, funcionarios.map((f) => f.cpf));

@@ -128,6 +128,13 @@ apenas **quem vira alerta**.
 
 ### Férias (previsão, custo e limite de faltas)
 
+**A seção só aparece para quem tem funcionário celetista.** Empresa que só tem pró-labore não
+tem férias a programar, e um menu vazio parece serviço faltando. A regra vive em
+`api/src/payrollRoles.js` e usa o **cargo** lido do Extrato Mensal (sócio, diretor, titular,
+pró-labore). Cargo ainda desconhecido conta como funcionário — errar mostrando é barato,
+errar escondendo faz o cliente achar que perdeu um serviço.
+
+
 Seção **Férias** no portal do cliente (chave `vacations` em `tool_access`), alimentada pela
 **Programação de Férias** do G-Click — o PDF é importado em `/admin/empresas`, na ficha da
 empresa, porque o G-Click não expõe esse relatório na API.

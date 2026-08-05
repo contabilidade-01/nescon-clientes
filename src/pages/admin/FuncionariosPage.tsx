@@ -7,6 +7,17 @@ import { CompanyFilter } from "@/components/admin/CompanyFilter";
 import { AdminExtratoBulk } from "@/components/AdminExtratoBulk";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { api } from "@/lib/api";
 import { maskCPF } from "@/lib/masks";
 
@@ -160,16 +171,36 @@ function SaidasDaFolha() {
                 </p>
               </div>
               <div className="flex w-full gap-2 sm:w-auto">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="destructive"
-                  className="flex-1 sm:flex-none"
-                  onClick={() => inativar.mutate(s.id)}
-                  disabled={inativar.isPending}
-                >
-                  Confirmar saída
-                </Button>
+                {/* Inativar tira o funcionário da vista do cliente. Reversível, mas
+                    não deve acontecer por um toque errado numa lista. */}
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      className="flex-1 sm:flex-none"
+                      disabled={inativar.isPending}
+                    >
+                      Confirmar saída
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Confirmar a saída de {s.nome}?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Ele deixa de aparecer para {s.company_name} e continua no seu histórico.
+                        Se for afastamento ou extrato incompleto, use <strong>Manter ativo</strong>.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => inativar.mutate(s.id)}>
+                        Sim, saiu da folha
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
                 <Button
                   type="button"
                   size="sm"

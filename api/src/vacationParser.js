@@ -117,29 +117,45 @@ function lerLinha(linha) {
     return { continuacao: true, periodo };
   }
 
-  // Nome e código podem vir em qualquer ordem, conforme o extrator do PDF.
+  // Nome e código podem vir em qualquer ordem, conforme o extrator do PDF. O código é
+  // sempre o ÚLTIMO número antes da primeira data — assim um nome que contenha número
+  // ("JOSE 2 SILVA") não é confundido com o código.
+  const eData = (t) => new RegExp(`^${DATA}$`).test(t);
+  const idxPrimeiraData = toks.findIndex(eData);
+  const cabeca = idxPrimeiraData > 0 ? toks.slice(0, idxPrimeiraData) : toks;
+
   let codigo = null;
   let nome = "";
-  const idxCodigo = toks.findIndex((t) => /^\d+$/.test(t));
-  if (idxCodigo === 0) {
-    codigo = toks[0];
-    nome = toks.slice(1, toks.findIndex((t) => new RegExp(`^${DATA}$`).test(t))).join(" ");
-  } else if (idxCodigo > 0) {
-    codigo = toks[idxCodigo];
-    nome = toks.slice(0, idxCodigo).join(" ");
+  if (/^\d+$/.test(cabeca[0] || "")) {
+    // Código primeiro (extrator posicional): o resto da cabeça é o nome.
+    codigo = cabeca[0];
+    nome = cabeca.slice(1).join(" ");
   } else {
-    nome = antes;
+    const ultimo = cabeca[cabeca.length - 1];
+    if (/^\d+$/.test(ultimo || "")) {
+      codigo = ultimo;
+      nome = cabeca.slice(0, -1).join(" ");
+    } else {
+      nome = cabeca.join(" ");
+    }
   }
 
-  // Depois do código: admissão, (férias vencidas), (férias proporcionais MM/AA),
+  // Depois da cabeça: admissão, (férias vencidas), (férias proporcionais MM/AA),
   // início do aquisitivo e — na primeira linha — o fim do aquisitivo.
-  const resto = idxCodigo >= 0 ? toks.slice(idxCodigo + 1) : [];
-  const datasResto = resto.filter((t) => new RegExp(`^${DATA}$`).test(t));
+  const resto = idxPrimeiraData >= 0 ? toks.slice(idxPrimeiraData) : [];
+  const datasResto = resto.filter(eData);
   const admissao = dataBR(datasResto[0]);
   periodo.inicioAquisitivo = dataBR(datasResto[1]) || admissao;
   if (datasResto[2]) periodo.fimAquisitivo = dataBR(datasResto[2]) || periodo.fimAquisitivo;
 
-  const feriasVencidas = resto.find((t, i) => /^\d+$/.test(t) && i > 0 && !RE_COMPETENCIA_CURTA.test(t));
+  // Férias vencidas é o número que vem LOGO DEPOIS da admissão — não "o primeiro
+  // número da linha", que mudaria de campo se a admissão faltasse.
+  const posAdmissao = resto.findIndex(eData);
+  const candidato = resto[posAdmissao + 1];
+  const feriasVencidas =
+    candidato && /^\d+$/.test(candidato) && !RE_COMPETENCIA_CURTA.test(candidato)
+      ? candidato
+      : null;
 
   return {
     continuacao: false,
