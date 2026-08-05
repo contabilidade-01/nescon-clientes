@@ -70,13 +70,14 @@ describe("demais regras da tabela do escritório", () => {
     }
   });
 
-  it("salário no 5º dia útil, avisando quando cair em sábado", () => {
+  it("salário no 5º dia útil, antecipando para sexta quando cair em sábado", () => {
     expect(calcularVencimento("SALARIO", 2026, 8)?.data).toBe("2026-08-06");
     expect(calcularVencimento("SALARIO", 2026, 8)?.observacao).toBeNull();
 
+    // Dezembro 2026: 5º dia útil = sábado 05/12 → antecipa para sexta 04/12
     const dez = calcularVencimento("SALARIO", 2026, 12);
-    expect(dez?.data).toBe("2026-12-05");
-    expect(dez?.observacao).toMatch(/dinheiro/);
+    expect(dez?.data).toBe("2026-12-04");
+    expect(dez?.observacao).toMatch(/sexta/);
   });
 });
 
@@ -104,10 +105,11 @@ describe("obrigacoesQueVencemEm", () => {
     expect(r).toEqual([]);
   });
 
-  it("carrega a observação do salário junto", () => {
-    const r = obrigacoesQueVencemEm("2026-12-05", ["SALARIO"]);
+  it("carrega a observação do salário junto (antecipado para sexta)", () => {
+    // Com a antecipação, o salário de dezembro vence em 04/12 (sexta), não 05/12 (sábado)
+    const r = obrigacoesQueVencemEm("2026-12-04", ["SALARIO"]);
     expect(r).toHaveLength(1);
-    expect(r[0].observacao).toMatch(/dinheiro/);
+    expect(r[0].observacao).toMatch(/sexta/);
   });
 
   it("data malformada não explode", () => {

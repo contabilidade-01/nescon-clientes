@@ -257,12 +257,14 @@ function calcularVencimento(codigo, ano, mes) {
   if (o.regra.tipo === "quinto_dia_util") {
     const r = nEsimoDiaUtilTrabalhista(a, m, 5);
     if (!r) return null;
-    return {
-      data: r.data,
-      observacao: r.sabado
-        ? "O 5º dia útil cai num sábado: o salário tem de ser pago em dinheiro, porque não há compensação bancária."
-        : null,
-    };
+    if (r.sabado) {
+      // Sábado não é dia bancário: antecipar para sexta (último dia bancário antes)
+      return {
+        data: diaBancarioAnterior(r.data),
+        observacao: "O 5º dia útil cai num sábado: limite antecipado para sexta-feira.",
+      };
+    }
+    return { data: r.data, observacao: null };
   }
 
   // dia_fixo — o dia pode não existir no mês (dia 30 em fevereiro não é o caso aqui,
