@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
+  BellRing,
   Building2,
   CalendarCheck,
   UserCog,
@@ -80,6 +81,7 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { to: "/admin/entregas", label: "Documentos e entregas", icon: FileCheck2, area: "entregas" },
       { to: "/admin/envio-guias", label: "Envio de guias", icon: Send, area: "envio_guias" },
+      { to: "/admin/alertas", label: "Alertas de vencimento", icon: BellRing, area: "alertas" },
     ],
   },
   {

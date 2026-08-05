@@ -228,6 +228,11 @@ router.post("/login", async (req, res) => {
         company_name: company.name,
         company_cnpj: company.cnpj,
       });
+      // Carimba o acesso: é o que tira a empresa da lista de "nunca entrou" e,
+      // com isso, das mensagens de incentivo. Falhar aqui não pode barrar o login.
+      db.query("UPDATE companies SET ultimo_login_em = now() WHERE id = $1", [company.id]).catch(
+        (e) => console.error("ultimo_login_em:", e.message)
+      );
       return res.json({
         token,
         role: "company",

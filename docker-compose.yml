@@ -62,6 +62,12 @@ services:
       GCLICK_SYNC_INTERVAL_H: ${GCLICK_SYNC_INTERVAL_H:-6}
       # 1ª carga automática ao subir (só se o portal ainda estiver vazio). "false" desliga.
       GCLICK_SYNC_ON_BOOT: ${GCLICK_SYNC_ON_BOOT:-true}
+      # Alertas de vencimento pelo WhatsApp (uazapi) — mesmas credenciais do G-Click.
+      UAZAPI_SUBDOMAIN: ${UAZAPI_SUBDOMAIN:-}
+      UAZAPI_TOKEN: ${UAZAPI_TOKEN:-}
+      ALERTAS_ENVIO_ATIVO: ${ALERTAS_ENVIO_ATIVO:-false}
+      ALERTAS_HORA: ${ALERTAS_HORA:-8}
+      GCLICK_ALERTA_SO_ATIVOS: ${GCLICK_ALERTA_SO_ATIVOS:-true}
       # Recuperação de senha: URL pública do front (HTTPS em produção, sem / no fim)
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}

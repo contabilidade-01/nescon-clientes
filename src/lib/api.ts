@@ -390,6 +390,117 @@ export type LoginResponse =
       };
     };
 
+/** Uma obrigação do catálogo, com o vencimento do mês já calculado pelo servidor. */
+export interface AlertObligation {
+  codigo: string;
+  nome: string;
+  esfera: "federal" | "estadual" | "municipal" | "trabalhista";
+  regra: string;
+  automatica: boolean;
+  avisar_dias_antes: number;
+  vencimento_no_mes: string | null;
+  observacao: string | null;
+}
+
+export interface AlertObligationCatalog {
+  referencia: string;
+  obrigacoes: AlertObligation[];
+}
+
+export interface AlertCompanyRow {
+  id: string;
+  name: string;
+  cnpj: string;
+  whatsapp: string | null;
+  alertas_ativos: boolean;
+  incentivo_ativo: boolean;
+  marcadas: number;
+  ultimo_alerta_em: string | null;
+}
+
+export interface AlertOverview {
+  total: number;
+  sem_marcacao: number;
+  sem_whatsapp: number;
+  desligadas: number;
+  empresas: AlertCompanyRow[];
+}
+
+/** Sugestão: o portal achou guia dessa obrigação, mas quem marca é o admin. */
+export interface AlertSuggestion {
+  codigo: string;
+  nome: string;
+  esfera: string;
+  ocorrencias: number;
+  ultima_competencia: string | null;
+  exemplo: string | null;
+  evidencia: string;
+}
+
+export interface AlertCompanyDetail {
+  empresa: {
+    id: string;
+    name: string;
+    cnpj: string;
+    whatsapp: string | null;
+    alertas_ativos: boolean;
+    incentivo_ativo: boolean;
+  };
+  obrigacoes: Array<{
+    codigo: string;
+    nome: string;
+    esfera: string;
+    avisar_dias_antes: number;
+    marcada: boolean;
+    decidida: boolean;
+    origem: "auto" | "manual" | null;
+    observacao: string | null;
+    sugerida: boolean;
+  }>;
+  sugestoes: AlertSuggestion[];
+}
+
+export interface AlertPreview {
+  data: string;
+  total: number;
+  mensagens: Array<{
+    company_id: string;
+    empresa: string;
+    cnpj: string;
+    whatsapp: string | null;
+    dia_alerta: string;
+    vencimento: string;
+    obrigacoes: string[];
+    incentivo_id: string | null;
+    texto: string;
+  }>;
+}
+
+export interface AlertWhatsappStatus {
+  ok: boolean;
+  categoria: "ok" | "nao_configurado" | "token_invalido" | "desconectado" | "rede";
+  mensagem: string;
+  owner?: string | null;
+}
+
+export interface AlertSendResult {
+  simulado?: boolean;
+  dia: string;
+  enviados: number;
+  falhas: number;
+  ignorados: number;
+  erro?: string;
+  resultados: Array<{
+    empresa?: string;
+    company_id?: string;
+    /** sairia = ensaio; enviado/falhou/ignorado/adiado/interrompido = execução real */
+    status: "sairia" | "enviado" | "falhou" | "ignorado" | "adiado" | "interrompido";
+    motivo?: string;
+    numero?: string;
+    texto?: string;
+  }>;
+}
+
 export const api = {
   auth: {
     login: (login: string, password: string) =>
@@ -515,6 +626,58 @@ export const api = {
       request<{ id: string; established: boolean }>(`/licencas/empresas/${companyId}/estabelecida`, {
         method: "PATCH",
         body: JSON.stringify({ established }),
+      }),
+  },
+
+  /**
+   * Alertas de vencimento: quais obrigações cada empresa recebe e o que sai hoje.
+   * O envio em si ainda não é do portal — `previsao` só mostra, nunca manda.
+   */
+  alertas: {
+    catalogo: () => request<AlertObligationCatalog>("/alertas/catalogo"),
+    panorama: (busca?: string) => {
+      const q = busca?.trim() ? `?busca=${encodeURIComponent(busca.trim())}` : "";
+      return request<AlertOverview>(`/alertas${q}`);
+    },
+    empresa: (companyId: string) => request<AlertCompanyDetail>(`/alertas/empresas/${companyId}`),
+    decidir: (companyId: string, codigo: string, ativo: boolean) =>
+      request<{ obrigacao: string; ativo: boolean; origem: string }>(
+        `/alertas/empresas/${companyId}/obrigacoes`,
+        { method: "PUT", body: JSON.stringify({ codigo, ativo }) }
+      ),
+    preferencias: (
+      companyId: string,
+      data: { alertas_ativos?: boolean; incentivo_ativo?: boolean; whatsapp?: string | null }
+    ) =>
+      request<{ id: string; whatsapp: string | null; alertas_ativos: boolean; incentivo_ativo: boolean }>(
+        `/alertas/empresas/${companyId}/preferencias`,
+        { method: "PUT", body: JSON.stringify(data) }
+      ),
+    aplicarAutomaticas: () =>
+      request<{ empresas: number; marcacoes_criadas: number }>("/alertas/aplicar-automaticas", {
+        method: "POST",
+      }),
+    previsao: (data?: string) =>
+      request<AlertPreview>(`/alertas/previsao${data ? `?data=${data}` : ""}`),
+    /** Estado da instância de WhatsApp (uazapi). Nunca lança por instância caída. */
+    whatsapp: () => request<AlertWhatsappStatus>("/alertas/whatsapp"),
+    /** `simular: true` (padrão no servidor) ensaia sem mandar nada. */
+    enviar: (opts?: { simular?: boolean; data?: string }) =>
+      request<AlertSendResult>("/alertas/enviar", {
+        method: "POST",
+        body: JSON.stringify({ simular: opts?.simular ?? true, data: opts?.data }),
+      }),
+    registrarEnvio: (data: {
+      company_id: string;
+      obrigacoes: string[];
+      /** O dia em que o aviso saiu — a chave de "uma mensagem por cliente por dia". */
+      dia_alerta: string;
+      texto: string;
+      incentivo_id?: string | null;
+    }) =>
+      request<{ registrado: boolean; id: string | null }>("/alertas/registrar-envio", {
+        method: "POST",
+        body: JSON.stringify(data),
       }),
   },
 

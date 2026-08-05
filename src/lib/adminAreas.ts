@@ -14,6 +14,7 @@ export const ADMIN_AREAS = [
   "lgpd",
   "sincronizacao",
   "envio_guias",
+  "alertas",
 ] as const;
 
 export type AdminArea = (typeof ADMIN_AREAS)[number];
@@ -28,6 +29,10 @@ export const ADMIN_AREA_LABELS: Record<AdminArea, { title: string; description: 
   lgpd: { title: "Consentimentos LGPD", description: "Auditoria dos aceites dos clientes" },
   sincronizacao: { title: "Sincronização", description: "Carga de documentos do G-Click" },
   envio_guias: { title: "Envio de guias", description: "Sistema GCLICK (app separado)" },
+  alertas: {
+    title: "Alertas de vencimento",
+    description: "Quais obrigações cada cliente recebe e o texto que sai",
+  },
 };
 
 /** Chave ausente = sem acesso. `null`/`undefined` = acesso total (logins antigos). */

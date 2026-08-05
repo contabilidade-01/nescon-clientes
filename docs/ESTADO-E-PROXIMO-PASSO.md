@@ -60,6 +60,7 @@ existir** — cadastro manual, upload manual e todos os módulos novos funcionam
 | **Clientes vindos do G-Click** (espelho, alertas, decisão) | `/admin/clientes-gclick` | ✅ nesta sessão |
 | **Férias** (previsão, custo, limite de faltas) | portal + `/admin/empresas` | ✅ nesta sessão |
 | **Cobertura operacional** | `/admin` | ✅ nesta sessão |
+| **Alertas de vencimento** (catálogo, vínculo por empresa, texto) | `/admin/alertas` | ✅ sessão seguinte |
 
 ---
 
@@ -217,6 +218,100 @@ disponibilizar e abrir, e **quem nunca abre nada** — que costuma anteceder ina
 
 ---
 
+## 4b. Alertas de vencimento — implementado (não commitado quando este texto foi escrito)
+
+O módulo saiu na frente do extrato por competência, a pedido do escritório. **O portal
+passou a ser o dono do aviso ao cliente** — o texto, a régua e o cadastro não dependem
+mais do sistema de guias.
+
+**A régua de datas** (`api/src/diasBancarios.js` + `api/src/obrigacoes.js`) é o coração.
+Duas distinções que não podem ser perdidas por quem mexer aqui:
+
+- **Dia bancário ≠ dia útil trabalhista.** Guia usa seg–sex sem feriado; o 5º dia útil do
+  salário conta **sábado** (CLT art. 459 §1º). Contar salário com régua bancária adianta o
+  prazo e faz o escritório cobrar cedo demais. Quando o 5º dia cai em sábado, a mensagem
+  avisa que o pagamento tem de ser em dinheiro.
+- **Dia 20 não é um só.** FGTS, INSS, DCTF Web e IRRF **antecipam** quando o dia 20 não é
+  bancário; o **DAS adia** (LC 123, art. 21 §3º). Trocar os dois faz o cliente pagar com
+  multa por causa do nosso alerta. Há teste cobrindo exatamente setembro/2026, em que o
+  dia 20 é domingo.
+
+Também não há expediente bancário em **24 e 31 de dezembro** (convenção da Febraban,
+isolada numa função só, porque é convenção e não lei).
+
+**Vínculo por empresa** — nem toda empresa tem toda obrigação. Duas categorias:
+
+| | Regra | Marca sozinho? |
+|---|---|---|
+| FGTS, prazo do salário | tem funcionário celetista | sim |
+| INSS (DCTF Web) | tem funcionário **ou** pró-labore | sim |
+| DAS | há guia de DAS no portal | sim |
+| todo o resto | o portal achou guia dela nas entregas | **não** — vira sugestão com evidência ("2 guias encontradas, a última em 2026-07") e o admin decide |
+
+Sugerir em vez de marcar é deliberado: uma guia avulsa de ICMS num mês não prova
+recolhimento mensal. **Decisão manual sempre vence a regra**, inclusive a negativa — o
+`ON CONFLICT DO NOTHING` de `aplicarAutomaticas` nunca encosta em linha já decidida, e a
+linha negativa é o que impede a mesma sugestão de voltar todo mês.
+
+**A tela** (`/admin/alertas`, área nova `alertas`) tem três abas: *Empresas* (busca por
+nome/CNPJ, detalhe com marcações, sugestões e preferências), *Catálogo* (a tabela com o
+vencimento do mês já calculado, para conferir contra a tabela do escritório) e *O que sai
+hoje* (o texto exato, montado, sem enviar nada).
+
+**Cliente que não gosta de mensagem** tem duas chaves separadas em `companies`:
+`alertas_ativos` (desliga tudo sem perder as marcações) e `incentivo_ativo` (mantém o
+alerta e tira só a frase do fim).
+
+**A mensagem de incentivo mudou de gatilho.** Saía na liberação de guias
+(`POST /api/fiscal/release`), o que amarrava o incentivo ao sistema de guias; agora entra
+como **última linha do alerta de vencimento**, sem título e sem separador — o cliente abriu
+um aviso que quis receber e encontra uma frase a mais. As três travas de
+`engagementRules.js` continuam valendo (só quem nunca acessou, a cada N alertas, piso de
+dias), e a pré-visualização usa `simular: true`, que não consome o rodízio.
+
+### O envio pelo WhatsApp (porte do sistema de guias)
+
+O portal **manda a mensagem sozinho**. `api/src/uazapi.js` é o porte enxuto do
+`app/uazapi.py`: como o alerta é texto puro, ficaram só `/send/text` e `/instance/status`
+— nada de documento, botão, fila assíncrona ou encurtador de URL. Mesmas credenciais,
+mesma instância, mesmo número do sistema de guias.
+
+`api/src/alertasEnvio.js` é a rotina. **Seis travas, na ordem, cada uma barrando um jeito
+diferente de estragar o canal:**
+
+| # | Trava | Por que existe |
+|---|---|---|
+| 1 | uazapi configurada? | falha uma vez, com recado, em vez de sessenta vezes |
+| 2 | número válido? (`whatsappNumero.js`) | fixo e número torto: a uazapi aceita e **a mensagem some** |
+| 3 | não é o próprio número? | self-send responde sucesso e não entrega nada |
+| 4 | teto por hora | rajada é o que faz o WhatsApp bloquear o número |
+| 5 | pausa entre envios | cadência humana, não metralhadora |
+| 6 | índice único no banco | processo morreu no meio? quem recebeu não recebe de novo |
+
+`whatsappNumero.js` melhora um ponto em relação ao original: lá o 55 tinha de vir digitado;
+aqui o portal **completa o DDI**. Exigir o 55 na mão só gerava cadastro errado. Fixo é
+recusado com mensagem própria, para o admin trocar o cadastro em vez de caçar defeito no
+envio.
+
+**Erro de token não é repetido** — instância desconectada precisa de gente, e martelar a
+API não resolve; o lote inteiro para e a tela diz por quê. Falha de rede tem uma
+re-tentativa.
+
+**Padrão é não enviar.** O agendador diário só liga com `ALERTAS_ENVIO_ATIVO=true`
+(`ALERTAS_HORA`, padrão 8h de São Paulo). Ninguém deve começar a mandar mensagem para
+cliente por acidente de deploy. Na tela há **Ensaiar** (monta tudo, aplica as validações,
+não envia) e **Enviar agora**, este atrás de confirmação, porque chega no celular do
+cliente e não desfaz. O incentivo só é consumido **depois** que a mensagem sai.
+
+**Testes:** 64 novos (de 123 para **187**), todos de função pura — calendário, catálogo de
+vencimentos, regras de marcação/mensagem e validação de número.
+
+**Fora de escopo, confirmado:** o portal **não tem ambiente para guia de parcelamento**
+(ver `PLANO-INDEPENDENCIA-GCLICK.md`, fase F3). A obrigação está no catálogo e vence no
+último dia bancário, mas só se marca à mão e o alerta não terá guia para apontar até a F3.
+
+---
+
 ## 5. Pendências que não são código
 
 1. **Redeploy no Easypanel.** São **25 commits** fora do ar. As migrações rodam sozinhas no
@@ -227,6 +322,16 @@ disponibilizar e abrir, e **quem nunca abre nada** — que costuma anteceder ina
 5. **Subir a Programação de Férias** de cada empresa em `/admin/empresas`.
 6. **Conferir o Auto Deploy** — há indício de um único deploy manual (04/08, 07:34) e vários
    pushes sem deploy desde então.
+7. **Alertas — cadastro inicial**, depois do deploy: (a) clicar *Aplicar marcações
+   automáticas* uma vez, para FGTS/INSS/DAS/salário nascerem marcados na carteira inteira;
+   (b) percorrer as **sugestões** empresa a empresa, aceitando ou recusando (recusar é o que
+   faz a sugestão parar de voltar); (c) preencher o **WhatsApp** de cada empresa — sem ele o
+   alerta não tem para onde ir; (d) conferir a aba *Catálogo* contra a tabela de vencimentos
+   do escritório antes de qualquer envio.
+8. **Ligar o envio automático**, só depois de conferir o catálogo e ensaiar: copiar
+   `UAZAPI_SUBDOMAIN`/`UAZAPI_TOKEN` do sistema de guias para o ambiente do portal e pôr
+   `ALERTAS_ENVIO_ATIVO=true`. Enquanto isso não for feito, o portal calcula e mostra, mas
+   não manda nada — que é o padrão de propósito.
 
 ## 6. Itens de auditoria ainda abertos
 

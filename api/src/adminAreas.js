@@ -21,6 +21,7 @@ const ADMIN_AREAS = [
   "lgpd",
   "sincronizacao",
   "envio_guias",
+  "alertas",
 ];
 
 const ADMIN_AREA_LABELS = {
@@ -32,6 +33,7 @@ const ADMIN_AREA_LABELS = {
   lgpd: "Consentimentos LGPD",
   sincronizacao: "Sincronização",
   envio_guias: "Envio de guias",
+  alertas: "Alertas de vencimento",
 };
 
 /** Normaliza o JSON gravado: chave ausente vira false. `null` = acesso total. */
