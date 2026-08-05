@@ -154,6 +154,19 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
     }
     linhas.push("");
     linhas.push("Providencie a programação para evitar passivo trabalhista.");
+    // O passo a passo vai DENTRO da mensagem, não num link de descadastro.
+    //
+    // Um "clique aqui para não receber mais" pararia tudo com um toque, inclusive o
+    // aviso do funcionário que vence daqui a três meses. Aqui a saída existe, mas
+    // custa três toques e é por funcionário — quem quer parar, para; quem só está
+    // com pressa, não desliga o que ainda vai precisar.
+    if (portalUrl) {
+      linhas.push("");
+      linhas.push("_Já está resolvido? Para não receber mais este aviso:_");
+      linhas.push(`_1. Entre no portal: ${portalUrl}_`);
+      linhas.push("_2. Abra *Férias*_");
+      linhas.push('_3. Toque em *"Já recebi este aviso"* no funcionário_');
+    }
   }
 
   // Observação de regra (hoje: salário no sábado)

@@ -116,6 +116,15 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
               onCheckedChange={(v) => preferencias.mutate({ incentivo_ativo: v })}
             />
           </div>
+          <div className="flex items-center justify-between gap-4">
+            <Label className="font-normal">Aviso de documento novo</Label>
+            {/* Só leitura: esta é a decisão do cliente, tomada no portal dele. */}
+            <span className="text-xs text-muted-foreground">
+              {empresa.avisos_documentos_ativos
+                ? "o cliente aceita receber"
+                : "o cliente pediu para não receber"}
+            </span>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="whatsapp">WhatsApp do alerta</Label>
             <div className="flex gap-2">
@@ -123,7 +132,7 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
                 id="whatsapp"
                 inputMode="numeric"
                 placeholder="34999998888"
-                value={whatsapp ?? empresa.whatsapp ?? ""}
+                value={whatsapp ?? empresa.whatsapp_manual ?? ""}
                 onChange={(e) => setWhatsapp(e.target.value)}
               />
               <Button
@@ -246,7 +255,11 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
  */
 function WhatsappInline({ company }: { company: AlertCompanyRow }) {
   const queryClient = useQueryClient();
-  const [valor, setValor] = useState(company.whatsapp ?? "");
+  // O campo edita a EXCEÇÃO manual. Vazio com o número do G-Click de marca-d'água
+  // significa "usando o cadastro do G-Click" — que é o normal e o desejável. Mostrar o
+  // número do espelho dentro do campo faria parecer que ele foi digitado aqui, e o
+  // primeiro salvamento congelaria uma cópia que nunca mais acompanharia o cadastro.
+  const [valor, setValor] = useState(company.whatsapp_manual ?? "");
 
   const salvar = useMutation({
     mutationFn: (v: string) => api.alertas.preferencias(company.id, { whatsapp: v }),
@@ -257,19 +270,24 @@ function WhatsappInline({ company }: { company: AlertCompanyRow }) {
     },
     onError: (e: Error) => {
       toast.error(e.message);
-      setValor(company.whatsapp ?? "");
+      setValor(company.whatsapp_manual ?? "");
     },
   });
 
   return (
     <Input
-      className={`h-8 w-40 text-xs ${!company.whatsapp ? "border-amber-500/60" : ""}`}
-      placeholder="WhatsApp"
+      className={`h-8 w-44 text-xs ${!company.whatsapp ? "border-amber-500/60" : ""}`}
+      placeholder={company.whatsapp_gclick ? `${company.whatsapp_gclick} (G-Click)` : "Sem WhatsApp"}
+      title={
+        company.whatsapp_manual
+          ? "Número manual — sobrepõe o cadastro do G-Click"
+          : "Vazio = usa o número do cadastro do G-Click"
+      }
       inputMode="numeric"
       value={valor}
       onChange={(e) => setValor(e.target.value)}
       onBlur={() => {
-        if (valor.trim() === (company.whatsapp ?? "")) return;
+        if (valor.trim() === (company.whatsapp_manual ?? "")) return;
         salvar.mutate(valor.trim());
       }}
       disabled={salvar.isPending}
@@ -377,6 +395,10 @@ const AlertasPage = () => {
               { label: "Sem obrigação marcada", valor: panorama.data?.sem_marcacao ?? 0 },
               { label: "Sem WhatsApp", valor: panorama.data?.sem_whatsapp ?? 0 },
               { label: "Alertas desligados", valor: panorama.data?.desligadas ?? 0 },
+              {
+                label: "Recusaram aviso de documento",
+                valor: panorama.data?.recusaram_documentos ?? 0,
+              },
             ].map((c) => (
               <Card key={c.label}>
                 <CardContent className="p-4">
@@ -439,6 +461,15 @@ const AlertasPage = () => {
                       <WhatsappInline company={c} />
                       <span className="flex items-center gap-2">
                         {!c.alertas_ativos && <Badge variant="outline">desligado</Badge>}
+                        {/* Vontade do cliente, não configuração do escritório. */}
+                        {!c.avisos_documentos_ativos && (
+                          <Badge variant="outline" title="O cliente pediu no portal">
+                            recusou avisos
+                          </Badge>
+                        )}
+                        {c.ferias_dispensadas > 0 && (
+                          <Badge variant="outline">{c.ferias_dispensadas} férias dispensadas</Badge>
+                        )}
                         <Badge variant={c.marcadas ? "secondary" : "outline"}>
                           {c.marcadas} obrigação(ões)
                         </Badge>
@@ -493,6 +524,25 @@ const AlertasPage = () => {
         </TabsContent>
 
         <TabsContent value="hoje" className="space-y-4">
+          {/* Piloto: a tela precisa gritar que está restrita, senão "1 mensagem" vira
+              suspeita de defeito em vez de leitura do teste. */}
+          {previsao.data?.restrito_a?.length ? (
+            <Card className="border-primary/50 bg-primary/5">
+              <CardContent className="p-4">
+                <p className="text-sm font-medium">
+                  Piloto ativo — só {previsao.data.restrito_a.length} CNPJ recebe alerta
+                </p>
+                <p className="mt-1 font-mono text-xs text-muted-foreground">
+                  {previsao.data.restrito_a.join(" · ")}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  O resto da carteira está fora da previsão e do envio. Para liberar todos,
+                  esvazie <code>ALERTAS_CNPJ_PERMITIDOS</code> no ambiente e reinicie.
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
+
           {/* Antes de qualquer coisa: o que vai ser cobrado e ainda não está no ar.
               Liberar aqui evita o cliente receber o aviso e achar o portal vazio. */}
           {(retidos.data?.total ?? 0) > 0 && (

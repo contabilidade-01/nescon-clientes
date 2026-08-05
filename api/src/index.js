@@ -43,6 +43,7 @@ app.use("/api/taxas-anuais", require("./routes/annualTaxes"));
 // Ingestão servidor-a-servidor (sistema de guias): auth própria por X-Ingest-Key.
 app.use("/api/fiscal", require("./routes/fiscalIngest"));
 app.use("/api/alertas", require("./routes/alertas"));
+app.use("/api/preferencias", require("./routes/preferencias"));
 app.use("/api/doc-upload", require("./routes/documentUpload"));
 app.use("/api/mensagens", require("./routes/engagement"));
 

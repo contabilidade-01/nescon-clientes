@@ -411,9 +411,16 @@ export interface AlertCompanyRow {
   id: string;
   name: string;
   cnpj: string;
+  /** Efetivo: o manual quando existe, senão o do espelho do G-Click. */
   whatsapp: string | null;
+  whatsapp_manual: string | null;
+  whatsapp_gclick: string | null;
   alertas_ativos: boolean;
   incentivo_ativo: boolean;
+  /** Escolha DO CLIENTE. O painel mostra; quem desfaz é ele, no portal dele. */
+  avisos_documentos_ativos: boolean;
+  avisos_alterados_em: string | null;
+  ferias_dispensadas: number;
   marcadas: number;
   ultimo_alerta_em: string | null;
 }
@@ -423,6 +430,8 @@ export interface AlertOverview {
   sem_marcacao: number;
   sem_whatsapp: number;
   desligadas: number;
+  /** Quantos clientes PEDIRAM para não receber aviso de documento novo. */
+  recusaram_documentos: number;
   empresas: AlertCompanyRow[];
 }
 
@@ -443,8 +452,12 @@ export interface AlertCompanyDetail {
     name: string;
     cnpj: string;
     whatsapp: string | null;
+    whatsapp_manual: string | null;
+    whatsapp_gclick: string | null;
     alertas_ativos: boolean;
     incentivo_ativo: boolean;
+    avisos_documentos_ativos: boolean;
+    avisos_alterados_em: string | null;
   };
   obrigacoes: Array<{
     codigo: string;
@@ -463,6 +476,8 @@ export interface AlertCompanyDetail {
 export interface AlertPreview {
   data: string;
   total: number;
+  /** CNPJs do piloto. `null` = carteira inteira. */
+  restrito_a: string[] | null;
   mensagens: Array<{
     company_id: string;
     empresa: string;
@@ -474,6 +489,14 @@ export interface AlertPreview {
     incentivo_id: string | null;
     texto: string;
   }>;
+}
+
+/** Escolhas do cliente sobre o que ele quer receber. */
+export interface ClientNotificationPrefs {
+  avisos_documentos_ativos: boolean;
+  avisos_alterados_em: string | null;
+  /** Avisos de férias já dispensados, por funcionário e limite. */
+  ferias_dispensadas: Array<{ funcionario: string; limite_gozo: string; criado_em: string }>;
 }
 
 export interface DocUploadCompany {
@@ -544,6 +567,7 @@ export interface AlertSendResult {
   enviados: number;
   falhas: number;
   ignorados: number;
+  restrito_a?: string[] | null;
   erro?: string;
   resultados: Array<{
     empresa?: string;
@@ -681,6 +705,34 @@ export const api = {
       request<{ id: string; established: boolean }>(`/licencas/empresas/${companyId}/estabelecida`, {
         method: "PATCH",
         body: JSON.stringify({ established }),
+      }),
+  },
+
+  /**
+   * Preferências de aviso — do CLIENTE, no portal dele.
+   * O alerta de vencimento de guia não está aqui de propósito: desligar sozinho o
+   * aviso do que se paga com juros seria prejuízo silencioso.
+   */
+  preferencias: {
+    ler: (companyId?: string) =>
+      request<ClientNotificationPrefs>(
+        `/preferencias${companyId ? `?company_id=${companyId}` : ""}`
+      ),
+    salvar: (avisosDocumentosAtivos: boolean) =>
+      request<{ avisos_documentos_ativos: boolean; avisos_alterados_em: string | null }>(
+        "/preferencias",
+        { method: "PUT", body: JSON.stringify({ avisos_documentos_ativos: avisosDocumentosAtivos }) }
+      ),
+    /** "Já recebi este aviso de férias" — vale só para este funcionário e limite. */
+    feriasVisto: (funcionario: string, limiteGozo: string) =>
+      request<{ dispensado: boolean }>("/preferencias/ferias-visto", {
+        method: "POST",
+        body: JSON.stringify({ funcionario, limite_gozo: limiteGozo }),
+      }),
+    desfazerFeriasVisto: (funcionario: string, limiteGozo: string) =>
+      request<{ dispensado: boolean }>("/preferencias/ferias-visto", {
+        method: "DELETE",
+        body: JSON.stringify({ funcionario, limite_gozo: limiteGozo }),
       }),
   },
 

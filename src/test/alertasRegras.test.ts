@@ -234,4 +234,33 @@ describe("montarMensagemAlerta", () => {
     expect(texto).toContain("MARIA DA SILVA — limite em 12/11 (faltam 90 dias)");
     expect(texto).toMatch(/passivo trabalhista/);
   });
+
+  it("férias: a mensagem ensina a parar de receber, dentro dela mesma", () => {
+    const texto = montarMensagemAlerta({
+      ...base,
+      itens: [
+        {
+          codigo: "FERIAS_LIMITE",
+          nome: "MARIA DA SILVA",
+          vencimento: "2026-11-12",
+          observacao: null,
+          diasRestantes: 60,
+        },
+      ],
+    })!;
+    // Passo a passo, não link de descadastro: parar tem de ser possível e consciente.
+    expect(texto).toMatch(/Já está resolvido/);
+    expect(texto).toContain("Já recebi este aviso");
+    expect(texto).toContain(base.portalUrl);
+  });
+
+  it("sem férias, não vem o passo a passo de dispensa", () => {
+    const texto = montarMensagemAlerta({
+      ...base,
+      itens: [
+        { codigo: "FGTS", nome: "FGTS", vencimento: "2026-08-20", observacao: null, temGuiaNoPortal: true },
+      ],
+    })!;
+    expect(texto).not.toMatch(/Já recebi este aviso/);
+  });
 });

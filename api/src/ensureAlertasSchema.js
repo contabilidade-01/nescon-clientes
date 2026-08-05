@@ -26,9 +26,19 @@ async function ensureAlertasSchema(db) {
     await db.query(
       `ALTER TABLE companies ADD COLUMN IF NOT EXISTS incentivo_ativo BOOLEAN NOT NULL DEFAULT true;`
     );
-    // Para onde vai o alerta. Fora do G-Click de propósito: o objetivo é o portal
-    // deixar de depender dele para avisar o cliente.
+    // Para onde vai o alerta. Este campo é a EXCEÇÃO manual: o número normal vem do
+    // espelho do G-Click (`gclick_clients.phone`), que é onde o cadastro é mantido.
+    // Preenchido aqui, manda neste; vazio, vale o do espelho. Ver alertas.whatsappSql().
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS whatsapp TEXT;`);
+
+    // Escolha DO CLIENTE, não do escritório: ele marca no portal que não quer ser
+    // avisado de documento novo. Separada de `alertas_ativos` (que é a chave do
+    // escritório) porque são decisões de donos diferentes — misturar as duas faria o
+    // escritório desfazer sem querer a vontade do cliente.
+    await db.query(
+      `ALTER TABLE companies ADD COLUMN IF NOT EXISTS avisos_documentos_ativos BOOLEAN NOT NULL DEFAULT true;`
+    );
+    await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS avisos_alterados_em TIMESTAMPTZ;`);
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS company_obligations (
@@ -80,6 +90,30 @@ async function ensureAlertasSchema(db) {
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_alert_sends_empresa
         ON alert_sends(company_id, enviado_em DESC);
+    `);
+
+    /**
+     * "Já recebi o aviso de férias" — a dispensa é do CLIENTE e vale por
+     * funcionário × limite, não em geral.
+     *
+     * Um interruptor global de férias resolveria o incômodo de hoje e criaria o de
+     * amanhã: o cliente que dispensou em agosto não seria avisado do funcionário que
+     * vence em novembro, e o passivo trabalhista aparece sem ninguém ter avisado.
+     * Com a dispensa presa ao período, ela morre junto com ele — período novo volta
+     * a avisar sozinho, sem o cliente ter de lembrar de religar nada.
+     */
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS vacation_alert_acks (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        funcionario TEXT NOT NULL,
+        limite_gozo DATE NOT NULL,
+        criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await db.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_acks_unico
+        ON vacation_alert_acks(company_id, funcionario, limite_gozo);
     `);
 
     // Falha de envio precisa ficar registrada. Sem isto, um disparo que quebrou às 8h

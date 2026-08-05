@@ -67,7 +67,10 @@ router.post("/release", requireIngestKey, async (req, res) => {
       sincronizou = await sync.sincronizar({ cnpj, meses: Number(req.body?.meses || 2) });
     }
 
-    const { rows: empresa } = await db.query("SELECT id, name FROM companies WHERE cnpj = $1", [cnpj]);
+    const { rows: empresa } = await db.query(
+      "SELECT id, name, avisos_documentos_ativos FROM companies WHERE cnpj = $1",
+      [cnpj]
+    );
     if (!empresa.length) {
       return res.status(404).json({
         error: `Nenhuma empresa no portal com o CNPJ ${cnpj}.`,
@@ -112,6 +115,18 @@ router.post("/release", requireIngestKey, async (req, res) => {
       empresa: empresa[0].name,
       portal_url: portalUrl("/"),
       sincronizou,
+      // O cliente pediu, no portal dele, para não ser avisado de documento novo.
+      //
+      // A liberação acontece de todo jeito — ele continua vendo tudo quando entrar; o
+      // que ele recusou foi a mensagem. Quem manda a mensagem é o sistema de guias, e é
+      // por este campo que ele fica sabendo: SE `avisar_cliente` vier false, não envie.
+      // Enquanto o outro lado não olhar para este campo, a vontade do cliente não é
+      // obedecida — ver docs/ESTADO-E-PROXIMO-PASSO.md §4d.
+      avisar_cliente: empresa[0].avisos_documentos_ativos !== false,
+      motivo_nao_avisar:
+        empresa[0].avisos_documentos_ativos === false
+          ? "O cliente desativou os avisos de documento novo no portal."
+          : null,
     });
   } catch (err) {
     console.error("[release]", err);

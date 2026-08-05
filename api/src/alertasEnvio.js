@@ -85,7 +85,9 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false } = {
 
   // `simular: true` sempre: o texto é montado sem consumir o rodízio de mensagens de
   // incentivo. O consumo só acontece depois que a mensagem realmente sai.
-  const { mensagens } = await previsao(db, { data: dia, simular: true });
+  // A lista branca do piloto já é aplicada aqui dentro: previsão e envio enxergam
+  // exatamente as mesmas empresas.
+  const { mensagens, restrito_a } = await previsao(db, { data: dia, simular: true });
 
   const meuNumero = apenasSimular ? null : await uazapi.owner();
   const resultados = [];
@@ -179,7 +181,7 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false } = {
     if (THROTTLE_S > 0) await espera(THROTTLE_S * 1000);
   }
 
-  return { dia, enviados, falhas, ignorados, resultados };
+  return { dia, enviados, falhas, ignorados, restrito_a, resultados };
 }
 
 /**
@@ -233,8 +235,9 @@ function iniciarAgendadorAlertas(db) {
       if (horaSP() < HORA_ENVIO) return;
       ultimoDiaExecutado = dia;
       const r = await enviarAlertasDoDia(db, { data: dia });
+      const restrito = r.restrito_a?.length ? ` [PILOTO: só ${r.restrito_a.join(", ")}]` : "";
       console.log(
-        `[alertas] ${dia}: ${r.enviados} enviado(s), ${r.falhas} falha(s), ${r.ignorados} ignorado(s).`
+        `[alertas] ${dia}: ${r.enviados} enviado(s), ${r.falhas} falha(s), ${r.ignorados} ignorado(s).${restrito}`
       );
     } catch (err) {
       console.error("[alertas] ciclo diário:", err.message);

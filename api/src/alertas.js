@@ -20,6 +20,42 @@ const { hojeSP, somarDias } = require("./diasBancarios");
 const { trechoDeIncentivo } = require("./engagement");
 const numeroWpp = require("./whatsappNumero");
 
+/**
+ * O telefone do cliente, em SQL, com fonte única de verdade.
+ *
+ * O cadastro vive no G-Click e chega pelo espelho `gclick_clients`. O campo
+ * `companies.whatsapp` é só a exceção manual — cliente que pediu para receber noutro
+ * número, ou empresa que ainda não veio pelo espelho.
+ *
+ * Antes eram dois cadastros paralelos: quando o cliente trocasse de número e só um
+ * fosse atualizado, metade das mensagens parava de chegar e o sintoma pareceria
+ * aleatório. Com COALESCE há um lugar certo para corrigir e um só para consultar.
+ */
+function whatsappSql(aliasCompany = "c") {
+  return `COALESCE(NULLIF(${aliasCompany}.whatsapp, ''), g.phone)`;
+}
+
+/** JOIN que acompanha `whatsappSql`. */
+const JOIN_ESPELHO = `LEFT JOIN gclick_clients g ON g.company_id = c.id`;
+
+/**
+ * Lista branca de CNPJs durante o piloto.
+ *
+ * `ALERTAS_CNPJ_PERMITIDOS` vazio = carteira inteira (operação normal). Com um ou mais
+ * CNPJs, **só eles** entram na previsão — e é a previsão que alimenta tanto a tela
+ * quanto o envio, de propósito: se a restrição valesse só no envio, o painel mostraria
+ * sessenta mensagens e sairia uma, e alguém acabaria concluindo que o envio quebrou.
+ *
+ * Filtro por CNPJ e não por empresa: é o identificador que o escritório reconhece de
+ * cabeça, e não muda se o cadastro for recriado.
+ */
+function cnpjsPermitidos() {
+  return String(process.env.ALERTAS_CNPJ_PERMITIDOS || "")
+    .split(/[,;\s]+/)
+    .map((c) => c.replace(/\D/g, ""))
+    .filter((c) => c.length === 14);
+}
+
 function portalUrl(caminho = "/") {
   const base = (process.env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
   return base ? `${base}${caminho}` : null;
@@ -85,8 +121,13 @@ async function aplicarAutomaticas(db, companyId = null) {
 /** Obrigações marcadas + recusadas + sugestões de uma empresa. É a tela de detalhe. */
 async function detalheDaEmpresa(db, companyId) {
   const { rows: empresa } = await db.query(
-    `SELECT id, name, cnpj, whatsapp, alertas_ativos, incentivo_ativo
-       FROM companies WHERE id = $1`,
+    `SELECT c.id, c.name, c.cnpj, c.alertas_ativos, c.incentivo_ativo,
+            c.whatsapp AS whatsapp_manual,
+            ${whatsappSql("c")} AS whatsapp,
+            g.phone AS whatsapp_gclick,
+            c.avisos_documentos_ativos, c.avisos_alterados_em
+       FROM companies c ${JOIN_ESPELHO}
+      WHERE c.id = $1`,
     [companyId]
   );
   if (!empresa.length) return null;
@@ -156,11 +197,19 @@ async function panorama(db, { busca = "" } = {}) {
     filtro = `WHERE (c.name ILIKE $1 OR regexp_replace(c.cnpj, '\\D', '', 'g') ILIKE $1)`;
   }
   const { rows } = await db.query(
-    `SELECT c.id, c.name, c.cnpj, c.whatsapp, c.alertas_ativos, c.incentivo_ativo,
+    `SELECT c.id, c.name, c.cnpj, c.alertas_ativos, c.incentivo_ativo,
+            c.whatsapp AS whatsapp_manual,
+            ${whatsappSql("c")} AS whatsapp,
+            g.phone AS whatsapp_gclick,
+            -- Escolha do cliente. O escritório precisa VER, e não pode desfazer daqui.
+            c.avisos_documentos_ativos, c.avisos_alterados_em,
             (SELECT count(*)::int FROM company_obligations o
               WHERE o.company_id = c.id AND o.ativo IS TRUE) AS marcadas,
+            (SELECT count(*)::int FROM vacation_alert_acks a
+              WHERE a.company_id = c.id) AS ferias_dispensadas,
             (SELECT max(s.enviado_em) FROM alert_sends s WHERE s.company_id = c.id) AS ultimo_alerta_em
        FROM companies c
+       ${JOIN_ESPELHO}
        ${filtro}
       ORDER BY c.name`,
     params
@@ -170,6 +219,9 @@ async function panorama(db, { busca = "" } = {}) {
     sem_marcacao: rows.filter((r) => r.marcadas === 0).length,
     sem_whatsapp: rows.filter((r) => !r.whatsapp).length,
     desligadas: rows.filter((r) => !r.alertas_ativos).length,
+    // Quem PEDIU para não receber aviso de documento. É número de vontade do cliente,
+    // não de configuração — por isso aparece separado das desligadas pelo escritório.
+    recusaram_documentos: rows.filter((r) => !r.avisos_documentos_ativos).length,
     empresas: rows,
   };
 }
@@ -212,7 +264,14 @@ async function feriasPorAvisar(db, { hoje = null } = {}) {
           ORDER BY company_id, criado_em DESC
        ) atual ON atual.id = vp.upload_id
        JOIN companies c ON c.id = vp.company_id AND c.alertas_ativos IS TRUE
+       -- Dispensa do cliente: "já recebi o aviso deste funcionário". Vale só para
+       -- este período; quando surgir outro limite, o aviso volta sozinho.
+       LEFT JOIN vacation_alert_acks ack
+              ON ack.company_id = vp.company_id
+             AND ack.funcionario = vp.nome
+             AND ack.limite_gozo = vp.limite_gozo
       WHERE to_char(vp.limite_gozo, 'YYYY-MM-DD') = ANY($1::text[])
+        AND ack.id IS NULL
       ORDER BY vp.company_id, vp.limite_gozo, vp.nome`,
     [marcos.map((m) => m.data)]
   );
@@ -241,14 +300,19 @@ async function feriasPorAvisar(db, { hoje = null } = {}) {
 async function previsao(db, { data = null, simular = true } = {}) {
   const hoje = data || hojeSP();
 
+  const permitidos = cnpjsPermitidos();
   const { rows: empresas } = await db.query(
-    `SELECT c.id, c.name, c.cnpj, c.whatsapp, c.incentivo_ativo,
+    `SELECT c.id, c.name, c.cnpj, ${whatsappSql("c")} AS whatsapp, c.incentivo_ativo,
             array_remove(array_agg(o.obrigacao) FILTER (WHERE o.ativo IS TRUE), NULL) AS obrigacoes
        FROM companies c
        JOIN company_obligations o ON o.company_id = c.id
+       ${JOIN_ESPELHO}
       WHERE c.alertas_ativos IS TRUE
-      GROUP BY c.id
-      ORDER BY c.name`
+        AND ($1::text[] IS NULL
+             OR regexp_replace(c.cnpj, '\\D', '', 'g') = ANY($1::text[]))
+      GROUP BY c.id, g.phone
+      ORDER BY c.name`,
+    [permitidos.length ? permitidos : null]
   );
 
   // Quem já foi avisado hoje, numa consulta só. Antes era uma por empresa: com 60
@@ -383,7 +447,14 @@ async function previsao(db, { data = null, simular = true } = {}) {
     });
   }
 
-  return { data: hoje, total: saida.length, mensagens: saida };
+  return {
+    data: hoje,
+    total: saida.length,
+    // A tela precisa dizer em voz alta que está restrita — senão "só 1 mensagem" vira
+    // suspeita de defeito em vez de leitura do piloto.
+    restrito_a: permitidos.length ? permitidos : null,
+    mensagens: saida,
+  };
 }
 
 /**
@@ -505,6 +576,7 @@ module.exports = {
   guiasRetidas,
   registrarFalha,
   falhasRecentes,
+  cnpjsPermitidos,
   MARCOS_FERIAS_DIAS,
   ehProLabore,
 };

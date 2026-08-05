@@ -347,6 +347,61 @@ de `UPLOADS_TTL_HORAS` (48h); qualquer falha na consulta aborta sem apagar nada.
 
 ---
 
+## 4d. O cliente decide o que quer receber
+
+Até aqui, quem não queria mensagem tinha de ligar para o escritório. Isso vira ligação
+que ninguém atende, e depois um cliente que ignora o canal inteiro. Agora a decisão é
+dele, no portal dele — e o escritório **vê, mas não desfaz**.
+
+**Três chaves, de donos diferentes.** Misturá-las faria o escritório desfazer sem querer
+a vontade do cliente:
+
+| Chave | Dono | O que faz |
+|---|---|---|
+| `alertas_ativos` | escritório | desliga tudo, sem perder as marcações |
+| `avisos_documentos_ativos` | **cliente** | não quer aviso de documento novo |
+| `vacation_alert_acks` | **cliente** | "já recebi este aviso de férias" |
+
+**A dispensa de férias vale por funcionário × limite, nunca em geral.** Um interruptor
+global resolveria o incômodo de hoje e criaria o de amanhã: o cliente que dispensou em
+agosto não seria avisado do funcionário que vence em novembro, e o passivo apareceria sem
+ninguém ter avisado. Presa ao período, a dispensa morre junto com ele — período novo volta
+a avisar sozinho.
+
+**O passo a passo vai dentro da mensagem**, não num link de descadastro. Um "clique para
+não receber mais" pararia tudo com um toque, inclusive o aviso do funcionário que vence
+daqui a três meses. Assim a saída existe, custa três toques e é por funcionário.
+
+**O alerta de vencimento de guia não entra nessa tela**, de propósito: desligar sozinho o
+aviso do que se paga com juros não é conveniência, é prejuízo silencioso. Quem quiser
+parar fala com o escritório, que desliga sabendo o que está fazendo.
+
+**Como o aviso de documento obedece.** Quem manda essa mensagem é o sistema de guias, não
+o portal. `POST /api/fiscal/release` passou a devolver **`avisar_cliente`** e
+`motivo_nao_avisar`; o sistema de guias lê o campo e, quando vem `false`, libera o
+documento e **não envia** (`app/routes/envio.py`, no lote e no reenvio, registrando
+`nao_avisado` na auditoria). Os dois lados precisam subir juntos: só o portal, e a vontade
+do cliente fica registrada sem ser obedecida.
+
+**Piloto: `ALERTAS_CNPJ_PERMITIDOS`.** Vazio = carteira inteira. Com CNPJs, só eles
+entram — e a restrição vale na **previsão**, não só no envio, para a tela mostrar
+exatamente o que sairia. Se valesse só no envio, o painel exibiria sessenta mensagens,
+sairia uma, e alguém concluiria que o envio quebrou. A aba *O que sai hoje* exibe um
+cartão dizendo que o piloto está ativo e quais CNPJs.
+
+> **Cuidado no piloto com o CNPJ da própria Nescon:** o destino **não pode** ser o mesmo
+> número conectado na instância uazapi. Mandar para si mesmo falha em silêncio (a API
+> responde sucesso e nada chega), e a trava anti-autoenvio barra antes disso. Use um
+> celular diferente do número da instância.
+
+**Telefone unificado.** O número passou a sair de `COALESCE(companies.whatsapp,
+gclick_clients.phone)`: o cadastro vive no G-Click e `companies.whatsapp` é só a exceção
+manual. Antes eram dois cadastros paralelos — cliente trocava de número, um dos dois era
+atualizado, e metade das mensagens parava de chegar com sintoma que parecia aleatório. No
+painel, o campo edita a exceção e mostra o número do espelho como marca-d'água.
+
+---
+
 ## 5. Pendências que não são código
 
 1. **Redeploy no Easypanel.** São **25 commits** fora do ar. As migrações rodam sozinhas no
