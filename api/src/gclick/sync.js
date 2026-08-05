@@ -175,6 +175,32 @@ async function gravarGuia(guia, companyId, { historico = false } = {}) {
 }
 
 /**
+ * Regulariza o que JÁ ESTAVA no banco daquelas competências.
+ *
+ * `gravarGuia` só marca `historico` no INSERT. Mas a sincronização normal roda há meses
+ * com `GCLICK_SYNC_MESES=6`, então boa parte do período pedido **já existe** — e essas
+ * linhas ficariam de fora da marcação, retidas e com vencimento vencido. Bastaria alguém
+ * liberá-las para o cliente ver um punhado de guias em vermelho.
+ *
+ * Só toca no que está **retido**: documento retido nunca foi mostrado ao cliente, então
+ * tratá-lo como arquivo é dizer a verdade. Documento já liberado foi entregue como
+ * cobrança de verdade e continua como está — esconder isso poderia apagar uma dívida
+ * real da vista do cliente.
+ */
+async function regularizarHistorico(competencias) {
+  const { rowCount } = await db.query(
+    `UPDATE deliverables
+        SET historico = true, released_at = now()
+      WHERE competencia = ANY($1)
+        AND released_at IS NULL
+        AND source = 'gclick'`,
+    [competencias]
+  );
+  if (rowCount) console.log(`[sync] histórico: ${rowCount} documento(s) já existentes regularizados.`);
+  return rowCount;
+}
+
+/**
  * Sincroniza as competências pedidas (padrão: últimos GCLICK_SYNC_MESES meses).
  * `cnpj` limita a uma empresa — usado na liberação, para trazer o dado fresco antes
  * de publicar sem varrer a base toda.
@@ -259,6 +285,10 @@ async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = n
           `${total.criados} novas, ${total.atualizados} atualizadas até agora`
       );
     }
+
+    // Na carga histórica, regulariza também o que já estava no banco daquelas
+    // competências — senão metade do período pedido ficaria de fora da marcação.
+    if (historico) total.regularizados = await regularizarHistorico(comps);
 
     // Extratos novos entram sozinhos: cadastra/atualiza funcionários (código e
     // salário) e transforma saídas em aviso. Só na carga completa.

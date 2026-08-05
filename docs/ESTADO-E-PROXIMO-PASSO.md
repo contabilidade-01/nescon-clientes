@@ -436,8 +436,24 @@ neutro "histórico", mostra *"Venceu em … · documento de arquivo"* e **perde 
 **O mês corrente fica de fora** da carga: guia deste mês pode estar realmente a vencer, e
 marcá-la como histórico esconderia uma cobrança de verdade.
 
-**Os alertas não são afetados**: a previsão só olha guia com `due_date >= hoje`, então
-competência passada nunca entra no que sai por WhatsApp.
+**Três barreiras para a carga não virar alerta** (a data, sozinha, não bastava):
+
+1. A previsão exclui `historico IS NOT TRUE` das guias. **Filtrar só por data seria
+   insuficiente**: o `due_date` é lido do PRÓPRIO PDF, não da competência — guia antiga
+   retificada, parcelamento ou prazo prorrogado podem gravar data futura numa linha
+   velha. Ela passaria no `due_date >= hoje`, viraria "próxima guia" e faria dois
+   estragos: dispararia aviso de documento de arquivo **e suprimiria o alerta verdadeiro**
+   daquela obrigação, porque guia encontrada manda no catálogo.
+2. A marcação automática ignora DAS histórico. Empresa que saiu do Simples em março ainda
+   tem DAS de janeiro no arquivo, e a regra passaria a alertá-la de tributo que não
+   recolhe mais.
+3. A carga **regulariza o que já estava no banco** naquelas competências (`historico` +
+   liberação), mas só o que estava **retido** — documento retido nunca foi visto pelo
+   cliente, então tratá-lo como arquivo é dizer a verdade. Sem isso, metade do período
+   pedido ficaria de fora, porque a sincronização normal já rodava com 6 meses.
+
+Documento **já liberado** com vencimento passado continua como está: foi entregue como
+cobrança de verdade, e escondê-lo apagaria uma dívida real da vista do cliente.
 
 ---
 

@@ -61,8 +61,12 @@ async function retratoDasEmpresas(db, companyId = null) {
                      WHERE e.company_id = c.id AND ${funcionarioRealSql("e")}) AS tem_funcionario,
             EXISTS (SELECT 1 FROM employees e
                      WHERE e.company_id = c.id AND e.active IS TRUE) AS tem_alguem_na_folha,
+            -- Guia de carga histórica não serve de prova para marcar sozinho: uma empresa
+            -- que saiu do Simples em março ainda tem DAS de janeiro no arquivo, e a regra
+            -- passaria a alertá-la de um tributo que ela não recolhe mais.
             EXISTS (SELECT 1 FROM deliverables d
-                     WHERE d.company_id = c.id AND d.doc_type = 'DAS') AS tem_das
+                     WHERE d.company_id = c.id AND d.doc_type = 'DAS'
+                       AND d.historico IS NOT TRUE) AS tem_das
        FROM companies c
        ${filtro}`,
     params
@@ -306,12 +310,20 @@ async function previsao(db, { data = null, simular = true } = {}) {
 
   // Idem para as guias liberadas com vencimento à frente: uma consulta para a carteira,
   // agrupada em memória. O volume é de centenas de linhas, não de milhares.
+  //
+  // Carga histórica NUNCA entra aqui, e filtrar por data não bastaria: o due_date é lido
+  // do PRÓPRIO PDF (ver gclick/sync.js), não da competência. Guia antiga retificada,
+  // parcelamento ou prazo prorrogado podem gravar data futura numa linha de competência
+  // velha — ela passaria no "due_date >= hoje", viraria "próxima guia" e faria dois
+  // estragos: dispararia aviso de documento de arquivo e SUPRIMIRIA o alerta verdadeiro
+  // daquela obrigação, porque guia encontrada manda no catálogo.
   const { rows: guiasTodas } = await db.query(
     `SELECT company_id, doc_type, to_char(due_date, 'YYYY-MM-DD') AS due_date
        FROM deliverables
       WHERE released_at IS NOT NULL
         AND doc_type IS NOT NULL AND due_date IS NOT NULL
         AND due_date >= $1::date
+        AND historico IS NOT TRUE
       ORDER BY due_date`,
     [hoje]
   );
