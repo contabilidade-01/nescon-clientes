@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { HardDrive, History, Mail, UserPlus } from "lucide-react";
+import { DatabaseBackup, HardDrive, History, Mail, UserPlus } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { AdminSyncCard } from "@/components/AdminSyncCard";
 import { Button } from "@/components/ui/button";
@@ -59,6 +59,31 @@ const SincronizacaoPage = () => {
     mutationFn: () => api.admin.runSyncHistorico(desde),
     onSuccess: (r) => {
       toast.success(`Carga iniciada: ${r.competencias.length} competência(s).`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const backup = useQuery({
+    queryKey: ["backup-config"],
+    queryFn: () => api.admin.backupConfig(),
+  });
+
+  const salvarBackup = useMutation({
+    mutationFn: (v: { ativo?: boolean; hora?: number; email?: string; whatsapp?: string }) =>
+      api.admin.salvarBackupConfig(v),
+    onSuccess: () => {
+      toast.success("Backup configurado.");
+      queryClient.invalidateQueries({ queryKey: ["backup-config"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const rodarBackup = useMutation({
+    mutationFn: () => api.admin.executarBackup(),
+    onSuccess: (r) => {
+      if (r.erro) return toast.error(r.erro);
+      if (!r.ok) return toast.error(`Backup com problema: ${r.problemas?.join(" ")}`);
+      toast.success(`Backup ${r.tamanho} · e-mail ${r.entregas?.email} · WhatsApp ${r.entregas?.whatsapp}`);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -133,6 +158,113 @@ const SincronizacaoPage = () => {
           <p className="w-full text-xs text-muted-foreground">
             A carga roda em segundo plano e pode levar minutos — acompanhe pelo cartão de
             sincronização acima.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* O banco e o unico dado que nao volta sozinho. Dai o cartao vir antes do de
+          arquivos: a prioridade nao e obvia e a tela deve deixa-la clara. */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <DatabaseBackup className="h-4 w-4" /> Backup do banco
+          </CardTitle>
+          <p className="text-xs font-normal text-muted-foreground">
+            Todo dia o portal gera um dump, <strong>confere se ele está íntegro</strong> e
+            manda o arquivo <strong>cifrado por e-mail</strong>. O WhatsApp recebe só o
+            resumo com os números — é o que faz alguém perceber quando parar de chegar.
+            O arquivo não vai por WhatsApp porque carrega CPF, salário e telefone de
+            terceiros.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!backup.data?.senha_configurada && (
+            <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+              Falta <code>BACKUP_SENHA</code> no ambiente (mínimo 12 caracteres). Sem ela
+              não há como cifrar — e sem cifrar não mando. <strong>Guarde essa senha fora
+              do servidor</strong>: sem ela o backup é um arquivo inútil.
+            </p>
+          )}
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex items-center gap-3">
+              <Switch
+                id="backup-ativo"
+                checked={Boolean(backup.data?.ativo)}
+                disabled={!backup.data?.senha_configurada || salvarBackup.isPending}
+                onCheckedChange={(v) => salvarBackup.mutate({ ativo: v })}
+              />
+              <Label htmlFor="backup-ativo" className="font-normal">
+                Backup diário
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="backup-hora" className="text-sm font-normal">
+                às
+              </Label>
+              <Input
+                id="backup-hora"
+                type="number"
+                min={0}
+                max={23}
+                className="h-9 w-20"
+                defaultValue={backup.data?.hora ?? 3}
+                onBlur={(e) => {
+                  const h = Number(e.target.value);
+                  if (Number.isInteger(h) && h >= 0 && h <= 23 && h !== backup.data?.hora) {
+                    salvarBackup.mutate({ hora: h });
+                  }
+                }}
+              />
+              <span className="text-sm text-muted-foreground">h</span>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="backup-email" className="text-xs">
+                E-mail que recebe o arquivo
+              </Label>
+              <Input
+                id="backup-email"
+                type="email"
+                placeholder="backup@nescon.com.br"
+                defaultValue={backup.data?.email ?? ""}
+                onBlur={(e) => {
+                  if (e.target.value.trim() !== (backup.data?.email ?? "")) {
+                    salvarBackup.mutate({ email: e.target.value.trim() });
+                  }
+                }}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="backup-wpp" className="text-xs">
+                WhatsApp que recebe o resumo
+              </Label>
+              <Input
+                id="backup-wpp"
+                inputMode="numeric"
+                placeholder="34999998888"
+                defaultValue={backup.data?.whatsapp ?? ""}
+                onBlur={(e) => {
+                  if (e.target.value.trim() !== (backup.data?.whatsapp ?? "")) {
+                    salvarBackup.mutate({ whatsapp: e.target.value.trim() });
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => rodarBackup.mutate()}
+            disabled={!backup.data?.senha_configurada || rodarBackup.isPending}
+          >
+            {rodarBackup.isPending ? "Gerando…" : "Fazer backup agora"}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Rodar agora é também o teste: se funcionar aqui, a rotina diária faz o mesmo.
+            Para abrir o arquivo depois:{" "}
+            <code>node scripts/restaurar-backup.cjs &lt;arquivo&gt;</code>
           </p>
         </CardContent>
       </Card>

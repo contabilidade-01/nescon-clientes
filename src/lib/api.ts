@@ -499,6 +499,27 @@ export interface ClientNotificationPrefs {
   ferias_dispensadas: Array<{ funcionario: string; limite_gozo: string; criado_em: string }>;
 }
 
+export interface BackupConfig {
+  ativo: boolean;
+  hora: number;
+  email: string;
+  whatsapp: string;
+  /** BACKUP_SENHA no ambiente. Sem ela não dá para cifrar, então não dá para ligar. */
+  senha_configurada: boolean;
+  smtp_configurado: boolean;
+}
+
+export interface BackupResult {
+  ok: boolean;
+  erro?: string;
+  problemas?: string[];
+  nome?: string;
+  tamanho?: string;
+  linhas?: Record<string, number | null>;
+  segundos?: number;
+  entregas?: { email: string | null; whatsapp: string | null };
+}
+
 export interface DocUploadCompany {
   id: string;
   name: string;
@@ -1155,6 +1176,11 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ desde }),
       }),
+    /** Backup diário do banco — o único dado que não volta sozinho. */
+    backupConfig: () => request<BackupConfig>("/admin/backup/config"),
+    salvarBackupConfig: (d: Partial<Omit<BackupConfig, "senha_configurada" | "smtp_configurado">>) =>
+      request<BackupConfig>("/admin/backup/config", { method: "PUT", body: JSON.stringify(d) }),
+    executarBackup: () => request<BackupResult>("/admin/backup/executar", { method: "POST" }),
     /** Quantas entregas apontam para PDF que não está mais no disco. */
     integridadeArquivos: () =>
       request<{

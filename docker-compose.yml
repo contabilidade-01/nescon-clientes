@@ -83,6 +83,9 @@ services:
       LOVABLE_API_KEY: ${LOVABLE_API_KEY:-}
       IA_PDF_BASE_URL: ${IA_PDF_BASE_URL:-}
       IA_PDF_MODELO: ${IA_PDF_MODELO:-}
+      # Senha que cifra o backup diário do banco. GUARDE-A FORA DO SERVIDOR: sem ela o
+      # arquivo é inútil, e o dia de precisar dele é o dia em que o servidor sumiu.
+      BACKUP_SENHA: ${BACKUP_SENHA:-}
       # Varredura de arquivos órfãos no volume de uploads.
       UPLOADS_TTL_HORAS: ${UPLOADS_TTL_HORAS:-48}
       UPLOADS_LIMPEZA_INTERVALO_H: ${UPLOADS_LIMPEZA_INTERVALO_H:-12}

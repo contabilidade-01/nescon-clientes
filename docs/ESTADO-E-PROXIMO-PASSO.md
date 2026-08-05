@@ -476,6 +476,32 @@ obrigações, consentimentos LGPD, preferências do cliente, dispensas de féria
 de envio e de falhas — nada disso existe em outro lugar. Perder o banco é perder o
 trabalho; perder os arquivos é perder uma tarde de sincronização.
 
+**Backup diário do banco** (`api/src/backup.js`): `/admin/sincronizacao` → *Backup do
+banco*. Gera o dump, **confere**, cifra e entrega por **dois canais separados**:
+
+- **arquivo por e-mail, cifrado** (AES-256-GCM, chave derivada por scrypt de `BACKUP_SENHA`);
+- **resumo por WhatsApp**, sem dado pessoal nenhum.
+
+A separação é o ponto. O resumo é o que faz alguém **perceber que parou de chegar** —
+cron silencioso falha meses sem ninguém notar — e o WhatsApp é onde o escritório olha
+todo dia. O arquivo carrega CPF, PIS, salário e telefone de terceiros: mandá-lo em claro
+por WhatsApp contradiria o consentimento LGPD que o portal pede na entrada.
+
+**Ele se confere sozinho**, porque backup só descoberto no desastre é fé. Os modos de
+falha reais não são "não sei restaurar" — são dump vazio, truncado, gerado contra o banco
+errado, chave perdida. Nenhum se resolve depois. Cada execução: descompacta o próprio
+arquivo, procura a marca de conclusão e as tabelas obrigatórias, e **conta as linhas**.
+Os números vão na mensagem — se um dia chegar "3 empresas" onde chegavam 61, dá para agir
+antes de precisar.
+
+**`scripts/restaurar-backup.cjs` mora no repositório**, não num comentário do servidor:
+é no dia em que o servidor se perde que alguém precisa dele. Testado de ponta a ponta —
+cifra, decifra, rejeita senha errada, detecta arquivo estranho. (Precisa ser `.cjs`: o
+`package.json` da raiz é ESM.)
+
+**A senha fica fora do servidor.** Sem ela o arquivo é inútil — e o dia de precisar é o
+dia em que o servidor não existe mais.
+
 **Medição de volume** (120 guias e 23 extratos reais): guia mediana **152 KB**, Extrato
 Mensal mediana **195 KB**. Para 60 empresas, um ano fica entre **0,4 e 1,0 GB** conforme
 o número de guias por mês. Retificação **substitui** o arquivo (`removerPdf` em

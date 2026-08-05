@@ -10,6 +10,7 @@ const { importEmployeesForCompany } = require("../employeeImport");
 const { parseExtratoEmployees } = require("../extratoEmployees");
 const { resolveUploadPath, uploadPdf, removeUploadFile } = require("../uploads");
 const arquivosIntegridade = require("../arquivosIntegridade");
+const backupAgendador = require("../backupAgendador");
 const { LGPD_CONSENT_VERSION } = require("../lgpd");
 const sync = require("../gclick/sync");
 const clientSync = require("../gclick/clientSync");
@@ -364,6 +365,47 @@ router.post("/sync-gclick", requireArea("sincronizacao"), async (req, res) => {
   // Não segura a resposta: a carga pode demorar; o painel acompanha pelo /status.
   sync.sincronizar({ meses }).catch((e) => console.error("[admin sync]", e.message));
   res.status(202).json({ message: "Sincronização iniciada." });
+});
+
+/** Backup diário: o que está configurado hoje. */
+router.get("/backup/config", requireArea("sincronizacao"), async (_req, res) => {
+  try {
+    res.json(await backupAgendador.lerConfig(db));
+  } catch (err) {
+    console.error("[admin] backup config:", err.message);
+    res.status(500).json({ error: "Erro ao ler a configuração do backup" });
+  }
+});
+
+router.put("/backup/config", requireArea("sincronizacao"), async (req, res) => {
+  const { ativo, hora, email, whatsapp } = req.body || {};
+  if (ativo !== undefined && typeof ativo !== "boolean") {
+    return res.status(400).json({ error: "ativo deve ser booleano" });
+  }
+  if (email !== undefined && email && !validateEmailFormat(String(email).trim().toLowerCase())) {
+    return res.status(400).json({ error: "E-mail inválido" });
+  }
+  try {
+    const r = await backupAgendador.salvarConfig(db, { ativo, hora, email, whatsapp });
+    if (r.erro) return res.status(400).json({ error: r.erro });
+    res.json(r);
+  } catch (err) {
+    console.error("[admin] backup config:", err.message);
+    res.status(500).json({ error: "Erro ao salvar" });
+  }
+});
+
+/**
+ * Roda o backup AGORA e entrega. É também o teste: se der certo aqui, a rotina diária
+ * fará o mesmo — e o relatório diz exatamente o que foi entregue e o que não foi.
+ */
+router.post("/backup/executar", requireArea("sincronizacao"), async (_req, res) => {
+  try {
+    res.json(await backupAgendador.rodarEEntregar(db));
+  } catch (err) {
+    console.error("[admin] backup:", err.message);
+    res.status(500).json({ error: `Erro ao gerar o backup: ${err.message}` });
+  }
 });
 
 /**

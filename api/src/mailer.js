@@ -64,8 +64,32 @@ async function sendPasswordResetEmail({ to, resetUrl }) {
   });
 }
 
+/**
+ * Envia o backup cifrado como anexo.
+ *
+ * O corpo NÃO leva conteúdo do banco — só os números de conferência. O dado pessoal
+ * está todo dentro do anexo, e o anexo só abre com a senha do backup.
+ */
+async function sendBackupEmail({ to, nome, arquivo, resumo }) {
+  if (!isSmtpConfigured()) throw new Error("SMTP não configurado");
+  const transport = createTransport();
+  await transport.sendMail({
+    from: process.env.SMTP_FROM,
+    to,
+    subject: `Backup do Portal — ${nome}`,
+    text: [
+      resumo,
+      "",
+      "O anexo está criptografado (AES-256-GCM).",
+      "Para restaurar: node scripts/restaurar-backup.cjs <arquivo> (pede a senha).",
+    ].join("\n"),
+    attachments: [{ filename: nome, content: arquivo }],
+  });
+}
+
 module.exports = {
   isSmtpConfigured,
   getPublicAppUrl,
+  sendBackupEmail,
   sendPasswordResetEmail,
 };

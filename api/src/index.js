@@ -87,6 +87,9 @@ async function start() {
     // Varre PDFs que ficaram no volume sem dono (análise abandonada, gravação que
     // falhou). Conservadora: só o que ninguém referencia e já passou do TTL.
     require("./uploadsLimpeza").iniciarLimpezaUploads(db);
+    // Backup diario do banco -- o unico dado que nao volta sozinho. So roda se alguem
+    // ligar na tela; o padrao e desligado.
+    require("./backupAgendador").iniciarAgendadorBackup(db);
     // Primeira carga do espelho de clientes do G-Click. Fora do await: depende de
     // rede e pode demorar; o arranque não espera nem cai se o G-Click estiver fora.
     setTimeout(() => {
