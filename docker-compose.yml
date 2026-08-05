@@ -67,7 +67,26 @@ services:
       UAZAPI_TOKEN: ${UAZAPI_TOKEN:-}
       ALERTAS_ENVIO_ATIVO: ${ALERTAS_ENVIO_ATIVO:-false}
       ALERTAS_HORA: ${ALERTAS_HORA:-8}
+      # PILOTO: só estes CNPJs recebem alerta. VAZIO = CARTEIRA INTEIRA.
+      # Toda variável tem de ser repassada aqui — o contêiner não enxerga o ambiente do
+      # host. Esquecer esta linha faria o piloto configurado no painel não valer nada, e
+      # o alerta sairia para todo mundo sem ninguém perceber.
+      ALERTAS_CNPJ_PERMITIDOS: ${ALERTAS_CNPJ_PERMITIDOS:-}
+      # Anti-bloqueio do número (padrões vindos do sistema de guias).
+      ALERTAS_THROTTLE_S: ${ALERTAS_THROTTLE_S:-0.6}
+      ALERTAS_MAX_POR_HORA: ${ALERTAS_MAX_POR_HORA:-180}
+      ALERTAS_DELAY_MS: ${ALERTAS_DELAY_MS:-1200}
       GCLICK_ALERTA_SO_ATIVOS: ${GCLICK_ALERTA_SO_ATIVOS:-true}
+      # Upload de documentos: CNPJ do próprio escritório (aparece no rodapé das guias
+      # que ele emite; sem isto o documento do cliente é alocado para a contabilidade).
+      ESCRITORIO_CNPJ: ${ESCRITORIO_CNPJ:-}
+      # Fallback de IA na leitura do PDF. Sem chave, a opção nem pode ser ligada na tela.
+      LOVABLE_API_KEY: ${LOVABLE_API_KEY:-}
+      IA_PDF_BASE_URL: ${IA_PDF_BASE_URL:-}
+      IA_PDF_MODELO: ${IA_PDF_MODELO:-}
+      # Varredura de arquivos órfãos no volume de uploads.
+      UPLOADS_TTL_HORAS: ${UPLOADS_TTL_HORAS:-48}
+      UPLOADS_LIMPEZA_INTERVALO_H: ${UPLOADS_LIMPEZA_INTERVALO_H:-12}
       # Recuperação de senha: URL pública do front (HTTPS em produção, sem / no fim)
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}
