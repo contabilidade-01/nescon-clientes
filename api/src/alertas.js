@@ -38,24 +38,6 @@ function whatsappSql(aliasCompany = "c") {
 /** JOIN que acompanha `whatsappSql`. */
 const JOIN_ESPELHO = `LEFT JOIN gclick_clients g ON g.company_id = c.id`;
 
-/**
- * Lista branca de CNPJs durante o piloto.
- *
- * `ALERTAS_CNPJ_PERMITIDOS` vazio = carteira inteira (operação normal). Com um ou mais
- * CNPJs, **só eles** entram na previsão — e é a previsão que alimenta tanto a tela
- * quanto o envio, de propósito: se a restrição valesse só no envio, o painel mostraria
- * sessenta mensagens e sairia uma, e alguém acabaria concluindo que o envio quebrou.
- *
- * Filtro por CNPJ e não por empresa: é o identificador que o escritório reconhece de
- * cabeça, e não muda se o cadastro for recriado.
- */
-function cnpjsPermitidos() {
-  return String(process.env.ALERTAS_CNPJ_PERMITIDOS || "")
-    .split(/[,;\s]+/)
-    .map((c) => c.replace(/\D/g, ""))
-    .filter((c) => c.length === 14);
-}
-
 function portalUrl(caminho = "/") {
   const base = (process.env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
   return base ? `${base}${caminho}` : null;
@@ -300,7 +282,6 @@ async function feriasPorAvisar(db, { hoje = null } = {}) {
 async function previsao(db, { data = null, simular = true } = {}) {
   const hoje = data || hojeSP();
 
-  const permitidos = cnpjsPermitidos();
   const { rows: empresas } = await db.query(
     `SELECT c.id, c.name, c.cnpj, ${whatsappSql("c")} AS whatsapp, c.incentivo_ativo,
             array_remove(array_agg(o.obrigacao) FILTER (WHERE o.ativo IS TRUE), NULL) AS obrigacoes
@@ -450,9 +431,6 @@ async function previsao(db, { data = null, simular = true } = {}) {
   return {
     data: hoje,
     total: saida.length,
-    // A tela precisa dizer em voz alta que está restrita — senão "só 1 mensagem" vira
-    // suspeita de defeito em vez de leitura do piloto.
-    restrito_a: permitidos.length ? permitidos : null,
     mensagens: saida,
   };
 }
@@ -576,7 +554,6 @@ module.exports = {
   guiasRetidas,
   registrarFalha,
   falhasRecentes,
-  cnpjsPermitidos,
   MARCOS_FERIAS_DIAS,
   ehProLabore,
 };

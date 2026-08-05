@@ -80,8 +80,9 @@ async function start() {
     await ensureVacationSchema(db);
     await ensureEngagementSchema(db);
     await ensureAlertasSchema(db);
-    // Alerta de vencimento pelo WhatsApp. Só liga com ALERTAS_ENVIO_ATIVO=true —
-    // ninguém deve começar a mandar mensagem para cliente por acidente de deploy.
+    // Alerta de vencimento pelo WhatsApp. O agendador sobe sempre, mas só dispara se
+    // alguém ligar na tela — ninguém deve começar a mandar mensagem por acidente de
+    // deploy, e ligar não deve custar um.
     require("./alertasEnvio").iniciarAgendadorAlertas(db);
     // Varre PDFs que ficaram no volume sem dono (análise abandonada, gravação que
     // falhou). Conservadora: só o que ninguém referencia e já passou do TTL.

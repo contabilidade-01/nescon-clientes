@@ -25,6 +25,7 @@ const {
 } = require("../alertas");
 const { enviarAlertasDoDia } = require("../alertasEnvio");
 const { statusInstancia } = require("../uazapi");
+const { lerConfig, salvarConfig } = require("../alertasConfig");
 
 /**
  * Rótulo humano da regra de vencimento. Mapa explícito, não cadeia de ternários: com a
@@ -217,6 +218,39 @@ router.get("/retidos", async (req, res) => {
   }
 });
 
+/**
+ * Configuração operacional: envio automático, hora e CNPJ do escritório.
+ * Fica no banco, não no ambiente — mudar isso não deveria custar um redeploy.
+ */
+router.get("/config", async (_req, res) => {
+  try {
+    res.json(await lerConfig(db));
+  } catch (err) {
+    console.error("[alertas] config:", err.message);
+    res.status(500).json({ error: "Erro ao ler a configuração" });
+  }
+});
+
+router.put("/config", async (req, res) => {
+  const { envio_automatico, hora, escritorio_cnpj } = req.body || {};
+  if (envio_automatico !== undefined && typeof envio_automatico !== "boolean") {
+    return res.status(400).json({ error: "envio_automatico deve ser booleano" });
+  }
+  if (hora !== undefined && (!Number.isInteger(hora) || hora < 0 || hora > 23)) {
+    return res.status(400).json({ error: "hora deve ser um inteiro de 0 a 23" });
+  }
+  if (escritorio_cnpj !== undefined && escritorio_cnpj !== null) {
+    const so = String(escritorio_cnpj).replace(/\D/g, "");
+    if (so && so.length !== 14) return res.status(400).json({ error: "CNPJ deve ter 14 dígitos" });
+  }
+  try {
+    res.json(await salvarConfig(db, { envio_automatico, hora, escritorio_cnpj }));
+  } catch (err) {
+    console.error("[alertas] salvar config:", err.message);
+    res.status(500).json({ error: "Erro ao salvar a configuração" });
+  }
+});
+
 /** Por que cada cliente não foi avisado. O escritório vê sem abrir log de contentor. */
 router.get("/falhas", async (req, res) => {
   try {
@@ -245,8 +279,13 @@ router.post("/enviar", async (req, res) => {
   if (data && !/^\d{4}-\d{2}-\d{2}$/.test(data)) {
     return res.status(400).json({ error: "data deve ser YYYY-MM-DD" });
   }
+  // Seleção da tela. Lista vazia ou ausente = todos os da previsão.
+  const companyIds = Array.isArray(req.body?.company_ids) ? req.body.company_ids : null;
+  if (companyIds && companyIds.some((id) => !validateUUID(id))) {
+    return res.status(400).json({ error: "company_ids contém id inválido" });
+  }
   try {
-    const r = await enviarAlertasDoDia(db, { data, apenasSimular: simular });
+    const r = await enviarAlertasDoDia(db, { data, apenasSimular: simular, companyIds });
     res.json({ simulado: simular, ...r });
   } catch (err) {
     console.error("[alertas] enviar:", err.message);

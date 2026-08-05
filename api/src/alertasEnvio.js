@@ -34,6 +34,7 @@ const numeroWpp = require("./whatsappNumero");
 const { previsao, registrarEnvio, registrarFalha } = require("./alertas");
 const { trechoDeIncentivo } = require("./engagement");
 const { hojeSP } = require("./diasBancarios");
+const { lerConfig } = require("./alertasConfig");
 
 function num(valor, padrao) {
   const n = Number(valor);
@@ -43,8 +44,6 @@ function num(valor, padrao) {
 const THROTTLE_S = num(process.env.ALERTAS_THROTTLE_S, 0.6);
 const MAX_POR_HORA = Math.max(1, num(process.env.ALERTAS_MAX_POR_HORA, 180));
 const DELAY_DIGITANDO_MS = Math.max(0, num(process.env.ALERTAS_DELAY_MS, 1200));
-/** Hora local (São Paulo) em que a rotina diária dispara. */
-const HORA_ENVIO = Math.min(23, Math.max(0, num(process.env.ALERTAS_HORA, 8)));
 
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -69,8 +68,12 @@ function portalUrl(caminho = "/") {
  *
  * `apenasSimular` monta tudo e não manda nada: é o botão de conferência do painel.
  */
-async function enviarAlertasDoDia(db, { data = null, apenasSimular = false } = {}) {
+async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, companyIds = null } = {}) {
   const dia = data || hojeSP();
+  // Seleção da tela. É o que substituiu a antiga lista branca por variável de ambiente:
+  // escolher quem recebe é operação, não configuração — e um piloto passa a ser "marcar
+  // um cliente e enviar", sem redeploy e sem risco de a restrição não chegar ao contentor.
+  const selecionadas = Array.isArray(companyIds) && companyIds.length ? new Set(companyIds) : null;
 
   if (!apenasSimular && !uazapi.configurado()) {
     return {
@@ -85,9 +88,8 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false } = {
 
   // `simular: true` sempre: o texto é montado sem consumir o rodízio de mensagens de
   // incentivo. O consumo só acontece depois que a mensagem realmente sai.
-  // A lista branca do piloto já é aplicada aqui dentro: previsão e envio enxergam
-  // exatamente as mesmas empresas.
-  const { mensagens, restrito_a } = await previsao(db, { data: dia, simular: true });
+  const { mensagens: todas } = await previsao(db, { data: dia, simular: true });
+  const mensagens = selecionadas ? todas.filter((m) => selecionadas.has(m.company_id)) : todas;
 
   const meuNumero = apenasSimular ? null : await uazapi.owner();
   const resultados = [];
@@ -181,7 +183,14 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false } = {
     if (THROTTLE_S > 0) await espera(THROTTLE_S * 1000);
   }
 
-  return { dia, enviados, falhas, ignorados, restrito_a, resultados };
+  return {
+    dia,
+    enviados,
+    falhas,
+    ignorados,
+    selecionados: selecionadas ? selecionadas.size : null,
+    resultados,
+  };
 }
 
 /**
@@ -222,22 +231,23 @@ let ultimoDiaExecutado = null;
  * a marca em memória e o índice único no banco cuidam disso.
  */
 function iniciarAgendadorAlertas(db) {
-  if (process.env.ALERTAS_ENVIO_ATIVO !== "true") {
-    console.log("[alertas] envio automático desligado (ALERTAS_ENVIO_ATIVO != true).");
-    return;
-  }
-  console.log(`[alertas] envio automático ligado, às ${HORA_ENVIO}h (America/Sao_Paulo).`);
+  console.log("[alertas] agendador de pé; ligar/desligar é na tela (Alertas → Configuração).");
 
   const tique = async () => {
     try {
+      // A configuração é lida A CADA CICLO, não no arranque: ligar o envio na tela passa
+      // a valer no próximo quarto de hora, sem redeploy. Era esse o custo de guardar a
+      // decisão numa variável de ambiente.
+      const cfg = await lerConfig(db);
+      if (!cfg.envio_automatico) return;
+
       const dia = hojeSP();
       if (ultimoDiaExecutado === dia) return;
-      if (horaSP() < HORA_ENVIO) return;
+      if (horaSP() < cfg.hora) return;
       ultimoDiaExecutado = dia;
       const r = await enviarAlertasDoDia(db, { data: dia });
-      const restrito = r.restrito_a?.length ? ` [PILOTO: só ${r.restrito_a.join(", ")}]` : "";
       console.log(
-        `[alertas] ${dia}: ${r.enviados} enviado(s), ${r.falhas} falha(s), ${r.ignorados} ignorado(s).${restrito}`
+        `[alertas] ${dia}: ${r.enviados} enviado(s), ${r.falhas} falha(s), ${r.ignorados} ignorado(s).`
       );
     } catch (err) {
       console.error("[alertas] ciclo diário:", err.message);

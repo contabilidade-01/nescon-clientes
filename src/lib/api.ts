@@ -476,8 +476,6 @@ export interface AlertCompanyDetail {
 export interface AlertPreview {
   data: string;
   total: number;
-  /** CNPJs do piloto. `null` = carteira inteira. */
-  restrito_a: string[] | null;
   mensagens: Array<{
     company_id: string;
     empresa: string;
@@ -554,6 +552,13 @@ export interface AlertHeldGuides {
   }>;
 }
 
+/** Configuração operacional — no banco, não no ambiente. */
+export interface AlertOpConfig {
+  envio_automatico: boolean;
+  hora: number;
+  escritorio_cnpj: string;
+}
+
 export interface AlertWhatsappStatus {
   ok: boolean;
   categoria: "ok" | "nao_configurado" | "token_invalido" | "desconectado" | "rede";
@@ -567,7 +572,7 @@ export interface AlertSendResult {
   enviados: number;
   falhas: number;
   ignorados: number;
-  restrito_a?: string[] | null;
+  selecionados?: number | null;
   erro?: string;
   resultados: Array<{
     empresa?: string;
@@ -817,11 +822,18 @@ export const api = {
     /** Estado da instância de WhatsApp (uazapi). Nunca lança por instância caída. */
     whatsapp: () => request<AlertWhatsappStatus>("/alertas/whatsapp"),
     /** `simular: true` (padrão no servidor) ensaia sem mandar nada. */
-    enviar: (opts?: { simular?: boolean; data?: string }) =>
+    enviar: (opts?: { simular?: boolean; data?: string; companyIds?: string[] }) =>
       request<AlertSendResult>("/alertas/enviar", {
         method: "POST",
-        body: JSON.stringify({ simular: opts?.simular ?? true, data: opts?.data }),
+        body: JSON.stringify({
+          simular: opts?.simular ?? true,
+          data: opts?.data,
+          company_ids: opts?.companyIds,
+        }),
       }),
+    config: () => request<AlertOpConfig>("/alertas/config"),
+    salvarConfig: (data: Partial<AlertOpConfig>) =>
+      request<AlertOpConfig>("/alertas/config", { method: "PUT", body: JSON.stringify(data) }),
     registrarEnvio: (data: {
       company_id: string;
       obrigacoes: string[];

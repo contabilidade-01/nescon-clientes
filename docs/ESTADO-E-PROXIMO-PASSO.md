@@ -383,16 +383,24 @@ documento e **não envia** (`app/routes/envio.py`, no lote e no reenvio, registr
 `nao_avisado` na auditoria). Os dois lados precisam subir juntos: só o portal, e a vontade
 do cliente fica registrada sem ser obedecida.
 
-**Piloto: `ALERTAS_CNPJ_PERMITIDOS`.** Vazio = carteira inteira. Com CNPJs, só eles
-entram — e a restrição vale na **previsão**, não só no envio, para a tela mostrar
-exatamente o que sairia. Se valesse só no envio, o painel exibiria sessenta mensagens,
-sairia uma, e alguém concluiria que o envio quebrou. A aba *O que sai hoje* exibe um
-cartão dizendo que o piloto está ativo e quais CNPJs.
+**Quem recebe é escolha da tela, não do ambiente.** A previsão tem **seleção por
+empresa**: marcar um cliente e enviar é o que faz um piloto. A versão anterior usava uma
+lista branca por CNPJ em variável de ambiente — e ela existia só porque a tela não
+deixava escolher. Configuração cobrindo buraco de interface é dívida: cobrava redeploy
+por decisão e tinha um modo de falha silencioso, porque variável não repassada pelo
+compose ao contentor simplesmente não chega, e a restrição "configurada" não valia nada.
+
+**Ligar o envio, a hora e o CNPJ do escritório também saíram do ambiente** para
+`app_settings` (mesma tabela da chave `ai_parsing`), com cartão de configuração na aba
+*O que sai hoje*. O agendador relê a cada ciclo de 15 minutos: ligar passa a valer sem
+redeploy. O padrão continua sendo **não enviar**.
+
+Sobrou no ambiente só o que o app precisa saber antes de existir: credenciais da uazapi,
+`PUBLIC_APP_URL` e os limites anti-bloqueio.
 
 > **Cuidado no piloto com o CNPJ da própria Nescon:** o destino **não pode** ser o mesmo
 > número conectado na instância uazapi. Mandar para si mesmo falha em silêncio (a API
-> responde sucesso e nada chega), e a trava anti-autoenvio barra antes disso. Use um
-> celular diferente do número da instância.
+> responde sucesso e nada chega), e a trava anti-autoenvio barra antes disso.
 
 **Telefone unificado.** O número passou a sair de `COALESCE(companies.whatsapp,
 gclick_clients.phone)`: o cadastro vive no G-Click e `companies.whatsapp` é só a exceção

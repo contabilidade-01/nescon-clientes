@@ -19,6 +19,7 @@ const { validateUUID, validateString } = require("../middleware/validate");
 const { uploadPdf, resolveUploadPath, removeUploadFile } = require("../uploads");
 const { extrairCnpjs, onlyDigits } = require("../pdfCnpj");
 const pdfIa = require("../pdfIa");
+const { cnpjDoEscritorio } = require("../alertasConfig");
 
 function adminOnly(req, res, next) {
   if (!req.isAdmin) return res.status(403).json({ error: "Acesso restrito a administradores" });
@@ -32,22 +33,17 @@ router.use(adminOnly);
 router.use(requireArea("entregas"));
 
 /**
- * O CNPJ do próprio escritório aparece no rodapé de quase toda guia que ele emite.
- * Sem excluir, um documento do cliente seria alocado para a contabilidade.
- */
-function cnpjDoEscritorio() {
-  return onlyDigits(process.env.ESCRITORIO_CNPJ || "");
-}
-
-/**
  * Empresa sugerida a partir dos CNPJs achados, **respeitando a ordem de aparição**.
  *
  * `= ANY($1)` não preserva ordem: com dois CNPJs no documento, o Postgres devolveria
  * um qualquer. Aqui a consulta traz todos os candidatos e a escolha é feita em JS, na
  * ordem em que apareceram no PDF — que é a ordem em que o documento fala deles.
  */
+// O CNPJ do próprio escritório aparece no rodapé de quase toda guia que ele emite.
+// Sem excluir, um documento do cliente seria alocado para a contabilidade. Vem da tela
+// de configuração (app_settings), com o ambiente como plano B.
 async function empresaSugerida(cnpjs) {
-  const doEscritorio = cnpjDoEscritorio();
+  const doEscritorio = await cnpjDoEscritorio(db);
   const candidatos = cnpjs.filter((c) => c !== doEscritorio);
   if (!candidatos.length) return { empresa: null, candidatas: [] };
 

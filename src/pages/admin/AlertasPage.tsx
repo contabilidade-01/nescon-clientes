@@ -324,6 +324,21 @@ const AlertasPage = () => {
     queryFn: () => api.alertas.whatsapp(),
   });
 
+  const config = useQuery({
+    queryKey: ["alertas", "config"],
+    queryFn: () => api.alertas.config(),
+  });
+
+  const salvarConfig = useMutation({
+    mutationFn: (v: Partial<{ envio_automatico: boolean; hora: number; escritorio_cnpj: string }>) =>
+      api.alertas.salvarConfig(v),
+    onSuccess: () => {
+      toast.success("Configuração salva.");
+      queryClient.invalidateQueries({ queryKey: ["alertas", "config"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const retidos = useQuery({
     queryKey: ["alertas", "retidos"],
     queryFn: () => api.alertas.retidos(7),
@@ -331,10 +346,16 @@ const AlertasPage = () => {
 
   const [soSemWhatsapp, setSoSemWhatsapp] = useState(false);
   const [confirmarEnvio, setConfirmarEnvio] = useState(false);
+  // Quem recebe é escolha da tela, não de variável de ambiente. Vazio = todos da previsão.
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [resultado, setResultado] = useState<AlertSendResult | null>(null);
 
   const enviar = useMutation({
-    mutationFn: (v: { simular: boolean }) => api.alertas.enviar({ simular: v.simular }),
+    mutationFn: (v: { simular: boolean }) =>
+      api.alertas.enviar({
+        simular: v.simular,
+        companyIds: selecionadas.size ? [...selecionadas] : undefined,
+      }),
     onSuccess: (r) => {
       setResultado(r);
       if (r.erro) toast.error(r.erro);
@@ -524,24 +545,67 @@ const AlertasPage = () => {
         </TabsContent>
 
         <TabsContent value="hoje" className="space-y-4">
-          {/* Piloto: a tela precisa gritar que está restrita, senão "1 mensagem" vira
-              suspeita de defeito em vez de leitura do teste. */}
-          {previsao.data?.restrito_a?.length ? (
-            <Card className="border-primary/50 bg-primary/5">
-              <CardContent className="p-4">
-                <p className="text-sm font-medium">
-                  Piloto ativo — só {previsao.data.restrito_a.length} CNPJ recebe alerta
-                </p>
-                <p className="mt-1 font-mono text-xs text-muted-foreground">
-                  {previsao.data.restrito_a.join(" · ")}
-                </p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  O resto da carteira está fora da previsão e do envio. Para liberar todos,
-                  esvazie <code>ALERTAS_CNPJ_PERMITIDOS</code> no ambiente e reinicie.
-                </p>
-              </CardContent>
-            </Card>
-          ) : null}
+          {/* Configuração operacional na TELA. Antes era variável de ambiente, o que
+              cobrava um redeploy por decisão e ainda tinha um modo de falha silencioso:
+              variável não repassada pelo compose simplesmente não chegava. */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Configuração</CardTitle>
+              <CardDescription>
+                Vale na hora — o agendador relê a cada 15 minutos, sem redeploy.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-center gap-6">
+              <div className="flex items-center gap-3">
+                <Switch
+                  id="envio-automatico"
+                  checked={Boolean(config.data?.envio_automatico)}
+                  disabled={salvarConfig.isPending}
+                  onCheckedChange={(v) => salvarConfig.mutate({ envio_automatico: v })}
+                />
+                <Label htmlFor="envio-automatico" className="font-normal">
+                  Envio automático diário
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="hora-envio" className="font-normal text-sm">
+                  às
+                </Label>
+                <Input
+                  id="hora-envio"
+                  type="number"
+                  min={0}
+                  max={23}
+                  className="h-9 w-20"
+                  defaultValue={config.data?.hora ?? 8}
+                  onBlur={(e) => {
+                    const h = Number(e.target.value);
+                    if (Number.isInteger(h) && h >= 0 && h <= 23 && h !== config.data?.hora) {
+                      salvarConfig.mutate({ hora: h });
+                    }
+                  }}
+                />
+                <span className="text-sm text-muted-foreground">h (São Paulo)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="escritorio-cnpj" className="font-normal text-sm">
+                  CNPJ do escritório
+                </Label>
+                <Input
+                  id="escritorio-cnpj"
+                  className="h-9 w-48"
+                  placeholder="só dígitos"
+                  defaultValue={config.data?.escritorio_cnpj ?? ""}
+                  onBlur={(e) => {
+                    const v = e.target.value.replace(/\D/g, "");
+                    if (v !== (config.data?.escritorio_cnpj ?? "")) {
+                      salvarConfig.mutate({ escritorio_cnpj: v });
+                    }
+                  }}
+                />
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Antes de qualquer coisa: o que vai ser cobrado e ainda não está no ar.
               Liberar aqui evita o cliente receber o aviso e achar o portal vazio. */}
@@ -613,8 +677,13 @@ const AlertasPage = () => {
                   title={motivoEnvioTravado ?? "Enviar os alertas de hoje"}
                 >
                   <Send className="mr-2 h-4 w-4" />
-                  Enviar agora
+                  {selecionadas.size ? `Enviar aos ${selecionadas.size} marcados` : "Enviar a todos"}
                 </Button>
+                {selecionadas.size > 0 && (
+                  <Button variant="ghost" size="sm" onClick={() => setSelecionadas(new Set())}>
+                    Limpar seleção
+                  </Button>
+                )}
               </div>
               {motivoEnvioTravado && (
                 <p className="w-full text-xs text-muted-foreground">{motivoEnvioTravado}</p>
@@ -676,7 +745,22 @@ const AlertasPage = () => {
                 previsao.data?.mensagens.map((m) => (
                   <div key={m.company_id} className="rounded-md border p-3">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-medium">{m.empresa}</span>
+                      <label className="flex min-w-0 items-center gap-2">
+                        {/* Escolher quem recebe é operação: um piloto é marcar um
+                            cliente e enviar, sem configurar nada no ambiente. */}
+                        <Checkbox
+                          checked={selecionadas.has(m.company_id)}
+                          onCheckedChange={(v) =>
+                            setSelecionadas((prev) => {
+                              const p = new Set(prev);
+                              if (v) p.add(m.company_id);
+                              else p.delete(m.company_id);
+                              return p;
+                            })
+                          }
+                        />
+                        <span className="truncate font-medium">{m.empresa}</span>
+                      </label>
                       <span className="flex items-center gap-2">
                         {!m.whatsapp && <Badge variant="outline">sem WhatsApp</Badge>}
                         <Badge variant="secondary">vence {formatarData(m.vencimento)}</Badge>
