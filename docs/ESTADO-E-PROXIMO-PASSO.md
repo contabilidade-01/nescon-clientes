@@ -436,6 +436,19 @@ neutro "histórico", mostra *"Venceu em … · documento de arquivo"* e **perde 
 **O mês corrente fica de fora** da carga: guia deste mês pode estar realmente a vencer, e
 marcá-la como histórico esconderia uma cobrança de verdade.
 
+**Escolha do que trazer.** A carga aceita filtro por tipo, com três atalhos na tela:
+*Só folha*, *Só guias* e *Tudo* (nada marcado = tudo). O caso que motivou isto é o
+**Extrato da Folha**: ele alimenta os indicadores (`extratoAuto` lê funcionários, código
+e salário; as fases K1–K5 do próximo passo dependem dele), e trazer um ano só dele custa
+uma fração de arrastar todas as guias do mesmo período.
+
+Trazer extrato antigo é **seguro para o cadastro**: `extratoAuto.ultimoExtrato` ordena
+por `competencia DESC`, então a leitura continua usando o mês mais recente — carga de
+janeiro não rebaixa salário para valor velho. Conferido antes de liberar a opção.
+
+O filtro vale também na regularização das linhas que já estavam no banco: pedir só a
+folha não libera as guias de tabela.
+
 **Três barreiras para a carga não virar alerta** (a data, sozinha, não bastava):
 
 1. A previsão exclui `historico IS NOT TRUE` das guias. **Filtrar só por data seria

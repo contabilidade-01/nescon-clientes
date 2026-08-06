@@ -24,6 +24,7 @@ const {
 } = require("../vacationImport");
 const { setSetting } = require("../appSettings");
 const gclickClient = require("../gclick/client");
+const { TIPOS: TIPOS_GCLICK } = require("../gclick/guides");
 const fs = require("fs");
 
 function adminOnly(req, res, next) {
@@ -367,6 +368,18 @@ router.post("/sync-gclick", requireArea("sincronizacao"), async (req, res) => {
   res.status(202).json({ message: "Sincronização iniciada." });
 });
 
+/** Os tipos de documento que o G-Click entrega — para a tela montar a escolha. */
+router.get("/sync-gclick/tipos", requireArea("sincronizacao"), (_req, res) => {
+  res.json(
+    TIPOS_GCLICK.map((t) => ({
+      codigo: t.codigo,
+      nome: t.nome,
+      // Folha não tem vencimento: é documento de consulta, e é o que alimenta os KPIs.
+      categoria: t.temVencimento ? "guia" : "folha",
+    }))
+  );
+});
+
 /** Backup diário: o que está configurado hoje. */
 router.get("/backup/config", requireArea("sincronizacao"), async (_req, res) => {
   try {
@@ -460,6 +473,17 @@ router.post("/sync-gclick/historico", requireArea("sincronizacao"), async (req, 
     return res.status(409).json({ error: "Já existe uma sincronização em andamento." });
   }
 
+  // Tipos de documento a trazer. Vazio = tudo. O caso que motivou isto: puxar só o
+  // Extrato da Folha do ano inteiro, que é o que alimenta os indicadores, sem arrastar
+  // dez vezes o volume em guias que ninguém vai reler.
+  const tipos = Array.isArray(req.body?.tipos) ? req.body.tipos.map(String) : null;
+  if (tipos) {
+    const validos = new Set(TIPOS_GCLICK.map((t) => t.codigo));
+    const desconhecido = tipos.find((t) => !validos.has(t));
+    if (desconhecido) return res.status(400).json({ error: `Tipo desconhecido: ${desconhecido}` });
+    if (!tipos.length) return res.status(400).json({ error: "Escolha ao menos um tipo." });
+  }
+
   const desde = String(req.body?.desde || "");
   if (!/^\d{4}-\d{2}$/.test(desde)) {
     return res.status(400).json({ error: "Informe `desde` no formato AAAA-MM (ex.: 2026-01)." });
@@ -491,9 +515,9 @@ router.post("/sync-gclick/historico", requireArea("sincronizacao"), async (req, 
   }
 
   sync
-    .sincronizar({ competencias, historico: true })
+    .sincronizar({ competencias, historico: true, tipos })
     .catch((e) => console.error("[admin sync histórico]", e.message));
-  res.status(202).json({ message: "Carga histórica iniciada.", competencias });
+  res.status(202).json({ message: "Carga histórica iniciada.", competencias, tipos });
 });
 
 /**

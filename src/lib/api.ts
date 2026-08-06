@@ -1171,11 +1171,16 @@ export const api = {
      * Os documentos entram liberados e marcados como histórico — arquivo para o cliente,
      * não cobrança. O mês corrente fica de fora.
      */
-    runSyncHistorico: (desde: string) =>
-      request<{ message: string; competencias: string[] }>("/admin/sync-gclick/historico", {
-        method: "POST",
-        body: JSON.stringify({ desde }),
-      }),
+    runSyncHistorico: (desde: string, tipos?: string[]) =>
+      request<{ message: string; competencias: string[]; tipos: string[] | null }>(
+        "/admin/sync-gclick/historico",
+        { method: "POST", body: JSON.stringify({ desde, tipos }) }
+      ),
+    /** Tipos que o G-Click entrega, para a tela montar a escolha. */
+    tiposGclick: () =>
+      request<Array<{ codigo: string; nome: string; categoria: "guia" | "folha" }>>(
+        "/admin/sync-gclick/tipos"
+      ),
     /** Backup diário do banco — o único dado que não volta sozinho. */
     backupConfig: () => request<BackupConfig>("/admin/backup/config"),
     salvarBackupConfig: (d: Partial<Omit<BackupConfig, "senha_configurada" | "smtp_configurado">>) =>

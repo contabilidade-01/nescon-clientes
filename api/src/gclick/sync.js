@@ -187,14 +187,16 @@ async function gravarGuia(guia, companyId, { historico = false } = {}) {
  * cobrança de verdade e continua como está — esconder isso poderia apagar uma dívida
  * real da vista do cliente.
  */
-async function regularizarHistorico(competencias) {
+async function regularizarHistorico(competencias, tipos = null) {
+  // Respeita o filtro de tipo: pedir só a folha não pode liberar as guias de tabela.
   const { rowCount } = await db.query(
     `UPDATE deliverables
         SET historico = true, released_at = now()
       WHERE competencia = ANY($1)
         AND released_at IS NULL
-        AND source = 'gclick'`,
-    [competencias]
+        AND source = 'gclick'
+        AND ($2::text[] IS NULL OR doc_type = ANY($2::text[]))`,
+    [competencias, tipos && tipos.length ? tipos : null]
   );
   if (rowCount) console.log(`[sync] histórico: ${rowCount} documento(s) já existentes regularizados.`);
   return rowCount;
@@ -205,7 +207,7 @@ async function regularizarHistorico(competencias) {
  * `cnpj` limita a uma empresa — usado na liberação, para trazer o dado fresco antes
  * de publicar sem varrer a base toda.
  */
-async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = null, historico = false } = {}) {
+async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = null, historico = false, tipos = null } = {}) {
   if (!client.isConfigured()) {
     return { ok: false, erro: "G-Click não configurado (GCLICK_CLIENT_ID/SECRET)" };
   }
@@ -256,7 +258,20 @@ async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = n
           return [];
         }
       });
-      const guias = listas.flat().filter((g) => g.cnpj && g.arquivoUrl);
+      let guias = listas.flat().filter((g) => g.cnpj && g.arquivoUrl);
+
+      // Filtro por TIPO de documento. Existe para a carga poder ser cirúrgica: trazer só
+      // o Extrato da Folha de um ano inteiro é barato e alimenta os indicadores, enquanto
+      // trazer todas as guias do mesmo período seria dez vezes o volume para nada.
+      // O que não casa com nenhum tipo conhecido fica de fora quando há filtro — na
+      // dúvida, não baixar é mais barato que baixar errado.
+      if (tipos && tipos.length) {
+        const querido = new Set(tipos);
+        guias = guias.filter((g) => {
+          const cls = classificar(g.arquivoNome, g.atividadeNome, g.obrigacaoNome);
+          return cls && querido.has(cls.codigo);
+        });
+      }
       if (!guias.length) continue;
 
       const { mapa, criadas } = await mapaEmpresas(new Set(guias.map((g) => g.cnpj)));
@@ -288,7 +303,7 @@ async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = n
 
     // Na carga histórica, regulariza também o que já estava no banco daquelas
     // competências — senão metade do período pedido ficaria de fora da marcação.
-    if (historico) total.regularizados = await regularizarHistorico(comps);
+    if (historico) total.regularizados = await regularizarHistorico(comps, tipos);
 
     // Extratos novos entram sozinhos: cadastra/atualiza funcionários (código e
     // salário) e transforma saídas em aviso. Só na carga completa.

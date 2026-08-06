@@ -4,7 +4,9 @@ import { toast } from "sonner";
 import { DatabaseBackup, HardDrive, History, Mail, UserPlus } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { AdminSyncCard } from "@/components/AdminSyncCard";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,8 +57,18 @@ const SincronizacaoPage = () => {
   // Padrão: janeiro do ano corrente — que é o pedido típico ("desde janeiro").
   const [desde, setDesde] = useState(`${new Date().getFullYear()}-01`);
 
+  const tipos = useQuery({
+    queryKey: ["gclick-tipos"],
+    queryFn: () => api.admin.tiposGclick(),
+  });
+
+  // Vazio = tudo. O atalho "Só folha" existe porque é o caso real: o Extrato Mensal
+  // alimenta os indicadores, e trazer um ano dele custa uma fração de trazer as guias.
+  const [tiposEscolhidos, setTiposEscolhidos] = useState<Set<string>>(new Set());
+
   const cargaHistorica = useMutation({
-    mutationFn: () => api.admin.runSyncHistorico(desde),
+    mutationFn: () =>
+      api.admin.runSyncHistorico(desde, tiposEscolhidos.size ? [...tiposEscolhidos] : undefined),
     onSuccess: (r) => {
       toast.success(`Carga iniciada: ${r.competencias.length} competência(s).`);
     },
@@ -135,7 +147,86 @@ const SincronizacaoPage = () => {
             realmente a vencer.
           </p>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-3">
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Label className="text-xs">O que trazer</Label>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() =>
+                  setTiposEscolhidos(
+                    new Set(
+                      (tipos.data ?? [])
+                        .filter((t) => t.categoria === "folha")
+                        .map((t) => t.codigo)
+                    )
+                  )
+                }
+              >
+                Só folha (alimenta os indicadores)
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() =>
+                  setTiposEscolhidos(
+                    new Set((tipos.data ?? []).filter((t) => t.categoria === "guia").map((t) => t.codigo))
+                  )
+                }
+              >
+                Só guias
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setTiposEscolhidos(new Set())}
+              >
+                Tudo
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-3 rounded-md border p-3">
+              {(tipos.data ?? []).map((t) => (
+                <label key={t.codigo} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={tiposEscolhidos.size === 0 || tiposEscolhidos.has(t.codigo)}
+                    onCheckedChange={(v) =>
+                      setTiposEscolhidos((prev) => {
+                        // Nada marcado significa "tudo"; o primeiro clique parte de tudo
+                        // marcado para o usuário desmarcar o que não quer.
+                        const base =
+                          prev.size === 0
+                            ? new Set((tipos.data ?? []).map((x) => x.codigo))
+                            : new Set(prev);
+                        if (v) base.add(t.codigo);
+                        else base.delete(t.codigo);
+                        return base;
+                      })
+                    }
+                  />
+                  <span>{t.nome}</span>
+                  {t.categoria === "folha" && (
+                    <Badge variant="outline" className="text-[10px]">
+                      folha
+                    </Badge>
+                  )}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {tiposEscolhidos.size === 0
+                ? "Nada marcado = traz tudo."
+                : `${tiposEscolhidos.size} tipo(s) selecionado(s).`}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
             <Label htmlFor="hist-desde" className="text-xs">
               A partir da competência
@@ -159,6 +250,7 @@ const SincronizacaoPage = () => {
             A carga roda em segundo plano e pode levar minutos — acompanhe pelo cartão de
             sincronização acima.
           </p>
+          </div>
         </CardContent>
       </Card>
 
