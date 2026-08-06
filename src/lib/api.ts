@@ -499,6 +499,36 @@ export interface ClientNotificationPrefs {
   ferias_dispensadas: Array<{ funcionario: string; limite_gozo: string; criado_em: string }>;
 }
 
+/** Uma competência no painel de folha. Valores vêm do Postgres como string. */
+export interface FolhaSerieItem {
+  competencia: string;
+  folha_bruta: string | null;
+  inss: string | null;
+  fgts: string | null;
+  afastamento_valor: string | null;
+  afastamento_dias: string | null;
+  faltas_dias: string | null;
+  empregados: number | null;
+  admitidos: number | null;
+  demitidos: number | null;
+  empresas: number;
+  nao_conferidos: number;
+  turnover: number | null;
+}
+
+export interface DecimoTerceiro {
+  ano: number;
+  funcionarios: number;
+  /** Quantos ficaram de fora por não ter salário na folha mais recente. */
+  sem_salario: number;
+  bruto: number;
+  primeira_parcela: number;
+  segunda_parcela: number;
+  inss_empregado: number;
+  fgts: number;
+  custo_total: number;
+}
+
 export interface BackupConfig {
   ativo: boolean;
   hora: number;
@@ -1180,6 +1210,27 @@ export const api = {
     tiposGclick: () =>
       request<Array<{ codigo: string; nome: string; categoria: "guia" | "folha" }>>(
         "/admin/sync-gclick/tipos"
+      ),
+    /** Painel gerencial de folha: uma linha por competência. */
+    folhaSerie: (opts?: { companyId?: string; de?: string; ate?: string }) => {
+      const p = new URLSearchParams();
+      if (opts?.companyId) p.set("company_id", opts.companyId);
+      if (opts?.de) p.set("de", opts.de);
+      if (opts?.ate) p.set("ate", opts.ate);
+      const q = p.toString();
+      return request<FolhaSerieItem[]>(`/admin/folha/serie${q ? `?${q}` : ""}`);
+    },
+    folhaDecimoTerceiro: (opts?: { companyId?: string; ano?: number }) => {
+      const p = new URLSearchParams();
+      if (opts?.companyId) p.set("company_id", opts.companyId);
+      if (opts?.ano) p.set("ano", String(opts.ano));
+      const q = p.toString();
+      return request<DecimoTerceiro>(`/admin/folha/decimo-terceiro${q ? `?${q}` : ""}`);
+    },
+    folhaReprocessar: (desde?: string) =>
+      request<{ extratos: number; gravados: number; com_problema: number }>(
+        "/admin/folha/reprocessar",
+        { method: "POST", body: JSON.stringify({ desde }) }
       ),
     /** Backup diário do banco — o único dado que não volta sozinho. */
     backupConfig: () => request<BackupConfig>("/admin/backup/config"),

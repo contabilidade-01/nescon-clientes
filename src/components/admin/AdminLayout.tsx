@@ -5,6 +5,7 @@ import {
   BellRing,
   Building2,
   CalendarCheck,
+  CircleDollarSign,
   UserCog,
   UserPlus,
   FileCheck2,
@@ -75,6 +76,7 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
         badgePendencias: true,
       },
       { to: "/admin/funcionarios", label: "Funcionários", icon: Users, area: "funcionarios" },
+      { to: "/admin/folha", label: "Painel de folha", icon: CircleDollarSign, area: "funcionarios" },
     ],
   },
   {

@@ -19,6 +19,7 @@ const { ensureExtratoAutoSchema } = require("./ensureExtratoAutoSchema");
 const { ensureVacationSchema } = require("./ensureVacationSchema");
 const { ensureEngagementSchema } = require("./ensureEngagementSchema");
 const { ensureAlertasSchema } = require("./ensureAlertasSchema");
+const { ensurePayrollHistorySchema } = require("./ensurePayrollHistorySchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -80,6 +81,7 @@ async function start() {
     await ensureVacationSchema(db);
     await ensureEngagementSchema(db);
     await ensureAlertasSchema(db);
+    await ensurePayrollHistorySchema(db);
     // Alerta de vencimento pelo WhatsApp. O agendador sobe sempre, mas só dispara se
     // alguém ligar na tela — ninguém deve começar a mandar mensagem por acidente de
     // deploy, e ligar não deve custar um.

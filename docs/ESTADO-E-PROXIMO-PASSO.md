@@ -522,6 +522,66 @@ o número de guias por mês. Retificação **substitui** o arquivo (`removerPdf`
 
 ---
 
+## 4g. Painel de folha (K1 + K2 + K3 feitos)
+
+`/admin/folha`. O que era o "próximo passo" da seção 4 saiu — parser, tabela e tela.
+
+**Mostra o essencial, e o essencial é custo:** folha bruta, INSS, FGTS, custo de atestado
+dos 15 dias, turnover, faltas e a projeção do 13º. **Descontos e líquido ficaram de fora
+por decisão** — são repasse ao funcionário, não custo do empregador, e num painel
+gerencial só competiriam por atenção com o que decide alguma coisa.
+
+### O extrato é diagramado em duas colunas, e isso mordeu três vezes
+
+O `pdf-parse` achata o leiaute. Os três erros abaixo apareceram contra o PDF real do
+Queijeiro (junho/2026) e estão fixados em `api/src/extratoFinanceiro.js`:
+
+1. **Rodapé com valores invertidos.** `No. Empregados: Demitido: 1 13` significa
+   Demitido=1, Empregados=13. Ler na ordem escrita **trocaria admissões por demissões** e
+   o turnover sairia espelhado — errado sem parecer errado.
+2. **Rubrica de provento.** O valor vem depois do marcador `P`; pegar os dois últimos
+   números da linha devolve a coluna de descontos. Produziu "607 dias de afastamento",
+   absurdo o bastante para se denunciar.
+3. **Rubrica de desconto tem outro formato.** Faltas saíram **zeradas** — o erro
+   perigoso, porque zero parece "mês sem faltas" e ninguém questiona.
+
+**DSR fica separado das faltas.** É consequência da falta, não um dia a mais de ausência;
+somar inflaria o absenteísmo. (O plano antigo dizia somar — discordamos com o PDF na mão.)
+
+### Persistência, e por que a regra da casa se inverte aqui
+
+`payroll_snapshots`, uma linha por empresa × competência, chave única (reimportar
+atualiza, não duplica). O resto do sistema calcula em vez de gravar; aqui a origem é um
+PDF **externo e destrutivamente mutável** — retificação apaga o arquivo anterior. Se o
+gráfico fosse recalculado do PDF, uma retificação reescreveria o histórico em silêncio.
+Somam-se duas razões: reparsear centenas de PDFs por filtro não escala, e o volume de
+arquivos não tem backup enquanto o banco tem.
+
+Cada linha guarda `deliverable_id` (de qual extrato veio) e `conferido` — quando
+proventos − descontos ≠ líquido, a competência entra marcada e a tela avisa, em vez de
+exibir número errado com cara de certo.
+
+**Reprocessamento é obrigatório depois de uma carga histórica**: o `extratoAuto` só relê
+quando o arquivo muda, então o botão *Reler extratos* existe para os PDFs recém-trazidos
+virarem linha no relatório.
+
+### Projeção do 13º
+
+`api/src/decimoTerceiro.js`, função pura, 18 testes. Avos com a **regra dos 15 dias**
+(admitido dia 17 de março ganha o avo; dia 18 não), INSS do empregado pela **tabela
+progressiva** (não alíquota única — erro clássico), 1ª parcela até 30/11 sem desconto e
+2ª até 20/12 já sem o INSS.
+
+**INSS patronal não é projetado, de propósito:** depende do regime — Simples nos anexos
+I, II, III e V não recolhe cota patronal; fora do Simples são 20% mais RAT e terceiros,
+que variam por CNAE. Um percentual único daria número com cara de exato e errado para a
+maioria da carteira. FGTS entra, porque são 8% sem exceção.
+
+Funcionário sem salário na folha mais recente **não vira zero**: fica contado à parte e a
+tela diz que o total está incompleto.
+
+---
+
 ## 5. Pendências que não são código
 
 1. **Redeploy no Easypanel.** São **25 commits** fora do ar. As migrações rodam sozinhas no

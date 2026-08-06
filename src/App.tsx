@@ -25,6 +25,7 @@ import EntregasPage from "./pages/admin/EntregasPage.tsx";
 import LicencasPage from "./pages/admin/LicencasPage.tsx";
 import TaxasAnuaisPage from "./pages/admin/TaxasAnuaisPage.tsx";
 import AlertasPage from "./pages/admin/AlertasPage.tsx";
+import PainelFolhaPage from "./pages/admin/FolhaPage.tsx";
 import LgpdPage from "./pages/admin/LgpdPage.tsx";
 import SincronizacaoPage from "./pages/admin/SincronizacaoPage.tsx";
 import UsuariosPage from "./pages/admin/UsuariosPage.tsx";
@@ -147,6 +148,7 @@ const AppRoutes = () => (
     <Route path="/admin/entregas" element={<AdminAreaRoute area="entregas"><EntregasPage /></AdminAreaRoute>} />
     <Route path="/admin/licencas" element={<AdminAreaRoute area="licencas"><LicencasPage /></AdminAreaRoute>} />
     <Route path="/admin/taxas-anuais" element={<AdminAreaRoute area="taxas_anuais"><TaxasAnuaisPage /></AdminAreaRoute>} />
+    <Route path="/admin/folha" element={<AdminAreaRoute area="funcionarios"><PainelFolhaPage /></AdminAreaRoute>} />
     <Route path="/admin/alertas" element={<AdminAreaRoute area="alertas"><AlertasPage /></AdminAreaRoute>} />
     <Route path="/admin/lgpd" element={<AdminAreaRoute area="lgpd"><LgpdPage /></AdminAreaRoute>} />
     <Route path="/admin/sincronizacao" element={<AdminAreaRoute area="sincronizacao"><SincronizacaoPage /></AdminAreaRoute>} />
