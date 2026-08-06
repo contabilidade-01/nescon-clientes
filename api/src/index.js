@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 const path = require("path");
 const db = require("./db");
 const { ensurePlatformAdmins } = require("./ensurePlatformAdmins");
@@ -23,8 +24,57 @@ const { ensurePayrollHistorySchema } = require("./ensurePayrollHistorySchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
-app.use(cors());
-app.use(express.json());
+
+/**
+ * Cabeçalhos de segurança.
+ *
+ * `contentSecurityPolicy: false` porque quem serve o HTML é o nginx, não esta API — a
+ * CSP fica lá (nginx/default.conf), onde a página é montada. Ligar aqui não protegeria
+ * nada e daria falsa sensação de estar coberto.
+ *
+ * `crossOriginResourcePolicy` afrouxado para o front poder buscar os PDFs quando API e
+ * site estão em domínios diferentes, que é o caso em produção.
+ */
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
+
+/**
+ * CORS restrito à origem do portal.
+ *
+ * Era `cors()` sem argumento — qualquer site do mundo podia chamar esta API a partir do
+ * navegador de um cliente logado. O dano hoje seria limitado porque o token vive em
+ * `localStorage` e outra origem não o lê; mas isso é proteção acidental, não desenhada:
+ * no dia em que alguém trocar para cookie, vira falha de verdade.
+ *
+ * Sem `PUBLIC_APP_URL` definido, mantém o comportamento antigo em vez de derrubar o
+ * portal de quem ainda não configurou — mas avisa alto no log.
+ */
+const origensPermitidas = [process.env.PUBLIC_APP_URL, process.env.CORS_EXTRA_ORIGIN]
+  .filter(Boolean)
+  .map((o) => o.replace(/\/+$/, ""));
+
+if (!origensPermitidas.length) {
+  console.warn(
+    "[SEGURANÇA] CORS aberto a qualquer origem: defina PUBLIC_APP_URL para restringir."
+  );
+}
+
+app.use(
+  cors({
+    origin(origin, cb) {
+      // Sem `Origin` = chamada servidor-a-servidor ou ferramenta local; CORS não se
+      // aplica a essas, e recusá-las quebraria a integração com o sistema de guias.
+      if (!origin || !origensPermitidas.length) return cb(null, true);
+      cb(null, origensPermitidas.includes(origin.replace(/\/+$/, "")));
+    },
+  })
+);
+
+app.use(express.json({ limit: "1mb" }));
 
 // Nota de segurança: quem está com a senha inicial (= CNPJ, público) é barrado na API
 // inteira, não só na tela. A trava vive DENTRO do authMiddleware — ver

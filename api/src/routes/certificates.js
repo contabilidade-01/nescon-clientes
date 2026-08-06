@@ -107,11 +107,49 @@ router.post("/", requireCompanyUser, (req, res, next) => {
   }
 });
 
-router.get("/file/:filename", (req, res) => {
-  const filePath = resolveUploadPath(req.params.filename);
-  if (!filePath) return res.status(403).json({ error: "Acesso negado" });
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Arquivo não encontrado" });
-  res.sendFile(filePath);
+/**
+ * Download de atestado — CONFERE O DONO, não só o caminho.
+ *
+ * Antes esta rota validava apenas que o nome não escapava do diretório (path traversal)
+ * e entregava o arquivo a qualquer usuário autenticado. Isso é um IDOR: o nome gravado
+ * é `<timestamp>-<nome original>`, então bastava conhecer ou adivinhar o nome para uma
+ * empresa baixar o atestado médico de funcionário de OUTRA — dado de saúde, o mais
+ * sensível que este sistema guarda.
+ *
+ * Agora o arquivo é localizado pela linha do banco, e a linha é filtrada pela empresa da
+ * sessão. Nome que não corresponde a nenhum atestado da empresa devolve 404 — e não 403,
+ * que confirmaria a existência do arquivo para quem está sondando.
+ */
+router.get("/file/:filename", async (req, res) => {
+  const nome = String(req.params.filename || "");
+  try {
+    const params = [nome];
+    let sql = "SELECT file_path, file_name, company_id FROM medical_certificates WHERE file_path = $1";
+    if (!req.isAdmin) {
+      if (!req.company?.id) return res.status(403).json({ error: "Acesso negado" });
+      params.push(req.company.id);
+      sql += ` AND company_id = $${params.length}`;
+    } else if (!adminHasArea(req, "entregas")) {
+      return res.status(403).json({ error: "Você não tem acesso a esta área do painel" });
+    }
+
+    const { rows } = await db.query(sql, params);
+    if (!rows.length) return res.status(404).json({ error: "Arquivo não encontrado" });
+
+    const filePath = resolveUploadPath(rows[0].file_path);
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "Arquivo não encontrado" });
+    }
+    // `nosniff` + disposition: impede que um arquivo forjado seja interpretado como
+    // página no domínio do portal.
+    const seguro = String(rows[0].file_name || "atestado").replace(/[^\w.\- ]/g, "_");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Disposition", `inline; filename="${seguro}"`);
+    return res.sendFile(filePath);
+  } catch (err) {
+    console.error("[certificates] file:", err.message);
+    return res.status(500).json({ error: "Erro interno" });
+  }
 });
 
 router.delete("/:id", async (req, res) => {

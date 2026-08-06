@@ -66,6 +66,9 @@ function sendStoredFile(res, row, disposition) {
   }
   const safe = String(row.file_name || "documento.pdf").replace(/[^\w.\- ]/g, "_");
   res.setHeader("Content-Disposition", `${disposition}; filename="${safe}"`);
+  // Sem `nosniff`, um arquivo com conteúdo HTML servido como PDF pode ser interpretado
+  // como página — e executaria script no domínio do portal, com a sessão do cliente.
+  res.setHeader("X-Content-Type-Options", "nosniff");
   return res.sendFile(full);
 }
 
