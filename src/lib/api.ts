@@ -516,6 +516,20 @@ export interface FolhaSerieItem {
   turnover: number | null;
 }
 
+export interface FolhaProblemas {
+  total: number;
+  /** Agrupado: 60 linhas com a mesma causa são UM problema, não sessenta. */
+  motivos: Array<{ motivo: string; quantas: number }>;
+  itens: Array<{
+    empresa: string;
+    competencia: string;
+    problemas: string | null;
+    proventos: string | null;
+    descontos: string | null;
+    liquido: string | null;
+  }>;
+}
+
 export interface DecimoTerceiro {
   ano: number;
   funcionarios: number;
@@ -763,6 +777,36 @@ export const api = {
       request<{ id: string; established: boolean }>(`/licencas/empresas/${companyId}/estabelecida`, {
         method: "PATCH",
         body: JSON.stringify({ established }),
+      }),
+  },
+
+  /**
+   * Painel de folha. A MESMA rota serve o escritório e o cliente: sem `companyId` o
+   * admin vê a carteira somada; o cliente sempre vê a própria empresa.
+   */
+  folha: {
+    serie: (opts?: { companyId?: string; de?: string; ate?: string }) => {
+      const p = new URLSearchParams();
+      if (opts?.companyId) p.set("company_id", opts.companyId);
+      if (opts?.de) p.set("de", opts.de);
+      if (opts?.ate) p.set("ate", opts.ate);
+      const q = p.toString();
+      return request<FolhaSerieItem[]>(`/folha/serie${q ? `?${q}` : ""}`);
+    },
+    decimoTerceiro: (opts?: { companyId?: string; ano?: number }) => {
+      const p = new URLSearchParams();
+      if (opts?.companyId) p.set("company_id", opts.companyId);
+      if (opts?.ano) p.set("ano", String(opts.ano));
+      const q = p.toString();
+      return request<DecimoTerceiro>(`/folha/decimo-terceiro${q ? `?${q}` : ""}`);
+    },
+    /** As competências que não fecharam, agrupadas por motivo. */
+    problemas: (companyId?: string) =>
+      request<FolhaProblemas>(`/folha/problemas${companyId ? `?company_id=${companyId}` : ""}`),
+    reprocessar: (desde?: string) =>
+      request<{ extratos: number; gravados: number; com_problema: number }>("/folha/reprocessar", {
+        method: "POST",
+        body: JSON.stringify({ desde }),
       }),
   },
 
@@ -1210,27 +1254,6 @@ export const api = {
     tiposGclick: () =>
       request<Array<{ codigo: string; nome: string; categoria: "guia" | "folha" }>>(
         "/admin/sync-gclick/tipos"
-      ),
-    /** Painel gerencial de folha: uma linha por competência. */
-    folhaSerie: (opts?: { companyId?: string; de?: string; ate?: string }) => {
-      const p = new URLSearchParams();
-      if (opts?.companyId) p.set("company_id", opts.companyId);
-      if (opts?.de) p.set("de", opts.de);
-      if (opts?.ate) p.set("ate", opts.ate);
-      const q = p.toString();
-      return request<FolhaSerieItem[]>(`/admin/folha/serie${q ? `?${q}` : ""}`);
-    },
-    folhaDecimoTerceiro: (opts?: { companyId?: string; ano?: number }) => {
-      const p = new URLSearchParams();
-      if (opts?.companyId) p.set("company_id", opts.companyId);
-      if (opts?.ano) p.set("ano", String(opts.ano));
-      const q = p.toString();
-      return request<DecimoTerceiro>(`/admin/folha/decimo-terceiro${q ? `?${q}` : ""}`);
-    },
-    folhaReprocessar: (desde?: string) =>
-      request<{ extratos: number; gravados: number; com_problema: number }>(
-        "/admin/folha/reprocessar",
-        { method: "POST", body: JSON.stringify({ desde }) }
       ),
     /** Backup diário do banco — o único dado que não volta sozinho. */
     backupConfig: () => request<BackupConfig>("/admin/backup/config"),

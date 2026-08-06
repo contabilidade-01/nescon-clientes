@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
+  CircleDollarSign,
   FileText,
   AlertTriangle,
   History,
@@ -60,6 +61,9 @@ const MENU_ITEMS: MenuItem[] = [
     title: "Boletos", description: "Boletos a pagar" },
   { key: "payroll_files", tool: "payroll_files", path: "/folha", icon: FileText,
     title: "Folha de pagamento", description: "Extratos e recibos mensais" },
+  // Mesma permissão da folha: quem vê o documento vê o custo dele.
+  { key: "custo_folha", tool: "payroll_files", path: "/custo-folha", icon: CircleDollarSign,
+    title: "Custo de folha", description: "Quanto custou por mês e a projeção do 13º" },
   { key: "documents", tool: "documents", path: "/documentos", icon: FolderOpen,
     title: "Documentos", description: "Contratos e relatórios" },
   { key: "vacations", tool: "vacations", path: "/ferias", icon: Palmtree,

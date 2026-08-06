@@ -29,6 +29,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/lib/api";
 
 const brl = (v: number | string | null | undefined) => {
@@ -122,25 +129,40 @@ const FolhaPage = () => {
   const anoAtual = new Date().getFullYear();
   const [de, setDe] = useState(`${anoAtual}-01`);
   const [ate, setAte] = useState("");
+  // "" = carteira inteira. O painel é de gestão DE CADA CLIENTE — sem o seletor ele só
+  // respondia a pergunta do escritório, e a pergunta de quem paga a folha é por empresa.
+  const [empresa, setEmpresa] = useState("");
+
+  const empresas = useQuery({
+    queryKey: ["admin-companies-all"],
+    queryFn: () => api.admin.companies(),
+  });
 
   const serie = useQuery({
-    queryKey: ["folha-serie", de, ate],
-    queryFn: () => api.admin.folhaSerie({ de: de || undefined, ate: ate || undefined }),
+    queryKey: ["folha-serie", de, ate, empresa],
+    queryFn: () =>
+      api.folha.serie({ de: de || undefined, ate: ate || undefined, companyId: empresa || undefined }),
   });
 
   const decimo = useQuery({
-    queryKey: ["folha-13", anoAtual],
-    queryFn: () => api.admin.folhaDecimoTerceiro({ ano: anoAtual }),
+    queryKey: ["folha-13", anoAtual, empresa],
+    queryFn: () => api.folha.decimoTerceiro({ ano: anoAtual, companyId: empresa || undefined }),
+  });
+
+  const problemas = useQuery({
+    queryKey: ["folha-problemas", empresa],
+    queryFn: () => api.folha.problemas(empresa || undefined),
   });
 
   const reprocessar = useMutation({
-    mutationFn: () => api.admin.folhaReprocessar(de || undefined),
+    mutationFn: () => api.folha.reprocessar(de || undefined),
     onSuccess: (r) => {
       toast.success(
         `${r.gravados} de ${r.extratos} extrato(s) processado(s)` +
           (r.com_problema ? ` · ${r.com_problema} com aviso` : "")
       );
       queryClient.invalidateQueries({ queryKey: ["folha-serie"] });
+      queryClient.invalidateQueries({ queryKey: ["folha-problemas"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -179,6 +201,22 @@ const FolhaPage = () => {
       <div className="space-y-4">
         <Card>
           <CardContent className="flex flex-wrap items-end gap-3 p-4">
+            <div className="min-w-[220px] flex-1 space-y-1">
+              <Label className="text-xs">Empresa</Label>
+              <Select value={empresa || "todas"} onValueChange={(v) => setEmpresa(v === "todas" ? "" : v)}>
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Toda a carteira (somado)</SelectItem>
+                  {(empresas.data ?? []).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-1">
               <Label htmlFor="de" className="text-xs">
                 De
@@ -204,13 +242,37 @@ const FolhaPage = () => {
 
         {naoConferidos > 0 && (
           <Card className="border-amber-500/50">
-            <CardContent className="flex items-start gap-2 p-4 text-sm">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-              <span>
-                <strong>{naoConferidos} competência(s)</strong> em que a leitura não fechou
-                (proventos − descontos ≠ líquido). Os números dessas linhas podem estar
-                incompletos — vale conferir o PDF antes de usar em decisão.
-              </span>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                {naoConferidos} competência(s) em que a leitura não fechou
+              </CardTitle>
+              <CardDescription>
+                Agrupado por causa — sessenta linhas com o mesmo motivo são um problema,
+                não sessenta. Enquanto não fecharem, esses meses podem estar incompletos.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {(problemas.data?.motivos ?? []).map((m) => (
+                <div key={m.motivo} className="flex items-start gap-2 rounded-md border p-2 text-sm">
+                  <Badge variant="outline" className="shrink-0">
+                    {m.quantas}×
+                  </Badge>
+                  <span className="min-w-0">{m.motivo}</span>
+                </div>
+              ))}
+              {(problemas.data?.itens ?? []).length > 0 && (
+                <details className="text-xs text-muted-foreground">
+                  <summary className="cursor-pointer">Ver as competências afetadas</summary>
+                  <ul className="mt-2 space-y-0.5">
+                    {problemas.data?.itens.map((i, n) => (
+                      <li key={`${i.empresa}-${i.competencia}-${n}`}>
+                        {competenciaCurta(i.competencia)} · {i.empresa}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </CardContent>
           </Card>
         )}

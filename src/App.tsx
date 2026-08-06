@@ -34,6 +34,7 @@ import EnvioGuiasAdminPage from "./pages/EnvioGuiasAdminPage.tsx";
 import GuiasFiscaisPage from "./pages/GuiasFiscaisPage.tsx";
 import BoletosPage from "./pages/BoletosPage.tsx";
 import FolhaPage from "./pages/FolhaPage.tsx";
+import CustoFolhaPage from "./pages/CustoFolhaPage.tsx";
 import DocumentosPage from "./pages/DocumentosPage.tsx";
 import CalendarioPage from "./pages/CalendarioPage.tsx";
 import FeriasPage from "./pages/FeriasPage.tsx";
@@ -168,6 +169,7 @@ const AppRoutes = () => (
     <Route path="/guias" element={<CompanyToolRoute tool="fiscal_guides"><GuiasFiscaisPage /></CompanyToolRoute>} />
     <Route path="/boletos" element={<CompanyToolRoute tool="boletos"><BoletosPage /></CompanyToolRoute>} />
     <Route path="/folha" element={<CompanyToolRoute tool="payroll_files"><FolhaPage /></CompanyToolRoute>} />
+    <Route path="/custo-folha" element={<CompanyToolRoute tool="payroll_files"><CustoFolhaPage /></CompanyToolRoute>} />
     <Route path="/documentos" element={<CompanyToolRoute tool="documents"><DocumentosPage /></CompanyToolRoute>} />
     <Route path="/calendario" element={<CompanyToolRoute tool="calendar"><CalendarioPage /></CompanyToolRoute>} />
     <Route path="/ferias" element={<VacationRoute><FeriasPage /></VacationRoute>} />

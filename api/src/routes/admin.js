@@ -11,7 +11,6 @@ const { parseExtratoEmployees } = require("../extratoEmployees");
 const { resolveUploadPath, uploadPdf, removeUploadFile } = require("../uploads");
 const arquivosIntegridade = require("../arquivosIntegridade");
 const backupAgendador = require("../backupAgendador");
-const folhaKpi = require("../folhaKpi");
 const { LGPD_CONSENT_VERSION } = require("../lgpd");
 const sync = require("../gclick/sync");
 const clientSync = require("../gclick/clientSync");
@@ -379,56 +378,6 @@ router.get("/sync-gclick/tipos", requireArea("sincronizacao"), (_req, res) => {
       categoria: t.temVencimento ? "guia" : "folha",
     }))
   );
-});
-
-/**
- * Painel gerencial de folha: série por competência, com filtro de período.
- * Sem `company_id`, soma a carteira inteira.
- */
-router.get("/folha/serie", requireArea("funcionarios"), async (req, res) => {
-  const companyId = (req.query.company_id || "").toString() || null;
-  if (companyId && !validateUUID(companyId)) {
-    return res.status(400).json({ error: "company_id inválido" });
-  }
-  const comp = (v) => (/^\d{4}-\d{2}$/.test(String(v || "")) ? String(v) : null);
-  try {
-    res.json(
-      await folhaKpi.serie(db, { companyId, de: comp(req.query.de), ate: comp(req.query.ate) })
-    );
-  } catch (err) {
-    console.error("[admin] folha/serie:", err.message);
-    res.status(500).json({ error: "Erro ao montar a série de folha" });
-  }
-});
-
-/** Projeção do 13º sobre o quadro atual. */
-router.get("/folha/decimo-terceiro", requireArea("funcionarios"), async (req, res) => {
-  const companyId = (req.query.company_id || "").toString() || null;
-  if (companyId && !validateUUID(companyId)) {
-    return res.status(400).json({ error: "company_id inválido" });
-  }
-  const ano = Number(req.query.ano) || new Date().getFullYear();
-  try {
-    res.json(await folhaKpi.projecaoDecimoTerceiro(db, { companyId, ano }));
-  } catch (err) {
-    console.error("[admin] 13o:", err.message);
-    res.status(500).json({ error: "Erro ao projetar o 13º" });
-  }
-});
-
-/**
- * Relê os extratos que já estão no portal e grava o histórico.
- * Necessário porque o extratoAuto só relê quando o arquivo muda — sem isto, os PDFs da
- * carga histórica nunca virariam linha no relatório.
- */
-router.post("/folha/reprocessar", requireArea("funcionarios"), async (req, res) => {
-  const desde = /^\d{4}-\d{2}$/.test(String(req.body?.desde || "")) ? String(req.body.desde) : null;
-  try {
-    res.json(await folhaKpi.reprocessarExtratos(db, { desde }));
-  } catch (err) {
-    console.error("[admin] reprocessar folha:", err.message);
-    res.status(500).json({ error: "Erro ao reprocessar os extratos" });
-  }
 });
 
 /** Backup diário: o que está configurado hoje. */
