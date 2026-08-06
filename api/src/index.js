@@ -26,6 +26,9 @@ app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
 app.use(cors());
 app.use(express.json());
 
+// Nota de segurança: quem está com a senha inicial (= CNPJ, público) é barrado na API
+// inteira, não só na tela. A trava vive DENTRO do authMiddleware — ver
+// blockUntilPasswordChanged em middleware/auth.js e o porquê de não ser aqui.
 // Routes
 app.use("/api/auth", require("./routes/auth"));
 // Gestão de usuários do painel (só o dono). Antes de /api/admin: rota mais específica.

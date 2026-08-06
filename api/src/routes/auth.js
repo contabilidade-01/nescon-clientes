@@ -69,6 +69,43 @@ const resetTokenCheckLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+/**
+ * Força bruta no LOGIN — a porta mais exposta do sistema.
+ *
+ * O login é o CNPJ, que é público e listável na Receita, e a senha inicial é o MESMO
+ * CNPJ. Sem limite, bastava alguém varrer a lista de clientes tentando `CNPJ/CNPJ` para
+ * entrar em toda empresa que ainda não fez o primeiro acesso. Era o caminho mais curto
+ * para dentro, e estava aberto.
+ *
+ * Duas janelas, de propósito:
+ *  - **por IP**, contra varredura de muitas empresas a partir de uma origem;
+ *  - **por login**, contra ataque distribuído contra UMA empresa (vários IPs, um alvo).
+ *
+ * `skipSuccessfulRequests` faz o contador só subir em tentativa que falhou: quem acerta
+ * a senha não gasta cota, então uso normal nunca esbarra no limite.
+ */
+const loginIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_LOGIN_IP_MAX || 20),
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { error: "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente." },
+});
+
+const loginContaLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_LOGIN_CONTA_MAX || 10),
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  // A chave é o documento tentado, só dígitos: com ou sem máscara é a mesma conta, e
+  // sem normalizar bastaria alternar a pontuação para zerar o contador.
+  keyGenerator: (req) =>
+    String(req.body?.login || req.body?.cnpj || "").replace(/\D/g, "") || "sem-login",
+  message: { error: "Muitas tentativas para este acesso. Aguarde alguns minutos." },
+});
+
 /** Trocar senha exige a atual: limita tentativa de adivinhação por força bruta. */
 const changePasswordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -173,7 +210,7 @@ async function emitirLinkDeReset({ companyId, adminId, emailOnRecord, publicUrl 
   }
 }
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginIpLimiter, loginContaLimiter, async (req, res) => {
   try {
     const raw = (req.body.login || req.body.cnpj || "").toString();
     const { password } = req.body;

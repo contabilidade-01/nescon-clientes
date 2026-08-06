@@ -47,7 +47,11 @@ services:
       DB_NAME: rhapp
       DB_USER: rhapp
       DB_PASSWORD: ${DB_PASSWORD:-changeme}
-      JWT_SECRET: ${JWT_SECRET:-troque-este-segredo-em-producao}
+      # SEM PADRAO, de proposito: a API recusa arrancar com segredo de exemplo ou
+      # curto demais. Um sistema que nao sobe e um chamado de dez minutos; um que sobe
+      # com o segredo publico e uma invasao que ninguem percebe.
+      # Gerar com: openssl rand -hex 32
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET (openssl rand -hex 32)}
       PORT: 3001
       UPLOAD_DIR: /app/uploads
       # Chave de serviço partilhada com o sistema de guias (release, sync-companies, access-stats).

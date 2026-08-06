@@ -90,6 +90,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error("Sessão expirada");
   }
 
+  // A API passou a barrar quem está com a senha inicial (= CNPJ, que é público) em
+  // TODAS as rotas, não só na tela. Se o usuário chegar aqui com esse estado, é porque
+  // contornou a navegação — manda para a troca em vez de mostrar erro solto.
+  if (res.status === 403 && (data as { code?: string })?.code === "MUST_CHANGE_PASSWORD") {
+    if (window.location.pathname !== "/alterar-senha") window.location.href = "/alterar-senha";
+    throw new Error("Troque a senha inicial antes de usar o sistema.");
+  }
+
   if (!res.ok) {
     const err = data as { error?: string };
     throw new Error(err.error || `HTTP ${res.status}`);
