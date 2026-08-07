@@ -22,7 +22,7 @@ const {
   salvarProgramacao,
   ultimaProgramacao,
 } = require("../vacationImport");
-const { setSetting } = require("../appSettings");
+const { getSetting, setBoolSetting, setSetting } = require("../appSettings");
 const gclickClient = require("../gclick/client");
 const { TIPOS: TIPOS_GCLICK } = require("../gclick/guides");
 const fs = require("fs");
@@ -996,6 +996,130 @@ router.post("/companies/:id/import-employees", requireArea("funcionarios"), asyn
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Erro interno ao importar funcionários" });
+  }
+});
+
+/**
+ * GET /admin/config/ia — Configuração de IA para CNPJ
+ */
+router.get("/config/ia", adminOnly, async (req, res) => {
+  try {
+    const provider = (await getSetting(db, "provider_ia_cnpj")) || "claude";
+    const habilitada = (await getSetting(db, "ia_cnpj_habilitada")) === "true";
+    const limiar = Number(await getSetting(db, "ia_cnpj_limiar_confianca")) || 85;
+    const timeout = Number(await getSetting(db, "ia_cnpj_timeout_ms")) || 30000;
+
+    res.json({
+      provider,
+      habilitada,
+      limiar_confianca: limiar,
+      timeout_ms: timeout,
+      provedores_disponiveis: ["claude", "gemini", "chatgpt"],
+    });
+  } catch (err) {
+    console.error("[admin] config/ia GET:", err.message);
+    res.status(500).json({ error: "Erro ao carregar configuração" });
+  }
+});
+
+/**
+ * PUT /admin/config/ia — Salvar configuração de IA
+ */
+router.put("/config/ia", adminOnly, async (req, res) => {
+  const { provider, habilitada, limiar_confianca, timeout_ms, api_key } = req.body || {};
+
+  if (provider && !["claude", "gemini", "chatgpt"].includes(provider)) {
+    return res.status(400).json({ error: "Provider inválido" });
+  }
+  if (limiar_confianca !== undefined && (limiar_confianca < 0 || limiar_confianca > 100)) {
+    return res.status(400).json({ error: "Limiar deve estar entre 0 e 100" });
+  }
+  if (timeout_ms !== undefined && timeout_ms < 1000) {
+    return res.status(400).json({ error: "Timeout mínimo é 1000ms" });
+  }
+
+  try {
+    if (provider) await setSetting(db, "provider_ia_cnpj", provider);
+    if (habilitada !== undefined) await setSetting(db, "ia_cnpj_habilitada", habilitada ? "true" : "false");
+    if (limiar_confianca !== undefined) await setSetting(db, "ia_cnpj_limiar_confianca", String(limiar_confianca));
+    if (timeout_ms !== undefined) await setSetting(db, "ia_cnpj_timeout_ms", String(timeout_ms));
+    if (api_key && provider) await setSetting(db, `ia_api_key_${provider}`, api_key);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[admin] config/ia PUT:", err.message);
+    res.status(500).json({ error: "Erro ao salvar configuração" });
+  }
+});
+
+/**
+ * POST /admin/config/ia/testar — Testar conexão com o provider de IA
+ */
+router.post("/config/ia/testar", adminOnly, async (req, res) => {
+  const provider = req.body?.provider || (await getSetting(db, "provider_ia_cnpj")) || "claude";
+
+  const chaveEnv = {
+    claude: process.env.ANTHROPIC_API_KEY,
+    gemini: process.env.GOOGLE_API_KEY,
+    chatgpt: process.env.OPENAI_API_KEY,
+  }[provider];
+  const chaveDb = await getSetting(db, `ia_api_key_${provider}`);
+  const chave = chaveEnv || chaveDb;
+
+  if (!chave) {
+    return res.json({ ok: false, erro: `Sem credencial configurada para ${provider}` });
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    let resultado;
+
+    if (provider === "claude") {
+      resultado = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": chave,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 10,
+          messages: [{ role: "user", content: "Responda apenas: ok" }],
+        }),
+        signal: controller.signal,
+      });
+    } else if (provider === "gemini") {
+      resultado = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${chave}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ parts: [{ text: "ok" }] }] }),
+          signal: controller.signal,
+        }
+      );
+    } else if (provider === "chatgpt") {
+      resultado = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${chave}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          max_tokens: 10,
+          messages: [{ role: "user", content: "ok" }],
+        }),
+        signal: controller.signal,
+      });
+    }
+
+    clearTimeout(timeoutId);
+    res.json({ ok: resultado.ok, erro: resultado.ok ? null : `HTTP ${resultado.status}` });
+  } catch (err) {
+    res.json({ ok: false, erro: err.message });
   }
 });
 

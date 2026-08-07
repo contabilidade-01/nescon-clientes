@@ -30,6 +30,7 @@ import LgpdPage from "./pages/admin/LgpdPage.tsx";
 import SincronizacaoPage from "./pages/admin/SincronizacaoPage.tsx";
 import UsuariosPage from "./pages/admin/UsuariosPage.tsx";
 import DocumentUploadPage from "./pages/admin/DocumentUploadPage.tsx";
+import ConfigIaPage from "./pages/admin/ConfigIaPage.tsx";
 import EnvioGuiasAdminPage from "./pages/EnvioGuiasAdminPage.tsx";
 import GuiasFiscaisPage from "./pages/GuiasFiscaisPage.tsx";
 import BoletosPage from "./pages/BoletosPage.tsx";
@@ -155,6 +156,7 @@ const AppRoutes = () => (
     <Route path="/admin/sincronizacao" element={<AdminAreaRoute area="sincronizacao"><SincronizacaoPage /></AdminAreaRoute>} />
     <Route path="/admin/usuarios" element={<OwnerOnlyRoute><UsuariosPage /></OwnerOnlyRoute>} />
     <Route path="/admin/doc-upload" element={<AdminAreaRoute area="entregas"><DocumentUploadPage /></AdminAreaRoute>} />
+    <Route path="/admin/config-ia" element={<AdminAreaRoute area="entregas"><ConfigIaPage /></AdminAreaRoute>} />
     {/* Única tela liberada enquanto a senha for a inicial */}
     <Route path="/alterar-senha" element={<LoggedInRoute><AlterarSenhaPage /></LoggedInRoute>} />
     <Route path="/" element={<CompanyOnlyRoute><Index /></CompanyOnlyRoute>} />

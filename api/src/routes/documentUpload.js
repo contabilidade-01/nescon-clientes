@@ -18,6 +18,7 @@ const { requireArea } = require("../middleware/adminArea");
 const { validateUUID, validateString } = require("../middleware/validate");
 const { uploadPdf, resolveUploadPath, removeUploadFile } = require("../uploads");
 const { extrairCnpjs, onlyDigits } = require("../pdfCnpj");
+const { detectarCnpjComFallback } = require("../pdfCnpjAi");
 const pdfIa = require("../pdfIa");
 const { cnpjDoEscritorio } = require("../alertasConfig");
 
@@ -80,16 +81,20 @@ router.post("/analisar", uploadPdf.array("files", 20), async (req, res) => {
 
     if (fullPath && fs.existsSync(fullPath)) {
       const buffer = fs.readFileSync(fullPath);
-      cnpjs = await extrairCnpjs(buffer);
+
+      // Cascata de 3 níveis: regex → busca contextual → IA
+      const resultado = await detectarCnpjComFallback(buffer, db);
+      cnpjs = resultado.cnpjs;
+      origem = resultado.origem;
+      observacao = resultado.motivo || resultado.aviso || null;
 
       if (cnpjs.length) {
         const r = await empresaSugerida(cnpjs);
         empresa = r.empresa;
         candidatas = r.candidatas;
-        if (empresa) origem = "texto";
       }
 
-      // Fallback: só quando o determinístico não resolveu.
+      // Fallback legado (pdfIa via Lovable gateway): só quando tudo acima falhou.
       if (!empresa && iaLigada) {
         const porIa = await pdfIa.cnpjPorIa({ pdfBuffer: buffer, fileName: file.originalname });
         if (porIa) {
