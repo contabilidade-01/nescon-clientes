@@ -222,22 +222,54 @@ async function projecaoDecimoTerceiro(db, { companyId = null, ano = new Date().g
       if (!snap.length) continue;
       const proventos = Number(snap[0].proventos);
       const empregados = Number(snap[0].empregados);
-      let media = null;
-      if (empregados > 0) {
-        media = proventos / empregados;
-      } else {
-        // Sem empregados no snapshot: dividir pelo nº de funcionários ativos
+      let divisor = empregados > 0 ? empregados : 0;
+      if (!divisor) {
         const { rows: qtd } = await db.query(
           `SELECT COUNT(*)::int AS total FROM employees WHERE company_id = $1 AND active IS TRUE`,
           [cid]
         );
-        const totalFunc = qtd[0]?.total || 0;
-        if (totalFunc > 0) media = proventos / totalFunc;
+        divisor = qtd[0]?.total || 0;
       }
-      if (Number.isFinite(media) && media > 0) {
-        for (const r of rows) {
-          if (r.company_id === cid && (!r.salario_base || Number(r.salario_base) <= 0)) {
-            r.salario_base = media;
+      if (!divisor) {
+        const { rows: vp } = await db.query(
+          `SELECT COUNT(DISTINCT nome)::int AS total FROM vacation_periods WHERE company_id = $1`,
+          [cid]
+        );
+        divisor = vp[0]?.total || 0;
+      }
+      if (divisor > 0) {
+        const media = proventos / divisor;
+        if (Number.isFinite(media) && media > 0) {
+          for (const r of rows) {
+            if (r.company_id === cid && (!r.salario_base || Number(r.salario_base) <= 0)) {
+              r.salario_base = media;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Se employees está vazio mas há snapshot, criar linhas sintéticas das férias
+  if (!rows.length && companyId) {
+    const { rows: snap } = await db.query(
+      `SELECT proventos, empregados FROM payroll_snapshots
+        WHERE company_id = $1 AND proventos > 0
+        ORDER BY competencia DESC LIMIT 1`,
+      [companyId]
+    );
+    if (snap.length) {
+      const { rows: vps } = await db.query(
+        `SELECT DISTINCT nome, (SELECT MIN(vp2.admissao) FROM vacation_periods vp2 WHERE vp2.company_id = $1 AND vp2.nome = vp.nome) AS admissao
+           FROM vacation_periods vp WHERE vp.company_id = $1`,
+        [companyId]
+      );
+      if (vps.length) {
+        const proventos = Number(snap[0].proventos);
+        const media = proventos / vps.length;
+        if (Number.isFinite(media) && media > 0) {
+          for (const vp of vps) {
+            rows.push({ nome: vp.nome, salario_base: media, admissao: vp.admissao, company_id: companyId });
           }
         }
       }

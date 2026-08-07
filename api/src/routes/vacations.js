@@ -76,7 +76,7 @@ async function salariosDaEmpresa(companyId) {
 }
 
 /** Média salarial a partir do último snapshot da folha (fallback). */
-async function mediaDaFolha(companyId) {
+async function mediaDaFolha(companyId, numFuncionariosFerias) {
   // Tenta snapshot com empregados primeiro
   const { rows } = await db.query(
     `SELECT proventos, empregados
@@ -101,6 +101,11 @@ async function mediaDaFolha(companyId) {
   const totalFunc = qtd[0]?.total || 0;
   if (totalFunc > 0) {
     const media = proventos / totalFunc;
+    if (Number.isFinite(media) && media > 0) return media;
+  }
+  // Último recurso: dividir pelo nº de funcionários na programação de férias
+  if (numFuncionariosFerias > 0) {
+    const media = proventos / numFuncionariosFerias;
     if (Number.isFinite(media) && media > 0) return media;
   }
   return null;
@@ -159,7 +164,8 @@ router.get("/", async (req, res) => {
     }
 
     const salarios = await salariosDaEmpresa(alvo.companyId);
-    const mediaFolha = await mediaDaFolha(alvo.companyId);
+    const numFunc = new Set(prog.periodos.map((p) => p.nome)).size;
+    const mediaFolha = await mediaDaFolha(alvo.companyId, numFunc);
     const periodos = enriquecer(prog.periodos, salarios, mediaFolha);
 
     const custos = periodos.map((p) => p.custo);
