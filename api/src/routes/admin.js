@@ -1278,19 +1278,23 @@ router.post("/companies/enviar-acesso", requireArea("empresas"), async (req, res
     let filtro = "";
     const params = [];
     if (companyIds === "all") {
-      filtro = "WHERE phone IS NOT NULL AND phone <> ''";
+      filtro = "WHERE COALESCE(c.phone, g.phone) IS NOT NULL AND COALESCE(c.phone, g.phone) <> ''";
     } else if (Array.isArray(companyIds) && companyIds.length > 0) {
       if (!companyIds.every(validateUUID)) {
         return res.status(400).json({ error: "IDs inválidos na lista" });
       }
       params.push(companyIds);
-      filtro = "WHERE id = ANY($1) AND phone IS NOT NULL AND phone <> ''";
+      filtro = "WHERE c.id = ANY($1) AND COALESCE(c.phone, g.phone) IS NOT NULL AND COALESCE(c.phone, g.phone) <> ''";
     } else {
       return res.status(400).json({ error: "companyIds deve ser \"all\" ou array de UUIDs" });
     }
 
     const { rows: empresas } = await db.query(
-      `SELECT id, name, cnpj, contact_email, phone FROM companies ${filtro}`,
+      `SELECT c.id, c.name, c.cnpj, c.contact_email,
+              COALESCE(c.phone, g.phone) AS phone
+         FROM companies c
+         LEFT JOIN gclick_clients g ON g.company_id = c.id
+        ${filtro}`,
       params
     );
 
