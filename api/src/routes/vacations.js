@@ -77,9 +77,8 @@ async function salariosDaEmpresa(companyId) {
 
 /** Média salarial a partir do último snapshot da folha (fallback). */
 async function mediaDaFolha(companyId, numFuncionariosFerias) {
-  // Tenta snapshot com empregados primeiro
   const { rows } = await db.query(
-    `SELECT proventos, empregados
+    `SELECT proventos
        FROM payroll_snapshots
       WHERE company_id = $1 AND proventos > 0
       ORDER BY competencia DESC
@@ -87,41 +86,9 @@ async function mediaDaFolha(companyId, numFuncionariosFerias) {
     [companyId]
   );
   if (!rows.length) return null;
-  let proventos = Number(rows[0].proventos);
-  const empregados = Number(rows[0].empregados);
+  const proventos = Number(rows[0].proventos);
 
-  // Subtrair pró-labore do proventos: sócios não entram no cálculo CLT
-  const { rows: socios } = await db.query(
-    `SELECT COALESCE(SUM(e.salario_base), 0)::numeric AS total_prolabore
-       FROM employees e
-      WHERE e.company_id = $1 AND e.active IS TRUE
-        AND e.cargo IS NOT NULL
-        AND e.cargo ~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore)'`,
-    [companyId]
-  );
-  if (socios[0] && Number(socios[0].total_prolabore) > 0) {
-    const limpo = proventos - Number(socios[0].total_prolabore);
-    if (limpo > 0) proventos = limpo;
-  }
-
-  if (empregados > 0) {
-    const media = proventos / empregados;
-    if (Number.isFinite(media) && media > 0) return media;
-  }
-  // Sem empregados no snapshot: dividir pelo número de funcionários CLT ativos
-  const { rows: qtd } = await db.query(
-    `SELECT COUNT(*)::int AS total FROM employees e
-      WHERE e.company_id = $1
-        AND e.active IS TRUE
-        AND (e.cargo IS NULL OR e.cargo !~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore)')`,
-    [companyId]
-  );
-  const totalFunc = qtd[0]?.total || 0;
-  if (totalFunc > 0) {
-    const media = proventos / totalFunc;
-    if (Number.isFinite(media) && media > 0) return media;
-  }
-  // Último recurso: dividir pelo nº de funcionários na programação de férias
+  // Divisor = nº de CLT na Programação de Férias (exclui sócio por definição)
   if (numFuncionariosFerias > 0) {
     const media = proventos / numFuncionariosFerias;
     if (Number.isFinite(media) && media > 0) return media;

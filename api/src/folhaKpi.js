@@ -214,119 +214,89 @@ async function serie(db, { companyId = null, de = null, ate = null } = {}) {
   }));
 }
 
-/** Projeção do 13º a partir do quadro atual — salário e admissão vêm do extrato. */
+/**
+ * Projeção do 13º a partir do quadro atual.
+ *
+ * A fonte de verdade de QUEM é CLT é a **Programação de Férias**: sócio com pró-labore
+ * NÃO aparece nela — só quem tem direito a férias (celetista). Isso resolve o problema
+ * de cargo NULL no employees: se o nome não está na programação, não entra no 13º.
+ *
+ * Quando a empresa não tem programação de férias importada, cai de volta para employees
+ * filtrado por cargo (funcionarioRealSql), que é o melhor que dá para fazer sem a lista.
+ */
 async function projecaoDecimoTerceiro(db, { companyId = null, ano = new Date().getFullYear() } = {}) {
-  const params = [];
-  let filtro = "";
-  if (companyId) {
-    params.push(companyId);
-    filtro = `AND e.company_id = $${params.length}`;
+  if (!companyId) {
+    // Sem empresa, usa employees filtrado (visão geral do escritório)
+    const { rows } = await db.query(
+      `SELECT e.name AS nome, e.salario_base, e.company_id,
+              to_char(e.admissao, 'YYYY-MM-DD') AS admissao
+         FROM employees e
+        WHERE ${funcionarioRealSql("e")}
+        ORDER BY e.name`
+    );
+    return projetar({ funcionarios: rows, ano });
   }
-  const { rows } = await db.query(
-    `SELECT e.name AS nome, e.salario_base, e.company_id,
-            to_char(e.admissao, 'YYYY-MM-DD') AS admissao
-       FROM employees e
-      WHERE ${funcionarioRealSql("e")} ${filtro}
-      ORDER BY e.name`,
-    params
+
+  // Programação de Férias = lista de quem é CLT (sócio não aparece)
+  const { rows: vps } = await db.query(
+    `SELECT DISTINCT ON (nome) nome,
+            to_char(admissao, 'YYYY-MM-DD') AS admissao
+       FROM vacation_periods
+      WHERE company_id = $1
+      ORDER BY nome, admissao`,
+    [companyId]
   );
 
-  // Fallback: quem não tem salario_base individual, usa média da folha da empresa
-  const semSalario = rows.filter((r) => !r.salario_base || Number(r.salario_base) <= 0);
-  if (semSalario.length > 0) {
-    const empresasIds = [...new Set(semSalario.map((r) => r.company_id))];
-    for (const cid of empresasIds) {
-      const { rows: snap } = await db.query(
-        `SELECT proventos, empregados FROM payroll_snapshots
-          WHERE company_id = $1 AND proventos > 0
-          ORDER BY competencia DESC LIMIT 1`,
-        [cid]
-      );
-      if (!snap.length) continue;
-      const proventos = Number(snap[0].proventos);
-      const empregados = Number(snap[0].empregados);
-      let divisor = empregados > 0 ? empregados : 0;
-      if (!divisor) {
-        const { rows: qtd } = await db.query(
-          `SELECT COUNT(*)::int AS total FROM employees e WHERE e.company_id = $1 AND ${funcionarioRealSql("e")}`,
-          [cid]
-        );
-        divisor = qtd[0]?.total || 0;
-      }
-      if (!divisor) {
-        const { rows: vp } = await db.query(
-          `SELECT COUNT(DISTINCT nome)::int AS total FROM vacation_periods WHERE company_id = $1`,
-          [cid]
-        );
-        divisor = vp[0]?.total || 0;
-      }
-      // Subtrair pró-labore do proventos: sócios identificados pelo cargo não entram no 13º
-      let proventosLimpo = proventos;
-      const { rows: socios } = await db.query(
-        `SELECT COALESCE(SUM(e.salario_base), 0)::numeric AS total_prolabore
-           FROM employees e
-          WHERE e.company_id = $1 AND e.active IS TRUE
-            AND e.cargo IS NOT NULL
-            AND e.cargo ~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore)'`,
-        [cid]
-      );
-      if (socios[0] && Number(socios[0].total_prolabore) > 0) {
-        proventosLimpo = proventos - Number(socios[0].total_prolabore);
-        if (proventosLimpo <= 0) proventosLimpo = proventos;
-      }
-      if (divisor > 0) {
-        const media = proventosLimpo / divisor;
-        if (Number.isFinite(media) && media > 0) {
-          for (const r of rows) {
-            if (r.company_id === cid && (!r.salario_base || Number(r.salario_base) <= 0)) {
-              r.salario_base = media;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Se employees está vazio mas há snapshot, criar linhas sintéticas das férias
-  if (!rows.length && companyId) {
-    const { rows: snap } = await db.query(
-      `SELECT proventos, empregados FROM payroll_snapshots
-        WHERE company_id = $1 AND proventos > 0
-        ORDER BY competencia DESC LIMIT 1`,
+  // Se não tem programação de férias, cai para employees filtrado
+  if (!vps.length) {
+    const { rows } = await db.query(
+      `SELECT e.name AS nome, e.salario_base, e.company_id,
+              to_char(e.admissao, 'YYYY-MM-DD') AS admissao
+         FROM employees e
+        WHERE ${funcionarioRealSql("e")} AND e.company_id = $1
+        ORDER BY e.name`,
       [companyId]
     );
-    if (snap.length) {
-      const { rows: vps } = await db.query(
-        `SELECT DISTINCT nome, (SELECT MIN(vp2.admissao) FROM vacation_periods vp2 WHERE vp2.company_id = $1 AND vp2.nome = vp.nome) AS admissao
-           FROM vacation_periods vp WHERE vp.company_id = $1`,
-        [companyId]
-      );
-      if (vps.length) {
-        let proventos = Number(snap[0].proventos);
-        // Subtrair pró-labore se houver sócios identificados
-        const { rows: socios } = await db.query(
-          `SELECT COALESCE(SUM(e.salario_base), 0)::numeric AS total_prolabore
-             FROM employees e
-            WHERE e.company_id = $1 AND e.active IS TRUE
-              AND e.cargo IS NOT NULL
-              AND e.cargo ~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore)'`,
-          [companyId]
-        );
-        if (socios[0] && Number(socios[0].total_prolabore) > 0) {
-          const limpo = proventos - Number(socios[0].total_prolabore);
-          if (limpo > 0) proventos = limpo;
-        }
-        const media = proventos / vps.length;
-        if (Number.isFinite(media) && media > 0) {
-          for (const vp of vps) {
-            rows.push({ nome: vp.nome, salario_base: media, admissao: vp.admissao, company_id: companyId });
-          }
-        }
-      }
-    }
+    return projetar({ funcionarios: rows, ano });
   }
 
-  return projetar({ funcionarios: rows, ano });
+  // Buscar salários individuais da tabela employees para cruzar
+  const { rows: emps } = await db.query(
+    `SELECT name, salario_base FROM employees WHERE company_id = $1 AND salario_base > 0`,
+    [companyId]
+  );
+  const salarioPorNome = new Map();
+  for (const e of emps) {
+    const chave = String(e.name || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+    if (chave && e.salario_base > 0) salarioPorNome.set(chave, Number(e.salario_base));
+  }
+
+  // Média da folha excluindo pró-labore: proventos / nº de CLT (programação de férias)
+  let mediaFolha = null;
+  const { rows: snap } = await db.query(
+    `SELECT proventos FROM payroll_snapshots
+      WHERE company_id = $1 AND proventos > 0
+      ORDER BY competencia DESC LIMIT 1`,
+    [companyId]
+  );
+  if (snap.length) {
+    mediaFolha = Number(snap[0].proventos) / vps.length;
+    if (!Number.isFinite(mediaFolha) || mediaFolha <= 0) mediaFolha = null;
+  }
+
+  // Montar a lista: nome e admissão da programação, salário do employees ou média
+  const funcionarios = vps.map((vp) => {
+    const chave = String(vp.nome || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+    const salario = salarioPorNome.get(chave) || mediaFolha || null;
+    return {
+      nome: vp.nome,
+      salario_base: salario,
+      admissao: vp.admissao,
+      company_id: companyId,
+    };
+  });
+
+  return projetar({ funcionarios, ano });
 }
 
 module.exports = { gravarSnapshot, reprocessarExtratos, serie, projecaoDecimoTerceiro };
