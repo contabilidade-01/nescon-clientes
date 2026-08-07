@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const db = require("../db");
 const { getToolAccessForCompany } = require("../toolAccessDb");
 const { mergeAreas } = require("../adminAreas");
+const { jwtSecret } = require("../jwtSecret");
 
 /**
  * Perfil do administrador na base. Devolve null se não existe ou está desativado.
@@ -31,63 +32,22 @@ async function getAdminProfile(dbConn, adminId) {
 }
 
 /**
- * O segredo que assina TODOS os tokens. Sem ele, qualquer pessoa que leia este arquivo
- * forja um token de administrador — e o valor padrão antigo estava versionado aqui.
- *
- * Por isso a API **não sobe** sem um segredo próprio, em vez de subir insegura e
- * silenciosa: um sistema que não arranca é um chamado de dez minutos; um sistema que
- * arranca com o segredo público é uma invasão que ninguém percebe.
- *
- * A lista abaixo pega os padrões que já circularam no repositório e no compose.
+ * O segredo dos tokens vem de `jwtSecret.js`: ambiente, senão o da instalação (gerado
+ * na primeira subida e guardado). Aqui só se consome — e por função, não por constante,
+ * porque na hora em que este módulo carrega o banco ainda não respondeu.
  */
-const SEGREDOS_PROIBIDOS = [
-  "change-this-secret-in-production",
-  "troque-este-segredo-em-producao",
-  "secret",
-  "changeme",
-];
-
-function segredoValido() {
-  const s = (process.env.JWT_SECRET || "").trim();
-  if (!s) return { ok: false, motivo: "JWT_SECRET não está definido." };
-  if (SEGREDOS_PROIBIDOS.includes(s.toLowerCase())) {
-    return { ok: false, motivo: "JWT_SECRET ainda é o valor de exemplo." };
-  }
-  if (s.length < 32) {
-    return { ok: false, motivo: `JWT_SECRET é curto demais (${s.length} caracteres, mínimo 32).` };
-  }
-  return { ok: true };
-}
-
-const conferencia = segredoValido();
-if (!conferencia.ok) {
-  console.error(
-    [
-      "",
-      `[SEGURANCA] ${conferencia.motivo}`,
-      "Sem um segredo proprio qualquer um forja um token de administrador.",
-      "Gere um com:  openssl rand -hex 32",
-      "e defina JWT_SECRET no ambiente do servico.",
-      "",
-    ].join("\n")
-  );
-  // `NODE_ENV=test` deixa a suíte rodar sem exigir segredo — os testes não assinam nada.
-  if (process.env.NODE_ENV !== "test") process.exit(1);
-}
-
-const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES = "8h";
 
 /** JWT de empresa (CNPJ) */
 function generateToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+  return jwt.sign(payload, jwtSecret(), { expiresIn: JWT_EXPIRES });
 }
 
 /** JWT de administrador (CPF na tabela platform_admins) */
 function generateAdminToken(admin) {
   return jwt.sign(
     { role: "admin", admin_id: admin.id, admin_cpf: admin.cpf },
-    JWT_SECRET,
+    jwtSecret(),
     { expiresIn: JWT_EXPIRES }
   );
 }
@@ -100,7 +60,7 @@ async function authMiddleware(req, res, next) {
 
   try {
     const token = header.split(" ")[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, jwtSecret());
     if (decoded.role === "admin") {
       // Permissões vêm da BASE, não do token: alterar ou desativar um usuário tem
       // efeito na requisição seguinte, sem esperar o JWT expirar.
@@ -198,5 +158,4 @@ module.exports = {
   blockUntilPasswordChanged,
   requireCompanyUser,
   getAdminProfile,
-  JWT_SECRET,
 };

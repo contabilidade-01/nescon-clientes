@@ -26,6 +26,7 @@ const {
 const { UPLOAD_DIR } = require("../uploads");
 const { extrairVencimento } = require("../pdfDueDate");
 const { PORTAL_ONLY_TOOL_ACCESS } = require("../companyTools");
+const { gerarSenhaInicial } = require("../senhaInicial");
 
 const MESES_PADRAO = Number(process.env.GCLICK_SYNC_MESES || 6);
 const CONCORRENCIA_TAREFAS = 8;
@@ -87,14 +88,17 @@ async function mapaEmpresas(cnpjsNecessarios) {
     const dados = nomes.get(cnpj);
     const nome = dados?.name || `Empresa ${cnpj}`;
     try {
-      // Senha inicial = CNPJ e troca obrigatória no 1º acesso (CNPJ é público).
+      // Senha inicial ALEATÓRIA. Ninguém a vê aqui — a empresa nasce pela sincronização,
+      // sem gente na frente. O acesso se dá por "esqueci minha senha" (o e-mail vem do
+      // G-Click) ou pelo botão de gerar senha no painel. Usar o CNPJ, que é público,
+      // deixava a conta aberta a quem soubesse o número.
       const { rows: novo } = await db.query(
         `INSERT INTO companies
            (name, cnpj, password_hash, contact_email, tool_access, must_change_password)
          VALUES ($1,$2,$3,$4,$5::jsonb,true)
          ON CONFLICT (cnpj) DO NOTHING
          RETURNING id`,
-        [nome, cnpj, await bcrypt.hash(cnpj, 10), dados?.email || null,
+        [nome, cnpj, await bcrypt.hash(gerarSenhaInicial(), 10), dados?.email || null,
          JSON.stringify(PORTAL_ONLY_TOOL_ACCESS)]
       );
       if (novo.length) {

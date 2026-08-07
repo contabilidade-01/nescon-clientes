@@ -136,7 +136,7 @@ function normalizePhone(val) {
   return d;
 }
 
-/** Senha inicial = CNPJ só dígitos (igual aos seeds). */
+/** Cria a empresa com senha inicial ALEATÓRIA, devolvida uma única vez. */
 router.post("/companies", requireArea("empresas"), async (req, res) => {
   try {
     const { name, cnpj, contact_email, phone } = req.body;
@@ -162,7 +162,11 @@ router.post("/companies", requireArea("empresas"), async (req, res) => {
         return res.status(400).json({ error: "Telefone inválido (mínimo 8 dígitos)" });
       }
     }
-    const passwordHash = await bcrypt.hash(cnpjDigits, 10);
+    // Senha inicial ALEATÓRIA, não o CNPJ. Mostrada uma única vez a quem cadastrou —
+    // não fica guardada em claro em lugar nenhum, então não há como recuperá-la depois:
+    // se perder, gera outra.
+    const senhaInicial = gerarSenhaInicial();
+    const passwordHash = await bcrypt.hash(senhaInicial, 10);
     const created = await insertCompanyRow(db, {
       name: name.trim(),
       cnpjDigits,
@@ -172,7 +176,10 @@ router.post("/companies", requireArea("empresas"), async (req, res) => {
     });
     res.status(201).json({
       company: { ...created, tool_access: mergeToolAccess(created.tool_access) },
-      message: "Empresa criada. Login: CNPJ com ou sem máscara. Senha inicial: só os 14 dígitos do CNPJ.",
+      senha_inicial: senhaInicial,
+      message:
+        "Empresa criada. Login: CNPJ com ou sem máscara. Anote a senha inicial agora — " +
+        "ela não é exibida de novo.",
     });
   } catch (err) {
     if (err.code === "23505") {
@@ -378,6 +385,60 @@ router.get("/sync-gclick/tipos", requireArea("sincronizacao"), (_req, res) => {
       categoria: t.temVencimento ? "guia" : "folha",
     }))
   );
+});
+
+/**
+ * Gera uma senha de acesso nova para a empresa e devolve UMA VEZ.
+ *
+ * Serve para dois casos: o cliente perdeu a senha inicial, e a migração das empresas
+ * antigas — as que foram criadas quando a senha era o CNPJ e nunca trocaram.
+ *
+ * A senha não é guardada em claro, então não existe rota que a "mostre" depois. Isso é
+ * de propósito: uma tela que exibe senha de cliente é uma tela que vaza senha de cliente.
+ */
+router.post("/companies/:id/senha-inicial", requireArea("empresas"), async (req, res) => {
+  const { id } = req.params;
+  if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
+  try {
+    const senha = gerarSenhaInicial();
+    const { rows } = await db.query(
+      `UPDATE companies
+          SET password_hash = $1, must_change_password = true
+        WHERE id = $2
+        RETURNING id, name, cnpj`,
+      [await bcrypt.hash(senha, 10), id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Empresa não encontrada" });
+    res.json({
+      ...rows[0],
+      senha_inicial: senha,
+      message: "Anote agora — esta senha não é exibida de novo. O cliente terá de trocá-la no 1º acesso.",
+    });
+  } catch (err) {
+    console.error("[admin] senha inicial:", err.message);
+    res.status(500).json({ error: "Erro ao gerar a senha" });
+  }
+});
+
+/**
+ * Quantas empresas ainda estão com a senha inicial por trocar.
+ *
+ * `must_change_password` marca exatamente isso. Nas empresas antigas essa senha é o
+ * CNPJ — público — então este número é a fila de risco a zerar.
+ */
+router.get("/companies/senha-pendente", requireArea("empresas"), async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT id, name, cnpj, created_at
+         FROM companies
+        WHERE must_change_password IS TRUE
+        ORDER BY name`
+    );
+    res.json({ total: rows.length, empresas: rows });
+  } catch (err) {
+    console.error("[admin] senha pendente:", err.message);
+    res.status(500).json({ error: "Erro ao listar" });
+  }
 });
 
 /** Backup diário: o que está configurado hoje. */

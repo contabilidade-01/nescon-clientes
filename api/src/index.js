@@ -15,6 +15,7 @@ const {
   backfillGclickClients,
 } = require("./ensureGclickClientsSchema");
 const { ensureAppSettings } = require("./appSettings");
+const { resolverJwtSecret } = require("./jwtSecret");
 const { ensureEmployeePayrollFields } = require("./ensureEmployeePayrollFields");
 const { ensureExtratoAutoSchema } = require("./ensureExtratoAutoSchema");
 const { ensureVacationSchema } = require("./ensureVacationSchema");
@@ -130,6 +131,15 @@ async function start() {
     await ensureAdminUsersSchema(db);
     await ensureGclickClientsSchema(db);
     await ensureAppSettings(db);
+    // Depois de app_settings existir e ANTES de qualquer token ser assinado: o segredo
+    // vem do ambiente ou, na falta dele, da instalação (gerado e guardado). Nunca de
+    // um padrão no código.
+    const seg = await resolverJwtSecret(db);
+    console.log(
+      seg.origem === "gerado"
+        ? "[auth] segredo dos tokens GERADO nesta subida e guardado na instalação."
+        : `[auth] segredo dos tokens: ${seg.origem}.`
+    );
     await ensureEmployeePayrollFields(db);
     await ensureExtratoAutoSchema(db);
     await ensureVacationSchema(db);

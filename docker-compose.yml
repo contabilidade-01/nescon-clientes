@@ -47,11 +47,11 @@ services:
       DB_NAME: rhapp
       DB_USER: rhapp
       DB_PASSWORD: ${DB_PASSWORD:-changeme}
-      # SEM PADRAO, de proposito: a API recusa arrancar com segredo de exemplo ou
-      # curto demais. Um sistema que nao sobe e um chamado de dez minutos; um que sobe
-      # com o segredo publico e uma invasao que ninguem percebe.
-      # Gerar com: openssl rand -hex 32
-      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET (openssl rand -hex 32)}
+      # OPCIONAL. Sem ele, a API gera um segredo forte na primeira subida e o guarda na
+      # propria instalacao (app_settings, no volume do Postgres, que tem backup). Define
+      # aqui so para rotacionar de fora — trocar derruba todas as sessoes de proposito.
+      # Valor de exemplo ou com menos de 32 caracteres e ignorado, com aviso no log.
+      JWT_SECRET: ${JWT_SECRET:-}
       PORT: 3001
       UPLOAD_DIR: /app/uploads
       # Chave de serviço partilhada com o sistema de guias (release, sync-companies, access-stats).

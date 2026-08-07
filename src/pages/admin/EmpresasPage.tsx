@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Building2, Plus } from "lucide-react";
+import { Building2, KeyRound, Plus, ShieldAlert } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { CompanyFilter } from "@/components/admin/CompanyFilter";
 import { useAdminCompanies } from "@/hooks/useAdminCompanies";
@@ -17,6 +17,10 @@ const EmpresasPage = () => {
   const queryClient = useQueryClient();
   const { data: companies } = useAdminCompanies();
   const [companyId, setCompanyId] = useState("");
+
+  // A senha inicial é mostrada UMA vez, num aviso persistente. Não existe rota que a
+  // consulte depois: uma tela que exibe senha de cliente é uma tela que vaza senha.
+  const [senhaGerada, setSenhaGerada] = useState<{ empresa: string; senha: string } | null>(null);
 
   const [newCoName, setNewCoName] = useState("");
   const [newCoCnpj, setNewCoCnpj] = useState("");
@@ -34,7 +38,9 @@ const EmpresasPage = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
       queryClient.invalidateQueries({ queryKey: ["admin-summary"] });
-      toast.success(data.message);
+      // A senha aparece UMA vez. Fica num aviso que não some sozinho — um toast de 4
+      // segundos com a credencial do cliente é a receita para ela se perder.
+      setSenhaGerada({ empresa: data.company.name, senha: data.senha_inicial });
       setNewCoName("");
       setNewCoCnpj("");
       setNewCoEmail("");
@@ -43,10 +49,92 @@ const EmpresasPage = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const senhaPendente = useQuery({
+    queryKey: ["senha-pendente"],
+    queryFn: () => api.admin.senhaPendente(),
+  });
+
+  const gerarSenha = useMutation({
+    mutationFn: (id: string) => api.admin.gerarSenhaInicial(id),
+    onSuccess: (r) => {
+      setSenhaGerada({ empresa: r.name, senha: r.senha_inicial });
+      queryClient.invalidateQueries({ queryKey: ["senha-pendente"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const selected = companies?.find((c) => c.id === companyId);
 
   return (
     <AdminLayout title="Empresas" description="Cadastro, contactos e permissões por CNPJ">
+      {/* A senha aparece UMA vez, e este aviso não some sozinho. */}
+      {senhaGerada && (
+        <Card className="border-emerald-500/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <KeyRound className="h-4 w-4" /> Senha de acesso de {senhaGerada.empresa}
+            </CardTitle>
+            <CardDescription>
+              Anote e entregue ao cliente agora. <strong>Não é possível vê-la de novo</strong> —
+              ela não fica guardada em texto em lugar nenhum. Se perder, gere outra.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-3">
+            <code className="rounded bg-muted px-3 py-2 font-mono text-lg tracking-wider">
+              {senhaGerada.senha}
+            </code>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                navigator.clipboard?.writeText(senhaGerada.senha);
+                toast.success("Senha copiada.");
+              }}
+            >
+              Copiar
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setSenhaGerada(null)}>
+              Já anotei
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Fila de risco: enquanto a senha inicial não for trocada, o acesso vale para
+          quem a tiver. Nas empresas antigas essa senha era o CNPJ, que é público. */}
+      {(senhaPendente.data?.total ?? 0) > 0 && (
+        <Card className="border-amber-500/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ShieldAlert className="h-4 w-4 text-amber-600" />
+              {senhaPendente.data?.total} empresa(s) ainda com a senha inicial
+            </CardTitle>
+            <CardDescription>
+              Enquanto o cliente não troca, o acesso vale para quem tiver a senha. Nas
+              empresas cadastradas antes desta mudança, a senha inicial era o próprio
+              CNPJ — que é público. Gerar uma senha nova fecha esse acesso na hora.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {senhaPendente.data?.empresas.slice(0, 30).map((c) => (
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-1.5 last:border-0">
+                <span className="min-w-0 truncate text-sm">
+                  {c.name} <span className="text-xs text-muted-foreground">{maskCNPJ(c.cnpj)}</span>
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => gerarSenha.mutate(c.id)}
+                  disabled={gerarSenha.isPending}
+                >
+                  Gerar senha nova
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">

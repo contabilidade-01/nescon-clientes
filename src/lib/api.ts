@@ -1105,6 +1105,8 @@ export const api = {
           tool_access: CompanyToolAccessApi;
           created_at: string;
         };
+        /** Mostrada UMA vez. Não fica guardada em claro — se perder, gera outra. */
+        senha_inicial: string;
         message: string;
       }>("/admin/companies", { method: "POST", body: JSON.stringify(data) }),
     updateCompany: (
@@ -1293,6 +1295,17 @@ export const api = {
     tiposGclick: () =>
       request<Array<{ codigo: string; nome: string; categoria: "guia" | "folha" }>>(
         "/admin/sync-gclick/tipos"
+      ),
+    /** Empresas que ainda não trocaram a senha inicial — a fila de risco a zerar. */
+    senhaPendente: () =>
+      request<{ total: number; empresas: Array<{ id: string; name: string; cnpj: string }> }>(
+        "/admin/companies/senha-pendente"
+      ),
+    /** Gera senha nova e devolve UMA vez — não há como consultá-la depois. */
+    gerarSenhaInicial: (companyId: string) =>
+      request<{ id: string; name: string; cnpj: string; senha_inicial: string; message: string }>(
+        `/admin/companies/${companyId}/senha-inicial`,
+        { method: "POST" }
       ),
     /** Backup diário do banco — o único dado que não volta sozinho. */
     backupConfig: () => request<BackupConfig>("/admin/backup/config"),

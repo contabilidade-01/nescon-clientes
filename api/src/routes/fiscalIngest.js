@@ -12,6 +12,7 @@ const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const db = require("../db");
 const { PORTAL_ONLY_TOOL_ACCESS } = require("../companyTools");
+const { gerarSenhaInicial } = require("../senhaInicial");
 const { validateString, validateUUID } = require("../middleware/validate");
 const { accessSummary } = require("../deliverableAccess");
 const sync = require("../gclick/sync");
@@ -205,7 +206,7 @@ router.post("/sync-companies", requireIngestKey, async (req, res) => {
            VALUES ($1,$2,$3,$4,$5,$6::jsonb,true)
            ON CONFLICT (cnpj) DO NOTHING
            RETURNING id, name, cnpj`,
-          [nome, cnpj, await bcrypt.hash(cnpj, 10), email, phone || null,
+          [nome, cnpj, await bcrypt.hash(gerarSenhaInicial(), 10), email, phone || null,
            JSON.stringify(PORTAL_ONLY_TOOL_ACCESS)]
         );
         if (rows.length) criadas.push(rows[0]);
