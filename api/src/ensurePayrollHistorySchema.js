@@ -62,6 +62,16 @@ async function ensurePayrollHistorySchema(db) {
         -- em vez de exibir uma linha errada com cara de certa.
         conferido BOOLEAN NOT NULL DEFAULT true,
         problemas TEXT,
+        -- POR QUE não fechou, em categoria: sem_texto (digitalizado), nao_e_extrato
+        -- (o PDF anexado é outro documento), extrato_parcial, formato_diferente.
+        -- Só o último é trabalho de código — distinguir evita caçar bug onde não há.
+        causa TEXT,
+        -- A explicação e uma amostra do que o PDF realmente é. Fecha o ciclo: dá para
+        -- descobrir o problema sem abrir o arquivo no servidor.
+        diagnostico TEXT,
+        -- 'rodape' ou 'corpo': de onde veio o número de empregados. O corpo é o
+        -- fallback quando o bloco de Situações não existe naquele leiaute.
+        origem_quadro TEXT,
 
         criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
         atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -75,6 +85,14 @@ async function ensurePayrollHistorySchema(db) {
       CREATE INDEX IF NOT EXISTS idx_payroll_snapshots_competencia
         ON payroll_snapshots(competencia);
     `);
+
+    // A tabela já existe em produção, e `CREATE TABLE IF NOT EXISTS` não acrescenta
+    // coluna nenhuma — sem estes ALTER, a gravação quebraria com "column causa does not
+    // exist" na primeira releitura. É o modo de falha clássico de acrescentar campo a
+    // uma tabela que já foi criada.
+    await db.query(`ALTER TABLE payroll_snapshots ADD COLUMN IF NOT EXISTS causa TEXT;`);
+    await db.query(`ALTER TABLE payroll_snapshots ADD COLUMN IF NOT EXISTS diagnostico TEXT;`);
+    await db.query(`ALTER TABLE payroll_snapshots ADD COLUMN IF NOT EXISTS origem_quadro TEXT;`);
 
     // Data de admissão: sai do próprio extrato e é o que dá os avos do 13º. Sem ela a
     // projeção assume ano inteiro — seguro para o caixa, mas impreciso para quem entrou

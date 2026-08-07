@@ -254,11 +254,23 @@ const FolhaPage = () => {
             </CardHeader>
             <CardContent className="space-y-2">
               {(problemas.data?.motivos ?? []).map((m) => (
-                <div key={m.motivo} className="flex items-start gap-2 rounded-md border p-2 text-sm">
-                  <Badge variant="outline" className="shrink-0">
-                    {m.quantas}×
-                  </Badge>
-                  <span className="min-w-0">{m.motivo}</span>
+                <div key={m.causa} className="space-y-1 rounded-md border p-2 text-sm">
+                  <div className="flex items-start gap-2">
+                    <Badge variant="outline" className="shrink-0">
+                      {m.quantas}×
+                    </Badge>
+                    <span className="min-w-0">{m.motivo}</span>
+                  </div>
+                  {/* A amostra mostra como o PDF realmente veio: é o que permite corrigir
+                      o leitor sem precisar abrir o arquivo no servidor. */}
+                  {m.exemplo && (
+                    <details className="ml-8 text-xs text-muted-foreground">
+                      <summary className="cursor-pointer">Ver o que o portal leu</summary>
+                      <pre className="mt-1 whitespace-pre-wrap break-words rounded bg-muted p-2 text-[11px]">
+                        {m.exemplo}
+                      </pre>
+                    </details>
+                  )}
                 </div>
               ))}
               {(problemas.data?.itens ?? []).length > 0 && (

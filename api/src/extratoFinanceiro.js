@@ -342,22 +342,117 @@ function extrairFaltas(texto) {
  */
 function calcularTurnover({ admitidos, demitidos, empregados }) {
   if (!empregados || empregados <= 0) return null;
+  // Sem NENHUM dos dois, não há o que calcular. Tratar os dois nulos como zero devolvia
+  // "0%" — um número fabricado, com cara de apurado, exatamente onde o quadro veio do
+  // corpo do extrato e o rodapé não existia. Um teste pegou isto.
+  if (admitidos === null && demitidos === null) return null;
   const a = Number(admitidos ?? 0);
   const d = Number(demitidos ?? 0);
   return Number((((a + d) / 2 / empregados) * 100).toFixed(2));
 }
 
-/** Tudo de uma vez, a partir do texto do PDF. */
-function extrairFinanceiro(texto) {
+/**
+ * DIAGNÓSTICO: por que este PDF não foi reconhecido.
+ *
+ * "Não achei o total de proventos" não ajuda ninguém — nem quem opera, nem quem vai
+ * corrigir o parser. A pergunta útil é *o que este arquivo é*, e ela tem respostas
+ * bem diferentes:
+ *
+ *  - PDF sem camada de texto (digitalizado) — nenhum regex vai resolver, precisa de OCR;
+ *  - documento que não é Extrato Mensal — a entrega foi classificada como extrato mas o
+ *    arquivo anexado é outro relatório;
+ *  - Extrato Mensal com diagramação diferente — aí sim é o parser que precisa mudar.
+ *
+ * Só o terceiro caso é trabalho de código. Distinguir os três evita caçar bug onde não
+ * há bug, que foi exatamente o risco desta investigação.
+ */
+function diagnosticar(texto) {
+  const t = String(texto || "");
+  if (t.trim().length < 200) {
+    return {
+      causa: "sem_texto",
+      explicacao:
+        "O PDF não tem camada de texto (provavelmente digitalizado). Nenhum ajuste de " +
+        "leitura resolve — precisaria de OCR, ou de substituir o arquivo pelo original.",
+      amostra: t.slice(0, 200),
+    };
+  }
+
+  const temTotais = /Total Geral Proventos/i.test(t);
+  const temSituacoes = /Situa[cç][õo]es|No\.\s*Empregados/i.test(t);
+  const temRubricas = /DIAS NORMAIS|Proventos:/i.test(t);
+
+  if (!temTotais && !temSituacoes && !temRubricas) {
+    return {
+      causa: "nao_e_extrato",
+      explicacao:
+        "O arquivo não parece um Extrato Mensal: não tem os totais, nem o bloco de " +
+        "Situações, nem as rubricas. A entrega foi classificada como extrato, mas o PDF " +
+        "anexado é outro documento.",
+      amostra: primeirasLinhas(t, 6),
+    };
+  }
+
+  const faltando = [];
+  if (!temTotais) faltando.push("os totais gerais");
+  if (!temSituacoes) faltando.push("o bloco de Situações");
+
+  if (faltando.length) {
+    return {
+      causa: "extrato_parcial",
+      explicacao:
+        `É um Extrato Mensal, mas falta ${faltando.join(" e ")} — pode ser um extrato ` +
+        "resumido, de uma página só, ou emitido com outras opções de impressão.",
+      amostra: ultimasLinhas(t, 8),
+    };
+  }
+
+  return {
+    causa: "formato_diferente",
+    explicacao:
+      "O extrato tem as seções esperadas, mas os números estão dispostos de outro jeito. " +
+      "Este é o caso que exige ajuste no leitor — a amostra abaixo mostra como o PDF veio.",
+    amostra: ultimasLinhas(t, 8),
+  };
+}
+
+function primeirasLinhas(t, n) {
+  return t.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, n).join(" ⏎ ").slice(0, 400);
+}
+
+function ultimasLinhas(t, n) {
+  return t.split("\n").map((l) => l.trim()).filter(Boolean).slice(-n).join(" ⏎ ").slice(0, 400);
+}
+
+/**
+ * Tudo de uma vez, a partir do texto do PDF.
+ *
+ * `funcionariosNoCorpo` é o número de funcionários lido pelo parser de cadastro, que já
+ * é validado contra PDF real. Serve de **fallback** para o quadro quando o rodapé não
+ * entrega: contar quem está no extrato é mais confiável que ler um bloco de resumo que
+ * nem todo leiaute tem.
+ */
+function extrairFinanceiro(texto, { funcionariosNoCorpo = null } = {}) {
   const totais = extrairTotais(texto);
   const situacoes = extrairSituacoes(texto);
   const afastamento = extrairAfastamentos(texto);
   const faltas = extrairFaltas(texto);
+
+  // Quadro pelo corpo do extrato quando o rodapé falhou. Admissões e demissões NÃO têm
+  // fallback: só o rodapé as conhece, e inventá-las daria um turnover errado com cara
+  // de certo. Sem elas, o turnover fica nulo — que é a resposta honesta.
+  let origemQuadro = "rodape";
+  if (situacoes.empregados === null && Number.isInteger(funcionariosNoCorpo) && funcionariosNoCorpo > 0) {
+    situacoes.empregados = funcionariosNoCorpo;
+    origemQuadro = "corpo";
+  }
+
   return {
     totais,
     situacoes,
     afastamento,
     faltas,
+    origem_quadro: origemQuadro,
     turnover: calcularTurnover(situacoes),
   };
 }
@@ -371,6 +466,11 @@ function extrairFinanceiro(texto) {
  */
 function conferirFinanceiro({ totais, situacoes }) {
   const problemas = [];
+  // Turnover sem admissão/demissão não é zero, é desconhecido — e a conferência precisa
+  // dizer isso, senão o painel mostra 0% como se fosse fato apurado.
+  if (situacoes.admitidos === null && situacoes.demitidos === null) {
+    problemas.push("Sem admissões/demissões: o turnover deste mês não pôde ser apurado.");
+  }
 
   // Números críticos — falta é erro sempre
   if (totais.proventos === null) problemas.push("Não achei o total de proventos.");
@@ -414,5 +514,6 @@ module.exports = {
   extrairFaltas,
   calcularTurnover,
   extrairFinanceiro,
+  diagnosticar,
   conferirFinanceiro,
 };

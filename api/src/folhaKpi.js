@@ -7,7 +7,8 @@
  */
 const fs = require("fs");
 const { resolveUploadPath } = require("./uploads");
-const { extrairFinanceiro, conferirFinanceiro } = require("./extratoFinanceiro");
+const { extrairFinanceiro, conferirFinanceiro, diagnosticar } = require("./extratoFinanceiro");
+const { extrairDoTexto } = require("./extratoEmployees");
 const { projetar } = require("./decimoTerceiro");
 const { funcionarioRealSql } = require("./payrollRoles");
 
@@ -42,8 +43,22 @@ async function gravarSnapshot(db, { companyId, competencia, deliverableId, fileP
   const texto = await textoDoExtrato(filePath);
   if (!texto) return { ok: false, erro: "PDF não encontrado no volume" };
 
-  const f = extrairFinanceiro(texto);
+  // Contagem de funcionários pelo CORPO do extrato — parser já validado contra PDF real
+  // (15/15 no QUEIJEIRO 3). Vira o fallback do quadro quando o rodapé não entrega.
+  let funcionariosNoCorpo = null;
+  try {
+    funcionariosNoCorpo = extrairDoTexto(texto).funcionarios.length || null;
+  } catch {
+    funcionariosNoCorpo = null;
+  }
+
+  const f = extrairFinanceiro(texto, { funcionariosNoCorpo });
   const conf = conferirFinanceiro(f);
+
+  // Quando não fecha, guarda POR QUE — e uma amostra do que o PDF realmente é. Sem isso
+  // o painel dizia "não achei o total" e ninguém tinha como descobrir se o problema era
+  // o leitor, um PDF digitalizado ou um documento que nem é extrato.
+  const diag = conf.ok ? null : diagnosticar(texto);
 
   if (!conf.ok) {
     console.warn(
@@ -60,8 +75,8 @@ async function gravarSnapshot(db, { companyId, competencia, deliverableId, fileP
         proventos, descontos, liquido, inss, fgts, base_fgts, irrf,
         empregados, admitidos, demitidos, trabalhando, em_ferias,
         afastamento_valor, afastamento_dias, afastamento_funcionarios,
-        faltas_dias, faltas_dias_dsr, conferido, problemas)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+        faltas_dias, faltas_dias_dsr, conferido, problemas, causa, diagnostico, origem_quadro)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
      ON CONFLICT (company_id, competencia) DO UPDATE SET
        deliverable_id = EXCLUDED.deliverable_id,
        proventos = EXCLUDED.proventos, descontos = EXCLUDED.descontos,
@@ -75,6 +90,8 @@ async function gravarSnapshot(db, { companyId, competencia, deliverableId, fileP
        afastamento_funcionarios = EXCLUDED.afastamento_funcionarios,
        faltas_dias = EXCLUDED.faltas_dias, faltas_dias_dsr = EXCLUDED.faltas_dias_dsr,
        conferido = EXCLUDED.conferido, problemas = EXCLUDED.problemas,
+       causa = EXCLUDED.causa, diagnostico = EXCLUDED.diagnostico,
+       origem_quadro = EXCLUDED.origem_quadro,
        atualizado_em = now()`,
     [
       companyId, competencia, deliverableId,
@@ -84,11 +101,17 @@ async function gravarSnapshot(db, { companyId, competencia, deliverableId, fileP
       f.situacoes.trabalhando, f.situacoes.em_ferias,
       f.afastamento.valor, f.afastamento.dias, f.afastamento.ocorrencias,
       f.faltas.dias, f.faltas.dias_dsr,
-      conf.ok, conf.problemas.length ? conf.problemas.join(" ") : null,
+      conf.ok,
+      conf.problemas.length ? conf.problemas.join(" ") : null,
+      diag?.causa ?? null,
+      diag ? `${diag.explicacao}
+
+O PDF veio assim: ${diag.amostra}` : null,
+      f.origem_quadro,
     ]
   );
 
-  return { ok: conf.ok, problemas: conf.problemas, competencia };
+  return { ok: conf.ok, problemas: conf.problemas, causa: diag?.causa ?? null, competencia };
 }
 
 /**

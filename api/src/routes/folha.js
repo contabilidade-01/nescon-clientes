@@ -78,7 +78,7 @@ router.get("/problemas", async (req, res) => {
   }
   try {
     const { rows } = await db.query(
-      `SELECT s.competencia, s.problemas, c.name AS empresa,
+      `SELECT s.competencia, s.problemas, s.causa, s.diagnostico, c.name AS empresa,
               s.proventos, s.descontos, s.liquido
          FROM payroll_snapshots s
          JOIN companies c ON c.id = s.company_id
@@ -87,16 +87,32 @@ router.get("/problemas", async (req, res) => {
         LIMIT 200`,
       params
     );
-    // Agrupa por motivo: 60 linhas com a mesma causa são UM problema, não sessenta.
-    const porMotivo = new Map();
+    // Agrupa pela CAUSA, não pela lista de campos que faltaram: "não achei o total" é
+    // sintoma; "o PDF é digitalizado" é o problema. Sem isso, três documentos diferentes
+    // apareciam como três variações do mesmo texto e ninguém sabia por onde começar.
+    const ROTULO = {
+      sem_texto: "PDF sem camada de texto (digitalizado) — precisa de OCR ou do arquivo original",
+      nao_e_extrato: "O arquivo anexado não é um Extrato Mensal",
+      extrato_parcial: "Extrato Mensal incompleto (resumido ou com outras opções de impressão)",
+      formato_diferente: "Extrato Mensal com diagramação diferente — exige ajuste no leitor",
+    };
+    const porCausa = new Map();
     for (const r of rows) {
-      const chave = r.problemas || "sem motivo registrado";
-      porMotivo.set(chave, (porMotivo.get(chave) || 0) + 1);
+      const chave = r.causa || "sem_causa";
+      const atual = porCausa.get(chave) || { quantas: 0, exemplo: null };
+      atual.quantas += 1;
+      if (!atual.exemplo && r.diagnostico) atual.exemplo = r.diagnostico;
+      porCausa.set(chave, atual);
     }
     res.json({
       total: rows.length,
-      motivos: [...porMotivo.entries()]
-        .map(([motivo, quantas]) => ({ motivo, quantas }))
+      motivos: [...porCausa.entries()]
+        .map(([causa, v]) => ({
+          causa,
+          motivo: ROTULO[causa] || "Causa não registrada (releia os extratos para diagnosticar)",
+          quantas: v.quantas,
+          exemplo: v.exemplo,
+        }))
         .sort((a, b) => b.quantas - a.quantas),
       itens: rows.slice(0, 50),
     });

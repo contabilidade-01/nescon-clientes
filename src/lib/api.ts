@@ -528,7 +528,14 @@ export interface FolhaSerieItem {
 export interface FolhaProblemas {
   total: number;
   /** Agrupado: 60 linhas com a mesma causa são UM problema, não sessenta. */
-  motivos: Array<{ motivo: string; quantas: number }>;
+  motivos: Array<{
+    /** Categoria: sem_texto | nao_e_extrato | extrato_parcial | formato_diferente */
+    causa: string;
+    motivo: string;
+    quantas: number;
+    /** Explicação + amostra de como o PDF veio, para diagnosticar sem abrir o arquivo. */
+    exemplo: string | null;
+  }>;
   itens: Array<{
     empresa: string;
     competencia: string;
