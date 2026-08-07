@@ -608,6 +608,80 @@ router.get("/cobertura", async (_req, res) => {
 });
 
 /**
+ * Upload em lote de Programação de Férias.
+ * O admin arrasta vários PDFs → o sistema lê o CNPJ de cada → aloca automaticamente.
+ */
+router.post(
+  "/ferias/lote",
+  requireArea("funcionarios"),
+  uploadPdf.array("files", 20),
+  async (req, res) => {
+    const arquivos = req.files || [];
+    if (!arquivos.length) return res.status(400).json({ error: "Nenhum arquivo enviado" });
+
+    const gravados = [];
+    const erros = [];
+
+    for (const file of arquivos) {
+      const caminho = resolveUploadPath(file.filename);
+      try {
+        if (!caminho || !fs.existsSync(caminho)) {
+          erros.push({ arquivo: file.originalname, motivo: "Arquivo não encontrado no disco" });
+          continue;
+        }
+
+        const parsed = await parseVacationPdf(fs.readFileSync(caminho));
+
+        if (!parsed.funcionarios.length) {
+          erros.push({ arquivo: file.originalname, motivo: "Nenhum funcionário encontrado no PDF" });
+          continue;
+        }
+
+        const cnpjPdf = String(parsed.cnpj || "").replace(/\D/g, "");
+        if (!cnpjPdf || cnpjPdf.length !== 14) {
+          erros.push({ arquivo: file.originalname, motivo: "CNPJ não encontrado no cabeçalho do PDF" });
+          continue;
+        }
+
+        const { rows: empresas } = await db.query(
+          `SELECT id, name, cnpj FROM companies WHERE regexp_replace(cnpj, '\\D', '', 'g') = $1`,
+          [cnpjPdf]
+        );
+
+        if (!empresas.length) {
+          erros.push({ arquivo: file.originalname, motivo: `CNPJ ${cnpjPdf} não cadastrado` });
+          continue;
+        }
+
+        const empresa = empresas[0];
+        const r = await salvarProgramacao(db, {
+          companyId: empresa.id,
+          parsed,
+          arquivoNome: file.originalname || file.filename,
+          source: "lote",
+          adminId: req.admin.id,
+        });
+
+        gravados.push({
+          arquivo: file.originalname,
+          empresa: empresa.name,
+          company_id: empresa.id,
+          funcionarios: r.funcionarios,
+          periodos: r.periodos,
+        });
+      } catch (err) {
+        console.error(`[ferias lote] ${file.originalname}:`, err.message);
+        erros.push({ arquivo: file.originalname, motivo: "Erro ao processar: " + err.message });
+      } finally {
+        removeUploadFile(file.filename);
+      }
+    }
+
+    res.json({ gravados, erros });
+  }
+);
+
+/**
  * Programação de Férias: upload do PDF e leitura da última importação.
  *
  * O CNPJ do PDF é conferido contra o da empresa antes de gravar — mandar o arquivo

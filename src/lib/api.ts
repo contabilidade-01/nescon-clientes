@@ -1197,6 +1197,29 @@ export const api = {
           confere: boolean;
         };
       },
+      lote: async (files: File[]) => {
+        const token = getToken();
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        const fd = new FormData();
+        for (const f of files) fd.append("files", f);
+        const res = await fetch(`${API_BASE}/admin/ferias/lote`, {
+          method: "POST",
+          body: fd,
+          headers,
+        });
+        const data = await parseResponseJson<unknown>(res);
+        if (res.status === 401) {
+          localStorage.removeItem("company_session");
+          window.location.href = "/login";
+          throw new Error("Sessão expirada");
+        }
+        if (!res.ok) throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+        return data as {
+          gravados: Array<{ arquivo: string; empresa: string; company_id: string; funcionarios: number; periodos: number }>;
+          erros: Array<{ arquivo: string; motivo: string }>;
+        };
+      },
     },
 
     /** Quem está cadastrado mas não veio no último extrato — aguarda confirmação. */
