@@ -125,9 +125,13 @@ const LoginPage = () => {
               {loading ? "Entrando..." : "Entrar"}
             </Button>
           </form>
+          {/* A senha inicial deixou de ser o CNPJ (era público, e isso deixava aberta
+              toda conta que ainda não tivesse feito o primeiro acesso). Este texto
+              dizia o contrário e mandaria o cliente tentar uma senha que não existe. */}
           <p className="mt-4 rounded-lg bg-muted/60 px-3 py-2 text-center text-xs text-muted-foreground">
-            <strong className="font-medium text-foreground">1º acesso:</strong> o login e a senha são o seu CNPJ
-            (só os números). Você definirá uma nova senha logo após entrar.
+            <strong className="font-medium text-foreground">1º acesso:</strong> o login é o seu{" "}
+            <strong className="font-medium text-foreground">CNPJ</strong>; a senha é a que a
+            contabilidade lhe enviou. Você definirá uma nova senha logo após entrar.
           </p>
         </CardContent>
         <CardFooter className="flex flex-col border-t px-6 pb-6 pt-4">
