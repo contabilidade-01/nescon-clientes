@@ -260,6 +260,9 @@ router.post("/login", loginIpLimiter, loginContaLimiter, async (req, res) => {
       const company = rows[0];
       const valid = await bcryptMatches(company.password_hash, password);
       if (!valid) return res.status(401).json({ error: "Senha incorreta" });
+      if (company.password_expires_at && new Date(company.password_expires_at) < new Date()) {
+        return res.status(401).json({ error: "Senha temporária expirada. Solicite novo acesso ao escritório." });
+      }
       const token = generateToken({
         company_id: company.id,
         company_name: company.name,
@@ -482,7 +485,7 @@ router.post("/change-password", authMiddleware, changePasswordLimiter, async (re
       );
     } else {
       await db.query(
-        "UPDATE companies SET password_hash = $1, must_change_password = false WHERE id = $2",
+        "UPDATE companies SET password_hash = $1, must_change_password = false, password_expires_at = NULL WHERE id = $2",
         [hash, id]
       );
     }

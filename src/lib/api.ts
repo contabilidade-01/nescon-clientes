@@ -1307,6 +1307,17 @@ export const api = {
         `/admin/companies/${companyId}/senha-inicial`,
         { method: "POST" }
       ),
+    /** Envia acesso (senha provisória) por WhatsApp para empresas selecionadas ou todas. */
+    enviarAcesso: (companyIds: string[] | "all") =>
+      request<{
+        enviados: number;
+        erros: Array<{ id: string; name: string; erro: string }>;
+        total: number;
+        resultados: Array<{ id: string; name: string; status: string }>;
+      }>("/admin/companies/enviar-acesso", {
+        method: "POST",
+        body: JSON.stringify({ companyIds }),
+      }),
     /** Backup diário do banco — o único dado que não volta sozinho. */
     backupConfig: () => request<BackupConfig>("/admin/backup/config"),
     salvarBackupConfig: (d: Partial<Omit<BackupConfig, "senha_configurada" | "smtp_configurado">>) =>

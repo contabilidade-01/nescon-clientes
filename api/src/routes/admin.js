@@ -25,6 +25,8 @@ const {
 const { getSetting, setBoolSetting, setSetting } = require("../appSettings");
 const gclickClient = require("../gclick/client");
 const { TIPOS: TIPOS_GCLICK } = require("../gclick/guides");
+const { gerarSenhaInicial } = require("../senhaInicial");
+const { enviarTexto } = require("../uazapi");
 const fs = require("fs");
 
 function adminOnly(req, res, next) {
@@ -1255,6 +1257,113 @@ router.post("/config/ia/testar", adminOnly, async (req, res) => {
     res.json({ ok: resultado.ok, erro: resultado.ok ? null : `HTTP ${resultado.status}` });
   } catch (err) {
     res.json({ ok: false, erro: err.message });
+  }
+});
+
+/**
+ * Envia acesso (senha provisória) por WhatsApp para empresas selecionadas ou todas.
+ *
+ * Fluxo: gera senha aleatória → salva hash + must_change_password → envia mensagem.
+ * A senha expira em 30 dias (campo password_expires_at). No primeiro login o cliente
+ * obrigatoriamente troca a senha e aceita LGPD.
+ */
+router.post("/companies/enviar-acesso", requireArea("empresas"), async (req, res) => {
+  const { companyIds } = req.body || {};
+
+  if (!companyIds) {
+    return res.status(400).json({ error: "Envie companyIds (array de UUIDs ou \"all\")" });
+  }
+
+  try {
+    let filtro = "";
+    const params = [];
+    if (companyIds === "all") {
+      filtro = "WHERE phone IS NOT NULL AND phone <> ''";
+    } else if (Array.isArray(companyIds) && companyIds.length > 0) {
+      if (!companyIds.every(validateUUID)) {
+        return res.status(400).json({ error: "IDs inválidos na lista" });
+      }
+      params.push(companyIds);
+      filtro = "WHERE id = ANY($1) AND phone IS NOT NULL AND phone <> ''";
+    } else {
+      return res.status(400).json({ error: "companyIds deve ser \"all\" ou array de UUIDs" });
+    }
+
+    const { rows: empresas } = await db.query(
+      `SELECT id, name, cnpj, contact_email, phone FROM companies ${filtro}`,
+      params
+    );
+
+    if (!empresas.length) {
+      return res.json({ enviados: 0, erros: [], mensagem: "Nenhuma empresa com telefone cadastrado." });
+    }
+
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const resultados = [];
+    const erros = [];
+
+    for (const emp of empresas) {
+      try {
+        const senha = gerarSenhaInicial();
+        const hash = await bcrypt.hash(senha, 10);
+
+        await db.query(
+          `UPDATE companies
+              SET password_hash = $1,
+                  must_change_password = true,
+                  password_expires_at = $2
+            WHERE id = $3`,
+          [hash, expiresAt, emp.id]
+        );
+
+        const loginDisplay = emp.cnpj
+          ? emp.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")
+          : emp.contact_email || "seu CNPJ";
+
+        const emailDisplay = emp.contact_email || "(não cadastrado)";
+
+        const texto = [
+          `Oi! Jeandson da Nescon Contabilidade aqui.`,
+          ``,
+          `A partir de agora, além dos envios por e-mail, faremos gestão pelo *Portal do Cliente*.`,
+          ``,
+          `📋 *Seus dados de acesso:*`,
+          `Login: ${loginDisplay}`,
+          `E-mail cadastrado: ${emailDisplay}`,
+          `Senha temporária: *${senha}*`,
+          ``,
+          `👉 Acesse: https://clientes.nescon.com.br`,
+          ``,
+          `No primeiro acesso você trocará a senha — só você terá a nova. A senha temporária expira em 30 dias.`,
+          ``,
+          `No portal você terá:`,
+          `• Folhas de pagamento`,
+          `• Guias federais`,
+          `• Consulta de férias`,
+          `• Custo de folha`,
+          `• Gestão de guias`,
+          ``,
+          `📌 Este é um canal informativo. Sobre qualquer assunto, entre em contato pelo WhatsApp de atendimento da Nescon: +55 11 94862-6605`,
+        ].join("\n");
+
+        const numero = emp.phone.startsWith("55") ? emp.phone : `55${emp.phone}`;
+        await enviarTexto({ numero, texto, delayMs: 2000 });
+
+        resultados.push({ id: emp.id, name: emp.name, status: "enviado" });
+      } catch (err) {
+        erros.push({ id: emp.id, name: emp.name, erro: err.message });
+      }
+    }
+
+    res.json({
+      enviados: resultados.length,
+      erros,
+      total: empresas.length,
+      resultados,
+    });
+  } catch (err) {
+    console.error("[admin] enviar-acesso:", err.message);
+    res.status(500).json({ error: "Erro ao enviar acessos" });
   }
 });
 

@@ -19,6 +19,10 @@ async function ensurePasswordResetSchema(db) {
       ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false;
   `);
   await db.query(`
+    ALTER TABLE companies
+      ADD COLUMN IF NOT EXISTS password_expires_at TIMESTAMPTZ;
+  `);
+  await db.query(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       token_hash TEXT NOT NULL,

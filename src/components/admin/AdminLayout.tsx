@@ -70,6 +70,12 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { to: "/admin/empresas", label: "Empresas", icon: Building2, area: "empresas" },
       {
+        to: "/admin/enviar-acesso",
+        label: "Enviar acesso (WhatsApp)",
+        icon: Send,
+        area: "empresas",
+      },
+      {
         to: "/admin/clientes-gclick",
         label: "Clientes do G-Click",
         icon: UserPlus,

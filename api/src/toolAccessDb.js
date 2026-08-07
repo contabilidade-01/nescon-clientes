@@ -24,7 +24,7 @@ async function listCompanies(db) {
 async function getCompanyByCnpjForLogin(db, cnpjDigits) {
   try {
     const { rows } = await db.query(
-      `SELECT id, name, cnpj, password_hash, tool_access, must_change_password
+      `SELECT id, name, cnpj, password_hash, tool_access, must_change_password, password_expires_at
        FROM companies WHERE cnpj = $1`,
       [cnpjDigits]
     );
@@ -35,7 +35,7 @@ async function getCompanyByCnpjForLogin(db, cnpjDigits) {
       "SELECT id, name, cnpj, password_hash FROM companies WHERE cnpj = $1",
       [cnpjDigits]
     );
-    return rows.map((r) => ({ ...r, tool_access: null, must_change_password: false }));
+    return rows.map((r) => ({ ...r, tool_access: null, must_change_password: false, password_expires_at: null }));
   }
 }
 
