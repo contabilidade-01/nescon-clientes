@@ -77,17 +77,33 @@ async function salariosDaEmpresa(companyId) {
 
 /** Média salarial a partir do último snapshot da folha (fallback). */
 async function mediaDaFolha(companyId) {
+  // Tenta snapshot com empregados primeiro
   const { rows } = await db.query(
     `SELECT proventos, empregados
        FROM payroll_snapshots
-      WHERE company_id = $1 AND empregados > 0
+      WHERE company_id = $1 AND proventos > 0
       ORDER BY competencia DESC
       LIMIT 1`,
     [companyId]
   );
   if (!rows.length) return null;
-  const media = Number(rows[0].proventos) / Number(rows[0].empregados);
-  return Number.isFinite(media) && media > 0 ? media : null;
+  const proventos = Number(rows[0].proventos);
+  const empregados = Number(rows[0].empregados);
+  if (empregados > 0) {
+    const media = proventos / empregados;
+    if (Number.isFinite(media) && media > 0) return media;
+  }
+  // Sem empregados no snapshot: dividir pelo número de funcionários ativos
+  const { rows: qtd } = await db.query(
+    `SELECT COUNT(*)::int AS total FROM employees WHERE company_id = $1 AND active IS TRUE`,
+    [companyId]
+  );
+  const totalFunc = qtd[0]?.total || 0;
+  if (totalFunc > 0) {
+    const media = proventos / totalFunc;
+    if (Number.isFinite(media) && media > 0) return media;
+  }
+  return null;
 }
 
 function enriquecer(periodos, salarios, mediaFolha, hoje = new Date()) {

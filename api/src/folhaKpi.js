@@ -215,17 +215,29 @@ async function projecaoDecimoTerceiro(db, { companyId = null, ano = new Date().g
     for (const cid of empresasIds) {
       const { rows: snap } = await db.query(
         `SELECT proventos, empregados FROM payroll_snapshots
-          WHERE company_id = $1 AND empregados > 0
+          WHERE company_id = $1 AND proventos > 0
           ORDER BY competencia DESC LIMIT 1`,
         [cid]
       );
-      if (snap.length) {
-        const media = Number(snap[0].proventos) / Number(snap[0].empregados);
-        if (Number.isFinite(media) && media > 0) {
-          for (const r of rows) {
-            if (r.company_id === cid && (!r.salario_base || Number(r.salario_base) <= 0)) {
-              r.salario_base = media;
-            }
+      if (!snap.length) continue;
+      const proventos = Number(snap[0].proventos);
+      const empregados = Number(snap[0].empregados);
+      let media = null;
+      if (empregados > 0) {
+        media = proventos / empregados;
+      } else {
+        // Sem empregados no snapshot: dividir pelo nº de funcionários ativos
+        const { rows: qtd } = await db.query(
+          `SELECT COUNT(*)::int AS total FROM employees WHERE company_id = $1 AND active IS TRUE`,
+          [cid]
+        );
+        const totalFunc = qtd[0]?.total || 0;
+        if (totalFunc > 0) media = proventos / totalFunc;
+      }
+      if (Number.isFinite(media) && media > 0) {
+        for (const r of rows) {
+          if (r.company_id === cid && (!r.salario_base || Number(r.salario_base) <= 0)) {
+            r.salario_base = media;
           }
         }
       }
