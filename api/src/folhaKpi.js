@@ -45,6 +45,15 @@ async function gravarSnapshot(db, { companyId, competencia, deliverableId, fileP
   const f = extrairFinanceiro(texto);
   const conf = conferirFinanceiro(f);
 
+  if (!conf.ok) {
+    console.warn(
+      `[folhaKpi] ${competencia} não fechou:`,
+      conf.problemas.join(" | "),
+      "| totais:", JSON.stringify(f.totais),
+      "| situacoes:", JSON.stringify(f.situacoes)
+    );
+  }
+
   await db.query(
     `INSERT INTO payroll_snapshots
        (company_id, competencia, deliverable_id,

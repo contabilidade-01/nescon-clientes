@@ -62,6 +62,17 @@ function acharPar(texto, a, b) {
 }
 
 /**
+ * Tenta cada regex da lista até uma casar. Devolve o match ou null.
+ */
+function tentarRegex(texto, regexes) {
+  for (const re of regexes) {
+    const m = re.exec(texto);
+    if (m) return m;
+  }
+  return null;
+}
+
+/**
  * Totais da folha, do rodapé do extrato.
  *
  * Os rótulos e os valores também se separam aqui:
@@ -69,6 +80,9 @@ function acharPar(texto, a, b) {
  *   "32.813,12 21.186,73"
  * — e nesta a ordem é a natural (proventos, descontos), porque os dois valores caem na
  * mesma linha seguinte. Confirmado contra o extrato real do Queijeiro (junho/2026).
+ *
+ * Cada campo tem uma lista de padrões: o principal (formato ideal) e alternativas para
+ * variações de layout. A ordem importa — o mais específico vem primeiro.
  */
 function extrairTotais(texto) {
   const plano = texto.replace(/[ \t]+/g, " ");
@@ -82,31 +96,71 @@ function extrairTotais(texto) {
     irrf: null,
   };
 
-  const mGeral = new RegExp(
-    `Total Geral Proventos:\\s*Total Geral Descontos:\\s*\\n?\\s*(${NUM})\\s+(${NUM})`,
-    "i"
-  ).exec(plano);
+  // --- Proventos + Descontos (par junto) ---
+  const mGeral = tentarRegex(plano, [
+    new RegExp(`Total\\s+Geral\\s+Proventos\\s*:?\\s*Total\\s+Geral\\s+Descontos\\s*:?\\s*\\n?\\s*(${NUM})\\s+(${NUM})`, "i"),
+    new RegExp(`Total\\s+Geral\\s+Proventos\\s*:?[^\\n]*(${NUM})[^\\n]*Total\\s+Geral\\s+Descontos\\s*:?[^\\n]*(${NUM})`, "i"),
+    new RegExp(`Proventos\\s*:?\\s*Total\\s*:?\\s*(${NUM})[\\s\\S]{0,80}Descontos\\s*:?\\s*Total\\s*:?\\s*(${NUM})`, "i"),
+  ]);
   if (mGeral) {
     totais.proventos = valor(mGeral[1]);
     totais.descontos = valor(mGeral[2]);
   }
 
-  const mLiq = new RegExp(`L[ií]quido Geral:\\s*(${NUM})`, "i").exec(plano);
+  // --- Proventos sozinho (fallback se o par não casou) ---
+  if (totais.proventos === null) {
+    const mProv = tentarRegex(plano, [
+      new RegExp(`Total\\s+(?:Geral\\s+)?Proventos\\s*:?\\s*(${NUM})`, "i"),
+      new RegExp(`Proventos\\s*:?\\s*(${NUM})(?!.*Fun)`, "i"),
+    ]);
+    if (mProv) totais.proventos = valor(mProv[1]);
+  }
+
+  // --- Descontos sozinho ---
+  if (totais.descontos === null) {
+    const mDesc = tentarRegex(plano, [
+      new RegExp(`Total\\s+(?:Geral\\s+)?Descontos\\s*:?\\s*(${NUM})`, "i"),
+      new RegExp(`Descontos\\s*:?\\s*(${NUM})(?!.*Fun)`, "i"),
+    ]);
+    if (mDesc) totais.descontos = valor(mDesc[1]);
+  }
+
+  // --- Líquido ---
+  const mLiq = tentarRegex(plano, [
+    new RegExp(`L[ií]quido\\s+Geral\\s*:?\\s*(${NUM})`, "i"),
+    new RegExp(`L[ií]quido\\s*:?\\s*(${NUM})`, "i"),
+    new RegExp(`Valor\\s+L[ií]quido\\s*:?\\s*(${NUM})`, "i"),
+  ]);
   if (mLiq) totais.liquido = valor(mLiq[1]);
 
-  const mInss = new RegExp(`Total INSS:\\s*(${NUM})`, "i").exec(plano);
+  // --- INSS ---
+  const mInss = tentarRegex(plano, [
+    new RegExp(`Total\\s+INSS\\s*:?\\s*(${NUM})`, "i"),
+    new RegExp(`INSS\\s+Total\\s*:?\\s*(${NUM})`, "i"),
+    new RegExp(`I\\.?N\\.?S\\.?S\\.?\\s*:?\\s*Total\\s*:?\\s*(${NUM})`, "i"),
+  ]);
   if (mInss) totais.inss = valor(mInss[1]);
 
-  const mBase = new RegExp(`Base total:\\s*(${NUM})`, "i").exec(plano);
+  // --- Base FGTS ---
+  const mBase = tentarRegex(plano, [
+    new RegExp(`Base\\s+total\\s*:?\\s*(${NUM})`, "i"),
+    new RegExp(`Base\\s+FGTS\\s*:?\\s*(${NUM})`, "i"),
+    new RegExp(`Total\\s+Base\\s*:?\\s*(${NUM})`, "i"),
+  ]);
   if (mBase) totais.base_fgts = valor(mBase[1]);
 
   // O FGTS total não vem somado no rodapé: é a soma dos "Valor FGTS:" por funcionário.
-  const fgts = [...plano.matchAll(new RegExp(`Valor FGTS:\\s*(${NUM})`, "gi"))]
+  const fgts = [...plano.matchAll(new RegExp(`Valor\\s+FGTS\\s*:?\\s*(${NUM})`, "gi"))]
     .map((m) => valor(m[1]))
     .filter((v) => v !== null);
   if (fgts.length) totais.fgts = Number(fgts.reduce((a, b) => a + b, 0).toFixed(2));
 
-  const mIrrf = new RegExp(`Valor Total do IRRF:\\s*(?:Valor Total do IRRF:)?\\s*(${NUM})`, "i").exec(plano);
+  // --- IRRF ---
+  const mIrrf = tentarRegex(plano, [
+    new RegExp(`Valor\\s+Total\\s+do\\s+IRRF\\s*:?\\s*(?:Valor\\s+Total\\s+do\\s+IRRF\\s*:?)?\\s*(${NUM})`, "i"),
+    new RegExp(`Total\\s+(?:do\\s+)?IRRF\\s*:?\\s*(${NUM})`, "i"),
+    new RegExp(`IRRF\\s+Total\\s*:?\\s*(${NUM})`, "i"),
+  ]);
   if (mIrrf) totais.irrf = valor(mIrrf[1]);
 
   return totais;
@@ -117,20 +171,60 @@ function extrairTotais(texto) {
  *
  * Vem pronta do extrato, então não é preciso inferir desligamento de rubrica de
  * rescisão nem deduzir admissão comparando meses. Menos inferência, menos erro.
+ *
+ * Tenta o par de duas colunas. Se falhar, tenta cada número sozinho.
  */
 function extrairSituacoes(texto) {
+  // Tenta o par padrão (duas colunas)
   const empregados = acharPar(texto, "No. Empregados", "Demitido");
   const trabalhando = acharPar(texto, "Trabalhando", "Férias");
   const admissoes = acharPar(texto, "Doença", "Admissões");
   const afastados = acharPar(texto, "Afastado direitos integrais", "Mandato sindical");
 
+  // Se o par falhou, tenta extrair cada valor sozinho como fallback
+  let nEmpregados = empregados?.["No. Empregados"] ?? null;
+  if (nEmpregados === null) {
+    const m = new RegExp(`No\\.?\\s+Empregados\\s*:?\\s*(${NUM})`, "i").exec(texto);
+    if (m) nEmpregados = valor(m[1]);
+  }
+
+  let nDemitidos = empregados?.Demitido ?? null;
+  if (nDemitidos === null) {
+    const m = new RegExp(`Demitido(?:s)?\\s*:?\\s*(${NUM})`, "i").exec(texto);
+    if (m) nDemitidos = valor(m[1]);
+  }
+
+  let nAdmitidos = admissoes?.["Admissões"] ?? null;
+  if (nAdmitidos === null) {
+    const m = new RegExp(`Admiss[ãõ]es\\s*:?\\s*(${NUM})`, "i").exec(texto);
+    if (m) nAdmitidos = valor(m[1]);
+  }
+
+  let nTrabalhando = trabalhando?.Trabalhando ?? null;
+  if (nTrabalhando === null) {
+    const m = new RegExp(`Trabalhando\\s*:?\\s*(${NUM})`, "i").exec(texto);
+    if (m) nTrabalhando = valor(m[1]);
+  }
+
+  let nFerias = trabalhando?.["Férias"] ?? null;
+  if (nFerias === null) {
+    const m = new RegExp(`F[eé]rias\\s*:?\\s*(${NUM})`, "i").exec(texto);
+    if (m) nFerias = valor(m[1]);
+  }
+
+  let nAfastados = afastados?.["Afastado direitos integrais"] ?? null;
+  if (nAfastados === null) {
+    const m = new RegExp(`Afastado(?:s)?.*direitos\\s+integrais\\s*:?\\s*(${NUM})`, "i").exec(texto);
+    if (m) nAfastados = valor(m[1]);
+  }
+
   return {
-    empregados: empregados?.["No. Empregados"] ?? null,
-    demitidos: empregados?.Demitido ?? null,
-    admitidos: admissoes?.["Admissões"] ?? null,
-    trabalhando: trabalhando?.Trabalhando ?? null,
-    em_ferias: trabalhando?.["Férias"] ?? null,
-    afastados: afastados?.["Afastado direitos integrais"] ?? null,
+    empregados: nEmpregados,
+    demitidos: nDemitidos,
+    admitidos: nAdmitidos,
+    trabalhando: nTrabalhando,
+    em_ferias: nFerias,
+    afastados: nAfastados,
   };
 }
 
@@ -271,24 +365,41 @@ function extrairFinanceiro(texto) {
 /**
  * Confere o que foi lido. O relatório gerencial só vale se os números fecharem, então
  * um extrato que não fecha vira aviso — não linha silenciosamente errada no gráfico.
+ *
+ * Tolera pequenas imprecisões (< 1.00) que são arredondamentos normais do PDF.
+ * Números críticos faltando (null) sempre geram erro.
  */
 function conferirFinanceiro({ totais, situacoes }) {
   const problemas = [];
+
+  // Números críticos — falta é erro sempre
   if (totais.proventos === null) problemas.push("Não achei o total de proventos.");
   if (totais.descontos === null) problemas.push("Não achei o total de descontos.");
   if (totais.liquido === null) problemas.push("Não achei o líquido geral.");
+  if (situacoes.empregados === null) problemas.push("Não achei o número de empregados.");
+
+  // Validação de fechamento: tolera pequenas imprecisões
   if (
     totais.proventos !== null &&
     totais.descontos !== null &&
-    totais.liquido !== null &&
-    Math.abs(totais.proventos - totais.descontos - totais.liquido) > 0.05
+    totais.liquido !== null
   ) {
-    problemas.push(
-      `Proventos − descontos (${(totais.proventos - totais.descontos).toFixed(2)}) ` +
-        `não bate com o líquido (${totais.liquido.toFixed(2)}).`
-    );
+    const diferenca = Math.abs(totais.proventos - totais.descontos - totais.liquido);
+    if (diferenca > 0.05 && diferenca < 1.00) {
+      // Imprecisão pequena: aviso, mas não falha completa
+      problemas.push(
+        `Fechamento impreciso: diff ${diferenca.toFixed(2)} ` +
+          `(proventos ${totais.proventos.toFixed(2)} − descontos ${totais.descontos.toFixed(2)} = ` +
+          `${(totais.proventos - totais.descontos).toFixed(2)}, líquido ${totais.liquido.toFixed(2)})`
+      );
+    } else if (diferenca >= 1.00) {
+      problemas.push(
+        `Fechamento não bate: proventos − descontos (${(totais.proventos - totais.descontos).toFixed(2)}) ` +
+          `não bate com o líquido (${totais.liquido.toFixed(2)}).`
+      );
+    }
   }
-  if (situacoes.empregados === null) problemas.push("Não achei o número de empregados.");
+
   return { ok: problemas.length === 0, problemas };
 }
 
