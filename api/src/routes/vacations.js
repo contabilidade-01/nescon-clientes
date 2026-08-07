@@ -87,15 +87,33 @@ async function mediaDaFolha(companyId, numFuncionariosFerias) {
     [companyId]
   );
   if (!rows.length) return null;
-  const proventos = Number(rows[0].proventos);
+  let proventos = Number(rows[0].proventos);
   const empregados = Number(rows[0].empregados);
+
+  // Subtrair pró-labore do proventos: sócios não entram no cálculo CLT
+  const { rows: socios } = await db.query(
+    `SELECT COALESCE(SUM(e.salario_base), 0)::numeric AS total_prolabore
+       FROM employees e
+      WHERE e.company_id = $1 AND e.active IS TRUE
+        AND e.cargo IS NOT NULL
+        AND e.cargo ~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore)'`,
+    [companyId]
+  );
+  if (socios[0] && Number(socios[0].total_prolabore) > 0) {
+    const limpo = proventos - Number(socios[0].total_prolabore);
+    if (limpo > 0) proventos = limpo;
+  }
+
   if (empregados > 0) {
     const media = proventos / empregados;
     if (Number.isFinite(media) && media > 0) return media;
   }
-  // Sem empregados no snapshot: dividir pelo número de funcionários ativos
+  // Sem empregados no snapshot: dividir pelo número de funcionários CLT ativos
   const { rows: qtd } = await db.query(
-    `SELECT COUNT(*)::int AS total FROM employees WHERE company_id = $1 AND active IS TRUE`,
+    `SELECT COUNT(*)::int AS total FROM employees e
+      WHERE e.company_id = $1
+        AND e.active IS TRUE
+        AND (e.cargo IS NULL OR e.cargo !~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore)')`,
     [companyId]
   );
   const totalFunc = qtd[0]?.total || 0;

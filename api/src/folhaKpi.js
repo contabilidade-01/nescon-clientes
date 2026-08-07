@@ -248,7 +248,7 @@ async function projecaoDecimoTerceiro(db, { companyId = null, ano = new Date().g
       let divisor = empregados > 0 ? empregados : 0;
       if (!divisor) {
         const { rows: qtd } = await db.query(
-          `SELECT COUNT(*)::int AS total FROM employees WHERE company_id = $1 AND active IS TRUE`,
+          `SELECT COUNT(*)::int AS total FROM employees e WHERE e.company_id = $1 AND ${funcionarioRealSql("e")}`,
           [cid]
         );
         divisor = qtd[0]?.total || 0;
@@ -260,8 +260,22 @@ async function projecaoDecimoTerceiro(db, { companyId = null, ano = new Date().g
         );
         divisor = vp[0]?.total || 0;
       }
+      // Subtrair pró-labore do proventos: sócios identificados pelo cargo não entram no 13º
+      let proventosLimpo = proventos;
+      const { rows: socios } = await db.query(
+        `SELECT COALESCE(SUM(e.salario_base), 0)::numeric AS total_prolabore
+           FROM employees e
+          WHERE e.company_id = $1 AND e.active IS TRUE
+            AND e.cargo IS NOT NULL
+            AND e.cargo ~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore)'`,
+        [cid]
+      );
+      if (socios[0] && Number(socios[0].total_prolabore) > 0) {
+        proventosLimpo = proventos - Number(socios[0].total_prolabore);
+        if (proventosLimpo <= 0) proventosLimpo = proventos;
+      }
       if (divisor > 0) {
-        const media = proventos / divisor;
+        const media = proventosLimpo / divisor;
         if (Number.isFinite(media) && media > 0) {
           for (const r of rows) {
             if (r.company_id === cid && (!r.salario_base || Number(r.salario_base) <= 0)) {
@@ -288,7 +302,20 @@ async function projecaoDecimoTerceiro(db, { companyId = null, ano = new Date().g
         [companyId]
       );
       if (vps.length) {
-        const proventos = Number(snap[0].proventos);
+        let proventos = Number(snap[0].proventos);
+        // Subtrair pró-labore se houver sócios identificados
+        const { rows: socios } = await db.query(
+          `SELECT COALESCE(SUM(e.salario_base), 0)::numeric AS total_prolabore
+             FROM employees e
+            WHERE e.company_id = $1 AND e.active IS TRUE
+              AND e.cargo IS NOT NULL
+              AND e.cargo ~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore)'`,
+          [companyId]
+        );
+        if (socios[0] && Number(socios[0].total_prolabore) > 0) {
+          const limpo = proventos - Number(socios[0].total_prolabore);
+          if (limpo > 0) proventos = limpo;
+        }
         const media = proventos / vps.length;
         if (Number.isFinite(media) && media > 0) {
           for (const vp of vps) {
