@@ -200,13 +200,38 @@ async function projecaoDecimoTerceiro(db, { companyId = null, ano = new Date().g
     filtro = `AND e.company_id = $${params.length}`;
   }
   const { rows } = await db.query(
-    `SELECT e.name AS nome, e.salario_base,
+    `SELECT e.name AS nome, e.salario_base, e.company_id,
             to_char(e.admissao, 'YYYY-MM-DD') AS admissao
        FROM employees e
       WHERE ${funcionarioRealSql("e")} ${filtro}
       ORDER BY e.name`,
     params
   );
+
+  // Fallback: quem não tem salario_base individual, usa média da folha da empresa
+  const semSalario = rows.filter((r) => !r.salario_base || Number(r.salario_base) <= 0);
+  if (semSalario.length > 0) {
+    const empresasIds = [...new Set(semSalario.map((r) => r.company_id))];
+    for (const cid of empresasIds) {
+      const { rows: snap } = await db.query(
+        `SELECT proventos, empregados FROM payroll_snapshots
+          WHERE company_id = $1 AND empregados > 0
+          ORDER BY competencia DESC LIMIT 1`,
+        [cid]
+      );
+      if (snap.length) {
+        const media = Number(snap[0].proventos) / Number(snap[0].empregados);
+        if (Number.isFinite(media) && media > 0) {
+          for (const r of rows) {
+            if (r.company_id === cid && (!r.salario_base || Number(r.salario_base) <= 0)) {
+              r.salario_base = media;
+            }
+          }
+        }
+      }
+    }
+  }
+
   return projetar({ funcionarios: rows, ano });
 }
 

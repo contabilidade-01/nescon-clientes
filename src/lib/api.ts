@@ -326,6 +326,7 @@ export type VacationItem = {
   dias_pela_tabela: number;
   salario_base: number | null;
   salario_competencia: string | null;
+  origem_salario: "individual" | "media_folha" | null;
   /** Nulo quando não há salário conhecido — a tela mostra em branco, nunca R$ 0,00. */
   custo: VacationCusto | null;
 };

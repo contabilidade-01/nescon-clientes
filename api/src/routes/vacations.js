@@ -65,28 +65,44 @@ async function salariosDaEmpresa(companyId) {
   const porCodigo = new Map();
   const porNome = new Map();
   for (const e of rows) {
-    const dado = {
-      salario: e.salario_base === null ? null : Number(e.salario_base),
-      competencia: e.salario_competencia,
-    };
-    if (e.codigo) porCodigo.set(String(e.codigo), dado);
+    const salario = e.salario_base === null ? null : Number(e.salario_base);
+    if (salario === null || salario <= 0) continue;
+    const dado = { salario, competencia: e.salario_competencia };
+    if (e.codigo) porCodigo.set(String(e.codigo).replace(/^0+/, ""), dado);
     const chave = normalizar(e.name);
     if (chave && !porNome.has(chave)) porNome.set(chave, dado);
   }
   return { porCodigo, porNome };
 }
 
-function enriquecer(periodos, salarios, hoje = new Date()) {
+/** Média salarial a partir do último snapshot da folha (fallback). */
+async function mediaDaFolha(companyId) {
+  const { rows } = await db.query(
+    `SELECT proventos, empregados
+       FROM payroll_snapshots
+      WHERE company_id = $1 AND empregados > 0
+      ORDER BY competencia DESC
+      LIMIT 1`,
+    [companyId]
+  );
+  if (!rows.length) return null;
+  const media = Number(rows[0].proventos) / Number(rows[0].empregados);
+  return Number.isFinite(media) && media > 0 ? media : null;
+}
+
+function enriquecer(periodos, salarios, mediaFolha, hoje = new Date()) {
   return periodos.map((p) => {
+    const codigoNorm = p.codigo ? String(p.codigo).replace(/^0+/, "") : null;
     const achado =
-      (p.codigo && salarios.porCodigo.get(String(p.codigo))) ||
+      (codigoNorm && salarios.porCodigo.get(codigoNorm)) ||
       salarios.porNome.get(normalizar(p.nome)) ||
       null;
     const salario = achado?.salario ?? null;
+    const salarioFinal = salario || mediaFolha || null;
+    const origemSalario = salario ? "individual" : (mediaFolha ? "media_folha" : null);
 
     const diasDireito = Number(p.dias_direito) || 0;
     const diasGozados = Number(p.dias_gozados) || 0;
-    // O que ainda há para gozar — é isso que vai custar.
     const diasAPagar = Math.max(0, diasDireito - diasGozados);
 
     return {
@@ -105,14 +121,12 @@ function enriquecer(periodos, salarios, hoje = new Date()) {
       dias_acumulados: Number(p.dias_acumulados) || 0,
       dias_a_pagar: diasAPagar,
       faltas: p.faltas,
-      // O aviso que chega a tempo: quantas faltas ainda cabem antes de perder dias.
       alerta_faltas: faltasParaProximaPerda(p.faltas),
-      // Só para conferência: o que o Art. 130 daria com essas faltas. Se divergir do
-      // relatório, quem manda é o relatório (ver o topo de vacationRules.js).
       dias_pela_tabela: diasPorFaltas(p.faltas),
-      salario_base: salario,
+      salario_base: salarioFinal,
       salario_competencia: achado?.competencia ?? null,
-      custo: custoFerias(salario, diasAPagar),
+      origem_salario: origemSalario,
+      custo: custoFerias(salarioFinal, diasAPagar),
     };
   });
 }
@@ -129,7 +143,8 @@ router.get("/", async (req, res) => {
     }
 
     const salarios = await salariosDaEmpresa(alvo.companyId);
-    const periodos = enriquecer(prog.periodos, salarios);
+    const mediaFolha = await mediaDaFolha(alvo.companyId);
+    const periodos = enriquecer(prog.periodos, salarios, mediaFolha);
 
     const custos = periodos.map((p) => p.custo);
     const totais = somarCustos(custos);

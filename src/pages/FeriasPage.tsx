@@ -324,7 +324,12 @@ function LinhaFerias({
         </div>
         <div>
           <p className="text-[11px] text-muted-foreground">Custo estimado</p>
-          <p className="font-semibold tabular-nums">{reais(p.custo?.total)}</p>
+          <p className="font-semibold tabular-nums">
+            {p.origem_salario === "media_folha" ? "~" : ""}{reais(p.custo?.total)}
+          </p>
+          {p.origem_salario === "media_folha" && (
+            <p className="text-[10px] text-muted-foreground">pela média da folha</p>
+          )}
         </div>
       </div>
 
@@ -340,7 +345,7 @@ function LinhaFerias({
         </p>
       )}
 
-      {!p.custo && (
+      {!p.custo && !p.origem_salario && (
         <p className="mt-3 text-xs text-muted-foreground">
           Sem salário na folha mais recente — não dá para estimar o custo deste período.
         </p>
