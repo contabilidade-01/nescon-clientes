@@ -76,9 +76,9 @@ async function salariosDaEmpresa(companyId) {
 }
 
 /** Média salarial a partir do último snapshot da folha (fallback). */
-async function mediaDaFolha(companyId, numFuncionariosFerias) {
+async function mediaDaFolha(companyId) {
   const { rows } = await db.query(
-    `SELECT proventos
+    `SELECT proventos, empregados
        FROM payroll_snapshots
       WHERE company_id = $1 AND proventos > 0
       ORDER BY competencia DESC
@@ -87,10 +87,20 @@ async function mediaDaFolha(companyId, numFuncionariosFerias) {
   );
   if (!rows.length) return null;
   const proventos = Number(rows[0].proventos);
-
-  // Divisor = nº de CLT na Programação de Férias (exclui sócio por definição)
-  if (numFuncionariosFerias > 0) {
-    const media = proventos / numFuncionariosFerias;
+  const empregados = Number(rows[0].empregados);
+  // empregados do snapshot = quadro CLT no Domínio (já exclui pró-labore)
+  if (empregados > 0) {
+    const media = proventos / empregados;
+    if (Number.isFinite(media) && media > 0) return media;
+  }
+  // empregados NULL: contar employees ativos como fallback
+  const { rows: qtd } = await db.query(
+    `SELECT COUNT(*)::int AS total FROM employees WHERE company_id = $1 AND active IS TRUE`,
+    [companyId]
+  );
+  const total = qtd[0]?.total || 0;
+  if (total > 0) {
+    const media = proventos / total;
     if (Number.isFinite(media) && media > 0) return media;
   }
   return null;
@@ -149,8 +159,7 @@ router.get("/", async (req, res) => {
     }
 
     const salarios = await salariosDaEmpresa(alvo.companyId);
-    const numFunc = new Set(prog.periodos.map((p) => p.nome)).size;
-    const mediaFolha = await mediaDaFolha(alvo.companyId, numFunc);
+    const mediaFolha = await mediaDaFolha(alvo.companyId);
     const periodos = enriquecer(prog.periodos, salarios, mediaFolha);
 
     const custos = periodos.map((p) => p.custo);

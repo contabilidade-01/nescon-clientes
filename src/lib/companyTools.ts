@@ -26,8 +26,8 @@ export type ToolGroup = (typeof TOOL_GROUPS)[number];
 
 export const TOOL_GROUP_LABELS: Record<ToolGroup, { title: string; description: string }> = {
   financeiro: { title: "Financeiro e vencimentos", description: "O que vence e quando pagar" },
-  entregas: { title: "Documentos e entregas", description: "Arquivos enviados pela contabilidade" },
-  dp: { title: "Departamento pessoal", description: "Documentos e rotinas de funcionários" },
+  entregas: { title: "Documentos e entregas", description: "Contratos e relatórios" },
+  dp: { title: "Departamento pessoal", description: "Folha, férias e rotinas de funcionários" },
 };
 
 export const COMPANY_TOOL_LABELS: Record<
@@ -52,7 +52,7 @@ export const COMPANY_TOOL_LABELS: Record<
   payroll_files: {
     title: "Folha de pagamento",
     description: "Holerites e relatórios da folha",
-    group: "entregas",
+    group: "dp",
   },
   documents: {
     title: "Documentos",

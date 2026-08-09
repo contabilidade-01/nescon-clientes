@@ -79,8 +79,8 @@ const MENU_ITEMS: MenuItem[] = [
 
 const GROUP_SUBTITLE: Record<ToolGroup, string> = {
   financeiro: "Guias, calendário e próximos pagamentos",
-  entregas: "Folha, contratos e atestados",
-  dp: "Documentos e rotinas de funcionários",
+  entregas: "Contratos e relatórios",
+  dp: "Folha, férias e rotinas de funcionários",
 };
 
 const Index = () => {

@@ -217,86 +217,107 @@ async function serie(db, { companyId = null, de = null, ate = null } = {}) {
 /**
  * Projeção do 13º a partir do quadro atual.
  *
- * A fonte de verdade de QUEM é CLT é a **Programação de Férias**: sócio com pró-labore
- * NÃO aparece nela — só quem tem direito a férias (celetista). Isso resolve o problema
- * de cargo NULL no employees: se o nome não está na programação, não entra no 13º.
+ * Usa `employees` filtrado por `funcionarioRealSql` (exclui pró-labore quando cargo
+ * está preenchido). Quando `salario_base` está vazio, estima pela média da folha
+ * (proventos / empregados do snapshot). Quando `employees` está vazio, estima pelo
+ * snapshot: cria N linhas sintéticas onde N = `empregados` do snapshot.
  *
- * Quando a empresa não tem programação de férias importada, cai de volta para employees
- * filtrado por cargo (funcionarioRealSql), que é o melhor que dá para fazer sem a lista.
+ * Não usa vacation_periods como fonte — ela pode ter menos nomes que o quadro real
+ * (nem todo período está registrado ao mesmo tempo).
  */
 async function projecaoDecimoTerceiro(db, { companyId = null, ano = new Date().getFullYear() } = {}) {
-  if (!companyId) {
-    // Sem empresa, usa employees filtrado (visão geral do escritório)
-    const { rows } = await db.query(
-      `SELECT e.name AS nome, e.salario_base, e.company_id,
-              to_char(e.admissao, 'YYYY-MM-DD') AS admissao
-         FROM employees e
-        WHERE ${funcionarioRealSql("e")}
-        ORDER BY e.name`
-    );
-    return projetar({ funcionarios: rows, ano });
+  const params = [];
+  let filtro = "";
+  if (companyId) {
+    params.push(companyId);
+    filtro = `AND e.company_id = $${params.length}`;
   }
-
-  // Programação de Férias = lista de quem é CLT (sócio não aparece)
-  const { rows: vps } = await db.query(
-    `SELECT DISTINCT ON (nome) nome,
-            to_char(admissao, 'YYYY-MM-DD') AS admissao
-       FROM vacation_periods
-      WHERE company_id = $1
-      ORDER BY nome, admissao`,
-    [companyId]
+  const { rows } = await db.query(
+    `SELECT e.name AS nome, e.salario_base, e.company_id,
+            to_char(e.admissao, 'YYYY-MM-DD') AS admissao
+       FROM employees e
+      WHERE ${funcionarioRealSql("e")} ${filtro}
+      ORDER BY e.name`,
+    params
   );
 
-  // Se não tem programação de férias, cai para employees filtrado
-  if (!vps.length) {
-    const { rows } = await db.query(
-      `SELECT e.name AS nome, e.salario_base, e.company_id,
-              to_char(e.admissao, 'YYYY-MM-DD') AS admissao
-         FROM employees e
-        WHERE ${funcionarioRealSql("e")} AND e.company_id = $1
-        ORDER BY e.name`,
+  // Fallback: quem não tem salario_base individual, usa média da folha da empresa
+  const semSalario = rows.filter((r) => !r.salario_base || Number(r.salario_base) <= 0);
+  if (semSalario.length > 0) {
+    const empresasIds = [...new Set(semSalario.map((r) => r.company_id))];
+    for (const cid of empresasIds) {
+      const media = await mediaSalarialDaEmpresa(db, cid);
+      if (media) {
+        for (const r of rows) {
+          if (r.company_id === cid && (!r.salario_base || Number(r.salario_base) <= 0)) {
+            r.salario_base = media;
+          }
+        }
+      }
+    }
+  }
+
+  // Se employees está vazio mas há snapshot, criar linhas genéricas baseadas no quadro
+  if (!rows.length && companyId) {
+    const { rows: snap } = await db.query(
+      `SELECT proventos, empregados FROM payroll_snapshots
+        WHERE company_id = $1 AND proventos > 0
+        ORDER BY competencia DESC LIMIT 1`,
       [companyId]
     );
-    return projetar({ funcionarios: rows, ano });
+    if (snap.length) {
+      const empregados = Number(snap[0].empregados) || 0;
+      const proventos = Number(snap[0].proventos);
+      // Usar o quadro do snapshot como número de CLT
+      const n = empregados > 0 ? empregados : 1;
+      const media = proventos / n;
+      if (Number.isFinite(media) && media > 0) {
+        for (let i = 0; i < n; i++) {
+          rows.push({
+            nome: `Funcionário ${i + 1}`,
+            salario_base: media,
+            admissao: null,
+            company_id: companyId,
+          });
+        }
+      }
+    }
   }
 
-  // Buscar salários individuais da tabela employees para cruzar
-  const { rows: emps } = await db.query(
-    `SELECT name, salario_base FROM employees WHERE company_id = $1 AND salario_base > 0`,
-    [companyId]
-  );
-  const salarioPorNome = new Map();
-  for (const e of emps) {
-    const chave = String(e.name || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
-    if (chave && e.salario_base > 0) salarioPorNome.set(chave, Number(e.salario_base));
-  }
+  return projetar({ funcionarios: rows, ano });
+}
 
-  // Média da folha excluindo pró-labore: proventos / nº de CLT (programação de férias)
-  let mediaFolha = null;
+/**
+ * Média salarial de CLT da empresa. Usa `empregados` do snapshot como divisor
+ * (que no Domínio já exclui diretores/pró-labore do quadro de situações).
+ * Se `empregados` é nulo, usa COUNT de employees ativos como fallback.
+ */
+async function mediaSalarialDaEmpresa(db, companyId) {
   const { rows: snap } = await db.query(
-    `SELECT proventos FROM payroll_snapshots
+    `SELECT proventos, empregados FROM payroll_snapshots
       WHERE company_id = $1 AND proventos > 0
       ORDER BY competencia DESC LIMIT 1`,
     [companyId]
   );
-  if (snap.length) {
-    mediaFolha = Number(snap[0].proventos) / vps.length;
-    if (!Number.isFinite(mediaFolha) || mediaFolha <= 0) mediaFolha = null;
+  if (!snap.length) return null;
+  const proventos = Number(snap[0].proventos);
+  const empregados = Number(snap[0].empregados);
+  if (empregados > 0) {
+    const media = proventos / empregados;
+    if (Number.isFinite(media) && media > 0) return media;
   }
-
-  // Montar a lista: nome e admissão da programação, salário do employees ou média
-  const funcionarios = vps.map((vp) => {
-    const chave = String(vp.nome || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
-    const salario = salarioPorNome.get(chave) || mediaFolha || null;
-    return {
-      nome: vp.nome,
-      salario_base: salario,
-      admissao: vp.admissao,
-      company_id: companyId,
-    };
-  });
-
-  return projetar({ funcionarios, ano });
+  // empregados NULL: usar COUNT de employees ativos (melhor esforço)
+  const { rows: qtd } = await db.query(
+    `SELECT COUNT(*)::int AS total FROM employees e
+      WHERE e.company_id = $1 AND ${funcionarioRealSql("e")}`,
+    [companyId]
+  );
+  const total = qtd[0]?.total || 0;
+  if (total > 0) {
+    const media = proventos / total;
+    if (Number.isFinite(media) && media > 0) return media;
+  }
+  return null;
 }
 
 module.exports = { gravarSnapshot, reprocessarExtratos, serie, projecaoDecimoTerceiro };
