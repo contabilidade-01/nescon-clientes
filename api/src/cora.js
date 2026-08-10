@@ -1,7 +1,10 @@
 /**
  * Cliente HTTP para a API Cora (boletos).
  *
- * Porte da autenticação mTLS do api_cora com adaptações para o Portal.
+ * Autenticação mTLS com suporte a:
+ * 1. Certificados em BASE64 via env (CORA_CERT_BASE64 / CORA_KEY_BASE64) — preferido em produção
+ * 2. Certificados em arquivo no disco (CORA_CERT_PATH / CORA_KEY_PATH) — fallback local
+ *
  * Mantém token em cache em memória (renovado 60s antes de expirar).
  */
 const https = require("https");
@@ -10,10 +13,11 @@ const path = require("path");
 
 // Configuração da API Cora de Produção
 const CORA_CONFIG = {
-  clientId: process.env.CORA_CLIENT_ID || "int-3udMdndv53r4OZLtakIhF3",
+  clientId: process.env.CORA_CLIENT_ID || "",
   baseURL: "https://matls-clients.api.cora.com.br",
   authEndpoint: "/token",
   invoicesEndpoint: "/v2/invoices",
+  // Fallback para arquivo no disco (se base64 não estiver disponível)
   certificatePath: process.env.CORA_CERT_PATH || path.join(__dirname, "../certificates/certificate.pem"),
   privateKeyPath: process.env.CORA_KEY_PATH || path.join(__dirname, "../certificates/private-key.key"),
 };
@@ -25,9 +29,22 @@ let tokenCache = {
 };
 
 /**
- * Carrega os certificados SSL do disco.
+ * Carrega os certificados SSL.
+ * Prioridade: env base64 > arquivo no disco.
  */
 function loadCertificates() {
+  // 1. Tentar base64 da env (deploy limpo, sem arquivo no disco)
+  const certBase64 = process.env.CORA_CERT_BASE64;
+  const keyBase64 = process.env.CORA_KEY_BASE64;
+
+  if (certBase64 && keyBase64) {
+    return {
+      cert: Buffer.from(certBase64, "base64").toString("utf8"),
+      key: Buffer.from(keyBase64, "base64").toString("utf8"),
+    };
+  }
+
+  // 2. Fallback: arquivo no disco
   try {
     const certificate = fs.readFileSync(CORA_CONFIG.certificatePath, "utf8");
     const privateKey = fs.readFileSync(CORA_CONFIG.privateKeyPath, "utf8");
@@ -186,15 +203,18 @@ function mapCoraStatusToPortal(coraStatus) {
 }
 
 /**
- * Checa se a Cora está configurada (certificados existem).
+ * Checa se a Cora está configurada.
+ * Precisa de: CORA_CLIENT_ID + (base64 env OU arquivos no disco).
  */
 function isConfigured() {
+  if (!CORA_CONFIG.clientId) return false;
+
+  // Base64 na env: preferido
+  if (process.env.CORA_CERT_BASE64 && process.env.CORA_KEY_BASE64) return true;
+
+  // Fallback: arquivos no disco
   try {
-    const certPath = CORA_CONFIG.certificatePath;
-    const keyPath = CORA_CONFIG.privateKeyPath;
-    const certExists = fs.existsSync(certPath);
-    const keyExists = fs.existsSync(keyPath);
-    return certExists && keyExists;
+    return fs.existsSync(CORA_CONFIG.certificatePath) && fs.existsSync(CORA_CONFIG.privateKeyPath);
   } catch {
     return false;
   }
