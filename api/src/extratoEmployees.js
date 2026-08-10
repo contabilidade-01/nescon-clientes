@@ -12,13 +12,15 @@
  */
 
 /** Nome no padrão pdfplumber: "Empr.: {código}{NOME} ... Situação" */
-const RE_NOME_EMPR = /Empr\.:\s*(\d+)\s*([A-Za-zÀ-ÿ][^\t]*?)\s*Situa[çc][ãa]o/i;
+const RE_NOME_EMPR = /(?:Empr|Contr)\.?:\s*(\d+)\s*([A-Za-zÀ-ÿ][^\t]*?)\s*Situa[çc][ãa]o/i;
+/** Detecta se a linha é de contribuinte (sócio/pró-labore) */
+const RE_CONTR = /Contr\.?:/i;
 /** Nome no padrão pdf-parse: linha começa com "{código} {NOME}" até tab/rótulo */
-const RE_NOME_INICIO = /^\s*(\d+)\s+([A-Za-zÀ-ÿ][^\t]*?)(?:\t|\s{2,}|Empr\.|Situa[çc][ãa]o|Adm:|CPF:)/i;
+const RE_NOME_INICIO = /^\s*(\d+)\s+([A-Za-zÀ-ÿ][^\t]*?)(?:\t|\s{2,}|Empr\.|Contr\.|Situa[çc][ãa]o|Adm:|CPF:)/i;
 /** CPF mascarado ou só dígitos */
 const RE_CPF = /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g;
-/** Marca que a linha é de um empregado (e não de proventos/descontos). */
-const RE_MARKER = /Situa[çc][ãa]o|Empr\.:|Adm:/i;
+/** Marca que a linha é de um empregado/contribuinte (e não de proventos/descontos). */
+const RE_MARKER = /Situa[çc][ãa]o|Empr\.:|Contr\.?:|Adm:/i;
 /** Salário base: aparece no bloco do empregado, às vezes na própria linha dele. */
 const RE_SALARIO = /Sal[áa]rio:\s*([\d.]*\d(?:,\d+)?)/i;
 /** Cargo: distingue funcionário de pró-labore (ver payrollRoles.js). */
@@ -55,7 +57,7 @@ function limparNome(bruto) {
     .toUpperCase();
 }
 
-/** Extrai {codigo, name, cpf} de uma linha, ou null se não for linha de empregado. */
+/** Extrai {codigo, name, cpf, ehContribuinte} de uma linha, ou null se não for linha de empregado. */
 function extrairLinha(linha) {
   if (!RE_MARKER.test(linha)) return null;
 
@@ -69,6 +71,8 @@ function extrairLinha(linha) {
     }
   }
   if (!cpf) return null;
+
+  const ehContribuinte = RE_CONTR.test(linha);
 
   // Nome: tenta o padrão pdfplumber, depois o pdf-parse.
   let codigo = "";
@@ -86,7 +90,7 @@ function extrairLinha(linha) {
   }
   nome = limparNome(nome);
   if (nome.length < 2) return null;
-  return { codigo, name: nome, cpf };
+  return { codigo, name: nome, cpf, ehContribuinte };
 }
 
 /**
@@ -141,7 +145,7 @@ function extrairDoTexto(texto) {
           atual = null;
         } else {
           vistos.add(emp.cpf);
-          atual = { ...emp, salarioBase: null, cargo: null, vinculo: null };
+          atual = { ...emp, salarioBase: null, cargo: null, vinculo: emp.ehContribuinte ? "Diretor" : null };
           funcionarios.push(atual);
           capturarSalario(linha);
           capturarCargo(linha);
