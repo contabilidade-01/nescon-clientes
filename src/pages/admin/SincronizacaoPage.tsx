@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { DatabaseBackup, HardDrive, History, Mail, UserPlus } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { AdminSyncCard } from "@/components/AdminSyncCard";
+import { AdminSyncCardCora } from "@/components/AdminSyncCardCora";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -131,6 +132,8 @@ const SincronizacaoPage = () => {
       description="Carga de documentos do G-Click e dados do administrador"
     >
       <AdminSyncCard />
+
+      <AdminSyncCardCora />
 
       {/* Carga de arquivo, não de cobrança. A distinção é o ponto do cartão inteiro. */}
       <Card>

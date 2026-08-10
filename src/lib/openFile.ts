@@ -3,10 +3,27 @@ import { api } from "@/lib/api";
 /**
  * Abre um PDF de entrega numa aba nova.
  *
- * A rota exige Bearer, e um `<a href>` não envia cabeçalhos — por isso o arquivo é
- * buscado por fetch e aberto como blob local.
+ * Se `pdfUrl` existe (ex: boletos Cora), abre direto sem download (link público).
+ * Senão, busca o arquivo via API com autenticação.
  */
-export async function openDeliverableFile(id: string, fileName: string): Promise<void> {
+export async function openDeliverableFile(id: string, fileName: string, pdfUrl?: string | null): Promise<void> {
+  // Se é um link público (ex: Cora), abrir direto
+  if (pdfUrl) {
+    const win = window.open(pdfUrl, "_blank", "noopener");
+    if (!win) {
+      // Popup bloqueado: fallback para download via a tag
+      const a = document.createElement("a");
+      a.href = pdfUrl;
+      a.download = fileName || "documento.pdf";
+      a.target = "_blank";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    return;
+  }
+
+  // Arquivo local: fetch + blob
   const blob = await api.deliverables.fetchFile(id);
   const url = URL.createObjectURL(blob);
   const win = window.open(url, "_blank", "noopener");

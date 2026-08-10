@@ -344,7 +344,7 @@ router.get("/:id/file", async (req, res) => {
     if (!validateUUID(req.params.id)) return res.status(400).json({ error: "ID inválido" });
 
     const params = [req.params.id];
-    let sql = "SELECT id, category, file_path, file_name FROM deliverables WHERE id = $1";
+    let sql = "SELECT id, category, file_path, file_name, pdf_url FROM deliverables WHERE id = $1";
     if (!req.isAdmin) {
       params.push(req.company.id);
       sql += ` AND company_id = $${params.length}${onlyReleased(req)}`;
@@ -357,6 +357,12 @@ router.get("/:id/file", async (req, res) => {
     }
     // Download do próprio cliente também conta como abertura; o do admin não polui os números.
     if (!req.isAdmin) recordAccess(req, rows[0].id, "download");
+
+    // Boletos Cora: sem arquivo local, redirecionar para a URL pública do PDF
+    if (rows[0].pdf_url && (!rows[0].file_path || !resolveUploadPath(rows[0].file_path) || !fs.existsSync(resolveUploadPath(rows[0].file_path) || ""))) {
+      return res.redirect(302, rows[0].pdf_url);
+    }
+
     return sendStoredFile(res, rows[0], "inline");
   } catch (err) {
     console.error(err);

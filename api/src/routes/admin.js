@@ -24,6 +24,8 @@ const {
 } = require("../vacationImport");
 const { getSetting, setBoolSetting, setSetting } = require("../appSettings");
 const gclickClient = require("../gclick/client");
+const coraSync = require("../coraSync");
+const coraClient = require("../cora");
 const { TIPOS: TIPOS_GCLICK } = require("../gclick/guides");
 const { gerarSenhaInicial } = require("../senhaInicial");
 const { enviarTexto } = require("../uazapi");
@@ -375,6 +377,30 @@ router.post("/sync-gclick", requireArea("sincronizacao"), async (req, res) => {
   // Não segura a resposta: a carga pode demorar; o painel acompanha pelo /status.
   sync.sincronizar({ meses }).catch((e) => console.error("[admin sync]", e.message));
   res.status(202).json({ message: "Sincronização iniciada." });
+});
+
+// ---------------------------------------------------------------------------
+// Cora — boletos mensais
+// ---------------------------------------------------------------------------
+
+router.get("/sync-cora/status", requireArea("sincronizacao"), (_req, res) => {
+  res.json({
+    configurado: coraClient.isConfigured(),
+    rodando: coraSync.estaRodando(),
+    ultima: coraSync.ultimaExecucao(),
+  });
+});
+
+/** Dispara a sincronização de boletos da Cora em segundo plano. */
+router.post("/sync-cora", requireArea("sincronizacao"), async (req, res) => {
+  if (!coraClient.isConfigured()) {
+    return res.status(503).json({ error: "Cora não configurado (certificados não encontrados)." });
+  }
+  if (coraSync.estaRodando()) {
+    return res.status(409).json({ error: "Já existe uma sincronização em andamento." });
+  }
+  coraSync.sincronizar().catch((e) => console.error("[admin sync cora]", e.message));
+  res.status(202).json({ message: "Sincronização de boletos iniciada." });
 });
 
 /** Os tipos de documento que o G-Click entrega — para a tela montar a escolha. */

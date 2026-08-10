@@ -44,7 +44,7 @@ export function DeliverableCard({ deliverable: d, showPayment = false, showCompe
   const open = async () => {
     setOpening(true);
     try {
-      await openDeliverableFile(d.id, d.file_name);
+      await openDeliverableFile(d.id, d.file_name, d.pdf_url);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível abrir o documento");
     } finally {

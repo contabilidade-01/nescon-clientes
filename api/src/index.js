@@ -22,6 +22,7 @@ const { ensureVacationSchema } = require("./ensureVacationSchema");
 const { ensureEngagementSchema } = require("./ensureEngagementSchema");
 const { ensureAlertasSchema } = require("./ensureAlertasSchema");
 const { ensurePayrollHistorySchema } = require("./ensurePayrollHistorySchema");
+const { ensureCoraSchema } = require("./ensureCoraSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -146,6 +147,7 @@ async function start() {
     await ensureEngagementSchema(db);
     await ensureAlertasSchema(db);
     await ensurePayrollHistorySchema(db);
+    await ensureCoraSchema(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).
     // Roda em background para não travar o arranque.
     setTimeout(async () => {
@@ -182,6 +184,8 @@ async function start() {
     // empresa. Ver a detecção de demissão na importação por extrato (routes/admin.js).
     // Puxa os documentos do G-Click de tempos em tempos (GCLICK_SYNC_INTERVAL_H).
     require("./gclick/sync").iniciarAgendador();
+    // Puxa boletos da Cora de tempos em tempos (CORA_SYNC_INTERVAL_H).
+    require("./coraSync").iniciarAgendador();
   } catch (err) {
     console.error("Startup DB tasks:", err.message);
     throw err;

@@ -136,9 +136,11 @@ export type Deliverable = {
   file_name: string;
   status: DeliverableStatus;
   paid_at: string | null;
-  source: "gclick" | "manual";
+  source: "gclick" | "manual" | "cora";
   /** Carga histórica: arquivo para consulta, nunca conta a pagar. */
   historico?: boolean;
+  /** URL pública do PDF (ex: boletos Cora sem arquivo local). */
+  pdf_url?: string | null;
   created_at: string;
 };
 
@@ -1296,6 +1298,24 @@ export const api = {
       request<Array<{ codigo: string; nome: string; categoria: "guia" | "folha" }>>(
         "/admin/sync-gclick/tipos"
       ),
+    /** Status da sync de boletos Cora. */
+    coraSyncStatus: () =>
+      request<{
+        configurado: boolean;
+        rodando: boolean;
+        ultima: {
+          criados: number;
+          atualizados: number;
+          semMudanca: number;
+          empresasProcessadas: number;
+          erros: number;
+          segundos: number;
+          em: string;
+        } | null;
+      }>("/admin/sync-cora/status"),
+    /** Dispara a sincronização de boletos da Cora. */
+    runCorSync: () =>
+      request<{ message: string }>("/admin/sync-cora", { method: "POST" }),
     /** Empresas que ainda não trocaram a senha inicial — a fila de risco a zerar. */
     senhaPendente: () =>
       request<{ total: number; empresas: Array<{ id: string; name: string; cnpj: string }> }>(
