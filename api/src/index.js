@@ -146,6 +146,22 @@ async function start() {
     await ensureEngagementSchema(db);
     await ensureAlertasSchema(db);
     await ensurePayrollHistorySchema(db);
+    // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).
+    // Roda em background para não travar o arranque.
+    setTimeout(async () => {
+      try {
+        const { rows } = await db.query(
+          "SELECT 1 FROM employees WHERE vinculo IS NULL AND active IS TRUE LIMIT 1"
+        );
+        if (rows.length) {
+          console.log("[boot] employees sem vínculo detectados — reprocessando extratos...");
+          const extratoAuto = require("./extratoAuto");
+          await extratoAuto.processarExtratos(db);
+        }
+      } catch (e) {
+        console.error("[boot] reprocessamento de extratos falhou:", e.message);
+      }
+    }, 3000).unref();
     // Alerta de vencimento pelo WhatsApp. O agendador sobe sempre, mas só dispara se
     // alguém ligar na tela — ninguém deve começar a mandar mensagem por acidente de
     // deploy, e ligar não deve custar um.

@@ -32,6 +32,17 @@ async function ensureEmployeePayrollFields(db) {
        WHERE vinculo IS NULL AND cargo IS NOT NULL
          AND cargo !~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore|estagi[aá]ri)';
     `);
+    // Forçar reprocessamento do extrato para empresas que têm employees sem vínculo
+    // (o extrato anterior não extraía vinculo, então o processado_id travou)
+    const { rowCount } = await db.query(`
+      UPDATE companies SET extrato_processado_id = NULL
+       WHERE id IN (
+         SELECT DISTINCT company_id FROM employees WHERE vinculo IS NULL AND active IS TRUE
+       ) AND extrato_processado_id IS NOT NULL;
+    `);
+    if (rowCount > 0) {
+      console.log(`[DB] ${rowCount} empresa(s) marcada(s) para reprocessar extrato (vinculo faltando).`);
+    }
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_employees_company_codigo
         ON employees(company_id, codigo);
