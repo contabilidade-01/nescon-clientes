@@ -13,6 +13,7 @@ import {
   KeyRound,
   LayoutDashboard,
   LogOut,
+  Receipt,
   RefreshCw,
   Send,
   ShieldCheck,
@@ -108,6 +109,7 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { to: "/admin/lgpd", label: "Consentimentos LGPD", icon: ShieldCheck, area: "lgpd" },
       { to: "/admin/sincronizacao", label: "Sincronização", icon: RefreshCw, area: "sincronizacao" },
+      { to: "/admin/boletos-cora", label: "Boletos Cora", icon: Receipt, area: "sincronizacao" },
       { to: "/admin/usuarios", label: "Usuários do painel", icon: UserCog, ownerOnly: true },
     ],
   },

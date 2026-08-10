@@ -1316,6 +1316,51 @@ export const api = {
     /** Dispara a sincronização de boletos da Cora. */
     runCorSync: () =>
       request<{ message: string }>("/admin/sync-cora", { method: "POST" }),
+    /** Sync individual de uma empresa Cora por CNPJ. */
+    coraSyncEmpresa: (cnpj: string) =>
+      request<{ message: string }>("/admin/cora/sync-empresa", {
+        method: "POST",
+        body: JSON.stringify({ cnpj }),
+      }),
+    /** Lista empresas com info de boletos Cora. */
+    coraEmpresas: () =>
+      request<Array<{
+        id: string;
+        name: string;
+        cnpj: string;
+        boletos_ativo: boolean;
+        total_boletos: number;
+        ultimo_importado: string | null;
+      }>>("/admin/cora/empresas"),
+    /** Toggle importação de boletos para uma empresa. */
+    coraToggleEmpresa: (id: string, ativo: boolean) =>
+      request<{ ok: boolean; boletos_ativo: boolean }>(`/admin/cora/empresas/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ boletos_ativo: ativo }),
+      }),
+    /** Lista boletos Cora importados. */
+    coraBoletos: (filters?: { company_id?: string; status?: string; competencia?: string }) => {
+      const params = new URLSearchParams();
+      if (filters?.company_id) params.set("company_id", filters.company_id);
+      if (filters?.status) params.set("status", filters.status);
+      if (filters?.competencia) params.set("competencia", filters.competencia);
+      const q = params.toString();
+      return request<Array<{
+        id: string;
+        company_id: string;
+        empresa_nome: string;
+        empresa_cnpj: string;
+        title: string;
+        competencia: string | null;
+        due_date: string | null;
+        status: string;
+        doc_type: string | null;
+        external_ref: string;
+        pdf_url: string | null;
+        valor_centavos: number | null;
+        created_at: string;
+      }>>(`/admin/cora/boletos${q ? `?${q}` : ""}`);
+    },
     /** Empresas que ainda não trocaram a senha inicial — a fila de risco a zerar. */
     senhaPendente: () =>
       request<{ total: number; empresas: Array<{ id: string; name: string; cnpj: string }> }>(

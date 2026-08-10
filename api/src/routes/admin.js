@@ -403,6 +403,101 @@ router.post("/sync-cora", requireArea("sincronizacao"), async (req, res) => {
   res.status(202).json({ message: "Sincronização de boletos iniciada." });
 });
 
+/** Sync individual de uma empresa (busca por CNPJ). */
+router.post("/cora/sync-empresa", requireArea("sincronizacao"), async (req, res) => {
+  if (!coraClient.isConfigured()) {
+    return res.status(503).json({ error: "Cora não configurado." });
+  }
+  const cnpj = String(req.body?.cnpj || "").replace(/\D/g, "");
+  if (!cnpj || cnpj.length < 11) {
+    return res.status(400).json({ error: "CNPJ inválido." });
+  }
+  if (coraSync.estaRodando()) {
+    return res.status(409).json({ error: "Já existe uma sincronização em andamento." });
+  }
+  coraSync.sincronizar({ cnpjFiltro: cnpj }).catch((e) => console.error("[admin cora empresa]", e.message));
+  res.status(202).json({ message: `Sincronização iniciada para ${cnpj}.` });
+});
+
+/** Lista empresas com info de boletos Cora. */
+router.get("/cora/empresas", requireArea("sincronizacao"), async (_req, res) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT c.id, c.name, c.cnpj,
+             COALESCE(c.tool_access->>'boletos', 'true') AS boletos_ativo,
+             COUNT(d.id) FILTER (WHERE d.source = 'cora') AS total_boletos,
+             MAX(d.created_at) FILTER (WHERE d.source = 'cora') AS ultimo_importado
+      FROM companies c
+      LEFT JOIN deliverables d ON d.company_id = c.id AND d.source = 'cora'
+      WHERE c.cnpj IS NOT NULL AND c.cnpj != ''
+      GROUP BY c.id
+      ORDER BY c.name
+    `);
+    res.json(rows.map((r) => ({
+      ...r,
+      boletos_ativo: r.boletos_ativo !== "false",
+      total_boletos: Number(r.total_boletos) || 0,
+    })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/** Toggle importação de boletos para uma empresa. */
+router.patch("/cora/empresas/:id", requireArea("sincronizacao"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
+    const ativo = req.body?.boletos_ativo !== false;
+    await db.query(`
+      UPDATE companies
+      SET tool_access = COALESCE(tool_access, '{}'::jsonb) || jsonb_build_object('boletos', $1::boolean)
+      WHERE id = $2
+    `, [ativo, id]);
+    res.json({ ok: true, boletos_ativo: ativo });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/** Lista boletos Cora importados (com nome da empresa). */
+router.get("/cora/boletos", requireArea("sincronizacao"), async (req, res) => {
+  try {
+    const { company_id, status, competencia } = req.query;
+    const params = [];
+    let sql = `
+      SELECT d.id, d.company_id, c.name AS empresa_nome, c.cnpj AS empresa_cnpj,
+             d.title, d.competencia, to_char(d.due_date, 'YYYY-MM-DD') AS due_date,
+             d.status, d.doc_type, d.external_ref, d.pdf_url, d.valor_centavos,
+             d.created_at
+      FROM deliverables d
+      JOIN companies c ON c.id = d.company_id
+      WHERE d.source = 'cora'
+    `;
+    if (company_id) {
+      if (!validateUUID(company_id)) return res.status(400).json({ error: "company_id inválido" });
+      params.push(company_id);
+      sql += ` AND d.company_id = $${params.length}`;
+    }
+    if (status) {
+      params.push(status);
+      sql += ` AND d.status = $${params.length}`;
+    }
+    if (competencia) {
+      params.push(competencia);
+      sql += ` AND d.competencia = $${params.length}`;
+    }
+    sql += ` ORDER BY d.due_date DESC NULLS LAST, d.created_at DESC LIMIT 500`;
+    const { rows } = await db.query(sql, params);
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
 /** Os tipos de documento que o G-Click entrega — para a tela montar a escolha. */
 router.get("/sync-gclick/tipos", requireArea("sincronizacao"), (_req, res) => {
   res.json(
