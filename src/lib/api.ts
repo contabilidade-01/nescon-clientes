@@ -1314,8 +1314,11 @@ export const api = {
         } | null;
       }>("/admin/sync-cora/status"),
     /** Dispara a sincronização de boletos da Cora. */
-    runCorSync: () =>
-      request<{ message: string }>("/admin/sync-cora", { method: "POST" }),
+    runCorSync: (de?: string, ate?: string) =>
+      request<{ message: string }>("/admin/sync-cora", {
+        method: "POST",
+        body: JSON.stringify({ de, ate }),
+      }),
     /** Sync individual de uma empresa Cora por CNPJ. */
     coraSyncEmpresa: (cnpj: string) =>
       request<{ message: string }>("/admin/cora/sync-empresa", {

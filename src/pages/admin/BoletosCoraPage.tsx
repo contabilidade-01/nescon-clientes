@@ -71,6 +71,15 @@ const BoletosCoraPage = () => {
   const queryClient = useQueryClient();
   const [cnpjBusca, setCnpjBusca] = useState("");
   const [filtroEmpresa, setFiltroEmpresa] = useState("");
+  const [syncDe, setSyncDe] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 5);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [syncAte, setSyncAte] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
 
   // Status da sync
   const { data: syncStatus } = useQuery({
@@ -93,7 +102,7 @@ const BoletosCoraPage = () => {
 
   // Sync geral
   const syncAll = useMutation({
-    mutationFn: () => api.admin.runCorSync(),
+    mutationFn: () => api.admin.runCorSync(syncDe, syncAte),
     onSuccess: (r) => {
       toast.success(r.message);
       setTimeout(() => {
@@ -188,6 +197,24 @@ const BoletosCoraPage = () => {
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">De</label>
+              <Input
+                type="month"
+                className="h-9 w-40"
+                value={syncDe}
+                onChange={(e) => setSyncDe(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Até</label>
+              <Input
+                type="month"
+                className="h-9 w-40"
+                value={syncAte}
+                onChange={(e) => setSyncAte(e.target.value)}
+              />
+            </div>
             <Button
               onClick={() => syncAll.mutate()}
               disabled={rodando || !syncStatus?.configurado}

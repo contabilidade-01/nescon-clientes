@@ -44,8 +44,20 @@ async function mapLimit(items, limit, worker) {
 
 /**
  * Gera range de datas para os últimos N meses.
+ * Se `de` e `ate` são informados (YYYY-MM), usa essas datas em vez do padrão.
  */
-function rangeUltimosMeses(meses) {
+function rangeUltimosMeses(meses, de, ate) {
+  if (de && ate) {
+    // de = "2025-01", ate = "2026-08"
+    const [anoI, mesI] = de.split("-").map(Number);
+    const [anoF, mesF] = ate.split("-").map(Number);
+    const ini = new Date(anoI, mesI - 1, 1);
+    const fim = new Date(anoF, mesF, 0); // último dia do mês "ate"
+    return {
+      start: ini.toISOString().split("T")[0],
+      end: fim.toISOString().split("T")[0],
+    };
+  }
   const hoje = new Date();
   const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0); // último dia do mês atual
   const ini = new Date(hoje.getFullYear(), hoje.getMonth() - meses + 1, 1); // 1º dia de N meses atrás
@@ -135,7 +147,7 @@ async function gravarBoleto(boleto, companyId) {
 /**
  * Sincroniza boletos Cora para todas as empresas com `tool_access->'boletos' = true`.
  */
-async function sincronizar({ cnpjFiltro = null } = {}) {
+async function sincronizar({ cnpjFiltro = null, de = null, ate = null } = {}) {
   if (!cora.isConfigured()) {
     return { ok: false, erro: "Cora não configurado (certificados não encontrados)" };
   }
@@ -170,7 +182,7 @@ async function sincronizar({ cnpjFiltro = null } = {}) {
       return { ok: true, ...ultimoResultado };
     }
 
-    const { start, end } = rangeUltimosMeses(MESES_PADRAO);
+    const { start, end } = rangeUltimosMeses(MESES_PADRAO, de, ate);
 
     await mapLimit(empresas, CONCORRENCIA, async (empresa) => {
       const cnpj = String(empresa.cnpj).replace(/\D/g, "");

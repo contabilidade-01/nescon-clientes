@@ -399,7 +399,9 @@ router.post("/sync-cora", requireArea("sincronizacao"), async (req, res) => {
   if (coraSync.estaRodando()) {
     return res.status(409).json({ error: "Já existe uma sincronização em andamento." });
   }
-  coraSync.sincronizar().catch((e) => console.error("[admin sync cora]", e.message));
+  const de = req.body?.de || undefined; // "YYYY-MM"
+  const ate = req.body?.ate || undefined; // "YYYY-MM"
+  coraSync.sincronizar({ de, ate }).catch((e) => console.error("[admin sync cora]", e.message));
   res.status(202).json({ message: "Sincronização de boletos iniciada." });
 });
 
