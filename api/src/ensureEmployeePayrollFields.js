@@ -16,6 +16,22 @@ async function ensureEmployeePayrollFields(db) {
     await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS salario_competencia TEXT;`);
     await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS cargo TEXT;`);
     await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS vinculo TEXT;`);
+    // Backfill: preencher vinculo a partir do cargo para quem já estava no banco
+    await db.query(`
+      UPDATE employees SET vinculo = 'Diretor'
+       WHERE vinculo IS NULL AND cargo IS NOT NULL
+         AND cargo ~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore)';
+    `);
+    await db.query(`
+      UPDATE employees SET vinculo = 'Estagiário'
+       WHERE vinculo IS NULL AND cargo IS NOT NULL
+         AND cargo ~* 'estagi[aá]ri';
+    `);
+    await db.query(`
+      UPDATE employees SET vinculo = 'Celetista'
+       WHERE vinculo IS NULL AND cargo IS NOT NULL
+         AND cargo !~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore|estagi[aá]ri)';
+    `);
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_employees_company_codigo
         ON employees(company_id, codigo);
