@@ -40,10 +40,11 @@ const CustoFolhaPage = () => {
   const { company } = useAuth();
   const anoAtual = new Date().getFullYear();
   const [de, setDe] = useState(`${anoAtual}-01`);
+  const [ate, setAte] = useState(`${anoAtual}-12`);
 
   const serie = useQuery({
-    queryKey: ["cliente-folha", de],
-    queryFn: () => api.folha.serie({ de: de || undefined }),
+    queryKey: ["cliente-folha", de, ate],
+    queryFn: () => api.folha.serie({ de: de || undefined, ate: ate || undefined }),
     enabled: !!company,
   });
 
@@ -87,7 +88,7 @@ const CustoFolhaPage = () => {
           <div className="flex items-end gap-3">
             <div className="space-y-1">
               <Label htmlFor="de" className="text-xs">
-                A partir de
+                De
               </Label>
               <Input
                 id="de"
@@ -95,6 +96,18 @@ const CustoFolhaPage = () => {
                 className="h-9 w-40"
                 value={de}
                 onChange={(e) => setDe(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="ate" className="text-xs">
+                Até
+              </Label>
+              <Input
+                id="ate"
+                type="month"
+                className="h-9 w-40"
+                value={ate}
+                onChange={(e) => setAte(e.target.value)}
               />
             </div>
           </div>
@@ -148,15 +161,15 @@ const CustoFolhaPage = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-end gap-1 overflow-x-auto pb-1" style={{ height: 150 }}>
+              <div className="flex items-end gap-1 overflow-x-auto pb-1" style={{ height: 180 }}>
                 {linhas.map((l) => (
-                  <div key={l.competencia} className="flex min-w-[40px] flex-1 flex-col items-center gap-1">
-                    <span className="text-[10px] tabular-nums text-muted-foreground">
-                      {Math.round(num(l.folha_bruta) / 1000)}k
+                  <div key={l.competencia} className="flex min-w-[48px] flex-1 flex-col items-center gap-1">
+                    <span className="text-[10px] font-medium tabular-nums text-foreground">
+                      {brl(l.folha_bruta)}
                     </span>
                     <div
                       className="w-full rounded-t bg-primary/80"
-                      style={{ height: `${Math.max(2, (num(l.folha_bruta) / max) * 100)}px` }}
+                      style={{ height: `${Math.max(2, (num(l.folha_bruta) / max) * 120)}px` }}
                       title={brl(l.folha_bruta)}
                     />
                     <span className="text-[10px] text-muted-foreground">
