@@ -15,7 +15,7 @@ const {
 const { isSmtpConfigured, getPublicAppUrl, sendPasswordResetEmail } = require("../mailer");
 const { LGPD_CONSENT_VERSION, lgpdTermo } = require("../lgpd");
 const { mergeAreas } = require("../adminAreas");
-const { funcionarioRealSql } = require("../payrollRoles");
+const { funcionarioRealSql, funcionarioFeriasSql } = require("../payrollRoles");
 
 /**
  * Admin no login. Base antiga sem as colunas de permissão (42703) devolve o mínimo e
@@ -565,7 +565,7 @@ router.get("/company-session", authMiddleware, async (req, res) => {
   let temFuncionarios = false;
   try {
     const { rows } = await db.query(
-      `SELECT EXISTS (SELECT 1 FROM employees e WHERE e.company_id = $1 AND ${funcionarioRealSql("e")}) AS tem`,
+      `SELECT EXISTS (SELECT 1 FROM employees e WHERE e.company_id = $1 AND ${funcionarioFeriasSql("e")}) AS tem`,
       [req.company.id]
     );
     temFuncionarios = Boolean(rows[0]?.tem);

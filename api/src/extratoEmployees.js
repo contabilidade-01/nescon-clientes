@@ -23,6 +23,8 @@ const RE_MARKER = /Situa[çc][ãa]o|Empr\.:|Adm:/i;
 const RE_SALARIO = /Sal[áa]rio:\s*([\d.]*\d(?:,\d+)?)/i;
 /** Cargo: distingue funcionário de pró-labore (ver payrollRoles.js). */
 const RE_CARGO = /Cargo:\s*(?:\d+\s+)?([^\t\n]+?)\s*(?:C\.?B\.?O|$)/i;
+/** Vínculo: Celetista, Diretor, Estagiário — mais confiável que cargo para distinguir CLT. */
+const RE_VINCULO = /V[ií]nculo:\s*([^\s]+)/i;
 /** Competência da folha, no cabeçalho do extrato. */
 const RE_COMPETENCIA = /Compet[êe]ncia:\s*(\d{2}\/\d{4})/i;
 
@@ -117,6 +119,14 @@ function extrairDoTexto(texto) {
     if (c) atual.cargo = c;
   };
 
+  const capturarVinculo = (linha) => {
+    if (!atual || atual.vinculo) return;
+    const m = linha.match(RE_VINCULO);
+    if (!m) return;
+    const v = m[1].replace(/\s+/g, " ").trim();
+    if (v) atual.vinculo = v;
+  };
+
   for (const linha of String(texto || "").split(/\r?\n/)) {
     if (!competencia) {
       const mc = linha.match(RE_COMPETENCIA);
@@ -131,10 +141,11 @@ function extrairDoTexto(texto) {
           atual = null;
         } else {
           vistos.add(emp.cpf);
-          atual = { ...emp, salarioBase: null, cargo: null };
+          atual = { ...emp, salarioBase: null, cargo: null, vinculo: null };
           funcionarios.push(atual);
           capturarSalario(linha);
           capturarCargo(linha);
+          capturarVinculo(linha);
         }
         continue;
       }
@@ -146,6 +157,7 @@ function extrairDoTexto(texto) {
 
     capturarSalario(linha);
     capturarCargo(linha);
+    capturarVinculo(linha);
   }
   return { funcionarios, invalidos, competencia };
 }

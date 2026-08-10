@@ -36,6 +36,7 @@ async function importEmployeesForCompany(client, companyId, companyCnpj, fileCnp
     const codigo = item.codigo ? String(item.codigo).trim().slice(0, 20) : null;
     const salario = salarioValido(item.salarioBase ?? item.salario_base);
     const cargo = item.cargo ? String(item.cargo).trim().slice(0, 120) : null;
+    const vinculo = item.vinculo ? String(item.vinculo).trim().slice(0, 60) : null;
     const competencia = opts.competencia || null;
 
     if (!validateString(name, 2, 200) || !validateCPF(cpf)) {
@@ -63,11 +64,12 @@ async function importEmployeesForCompany(client, companyId, companyCnpj, fileCnp
         `UPDATE employees
             SET codigo = COALESCE($3, codigo),
                 cargo = COALESCE($6, cargo),
+                vinculo = COALESCE($7, vinculo),
                 salario_base = COALESCE($4, salario_base),
                 salario_competencia = CASE WHEN $4 IS NULL THEN salario_competencia
                                            ELSE COALESCE($5, salario_competencia) END
           WHERE company_id = $1 AND cpf = $2`,
-        [companyId, cpf, codigo, salario, competencia, cargo]
+        [companyId, cpf, codigo, salario, competencia, cargo, vinculo]
       );
       skipped += 1;
       continue;
@@ -75,9 +77,9 @@ async function importEmployeesForCompany(client, companyId, companyCnpj, fileCnp
 
     await client.query(
       `INSERT INTO employees
-         (company_id, name, cpf, pis, active, codigo, salario_base, salario_competencia, cargo)
-       VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8)`,
-      [companyId, name, cpf, pis, codigo, salario, salario ? competencia : null, cargo]
+         (company_id, name, cpf, pis, active, codigo, salario_base, salario_competencia, cargo, vinculo)
+       VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9)`,
+      [companyId, name, cpf, pis, codigo, salario, salario ? competencia : null, cargo, vinculo]
     );
     inserted += 1;
   }
