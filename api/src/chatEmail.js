@@ -135,6 +135,7 @@ async function avisarClienteNovaResposta(db, conversationId) {
     const { rows } = await db.query(
       `SELECT c.id, c.subject, c.email_avisado_client_at,
               e.name AS empresa, e.contact_email AS email, e.alertas_ativos,
+              e.arquivada,
               (SELECT m.body FROM chat_messages m
                 WHERE m.conversation_id = c.id AND m.sender_type = 'admin'
                 ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS ultima
@@ -146,6 +147,7 @@ async function avisarClienteNovaResposta(db, conversationId) {
     const conversa = rows[0];
     if (!conversa || !conversa.email) return;
     if (conversa.alertas_ativos === false) return;
+    if (conversa.arquivada === true) return;
 
     if (conversa.email_avisado_client_at) {
       const min = (Date.now() - new Date(conversa.email_avisado_client_at).getTime()) / 60000;

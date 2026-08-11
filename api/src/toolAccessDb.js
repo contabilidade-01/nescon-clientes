@@ -29,8 +29,12 @@ async function listCompanies(db) {
 async function getCompanyByCnpjForLogin(db, cnpjDigits) {
   try {
     const { rows } = await db.query(
+      // Empresa arquivada não entra: o filtro fica AQUI, e não numa checagem depois do
+      // bcrypt, para a resposta ser a mesma de CNPJ inexistente ("Acesso não
+      // encontrado"). Uma mensagem específica de "conta arquivada" contaria a quem
+      // tentasse que aquele CNPJ é cliente da casa.
       `SELECT id, name, cnpj, password_hash, tool_access, must_change_password, password_expires_at
-       FROM companies WHERE cnpj = $1`,
+       FROM companies WHERE cnpj = $1 AND arquivada IS NOT TRUE`,
       [cnpjDigits]
     );
     return rows;

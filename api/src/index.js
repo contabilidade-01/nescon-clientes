@@ -24,6 +24,7 @@ const { ensureAlertasSchema } = require("./ensureAlertasSchema");
 const { ensurePayrollHistorySchema } = require("./ensurePayrollHistorySchema");
 const { ensureCoraSchema } = require("./ensureCoraSchema");
 const { ensureChatSchema } = require("./ensureChatSchema");
+const { ensureArquivamentoSchema } = require("./ensureArquivamentoSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -152,6 +153,7 @@ async function start() {
     await ensurePayrollHistorySchema(db);
     await ensureCoraSchema(db);
     await ensureChatSchema(db);
+    await ensureArquivamentoSchema(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).
     // Roda em background para não travar o arranque.
     setTimeout(async () => {

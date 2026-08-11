@@ -2,7 +2,7 @@ const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const db = require("../db");
 const { authMiddleware } = require("../middleware/auth");
-const { requireArea } = require("../middleware/adminArea");
+const { requireArea, requireOwner } = require("../middleware/adminArea");
 const { validateUUID, validateEmailFormat, validateString, validateCNPJ } = require("../middleware/validate");
 const { mergeToolAccess } = require("../companyTools");
 const { listCompanies, insertCompanyRow, PG_UNDEFINED_COLUMN } = require("../toolAccessDb");
@@ -44,7 +44,7 @@ router.use(adminOnly);
 router.get("/summary", async (_req, res) => {
   try {
     const [c, d, e, cert, deliv] = await Promise.all([
-      db.query("SELECT COUNT(*)::int AS n FROM companies"),
+      db.query("SELECT COUNT(*)::int AS n FROM companies WHERE arquivada IS NOT TRUE"),
       db.query("SELECT COUNT(*)::int AS n FROM issued_documents"),
       db.query("SELECT COUNT(*)::int AS n FROM employees"),
       db.query("SELECT COUNT(*)::int AS n FROM medical_certificates"),
@@ -87,6 +87,7 @@ router.get("/deliverables-overview", async (_req, res) => {
               to_char(MAX(d.created_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS ultima_entrada
          FROM companies c
          JOIN deliverables d ON d.company_id = c.id
+        WHERE c.arquivada IS NOT TRUE
         GROUP BY c.id, c.name, c.cnpj
         ORDER BY total DESC, c.name ASC`
     );
@@ -112,6 +113,7 @@ router.get("/lgpd-consents", requireArea("lgpd"), async (_req, res) => {
                 ELSE 'pendente'
               END AS situacao
          FROM companies
+        WHERE arquivada IS NOT TRUE
         ORDER BY (lgpd_consent_at IS NOT NULL), name`
     );
     const resumo = { aceito: 0, visto: 0, pendente: 0 };
@@ -432,7 +434,7 @@ router.get("/cora/empresas", requireArea("sincronizacao"), async (_req, res) => 
              MAX(d.created_at) FILTER (WHERE d.source = 'cora') AS ultimo_importado
       FROM companies c
       LEFT JOIN deliverables d ON d.company_id = c.id AND d.source = 'cora'
-      WHERE c.cnpj IS NOT NULL AND c.cnpj != ''
+      WHERE c.cnpj IS NOT NULL AND c.cnpj != '' AND c.arquivada IS NOT TRUE
       GROUP BY c.id
       ORDER BY c.name
     `);
@@ -559,7 +561,7 @@ router.get("/companies/senha-pendente", requireArea("empresas"), async (_req, re
     const { rows } = await db.query(
       `SELECT id, name, cnpj, created_at
          FROM companies
-        WHERE must_change_password IS TRUE
+        WHERE must_change_password IS TRUE AND arquivada IS NOT TRUE
         ORDER BY name`
     );
     res.json({ total: rows.length, empresas: rows });
@@ -767,6 +769,7 @@ router.get("/cobertura", async (_req, res) => {
                 EXISTS (SELECT 1 FROM deliverables d
                          WHERE d.company_id = c.id AND d.doc_type = 'EXTRATO_FOLHA') AS tem_extrato
            FROM companies c
+          WHERE c.arquivada IS NOT TRUE
        )
        SELECT * FROM base ORDER BY name`
     );
@@ -1494,6 +1497,77 @@ router.post("/companies/enviar-acesso", requireArea("empresas"), async (req, res
   } catch (err) {
     console.error("[admin] enviar-acesso:", err.message);
     res.status(500).json({ error: "Erro ao enviar acessos" });
+  }
+});
+
+/**
+ * Arquivar / reativar empresa.
+ *
+ * Arquivar tira o cliente do ar sem apagar nada: some das listas e das contagens do
+ * painel, para de receber alerta, cobranca e aviso de documento, e perde o acesso ao
+ * portal. Entregas, boletos e conversas continuam no banco — e e por isso que arquiva
+ * em vez de deletar: depois que o contrato acaba, o historico e justamente o que o
+ * escritorio precisa poder consultar.
+ *
+ * A assimetria de permissao e proposital: ARQUIVAR e da area `empresas` (operacao do
+ * dia a dia), REATIVAR e so do dono do sistema. Devolver um cliente ao ar religa
+ * cobranca automatica e acesso ao portal — nao e coisa para acontecer por engano.
+ */
+router.post("/companies/:id/arquivar", requireArea("empresas"), async (req, res) => {
+  const { id } = req.params;
+  if (!validateUUID(id)) return res.status(400).json({ error: "id inválido" });
+  const motivo = (req.body?.motivo || "").toString().trim().slice(0, 300) || null;
+  try {
+    const { rowCount } = await db.query(
+      `UPDATE companies
+          SET arquivada = true, arquivada_em = now(),
+              arquivada_por = $2::uuid, arquivada_motivo = $3
+        WHERE id = $1::uuid AND arquivada IS NOT TRUE`,
+      [id, req.admin.id, motivo]
+    );
+    // rowCount 0 = ja estava arquivada. Nao e erro: o botao pode ter sido clicado duas
+    // vezes, ou por duas pessoas — o estado final e o mesmo.
+    res.json({ ok: true, ja_estava_arquivada: rowCount === 0 });
+  } catch (err) {
+    console.error("[admin] arquivar empresa:", err.message);
+    res.status(500).json({ error: "Não foi possível arquivar a empresa" });
+  }
+});
+
+/** Só o dono do sistema devolve uma empresa ao ar. */
+router.post("/companies/:id/reativar", requireOwner, async (req, res) => {
+  const { id } = req.params;
+  if (!validateUUID(id)) return res.status(400).json({ error: "id inválido" });
+  try {
+    const { rowCount } = await db.query(
+      `UPDATE companies
+          SET arquivada = false, arquivada_em = NULL,
+              arquivada_por = NULL, arquivada_motivo = NULL
+        WHERE id = $1::uuid AND arquivada IS TRUE`,
+      [id]
+    );
+    res.json({ ok: true, ja_estava_ativa: rowCount === 0 });
+  } catch (err) {
+    console.error("[admin] reativar empresa:", err.message);
+    res.status(500).json({ error: "Não foi possível reativar a empresa" });
+  }
+});
+
+/** Lista das arquivadas — a única tela que as mostra. Só o dono, que é quem reativa. */
+router.get("/companies/arquivadas", requireOwner, async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT c.id, c.name, c.cnpj, c.arquivada_em, c.arquivada_motivo,
+              a.nome AS arquivada_por_nome
+         FROM companies c
+         LEFT JOIN platform_admins a ON a.id = c.arquivada_por
+        WHERE c.arquivada IS TRUE
+        ORDER BY c.arquivada_em DESC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("[admin] listar arquivadas:", err.message);
+    res.status(500).json({ error: "Não foi possível carregar as empresas arquivadas" });
   }
 });
 

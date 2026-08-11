@@ -1091,6 +1091,30 @@ export const api = {
           created_at: string;
         }>
       >("/admin/companies"),
+    /** Tira a empresa do ar: some dos paineis, para de receber e perde o portal. */
+    arquivarEmpresa: (id: string, motivo?: string) =>
+      request<{ ok: boolean; ja_estava_arquivada: boolean }>(
+        `/admin/companies/${id}/arquivar`,
+        { method: "POST", body: JSON.stringify({ motivo }) }
+      ),
+    /** Devolve a empresa ao ar. Só o dono do sistema — o servidor recusa os demais. */
+    reativarEmpresa: (id: string) =>
+      request<{ ok: boolean; ja_estava_ativa: boolean }>(
+        `/admin/companies/${id}/reativar`,
+        { method: "POST" }
+      ),
+    /** Empresas arquivadas (só o dono enxerga). */
+    empresasArquivadas: () =>
+      request<
+        Array<{
+          id: string;
+          name: string;
+          cnpj: string;
+          arquivada_em: string | null;
+          arquivada_motivo: string | null;
+          arquivada_por_nome: string | null;
+        }>
+      >("/admin/companies/arquivadas"),
     createCompany: (data: {
       name: string;
       cnpj: string;
