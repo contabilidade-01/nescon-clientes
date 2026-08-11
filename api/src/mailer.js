@@ -90,6 +90,9 @@ async function sendBackupEmail({ to, nome, arquivo, resumo }) {
 module.exports = {
   isSmtpConfigured,
   getPublicAppUrl,
+  // Exposto para o módulo de atendimento montar o próprio e-mail (ver chatEmail.js),
+  // em vez de duplicar aqui um template que só ele usa.
+  createTransport,
   sendBackupEmail,
   sendPasswordResetEmail,
 };

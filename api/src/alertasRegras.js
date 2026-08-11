@@ -94,6 +94,17 @@ function sugerirPorEntregas(entregas = [], decididas = []) {
   return Array.from(achados.values()).sort((a, b) => b.ocorrencias - a.ocorrencias);
 }
 
+/**
+ * Centavos → "R$ 1.234,56". Devolve "" quando não há valor, para a linha do boleto
+ * simplesmente não citar preço em vez de exibir "R$ 0,00" (que o cliente leria como
+ * boleto zerado e ignoraria).
+ */
+function valorBR(centavos) {
+  const n = Number(centavos);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return (n / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 /** Frase curta explicando de onde veio a sugestão. Vai na tela, ao lado do botão. */
 function textoDaEvidencia(s) {
   const vezes = s.ocorrencias === 1 ? "1 guia encontrada" : `${s.ocorrencias} guias encontradas`;
@@ -116,7 +127,8 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
   if (!itens.length) return null;
 
   const ferias = itens.filter((i) => i.codigo === "FERIAS_LIMITE");
-  const obrigNormais = itens.filter((i) => i.codigo !== "FERIAS_LIMITE");
+  const boletos = itens.filter((i) => i.isBoleto);
+  const obrigNormais = itens.filter((i) => i.codigo !== "FERIAS_LIMITE" && !i.isBoleto);
   const linhas = [];
 
   const saudacao = empresaNome ? `Olá, ${empresaNome}!` : "Olá!";
@@ -139,6 +151,20 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
     for (const i of obrigNormais) {
       const quando = datas.size === 1 ? "" : ` — ${ddmm(i.vencimento)}`;
       linhas.push(`• ${i.nome}${quando}`);
+    }
+  }
+
+  // Bloco de boletos do escritório.
+  //
+  // Separado dos tributos de propósito: são naturezas diferentes de dívida e o cliente
+  // trata cada uma num lugar (imposto no banco/DARF, boleto no app). Misturar as duas
+  // listas fazia o boleto parecer mais um imposto e sumir no meio.
+  if (boletos.length) {
+    if (obrigNormais.length) linhas.push("");
+    linhas.push(boletos.length > 1 ? "*Boletos a pagar:*" : "*Boleto a pagar:*");
+    for (const b of boletos) {
+      const valor = valorBR(b.valorCentavos);
+      linhas.push(`• ${b.nome}${valor ? ` — ${valor}` : ""} — vence ${ddmm(b.vencimento)}`);
     }
   }
 

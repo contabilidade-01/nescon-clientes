@@ -22,6 +22,7 @@ const ADMIN_AREAS = [
   "sincronizacao",
   "envio_guias",
   "alertas",
+  "atendimento",
 ];
 
 const ADMIN_AREA_LABELS = {
@@ -34,6 +35,7 @@ const ADMIN_AREA_LABELS = {
   sincronizacao: "Sincronização",
   envio_guias: "Envio de guias",
   alertas: "Alertas de vencimento",
+  atendimento: "Atendimentos (chat)",
 };
 
 /** Normaliza o JSON gravado: chave ausente vira false. `null` = acesso total. */

@@ -223,6 +223,19 @@ async function panorama(db, { busca = "" } = {}) {
 const MARCOS_FERIAS_DIAS = [90, 60, 30, 15];
 
 /**
+ * Antecedência do aviso de BOLETO do escritório, em dias.
+ *
+ * Mesma régua das guias (véspera) por um motivo prático: boleto e imposto chegam na
+ * mesma mensagem do dia, e avisar em dias diferentes obrigaria o cliente a juntar duas
+ * conversas para saber o que sai da conta dele amanhã.
+ *
+ * Não vira obrigação de catálogo (`obrigacoes.js`) de propósito: catálogo é regra fiscal
+ * recorrente, com vencimento derivado do calendário. Boleto tem data própria, vinda da
+ * Cora — quem manda é a linha em `deliverables`, não uma regra.
+ */
+const BOLETO_AVISAR_DIAS_ANTES = Number(process.env.ALERTAS_BOLETO_DIAS_ANTES ?? 1);
+
+/**
  * Funcionários cujo limite de gozo cai exatamente num dos marcos.
  *
  * Lê só a **última** programação de cada empresa (mesma regra de
@@ -335,6 +348,33 @@ async function previsao(db, { data = null, simular = true } = {}) {
     if (!m.has(g.doc_type)) m.set(g.doc_type, g.due_date);
   }
 
+  // Boletos do escritório ainda em aberto.
+  //
+  // Ficavam de fora do alerta e ninguém percebia: o boleto entra em `deliverables` com
+  // doc_type 'BOLETO_CORA' e passa no filtro das guias acima, mas o laço adiante só
+  // percorre as obrigações do CATÁLOGO — e boleto não está lá (nem vai estar, ver
+  // BOLETO_AVISAR_DIAS_ANTES). Resultado prático: o cliente era avisado do imposto do
+  // governo e não do boleto do próprio escritório, que é justamente o que o escritório
+  // precisa receber.
+  const { rows: boletosTodos } = await db.query(
+    `SELECT id, company_id, title, valor_centavos,
+            to_char(due_date, 'YYYY-MM-DD') AS due_date
+       FROM deliverables
+      WHERE category = 'boleto'
+        AND status IS DISTINCT FROM 'paid'
+        AND released_at IS NOT NULL
+        AND due_date IS NOT NULL
+        AND due_date >= $1::date
+        AND historico IS NOT TRUE
+      ORDER BY due_date`,
+    [hoje]
+  );
+  const boletosPorEmpresa = new Map();
+  for (const b of boletosTodos) {
+    if (!boletosPorEmpresa.has(b.company_id)) boletosPorEmpresa.set(b.company_id, []);
+    boletosPorEmpresa.get(b.company_id).push(b);
+  }
+
   // Busca única: funcionários cujo limite de férias cai num dos marcos de hoje.
   const todasFerias = await feriasPorAvisar(db, { hoje });
   const feriasPorEmpresa = new Map();
@@ -347,7 +387,10 @@ async function previsao(db, { data = null, simular = true } = {}) {
   for (const e of empresas) {
     const codigos = e.obrigacoes || [];
     const temFeriasAlerta = codigos.includes("FERIAS_LIMITE");
-    if (!codigos.length) continue;
+    const boletosDaEmpresa = boletosPorEmpresa.get(e.id) || [];
+    // Sem obrigação marcada a empresa ainda pode ter boleto a vencer — e boleto é
+    // dívida com o escritório, o último aviso que se pode deixar de mandar.
+    if (!codigos.length && !boletosDaEmpresa.length) continue;
     // Uma mensagem por cliente por dia: quem já recebeu hoje sai fora antes de qualquer
     // outra conta.
     if (avisadosHoje.has(e.id)) continue;
@@ -367,6 +410,22 @@ async function previsao(db, { data = null, simular = true } = {}) {
           diasRestantes: f.dias_restantes,
         });
       }
+    }
+
+    // Boletos que vencem no dia do aviso. A data é a do próprio boleto (Cora), não de
+    // regra de calendário — por isso a comparação é direta, sem catálogo no meio.
+    for (const b of boletosDaEmpresa) {
+      if (b.due_date !== somarDias(hoje, BOLETO_AVISAR_DIAS_ANTES)) continue;
+      itens.push({
+        // O id entra na chave para dois boletos do mesmo dia não colapsarem num só na
+        // trava de duplicidade — e para um não calar o outro.
+        codigo: `BOLETO:${b.id}`,
+        nome: b.title || "Boleto",
+        observacao: null,
+        vencimento: b.due_date,
+        valorCentavos: b.valor_centavos,
+        isBoleto: true,
+      });
     }
 
     // Guias JÁ LIBERADAS com vencimento à frente.

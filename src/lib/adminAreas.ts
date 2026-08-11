@@ -15,6 +15,7 @@ export const ADMIN_AREAS = [
   "sincronizacao",
   "envio_guias",
   "alertas",
+  "atendimento",
 ] as const;
 
 export type AdminArea = (typeof ADMIN_AREAS)[number];
@@ -32,6 +33,10 @@ export const ADMIN_AREA_LABELS: Record<AdminArea, { title: string; description: 
   alertas: {
     title: "Alertas de vencimento",
     description: "Quais obrigações cada cliente recebe e o texto que sai",
+  },
+  atendimento: {
+    title: "Atendimentos (chat)",
+    description: "Conversas com os clientes pelo portal",
   },
 };
 

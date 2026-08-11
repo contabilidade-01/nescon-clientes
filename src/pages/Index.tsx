@@ -75,11 +75,14 @@ const MENU_ITEMS: MenuItem[] = [
   { key: "salary_adhoc", tool: "salary_adhoc", path: "/salario-avulso", icon: Calculator },
   { key: "employees", tool: "employees", path: "/funcionarios", icon: Users },
   { key: "history", tool: "history", path: "/historico", icon: History },
+  { key: "chat", tool: "chat", path: "/mensagens", icon: MessageSquare,
+    title: "Mensagens", description: "Fale com o escritório" },
 ];
 
 const GROUP_SUBTITLE: Record<ToolGroup, string> = {
   financeiro: "Guias, calendário e próximos pagamentos",
   entregas: "Contratos e relatórios",
+  portal: "Fale com o escritório",
   dp: "Folha, férias e rotinas de funcionários",
 };
 

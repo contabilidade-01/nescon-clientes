@@ -6,6 +6,8 @@ export const COMPANY_TOOL_KEYS = [
   "documents",
   "calendar",
   "vacations",
+  // Chat com o escritório
+  "chat",
   // Departamento pessoal
   "suspension",
   "warning",
@@ -21,12 +23,13 @@ export type CompanyToolKey = (typeof COMPANY_TOOL_KEYS)[number];
 export type CompanyToolAccess = Record<CompanyToolKey, boolean>;
 
 /** Seções do menu do portal. A ordem define a ordem de exibição. */
-export const TOOL_GROUPS = ["financeiro", "entregas", "dp"] as const;
+export const TOOL_GROUPS = ["financeiro", "entregas", "portal", "dp"] as const;
 export type ToolGroup = (typeof TOOL_GROUPS)[number];
 
 export const TOOL_GROUP_LABELS: Record<ToolGroup, { title: string; description: string }> = {
   financeiro: { title: "Financeiro e vencimentos", description: "O que vence e quando pagar" },
   entregas: { title: "Documentos e entregas", description: "Contratos e relatórios" },
+  portal: { title: "Comunicação", description: "Fale com o escritório" },
   dp: { title: "Departamento pessoal", description: "Folha, férias e rotinas de funcionários" },
 };
 
@@ -79,6 +82,11 @@ export const COMPANY_TOOL_LABELS: Record<
     group: "dp",
   },
   history: { title: "Histórico", description: "Documentos emitidos", group: "dp" },
+  chat: {
+    title: "Mensagens",
+    description: "Fale diretamente com o escritório",
+    group: "portal",
+  },
 };
 
 export function defaultToolAccess(): CompanyToolAccess {

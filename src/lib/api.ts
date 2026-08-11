@@ -1575,4 +1575,114 @@ export const api = {
       fileUrl: (token: string) => `${API_BASE}/deliverables/public/${token}/file`,
     },
   },
+
+  /** Chat / Atendimento — lado do cliente. */
+  chat: {
+    conversations: () =>
+      request<{
+        conversations: Array<{
+          id: string;
+          subject: string | null;
+          status: string;
+          created_at: string;
+          last_message_at: string;
+          resolved_at: string | null;
+          resolved_by: string | null;
+          nao_lidas: number;
+          ultima_mensagem: string | null;
+        }>;
+      }>("/chat/conversations"),
+    create: (body: string, subject?: string, clientMsgId?: string) =>
+      request<{ conversation: { id: string; subject: string | null; status: string } }>(
+        "/chat/conversations",
+        { method: "POST", body: JSON.stringify({ body, subject, client_msg_id: clientMsgId }) }
+      ),
+    messages: (id: string) =>
+      request<{
+        conversation: { id: string; status: string; subject: string | null; assigned_to: string | null };
+        messages: Array<{
+          id: string;
+          sender_type: string;
+          sender_name: string | null;
+          body: string;
+          created_at: string;
+        }>;
+      }>(`/chat/conversations/${id}/messages`),
+    send: (id: string, body: string, clientMsgId?: string) =>
+      request<{ message: { id: string; body: string; created_at: string }; reaberta: boolean }>(
+        `/chat/conversations/${id}/messages`,
+        { method: "POST", body: JSON.stringify({ body, client_msg_id: clientMsgId }) }
+      ),
+    markRead: (id: string) =>
+      request<{ ok: boolean }>(`/chat/conversations/${id}/read`, { method: "POST" }),
+    resolve: (id: string) =>
+      request<{ ok: boolean }>(`/chat/conversations/${id}/resolver`, { method: "POST" }),
+    unread: () => request<{ count: number }>("/chat/unread"),
+  },
+
+  /** Atendimentos — lado admin. */
+  atendimentos: {
+    list: (filters?: { status?: string; company_id?: string }) => {
+      const params = new URLSearchParams();
+      if (filters?.status) params.set("status", filters.status);
+      if (filters?.company_id) params.set("company_id", filters.company_id);
+      const q = params.toString();
+      return request<{
+        conversations: Array<{
+          id: string;
+          subject: string | null;
+          status: string;
+          assigned_to: string | null;
+          created_at: string;
+          last_message_at: string;
+          resolved_at: string | null;
+          resolved_by: string | null;
+          empresa: string;
+          cnpj: string;
+          responsavel_nome: string | null;
+          nao_lidas: number;
+          ultima_mensagem: string | null;
+        }>;
+      }>(`/admin/atendimentos${q ? `?${q}` : ""}`);
+    },
+    summary: () =>
+      request<{ na_fila: number; meus: number; resolvidos_hoje: number }>(
+        "/admin/atendimentos/summary"
+      ),
+    unread: () => request<{ count: number }>("/admin/atendimentos/unread"),
+    atendentes: () =>
+      request<{ atendentes: Array<{ id: string; nome: string }> }>(
+        "/admin/atendimentos/atendentes"
+      ),
+    messages: (id: string) =>
+      request<{
+        conversation: {
+          id: string;
+          status: string;
+          subject: string | null;
+          assigned_to: string | null;
+          company_id: string;
+        };
+        empresa: { name: string; cnpj: string; contact_email: string | null; phone: string | null } | null;
+        messages: Array<{
+          id: string;
+          sender_type: string;
+          sender_name: string | null;
+          body: string;
+          created_at: string;
+        }>;
+      }>(`/admin/atendimentos/${id}/messages`),
+    send: (id: string, body: string, clientMsgId?: string) =>
+      request<{ message: { id: string; body: string; created_at: string } }>(
+        `/admin/atendimentos/${id}/messages`,
+        { method: "POST", body: JSON.stringify({ body, client_msg_id: clientMsgId }) }
+      ),
+    action: (id: string, action: string, transferirPara?: string) =>
+      request<{ ok: boolean }>(`/admin/atendimentos/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action, transferir_para: transferirPara }),
+      }),
+    markRead: (id: string) =>
+      request<{ ok: boolean; marcada: boolean }>(`/admin/atendimentos/${id}/read`, { method: "POST" }),
+  },
 };

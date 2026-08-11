@@ -23,6 +23,7 @@ const { ensureEngagementSchema } = require("./ensureEngagementSchema");
 const { ensureAlertasSchema } = require("./ensureAlertasSchema");
 const { ensurePayrollHistorySchema } = require("./ensurePayrollHistorySchema");
 const { ensureCoraSchema } = require("./ensureCoraSchema");
+const { ensureChatSchema } = require("./ensureChatSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -85,7 +86,9 @@ app.use(express.json({ limit: "1mb" }));
 app.use("/api/auth", require("./routes/auth"));
 // Gestão de usuários do painel (só o dono). Antes de /api/admin: rota mais específica.
 app.use("/api/admin/usuarios", require("./routes/adminUsers"));
+app.use("/api/admin/atendimentos", require("./routes/adminChat"));
 app.use("/api/admin", require("./routes/admin"));
+app.use("/api/chat", require("./routes/chat"));
 app.use("/api/employees", require("./routes/employees"));
 app.use("/api/documents", require("./routes/documents"));
 app.use("/api/certificates", require("./routes/certificates"));
@@ -148,6 +151,7 @@ async function start() {
     await ensureAlertasSchema(db);
     await ensurePayrollHistorySchema(db);
     await ensureCoraSchema(db);
+    await ensureChatSchema(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).
     // Roda em background para não travar o arranque.
     setTimeout(async () => {

@@ -15,6 +15,8 @@ const DEFAULT_TOOL_ACCESS = {
   suspension: true,
   warning: true,
   chatbot: true,
+  // Chat com o escritório dentro do portal (ver routes/chat.js).
+  chat: true,
   salary_adhoc: true,
   employees: true,
   certificates: true,
@@ -36,6 +38,7 @@ const PORTAL_ONLY_TOOL_ACCESS = {
   suspension: false,
   warning: false,
   chatbot: false,
+  chat: false,
   salary_adhoc: false,
   employees: false,
   certificates: false,
