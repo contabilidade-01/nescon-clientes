@@ -80,6 +80,13 @@ services:
       ALERTAS_MAX_POR_HORA: ${ALERTAS_MAX_POR_HORA:-180}
       ALERTAS_DELAY_MS: ${ALERTAS_DELAY_MS:-1200}
       GCLICK_ALERTA_SO_ATIVOS: ${GCLICK_ALERTA_SO_ATIVOS:-true}
+      # API Cora — boletos mensais. Certificados em base64.
+      CORA_CLIENT_ID: ${CORA_CLIENT_ID:-}
+      CORA_CERT_BASE64: ${CORA_CERT_BASE64:-}
+      CORA_KEY_BASE64: ${CORA_KEY_BASE64:-}
+      CORA_SYNC_INTERVAL_H: ${CORA_SYNC_INTERVAL_H:-6}
+      CORA_SYNC_MESES: ${CORA_SYNC_MESES:-6}
+      CORA_SYNC_ON_BOOT: ${CORA_SYNC_ON_BOOT:-true}
       # CNPJ do escritório: a fonte agora é a tela. Isto fica só como plano B para
       # instalação que já tinha a variável configurada antes da tela existir.
       ESCRITORIO_CNPJ: ${ESCRITORIO_CNPJ:-}
