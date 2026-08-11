@@ -42,11 +42,15 @@ function apenasFuncionariosFerias(lista) {
 }
 
 /**
- * SQL que filtra quem entra no 13º (exclui diretor E estagiário).
+ * SQL que filtra quem entra no 13º (exclui diretor E estagiário E contribuinte).
  * `alias` é a tabela de employees na consulta.
+ *
+ * A coluna `eh_contribuinte` é a trava definitiva: gravada pelo parser ao detectar
+ * `Contr:` no extrato, sobrevive a qualquer cenário (PDF ausente, reprocessamento
+ * que não rodou, vinculo/cargo NULL). Se é contribuinte, NÃO entra no 13º.
  */
 function funcionarioRealSql(alias = "e") {
-  return `(${alias}.active IS TRUE AND (${alias}.vinculo IS NULL OR ${alias}.vinculo !~* '^(diretor|estagi[aá]ri[oa])$') AND (${alias}.cargo IS NULL OR ${alias}.cargo !~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore)'))`;
+  return `(${alias}.active IS TRUE AND ${alias}.eh_contribuinte IS NOT TRUE AND (${alias}.vinculo IS NULL OR ${alias}.vinculo !~* '^(diretor|estagi[aá]ri[oa])$') AND (${alias}.cargo IS NULL OR ${alias}.cargo !~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore)'))`;
 }
 
 /**

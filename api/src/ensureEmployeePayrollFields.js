@@ -16,6 +16,9 @@ async function ensureEmployeePayrollFields(db) {
     await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS salario_competencia TEXT;`);
     await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS cargo TEXT;`);
     await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS vinculo TEXT;`);
+    // Flag permanente: se o employee apareceu com "Contr:" no extrato, é contribuinte
+    // (pró-labore). Não depende de reprocessamento — uma vez marcado, nunca mais entra no 13º.
+    await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS eh_contribuinte BOOLEAN NOT NULL DEFAULT false;`);
     // Backfill: preencher vinculo a partir do cargo para quem já estava no banco
     await db.query(`
       UPDATE employees SET vinculo = 'Diretor'
@@ -31,6 +34,11 @@ async function ensureEmployeePayrollFields(db) {
       UPDATE employees SET vinculo = 'Celetista'
        WHERE vinculo IS NULL AND cargo IS NOT NULL
          AND cargo !~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore|estagi[aá]ri)';
+    `);
+    // Sincronizar eh_contribuinte com vinculo (quem já tem vinculo = 'Diretor' é contribuinte)
+    await db.query(`
+      UPDATE employees SET eh_contribuinte = true
+       WHERE eh_contribuinte IS NOT TRUE AND vinculo = 'Diretor';
     `);
     // Forçar reprocessamento do extrato para empresas que têm employees sem vínculo
     // (o extrato anterior não extraía vinculo, então o processado_id travou).
