@@ -13,7 +13,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { dueTone } from "@/lib/deliverableDisplay";
+import { dueTone, parseDue } from "@/lib/deliverableDisplay";
+import { differenceInCalendarDays, startOfToday } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,7 +35,27 @@ function formatDate(date: string | null): string {
   return date.split("-").reverse().join("/");
 }
 
-function StatusBadge({ status }: { status: string }) {
+/**
+ * Selo de status do boleto.
+ *
+ * Recebe o VENCIMENTO junto porque "atrasado" não existe como status no banco — é um
+ * pendente cuja data já passou. Sem isso, filtrar por "Atrasados" devolvia uma lista
+ * inteira marcada como "Pendente": o filtro dizia uma coisa e a coluna dizia outra, e
+ * quem estava cobrando não distinguia o que venceu ontem do que venceu em maio.
+ */
+function StatusBadge({ status, dueDate }: { status: string; dueDate?: string | null }) {
+  if (dueTone(dueDate, status as "pending" | "paid") === "overdue") {
+    const d = parseDue(dueDate);
+    const dias = d ? Math.abs(differenceInCalendarDays(d, startOfToday())) : 0;
+    return (
+      <Badge className="bg-destructive/15 text-destructive border-destructive/30">
+        <AlertTriangle className="mr-1 h-3 w-3" />
+        {/* Os dias entram no selo porque mudam a prioridade da cobrança: um boleto de
+            ontem e um de três meses atrás não pedem a mesma conversa. */}
+        Atrasado{dias > 0 ? ` ${dias}d` : ""}
+      </Badge>
+    );
+  }
   switch (status) {
     case "paid":
       return (
@@ -435,7 +456,7 @@ const BoletosCoraPage = () => {
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
-                          <StatusBadge status={b.status} />
+                          <StatusBadge status={b.status} dueDate={b.due_date} />
                           <DocTypeBadge docType={b.doc_type} />
                         </div>
                       </td>
