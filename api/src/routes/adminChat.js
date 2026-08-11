@@ -77,21 +77,42 @@ router.get("/", async (req, res) => {
   }
 });
 
-/** Cartões do topo — contados sobre o MESMO escopo que a pessoa enxerga. */
+/**
+ * Cartões do topo — contados sobre o MESMO escopo que a pessoa enxerga.
+ *
+ * `espera_mais_antiga_h` é a métrica que realmente denuncia problema: os contadores
+ * dizem QUANTAS conversas esperam, mas não há quanto tempo. Cinco conversas na fila há
+ * dez minutos é uma manhã movimentada; UMA há dois dias é um cliente esquecido — e é
+ * esse segundo caso que custa a conta. Por isso ela sai junto.
+ */
 router.get("/summary", async (req, res) => {
   const { adminId, isOwner } = ator(req);
   try {
     const { rows } = await db.query(
       `SELECT
          count(*) FILTER (WHERE c.status = 'aberto' AND c.assigned_to IS NULL)::int AS na_fila,
-         count(*) FILTER (WHERE c.status = 'em_atendimento' AND c.assigned_to = $1::uuid)::int AS meus,
+         count(*) FILTER (WHERE c.status = 'em_atendimento')::int AS em_atendimento,
+         count(*) FILTER (WHERE c.status = 'em_atendimento'
+                            AND c.assigned_to = $1::uuid)::int AS meus,
          count(*) FILTER (WHERE c.status = 'resolvido'
-                            AND c.resolved_at::date = now()::date)::int AS resolvidos_hoje
+                            AND c.resolved_at::date = now()::date)::int AS resolvidos_hoje,
+         count(*) FILTER (WHERE c.status = 'resolvido'
+                            AND c.resolved_at >= now() - interval '7 days')::int AS resolvidos_7d,
+         -- Espera do mais antigo que ainda não foi resolvido, em horas.
+         COALESCE(
+           EXTRACT(EPOCH FROM (now() - min(c.last_message_at)
+             FILTER (WHERE c.status <> 'resolvido' AND c.assigned_to IS NULL))) / 3600,
+           0)::int AS espera_mais_antiga_h
          FROM conversations c
         WHERE ${chat.sqlVisibilidadeAdmin(1, 2)}`,
       [adminId, isOwner]
     );
-    res.json(rows[0] || { na_fila: 0, meus: 0, resolvidos_hoje: 0 });
+    res.json(
+      rows[0] || {
+        na_fila: 0, em_atendimento: 0, meus: 0,
+        resolvidos_hoje: 0, resolvidos_7d: 0, espera_mais_antiga_h: 0,
+      }
+    );
   } catch (err) {
     console.error("[adminChat] summary:", err.message);
     res.status(500).json({ error: "Não foi possível carregar o resumo" });

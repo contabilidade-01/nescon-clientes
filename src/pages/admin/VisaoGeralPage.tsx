@@ -1,6 +1,13 @@
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpRight, ClipboardCheck, ShieldCheck, UserPlus } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  ClipboardCheck,
+  MessageCircle,
+  ShieldCheck,
+  UserPlus,
+} from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
@@ -35,6 +42,14 @@ function StatCard({
   );
 }
 
+/** Horas → "3 h" / "2 d". Fila vazia mostra travessão em vez de "0 h". */
+function esperaLabel(horas: number): string {
+  if (!horas || horas <= 0) return "—";
+  if (horas < 24) return `${horas} h`;
+  const dias = Math.floor(horas / 24);
+  return dias === 1 ? "1 d" : `${dias} d`;
+}
+
 const VisaoGeralPage = () => {
   const navigate = useNavigate();
   const { admin } = useAuth();
@@ -45,7 +60,17 @@ const VisaoGeralPage = () => {
   const podeEmpresas = canSeeArea("empresas", admin?.areas, admin?.isOwner);
   const podeEntregas = canSeeArea("entregas", admin?.areas, admin?.isOwner);
   const podeFuncionarios = canSeeArea("funcionarios", admin?.areas, admin?.isOwner);
+  const podeAtendimento = canSeeArea("atendimento", admin?.areas, admin?.isOwner);
   const { data: pendencias } = useGclickPendencias();
+
+  // Resumo do atendimento. O servidor já devolve só o que ESTE usuário pode ver, então
+  // o painel nunca mostra conversa de colega — nem no número.
+  const { data: atendimentos } = useQuery({
+    queryKey: ["admin-atendimentos-summary"],
+    queryFn: () => api.atendimentos.summary(),
+    enabled: podeAtendimento,
+    refetchInterval: 60_000,
+  });
 
   const { data: cobertura } = useQuery({
     queryKey: ["cobertura"],
@@ -134,6 +159,79 @@ const VisaoGeralPage = () => {
           onClick={podeEntregas ? () => navigate("/admin/entregas") : undefined}
         />
       </section>
+
+      {podeAtendimento && (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <MessageCircle className="h-4 w-4" /> Atendimento
+          </CardTitle>
+          <CardDescription>
+            Mensagens dos clientes no portal. &quot;Sem resposta&quot; é a fila de quem
+            ainda não foi atendido por ninguém.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <button
+            type="button"
+            onClick={() => navigate("/admin/atendimentos?status=aberto")}
+            className="rounded-xl border bg-background/60 p-3 text-left transition-colors hover:border-primary/40"
+          >
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="h-2 w-2 rounded-full bg-destructive" /> Sem resposta
+            </span>
+            <p className="mt-1 text-2xl font-bold tabular-nums">
+              {atendimentos?.na_fila ?? "—"}
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/admin/atendimentos?status=em_atendimento")}
+            className="rounded-xl border bg-background/60 p-3 text-left transition-colors hover:border-primary/40"
+          >
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="h-2 w-2 rounded-full bg-amber-500" /> Em atendimento
+            </span>
+            <p className="mt-1 text-2xl font-bold tabular-nums">
+              {atendimentos?.em_atendimento ?? "—"}
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {atendimentos ? `${atendimentos.meus} comigo` : ""}
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/admin/atendimentos?status=resolvido")}
+            className="rounded-xl border bg-background/60 p-3 text-left transition-colors hover:border-primary/40"
+          >
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" /> Resolvidos hoje
+            </span>
+            <p className="mt-1 text-2xl font-bold tabular-nums">
+              {atendimentos?.resolvidos_hoje ?? "—"}
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {atendimentos ? `${atendimentos.resolvidos_7d} em 7 dias` : ""}
+            </p>
+          </button>
+
+          {/* Espera mais antiga: o contador diz QUANTAS aguardam, este diz HÁ QUANTO
+              TEMPO. Uma conversa parada há dois dias é pior que cinco de dez minutos. */}
+          <div className="rounded-xl border bg-background/60 p-3 text-left">
+            <span className="text-xs text-muted-foreground">Espera mais antiga</span>
+            <p
+              className={`mt-1 text-2xl font-bold tabular-nums ${
+                (atendimentos?.espera_mais_antiga_h ?? 0) >= 24 ? "text-destructive" : ""
+              }`}
+            >
+              {atendimentos ? esperaLabel(atendimentos.espera_mais_antiga_h) : "—"}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+      )}
 
       {podeLicencas && (
       <Card>

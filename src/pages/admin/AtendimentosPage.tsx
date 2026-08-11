@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -104,7 +105,13 @@ function tempoRelativo(iso: string | null | undefined): string {
 
 const AtendimentosPage = () => {
   const queryClient = useQueryClient();
-  const [statusFiltro, setStatusFiltro] = useState<string>("todos");
+  // O filtro pode vir na URL (?status=aberto): é assim que os cartões da Visão geral
+  // levam direto para a fila que a pessoa clicou, em vez de largá-la na lista inteira.
+  const [searchParams] = useSearchParams();
+  const statusDaUrl = searchParams.get("status") || "";
+  const [statusFiltro, setStatusFiltro] = useState<string>(
+    ["aberto", "em_atendimento", "resolvido"].includes(statusDaUrl) ? statusDaUrl : "todos"
+  );
   const [busca, setBusca] = useState("");
   const [aberta, setAberta] = useState<string | null>(null);
 

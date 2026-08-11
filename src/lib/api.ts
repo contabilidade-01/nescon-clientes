@@ -1646,9 +1646,15 @@ export const api = {
       }>(`/admin/atendimentos${q ? `?${q}` : ""}`);
     },
     summary: () =>
-      request<{ na_fila: number; meus: number; resolvidos_hoje: number }>(
-        "/admin/atendimentos/summary"
-      ),
+      request<{
+        na_fila: number;
+        em_atendimento: number;
+        meus: number;
+        resolvidos_hoje: number;
+        resolvidos_7d: number;
+        /** Horas de espera da conversa sem dono mais antiga. 0 = fila vazia. */
+        espera_mais_antiga_h: number;
+      }>("/admin/atendimentos/summary"),
     unread: () => request<{ count: number }>("/admin/atendimentos/unread"),
     atendentes: () =>
       request<{ atendentes: Array<{ id: string; nome: string }> }>(
