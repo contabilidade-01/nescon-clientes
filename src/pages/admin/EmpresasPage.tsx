@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Building2, KeyRound, Plus, ShieldAlert } from "lucide-react";
+import { Archive, Building2, KeyRound, Plus, RotateCcw, ShieldAlert } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { CompanyFilter } from "@/components/admin/CompanyFilter";
 import { useAdminCompanies } from "@/hooks/useAdminCompanies";
@@ -12,11 +12,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { maskCNPJ } from "@/lib/masks";
+import { useAuth } from "@/hooks/useAuth";
 
 const EmpresasPage = () => {
   const queryClient = useQueryClient();
+  const { admin } = useAuth();
   const { data: companies } = useAdminCompanies();
   const [companyId, setCompanyId] = useState("");
+  const [motivoArquivar, setMotivoArquivar] = useState("");
+  const [confirmArquivar, setConfirmArquivar] = useState(false);
 
   // A senha inicial é mostrada UMA vez, num aviso persistente. Não existe rota que a
   // consulte depois: uma tela que exibe senha de cliente é uma tela que vaza senha.
@@ -61,6 +65,42 @@ const EmpresasPage = () => {
       queryClient.invalidateQueries({ queryKey: ["senha-pendente"] });
     },
     onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Arquivamento
+  const arquivar = useMutation({
+    mutationFn: () => api.admin.arquivarEmpresa(companyId, motivoArquivar.trim() || undefined),
+    onSuccess: (r) => {
+      if (r.ja_estava_arquivada) {
+        toast.info("Empresa já estava arquivada.");
+      } else {
+        toast.success("Empresa arquivada. Não recebe mais nada e perde acesso ao portal.");
+      }
+      setCompanyId("");
+      setMotivoArquivar("");
+      setConfirmArquivar(false);
+      queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-empresas-arquivadas"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-summary"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const reativar = useMutation({
+    mutationFn: (id: string) => api.admin.reativarEmpresa(id),
+    onSuccess: () => {
+      toast.success("Empresa reativada — voltou a receber documentos e pode acessar o portal.");
+      queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-empresas-arquivadas"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-summary"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const arquivadas = useQuery({
+    queryKey: ["admin-empresas-arquivadas"],
+    queryFn: () => api.admin.empresasArquivadas(),
+    enabled: !!admin?.isOwner,
   });
 
   const selected = companies?.find((c) => c.id === companyId);
@@ -228,8 +268,95 @@ const EmpresasPage = () => {
           ) : (
             <CompanyManageRow key={selected.id} company={selected} />
           )}
+
+          {/* Botão de arquivar — só aparece quando uma empresa está selecionada */}
+          {selected && (
+            <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
+              <p className="text-sm font-medium text-destructive">Arquivar empresa</p>
+              <p className="text-xs text-muted-foreground">
+                A empresa some de todos os painéis, para de receber alertas/boletos/documentos e
+                perde acesso ao portal. Dados históricos ficam intactos. Só o dono do sistema pode reativar.
+              </p>
+              {!confirmArquivar ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-destructive/50 text-destructive hover:bg-destructive/10"
+                  onClick={() => setConfirmArquivar(true)}
+                >
+                  <Archive className="mr-1 h-4 w-4" /> Arquivar {selected.name}
+                </Button>
+              ) : (
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Motivo (opcional, ex: encerrou contrato)"
+                    value={motivoArquivar}
+                    onChange={(e) => setMotivoArquivar(e.target.value)}
+                    className="max-w-sm"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => arquivar.mutate()}
+                      disabled={arquivar.isPending}
+                    >
+                      Confirmar arquivamento
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setConfirmArquivar(false); setMotivoArquivar(""); }}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* Lista de empresas arquivadas — só o dono do sistema */}
+      {admin?.isOwner && (arquivadas.data?.length ?? 0) > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Archive className="h-4 w-4" /> Empresas arquivadas ({arquivadas.data?.length})
+            </CardTitle>
+            <CardDescription>
+              Empresas que não recebem mais nada e não têm acesso ao portal. Só você (dono) pode reativar.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {arquivadas.data?.map((c) => (
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{c.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {maskCNPJ(c.cnpj)}
+                    {c.arquivada_motivo && <> · {c.arquivada_motivo}</>}
+                    {c.arquivada_por_nome && <> · por {c.arquivada_por_nome}</>}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (confirm(`Reativar ${c.name}? Volta a receber tudo e pode acessar o portal.`)) {
+                      reativar.mutate(c.id);
+                    }
+                  }}
+                  disabled={reativar.isPending}
+                >
+                  <RotateCcw className="mr-1 h-3.5 w-3.5" /> Reativar
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </AdminLayout>
   );
 };
