@@ -13,6 +13,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { dueTone } from "@/lib/deliverableDisplay";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -143,10 +144,14 @@ const BoletosCoraPage = () => {
   const totalBoletos = boletos?.length || 0;
   const boletosPendentes = boletos?.filter((b) => b.status === "pending").length || 0;
   const boletosPagos = boletos?.filter((b) => b.status === "paid").length || 0;
-  const boletosAtrasados = boletos?.filter((b) => {
-    if (b.status !== "pending" || !b.due_date) return false;
-    return new Date(b.due_date) < new Date(new Date().toISOString().split("T")[0]);
-  }).length || 0;
+  // `dueTone` é o mesmo cálculo do portal do cliente e converte a data para o fuso
+  // local. A conta manual anterior comparava com `toISOString()` (UTC): depois das 21h
+  // no horário de Brasília o "hoje" já era o dia seguinte, e um boleto vencendo hoje
+  // aparecia como atrasado três horas mais cedo.
+  const estaAtrasado = (b: { status: string; due_date?: string | null }) =>
+    dueTone(b.due_date, b.status as "pending" | "paid") === "overdue";
+
+  const boletosAtrasados = boletos?.filter(estaAtrasado).length || 0;
 
   // Filtro da tab de boletos
   const [filtroBoletoStatus, setFiltroBoletoStatus] = useState("");
@@ -154,7 +159,11 @@ const BoletosCoraPage = () => {
   const [filtroBoletoComp, setFiltroBoletoComp] = useState("");
 
   const boletosFiltrados = (boletos || []).filter((b) => {
-    if (filtroBoletoStatus && b.status !== filtroBoletoStatus) return false;
+    // "Atrasado" não existe como status no banco — é um pendente cujo vencimento já
+    // passou. Por isso não dá para comparar com `b.status` e ele vira um caso próprio.
+    if (filtroBoletoStatus === "overdue") {
+      if (!estaAtrasado(b)) return false;
+    } else if (filtroBoletoStatus && b.status !== filtroBoletoStatus) return false;
     if (filtroBoletoEmpresa && !b.empresa_nome.toLowerCase().includes(filtroBoletoEmpresa.toLowerCase()) && !b.empresa_cnpj.includes(filtroBoletoEmpresa)) return false;
     if (filtroBoletoComp && b.competencia !== filtroBoletoComp) return false;
     return true;
@@ -379,6 +388,7 @@ const BoletosCoraPage = () => {
             >
               <option value="">Todos os status</option>
               <option value="pending">Pendentes</option>
+              <option value="overdue">Atrasados</option>
               <option value="paid">Pagos</option>
             </select>
             {(filtroBoletoEmpresa || filtroBoletoComp || filtroBoletoStatus) && (

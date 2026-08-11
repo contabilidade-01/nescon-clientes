@@ -160,11 +160,35 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
   // trata cada uma num lugar (imposto no banco/DARF, boleto no app). Misturar as duas
   // listas fazia o boleto parecer mais um imposto e sumir no meio.
   if (boletos.length) {
-    if (obrigNormais.length) linhas.push("");
-    linhas.push(boletos.length > 1 ? "*Boletos a pagar:*" : "*Boleto a pagar:*");
-    for (const b of boletos) {
-      const valor = valorBR(b.valorCentavos);
-      linhas.push(`• ${b.nome}${valor ? ` — ${valor}` : ""} — vence ${ddmm(b.vencimento)}`);
+    // Vencido e a vencer não podem dividir a mesma lista: "vence 12/08" ao lado de
+    // "venceu 12/08" com o mesmo título faz o cliente ler tudo como aviso comum e
+    // deixar o atrasado para depois — que é o único que já custa juros.
+    const emAtraso = boletos.filter((b) => b.diasEmAtraso);
+    const aVencer = boletos.filter((b) => !b.diasEmAtraso);
+
+    if (aVencer.length) {
+      if (obrigNormais.length) linhas.push("");
+      linhas.push(aVencer.length > 1 ? "*Boletos a pagar:*" : "*Boleto a pagar:*");
+      for (const b of aVencer) {
+        const valor = valorBR(b.valorCentavos);
+        linhas.push(`• ${b.nome}${valor ? ` — ${valor}` : ""} — vence ${ddmm(b.vencimento)}`);
+      }
+    }
+
+    if (emAtraso.length) {
+      if (obrigNormais.length || aVencer.length) linhas.push("");
+      linhas.push(emAtraso.length > 1 ? "*⚠️ Boletos em atraso:*" : "*⚠️ Boleto em atraso:*");
+      for (const b of emAtraso) {
+        const valor = valorBR(b.valorCentavos);
+        // Dizer há quantos dias é o que transforma a data em urgência — "venceu 08/08"
+        // não move ninguém; "há 3 dias" move.
+        const ha = b.diasEmAtraso === 1 ? "há 1 dia" : `há ${b.diasEmAtraso} dias`;
+        linhas.push(
+          `• ${b.nome}${valor ? ` — ${valor}` : ""} — venceu ${ddmm(b.vencimento)} (${ha})`
+        );
+      }
+      linhas.push("");
+      linhas.push("Se já pagou, desconsidere. Qualquer dúvida, fale com o escritório.");
     }
   }
 

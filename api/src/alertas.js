@@ -236,6 +236,26 @@ const MARCOS_FERIAS_DIAS = [90, 60, 30, 15];
 const BOLETO_AVISAR_DIAS_ANTES = Number(process.env.ALERTAS_BOLETO_DIAS_ANTES ?? 1);
 
 /**
+ * Cobrança do boleto VENCIDO: marcos, em dias APÓS o vencimento.
+ *
+ * Sem isto o aviso só saía na véspera e o boleto que vencia ficava em silêncio para
+ * sempre — ou seja, justamente o que precisa de cobrança era o único que nunca era
+ * cobrado, e a régua dependia de alguém lembrar de olhar a tela.
+ *
+ * Marcos, e não janela ("todo dia enquanto estiver vencido"), pela mesma razão do aviso
+ * de férias: janela mandaria a mesma cobrança todo santo dia, e o cliente ou bloqueia o
+ * número ou passa a ignorar o canal — que é pior do que não cobrar.
+ *
+ * Três toques (3, 10 e 30 dias) cobrem o esquecimento, a segunda chance e o caso que já
+ * virou conversa de cobrança de verdade; daí em diante é assunto para uma pessoa, não
+ * para uma rotina.
+ */
+const BOLETO_COBRANCA_DIAS_DEPOIS = (process.env.ALERTAS_BOLETO_COBRANCA_DIAS || "3,10,30")
+  .split(",")
+  .map((d) => Number(d.trim()))
+  .filter((d) => Number.isFinite(d) && d > 0);
+
+/**
  * Funcionários cujo limite de gozo cai exatamente num dos marcos.
  *
  * Lê só a **última** programação de cada empresa (mesma regra de
@@ -364,10 +384,12 @@ async function previsao(db, { data = null, simular = true } = {}) {
         AND status IS DISTINCT FROM 'paid'
         AND released_at IS NOT NULL
         AND due_date IS NOT NULL
-        AND due_date >= $1::date
+        -- Janela para trás limitada pelo ÚLTIMO marco de cobrança: sem ela, um boleto
+        -- esquecido de 2024 entraria na conta todo dia sem nunca casar com um marco.
+        AND due_date >= ($1::date - $2::int)
         AND historico IS NOT TRUE
       ORDER BY due_date`,
-    [hoje]
+    [hoje, Math.max(0, ...BOLETO_COBRANCA_DIAS_DEPOIS, 0)]
   );
   const boletosPorEmpresa = new Map();
   for (const b of boletosTodos) {
@@ -415,7 +437,15 @@ async function previsao(db, { data = null, simular = true } = {}) {
     // Boletos que vencem no dia do aviso. A data é a do próprio boleto (Cora), não de
     // regra de calendário — por isso a comparação é direta, sem catálogo no meio.
     for (const b of boletosDaEmpresa) {
-      if (b.due_date !== somarDias(hoje, BOLETO_AVISAR_DIAS_ANTES)) continue;
+      // Dois momentos, um item só:
+      //  · véspera  → lembrete ("vence amanhã");
+      //  · vencido  → cobrança, e só nos marcos (3/10/30 dias), nunca todo dia.
+      const eLembrete = b.due_date === somarDias(hoje, BOLETO_AVISAR_DIAS_ANTES);
+      const diasEmAtraso = BOLETO_COBRANCA_DIAS_DEPOIS.find(
+        (d) => b.due_date === somarDias(hoje, -d)
+      );
+      if (!eLembrete && diasEmAtraso === undefined) continue;
+
       itens.push({
         // O id entra na chave para dois boletos do mesmo dia não colapsarem num só na
         // trava de duplicidade — e para um não calar o outro.
@@ -425,6 +455,7 @@ async function previsao(db, { data = null, simular = true } = {}) {
         vencimento: b.due_date,
         valorCentavos: b.valor_centavos,
         isBoleto: true,
+        diasEmAtraso: diasEmAtraso ?? null,
       });
     }
 
