@@ -161,15 +161,14 @@ async function gravarGuia(guia, companyId, { historico = false } = {}) {
     return "atualizado";
   }
 
-  // Carga histórica entra JÁ LIBERADA: o objetivo é o cliente ter o arquivo. E entra
-  // marcada como histórico, para não virar cobrança de guia vencida meses atrás.
+  // Documento novo entra JÁ LIBERADO: se o G-Click tem o arquivo pronto, o cliente
+  // pode ver. Não depende mais do sistema de guias chamar /api/fiscal/release.
   await db.query(
     `INSERT INTO deliverables
        (company_id, category, doc_type, title, competencia, due_date,
         file_path, file_name, source, external_ref, access_token,
         gclick_versao_em, gclick_atividade_id, num_versoes, historico, released_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'gclick',$9,$10,$11,$12,$13,$14,
-             CASE WHEN $14 THEN now() ELSE NULL END)`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'gclick',$9,$10,$11,$12,$13,$14, now())`,
     [companyId, categoria, docType, titulo, guia.competencia || null, dueDate,
      fileName, guia.arquivoNome || fileName, guia.chave,
      crypto.randomBytes(24).toString("hex"), guia.respondidaEm || "",
@@ -318,6 +317,18 @@ async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = n
     if (!cnpjFiltro) {
       const e = await extratoAuto.processarExtratos(db);
       if (!e.ok) console.error("[sync] extratos:", e.erro);
+    }
+
+    // Liberar quaisquer documentos retidos que ainda existam (legado da época em que
+    // o portal dependia do GCLICK chamar /api/fiscal/release). Agora tudo entra liberado,
+    // mas pode haver resíduos de syncs anteriores.
+    const { rowCount: liberados } = await db.query(
+      `UPDATE deliverables SET released_at = now()
+       WHERE source = 'gclick' AND released_at IS NULL`
+    );
+    if (liberados) {
+      total.liberados = liberados;
+      console.log(`[sync] ${liberados} documento(s) retido(s) liberado(s) automaticamente.`);
     }
 
     ultimoResultado = {
