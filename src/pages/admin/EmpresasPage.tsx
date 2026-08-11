@@ -21,6 +21,7 @@ const EmpresasPage = () => {
   const [companyId, setCompanyId] = useState("");
   const [motivoArquivar, setMotivoArquivar] = useState("");
   const [confirmArquivar, setConfirmArquivar] = useState(false);
+  const [buscaEmpresa, setBuscaEmpresa] = useState("");
 
   // A senha inicial é mostrada UMA vez, num aviso persistente. Não existe rota que a
   // consulte depois: uma tela que exibe senha de cliente é uma tela que vaza senha.
@@ -101,6 +102,24 @@ const EmpresasPage = () => {
     queryKey: ["admin-empresas-arquivadas"],
     queryFn: () => api.admin.empresasArquivadas(),
     enabled: !!admin?.isOwner,
+  });
+
+  // Arquivar rápido (da lista, sem motivo — o confirm do browser já é a confirmação)
+  const arquivar2 = useMutation({
+    mutationFn: (id: string) => api.admin.arquivarEmpresa(id),
+    onSuccess: () => {
+      toast.success("Empresa arquivada.");
+      queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-empresas-arquivadas"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-summary"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const empresasFiltradas = (companies || []).filter((c) => {
+    if (!buscaEmpresa) return true;
+    const termo = buscaEmpresa.toLowerCase();
+    return c.name.toLowerCase().includes(termo) || c.cnpj.includes(buscaEmpresa.replace(/\D/g, ""));
   });
 
   const selected = companies?.find((c) => c.id === companyId);
@@ -234,6 +253,54 @@ const EmpresasPage = () => {
           >
             Cadastrar empresa
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Lista completa de empresas com ação rápida de arquivar */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Building2 className="h-4 w-4" /> Empresas ativas ({companies?.length || 0})
+          </CardTitle>
+          <CardDescription>
+            Clique em "Arquivar" para tirar a empresa do sistema. Ela perde acesso ao portal e
+            para de receber tudo. Só o dono pode reativar depois.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Input
+            placeholder="Buscar por nome ou CNPJ..."
+            className="max-w-sm"
+            value={buscaEmpresa}
+            onChange={(e) => setBuscaEmpresa(e.target.value)}
+          />
+          <div className="max-h-[400px] overflow-y-auto rounded-lg border">
+            {empresasFiltradas.length === 0 ? (
+              <p className="p-4 text-center text-sm text-muted-foreground">Nenhuma empresa encontrada.</p>
+            ) : (
+              empresasFiltradas.map((c) => (
+                <div key={c.id} className="flex items-center justify-between gap-2 border-b px-3 py-2 last:border-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{c.name}</p>
+                    <p className="text-xs text-muted-foreground">{maskCNPJ(c.cnpj)}</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10"
+                    onClick={() => {
+                      if (confirm(`Arquivar "${c.name}"?\n\nA empresa perde acesso ao portal e para de receber documentos, boletos e alertas.`)) {
+                        arquivar2.mutate(c.id);
+                      }
+                    }}
+                    disabled={arquivar2.isPending}
+                  >
+                    <Archive className="mr-1 h-3.5 w-3.5" /> Arquivar
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
         </CardContent>
       </Card>
 
