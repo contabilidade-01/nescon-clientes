@@ -246,6 +246,8 @@ async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = n
         continue;
       }
 
+      console.log(`[sync] ${comp}: ${tarefas.length} tarefa(s) do G-Click`);
+
       if (cnpjFiltro) {
         tarefas = tarefas.filter(
           (t) => String(t?.clienteInscricao || "").replace(/\D/g, "") === cnpjFiltro
@@ -263,6 +265,8 @@ async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = n
         }
       });
       let guias = listas.flat().filter((g) => g.cnpj && g.arquivoUrl);
+
+      console.log(`[sync] ${comp}: ${listas.flat().length} atividade(s), ${guias.length} guia(s) com arquivo`);
 
       // Filtro por TIPO de documento. Existe para a carga poder ser cirúrgica: trazer só
       // o Extrato da Folha de um ano inteiro é barato e alimenta os indicadores, enquanto
