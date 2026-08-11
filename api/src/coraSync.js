@@ -90,9 +90,18 @@ async function gravarBoleto(boleto, companyId) {
   const status = cora.mapCoraStatusToPortal(boleto.status);
   const dueDate = boleto.due_date || null;
   const competencia = competenciaDe(dueDate);
-  const pdfUrl = boleto.payment_options?.bank_slip?.url || null;
   const valorCentavos = boleto.total_amount || null;
   const paidAt = status === "paid" ? "now()" : "NULL";
+
+  // Buscar detalhe do boleto para obter a URL do PDF (não vem na listagem)
+  let pdfUrl = null;
+  try {
+    const detalhe = await cora.getInvoiceDetail(boleto.id);
+    pdfUrl = detalhe?.payment_options?.bank_slip?.url || null;
+  } catch (err) {
+    // Se falhar, segue sem PDF — o boleto ainda é útil no calendário
+    console.error(`[cora] detalhe PDF ${boleto.id}:`, err.message);
+  }
 
   // Tentar buscar existente
   const { rows: existentes } = await db.query(

@@ -143,6 +143,22 @@ const BoletosCoraPage = () => {
   const totalBoletos = boletos?.length || 0;
   const boletosPendentes = boletos?.filter((b) => b.status === "pending").length || 0;
   const boletosPagos = boletos?.filter((b) => b.status === "paid").length || 0;
+  const boletosAtrasados = boletos?.filter((b) => {
+    if (b.status !== "pending" || !b.due_date) return false;
+    return new Date(b.due_date) < new Date(new Date().toISOString().split("T")[0]);
+  }).length || 0;
+
+  // Filtro da tab de boletos
+  const [filtroBoletoStatus, setFiltroBoletoStatus] = useState("");
+  const [filtroBoletoEmpresa, setFiltroBoletoEmpresa] = useState("");
+  const [filtroBoletoComp, setFiltroBoletoComp] = useState("");
+
+  const boletosFiltrados = (boletos || []).filter((b) => {
+    if (filtroBoletoStatus && b.status !== filtroBoletoStatus) return false;
+    if (filtroBoletoEmpresa && !b.empresa_nome.toLowerCase().includes(filtroBoletoEmpresa.toLowerCase()) && !b.empresa_cnpj.includes(filtroBoletoEmpresa)) return false;
+    if (filtroBoletoComp && b.competencia !== filtroBoletoComp) return false;
+    return true;
+  });
 
   const empresasFiltradas = (empresas || []).filter(
     (e) =>
@@ -157,7 +173,7 @@ const BoletosCoraPage = () => {
       description="Gestão de importação de boletos mensais da Cora"
     >
       {/* Status + Ações */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Total importados</p>
@@ -168,6 +184,12 @@ const BoletosCoraPage = () => {
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Pendentes</p>
             <p className="text-2xl font-bold text-amber-600">{boletosPendentes}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Atrasados</p>
+            <p className="text-2xl font-bold text-destructive">{boletosAtrasados}</p>
           </CardContent>
         </Card>
         <Card>
@@ -335,6 +357,40 @@ const BoletosCoraPage = () => {
 
         {/* Tab Boletos */}
         <TabsContent value="boletos" className="space-y-3">
+          {/* Filtros */}
+          <div className="flex flex-wrap gap-2">
+            <Input
+              placeholder="Empresa ou CNPJ..."
+              className="h-9 w-48"
+              value={filtroBoletoEmpresa}
+              onChange={(e) => setFiltroBoletoEmpresa(e.target.value)}
+            />
+            <Input
+              type="month"
+              className="h-9 w-40"
+              value={filtroBoletoComp}
+              onChange={(e) => setFiltroBoletoComp(e.target.value)}
+              placeholder="Competência"
+            />
+            <select
+              className="h-9 rounded-md border bg-background px-3 text-sm"
+              value={filtroBoletoStatus}
+              onChange={(e) => setFiltroBoletoStatus(e.target.value)}
+            >
+              <option value="">Todos os status</option>
+              <option value="pending">Pendentes</option>
+              <option value="paid">Pagos</option>
+            </select>
+            {(filtroBoletoEmpresa || filtroBoletoComp || filtroBoletoStatus) && (
+              <Button variant="ghost" size="sm" className="h-9" onClick={() => { setFiltroBoletoEmpresa(""); setFiltroBoletoComp(""); setFiltroBoletoStatus(""); }}>
+                Limpar
+              </Button>
+            )}
+            <span className="flex items-center text-xs text-muted-foreground ml-auto">
+              {boletosFiltrados.length} de {totalBoletos}
+            </span>
+          </div>
+
           {loadingBoletos ? (
             <p className="py-8 text-center text-sm text-muted-foreground">Carregando...</p>
           ) : totalBoletos === 0 ? (
@@ -357,7 +413,7 @@ const BoletosCoraPage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {boletos!.map((b) => (
+                  {boletosFiltrados.map((b) => (
                     <tr key={b.id} className="border-b last:border-0 hover:bg-muted/30">
                       <td className="px-3 py-2">
                         <p className="truncate font-medium max-w-[200px]">{b.empresa_nome}</p>

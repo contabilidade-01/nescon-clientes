@@ -181,6 +181,36 @@ async function searchInvoices(cnpj, options = {}) {
 }
 
 /**
+ * Busca detalhes de um boleto específico (inclui payment_options com PDF URL).
+ */
+async function getInvoiceDetail(invoiceId) {
+  try {
+    const sslCertificates = loadCertificates();
+    const token = await getValidToken();
+
+    const requestOptions = {
+      hostname: "matls-clients.api.cora.com.br",
+      port: 443,
+      path: `/v2/invoices/${invoiceId}`,
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      cert: sslCertificates.cert,
+      key: sslCertificates.key,
+    };
+
+    const response = await makeHTTPSRequest(requestOptions);
+    return response.json;
+  } catch (error) {
+    console.error(`[cora] erro ao buscar detalhe do boleto ${invoiceId}:`, error.message);
+    return null;
+  }
+}
+
+/**
  * Mapeia status Cora para status do deliverable.
  */
 function mapCoraStatusToPortal(coraStatus) {
@@ -239,6 +269,7 @@ function diagnostico() {
 
 module.exports = {
   searchInvoices,
+  getInvoiceDetail,
   getValidToken,
   mapCoraStatusToPortal,
   isConfigured,
