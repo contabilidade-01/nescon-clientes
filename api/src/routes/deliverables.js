@@ -378,6 +378,18 @@ router.patch("/:id", async (req, res) => {
     if (!STATUSES.includes(status)) {
       return res.status(400).json({ error: `status deve ser: ${STATUSES.join(" ou ")}` });
     }
+
+    // Boletos Cora: status é controlado exclusivamente pela sync — cliente não marca.
+    if (!req.isAdmin) {
+      const { rows: check } = await db.query(
+        "SELECT source FROM deliverables WHERE id = $1",
+        [req.params.id]
+      );
+      if (check.length && check[0].source === "cora") {
+        return res.status(403).json({ error: "O status deste boleto é atualizado automaticamente pela Cora." });
+      }
+    }
+
     const paidAt = status === "paid" ? "now()" : "NULL";
 
     const params = [status, req.params.id];

@@ -100,7 +100,7 @@ export function DeliverableCard({ deliverable: d, showPayment = false, showCompe
               </>
             )}
           </Button>
-          {mostrarCobranca && (
+          {mostrarCobranca && d.source !== "cora" && (
             <Button
               variant={d.status === "paid" ? "ghost" : "default"}
               size="sm"

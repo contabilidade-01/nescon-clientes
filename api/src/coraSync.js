@@ -93,14 +93,19 @@ async function gravarBoleto(boleto, companyId) {
   const valorCentavos = boleto.total_amount || null;
   const paidAt = status === "paid" ? "now()" : "NULL";
 
-  // Buscar detalhe do boleto para obter a URL do PDF (não vem na listagem)
+  // Buscar detalhe do boleto para obter a URL do PDF (não vem na listagem).
+  // Só busca PDF de boletos a partir de 07/2026 — antes disso seria peso desnecessário
+  // em boletos históricos que ninguém vai abrir.
   let pdfUrl = null;
-  try {
-    const detalhe = await cora.getInvoiceDetail(boleto.id);
-    pdfUrl = detalhe?.payment_options?.bank_slip?.url || null;
-  } catch (err) {
-    // Se falhar, segue sem PDF — o boleto ainda é útil no calendário
-    console.error(`[cora] detalhe PDF ${boleto.id}:`, err.message);
+  const PDF_CORTE = "2026-07"; // competência mínima para buscar PDF
+  if (competencia && competencia >= PDF_CORTE) {
+    try {
+      const detalhe = await cora.getInvoiceDetail(boleto.id);
+      pdfUrl = detalhe?.payment_options?.bank_slip?.url || null;
+    } catch (err) {
+      // Se falhar, segue sem PDF — o boleto ainda é útil no calendário
+      console.error(`[cora] detalhe PDF ${boleto.id}:`, err.message);
+    }
   }
 
   // Tentar buscar existente
