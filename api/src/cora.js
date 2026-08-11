@@ -213,6 +213,20 @@ async function getInvoiceDetail(invoiceId) {
 /**
  * Mapeia status Cora para status do deliverable.
  */
+/**
+ * O boleto foi cancelado/rejeitado na Cora?
+ *
+ * Existe separado de `mapCoraStatusToPortal` porque "cancelado" não cabe no par
+ * pendente/pago do portal: não é dívida, mas também não foi pago por ninguém. Tratá-lo
+ * como pago mostrava "Pago" para o cliente num boleto que ninguém quitou e inflava o
+ * total de pagos do painel. Quem decide o que fazer com ele é `coraSync`, gravando a
+ * coluna `cancelado` — e aí ele some das telas sem sumir do banco.
+ */
+function ehCancelado(coraStatus) {
+  const status = String(coraStatus || "").toUpperCase();
+  return ["CANCELLED", "CANCELED", "CANCELADO", "REJECTED", "REJEITADO"].includes(status);
+}
+
 function mapCoraStatusToPortal(coraStatus) {
   if (!coraStatus) return "pending";
   const status = String(coraStatus).toUpperCase();
@@ -220,8 +234,10 @@ function mapCoraStatusToPortal(coraStatus) {
   // Pago
   if (status === "PAID" || status === "PAGO") return "paid";
 
-  // Não conta a pagar (canceled, rejected)
-  if (status === "CANCELLED" || status === "CANCELADO") return "paid";
+  // Cancelado NÃO vira "pago" aqui — ver `ehCancelado`. Continua devolvendo 'paid'
+  // apenas para o caso de alguém chamar esta função sem consultar `ehCancelado`, mas o
+  // caminho correto é marcar a coluna `cancelado` e sumir da tela.
+  if (ehCancelado(status)) return "paid";
 
   // Aberto/Atrasado conta como pendente
   if (["OPEN", "PENDING", "ABERTO", "PENDENTE", "LATE", "OVERDUE", "VENCIDO", "DRAFT", "RECURRENCE_DRAFT"].includes(status)) {
@@ -272,6 +288,7 @@ module.exports = {
   getInvoiceDetail,
   getValidToken,
   mapCoraStatusToPortal,
+  ehCancelado,
   isConfigured,
   loadCertificates,
   diagnostico,

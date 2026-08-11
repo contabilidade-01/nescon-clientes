@@ -207,7 +207,8 @@ router.get("/calendar", async (req, res) => {
 
     const params = [cats];
     let sql = `SELECT ${FIELDS} FROM deliverables
-               WHERE due_date IS NOT NULL AND category = ANY($1)${onlyReleased(req)}`;
+               WHERE due_date IS NOT NULL AND cancelado IS NOT TRUE
+                 AND category = ANY($1)${onlyReleased(req)}`;
 
     if (req.isAdmin) {
       const cid = (req.query.company_id || "").toString();
@@ -255,6 +256,7 @@ router.get("/upcoming", async (req, res) => {
     let sql = `SELECT ${FIELDS} FROM deliverables
                WHERE due_date IS NOT NULL AND status = 'pending'
                  AND historico IS NOT TRUE
+                 AND cancelado IS NOT TRUE
                  AND category = ANY($1)${onlyReleased(req)}`;
 
     if (req.isAdmin) {
@@ -300,7 +302,8 @@ router.get("/", async (req, res) => {
     if (to && !validateDate(to)) return res.status(400).json({ error: "to inválido" });
 
     const params = [category ? [category] : cats];
-    let sql = `SELECT ${FIELDS} FROM deliverables WHERE category = ANY($1)${onlyReleased(req)}`;
+    let sql = `SELECT ${FIELDS} FROM deliverables
+               WHERE category = ANY($1) AND cancelado IS NOT TRUE${onlyReleased(req)}`;
 
     if (req.isAdmin) {
       const cid = (req.query.company_id || "").toString();

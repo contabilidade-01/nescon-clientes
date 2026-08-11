@@ -477,7 +477,9 @@ router.get("/cora/boletos", requireArea("sincronizacao"), async (req, res) => {
              d.created_at
       FROM deliverables d
       JOIN companies c ON c.id = d.company_id
-      WHERE d.source = 'cora'
+      -- Cancelado na Cora nao e conta a pagar nem pagamento: some da tela dos dois
+      -- lados. Continua no banco para explicar depois por que deixou de aparecer.
+      WHERE d.source = 'cora' AND d.cancelado IS NOT TRUE
     `;
     if (company_id) {
       if (!validateUUID(company_id)) return res.status(400).json({ error: "company_id inválido" });

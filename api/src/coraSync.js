@@ -88,6 +88,9 @@ function competenciaDe(dueDate) {
 async function gravarBoleto(boleto, companyId) {
   const externalRef = `cora_${boleto.id}`;
   const status = cora.mapCoraStatusToPortal(boleto.status);
+  // Cancelado/rejeitado na Cora: some das telas, permanece no banco. Reavaliado a cada
+  // sync, então se a Cora reabrir a cobranca o boleto volta sozinho.
+  const cancelado = cora.ehCancelado(boleto.status);
   const dueDate = boleto.due_date || null;
   const competencia = competenciaDe(dueDate);
   const valorCentavos = boleto.total_amount || null;
@@ -110,22 +113,23 @@ async function gravarBoleto(boleto, companyId) {
 
   // Tentar buscar existente
   const { rows: existentes } = await db.query(
-    "SELECT id, status, pdf_url FROM deliverables WHERE company_id = $1 AND external_ref = $2",
+    "SELECT id, status, pdf_url, cancelado FROM deliverables WHERE company_id = $1 AND external_ref = $2",
     [companyId, externalRef]
   );
 
   if (existentes.length) {
     const atual = existentes[0];
     // Checar se algo mudou
-    if (atual.status === status && atual.pdf_url === pdfUrl) {
+    if (atual.status === status && atual.pdf_url === pdfUrl && atual.cancelado === cancelado) {
       return "sem-mudanca";
     }
     // Atualizar
     await db.query(
       `UPDATE deliverables
-       SET status = $1, paid_at = ${paidAt}, pdf_url = $2, valor_centavos = $3
-       WHERE id = $4`,
-      [status, pdfUrl, valorCentavos, atual.id]
+       SET status = $1, paid_at = ${paidAt}, pdf_url = $2, valor_centavos = $3,
+           cancelado = $4
+       WHERE id = $5`,
+      [status, pdfUrl, valorCentavos, cancelado, atual.id]
     );
     return "atualizado";
   }
@@ -139,10 +143,10 @@ async function gravarBoleto(boleto, companyId) {
     `INSERT INTO deliverables
        (company_id, category, doc_type, title, competencia, due_date,
         file_path, file_name, source, external_ref, access_token,
-        released_at, status, paid_at, pdf_url, valor_centavos)
+        released_at, status, paid_at, pdf_url, valor_centavos, cancelado)
      VALUES ($1, 'boleto', 'BOLETO_CORA', $2, $3, $4,
              '', '', 'cora', $5, $6,
-             now(), $7, ${paidAt}, $8, $9)`,
+             now(), $7, ${paidAt}, $8, $9, $10)`,
     [
       companyId,
       title,
@@ -153,6 +157,7 @@ async function gravarBoleto(boleto, companyId) {
       status,
       pdfUrl,
       valorCentavos,
+      cancelado,
     ]
   );
   return "criado";

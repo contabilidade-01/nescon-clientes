@@ -382,6 +382,7 @@ async function previsao(db, { data = null, simular = true } = {}) {
        FROM deliverables
       WHERE category = 'boleto'
         AND status IS DISTINCT FROM 'paid'
+        AND cancelado IS NOT TRUE
         AND released_at IS NOT NULL
         AND due_date IS NOT NULL
         -- Janela para trás limitada pelo ÚLTIMO marco de cobrança: sem ela, um boleto
