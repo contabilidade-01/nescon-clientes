@@ -207,17 +207,34 @@ function mapCoraStatusToPortal(coraStatus) {
  * Precisa de: CORA_CLIENT_ID + (base64 env OU arquivos no disco).
  */
 function isConfigured() {
-  if (!CORA_CONFIG.clientId) return false;
+  const clientId = process.env.CORA_CLIENT_ID || "";
+  if (!clientId) return false;
 
   // Base64 na env: preferido
   if (process.env.CORA_CERT_BASE64 && process.env.CORA_KEY_BASE64) return true;
 
   // Fallback: arquivos no disco
   try {
-    return fs.existsSync(CORA_CONFIG.certificatePath) && fs.existsSync(CORA_CONFIG.privateKeyPath);
+    const certPath = process.env.CORA_CERT_PATH || path.join(__dirname, "../certificates/certificate.pem");
+    const keyPath = process.env.CORA_KEY_PATH || path.join(__dirname, "../certificates/private-key.key");
+    return fs.existsSync(certPath) && fs.existsSync(keyPath);
   } catch {
     return false;
   }
+}
+
+/**
+ * Diagnóstico: retorna o que está configurado (sem revelar valores sensíveis).
+ */
+function diagnostico() {
+  return {
+    clientId: process.env.CORA_CLIENT_ID ? `${process.env.CORA_CLIENT_ID.slice(0, 8)}...` : "(vazio)",
+    certBase64: process.env.CORA_CERT_BASE64 ? `${process.env.CORA_CERT_BASE64.length} chars` : "(vazio)",
+    keyBase64: process.env.CORA_KEY_BASE64 ? `${process.env.CORA_KEY_BASE64.length} chars` : "(vazio)",
+    certPath: process.env.CORA_CERT_PATH || "(default)",
+    keyPath: process.env.CORA_KEY_PATH || "(default)",
+    configurado: isConfigured(),
+  };
 }
 
 module.exports = {
@@ -226,4 +243,5 @@ module.exports = {
   mapCoraStatusToPortal,
   isConfigured,
   loadCertificates,
+  diagnostico,
 };

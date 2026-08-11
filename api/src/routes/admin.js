@@ -388,6 +388,7 @@ router.get("/sync-cora/status", requireArea("sincronizacao"), (_req, res) => {
     configurado: coraClient.isConfigured(),
     rodando: coraSync.estaRodando(),
     ultima: coraSync.ultimaExecucao(),
+    diagnostico: coraClient.diagnostico(),
   });
 });
 
