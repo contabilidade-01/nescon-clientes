@@ -50,7 +50,11 @@ async function ultimoExtrato(db, companyId) {
 async function processarEmpresa(db, empresa) {
   const extrato = await ultimoExtrato(db, empresa.id);
   if (!extrato) return { pulado: "sem extrato" };
-  if (empresa.extrato_processado_id === extrato.id) return { pulado: "sem mudança" };
+
+  // Se a empresa tem employees sem vínculo, FORÇAR reprocessamento mesmo que o id bata.
+  // Isso resolve o caso em que o parser antigo não detectava Contr: e o id travou.
+  const temSemVinculo = empresa.tem_sem_vinculo;
+  if (!temSemVinculo && empresa.extrato_processado_id === extrato.id) return { pulado: "sem mudança" };
 
   const full = resolveUploadPath(extrato.file_path);
   if (!full || !fs.existsSync(full)) return { pulado: "arquivo ausente" };
@@ -135,7 +139,14 @@ async function processarExtratos(db) {
 
   try {
     const { rows: empresas } = await db.query(
-      `SELECT id, name, cnpj, extrato_processado_id FROM companies ORDER BY name`
+      `SELECT c.id, c.name, c.cnpj, c.extrato_processado_id,
+              EXISTS (
+                SELECT 1 FROM employees e
+                 WHERE e.company_id = c.id AND e.active IS TRUE AND e.vinculo IS NULL
+              ) AS tem_sem_vinculo
+         FROM companies c
+        WHERE c.arquivada IS NOT TRUE
+        ORDER BY c.name`
     );
     for (const empresa of empresas) {
       const r = await processarEmpresa(db, empresa);

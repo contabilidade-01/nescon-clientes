@@ -33,11 +33,15 @@ async function ensureEmployeePayrollFields(db) {
          AND cargo !~* '(diretor|diretora|s[oó]cio|s[oó]cia|titular|pr[oó] ?-? ?labore|estagi[aá]ri)';
     `);
     // Forçar reprocessamento do extrato para empresas que têm employees sem vínculo
-    // (o extrato anterior não extraía vinculo, então o processado_id travou)
+    // (o extrato anterior não extraía vinculo, então o processado_id travou).
+    // TAMBÉM força para TODAS as empresas que tiverem pelo menos 1 employee ativo sem
+    // vínculo E sem cargo — esses são os que o backfill acima não consegue resolver, e
+    // só o parser relendo o PDF (que detecta `Contr:`) resolve.
     const { rowCount } = await db.query(`
       UPDATE companies SET extrato_processado_id = NULL
        WHERE id IN (
-         SELECT DISTINCT company_id FROM employees WHERE vinculo IS NULL AND active IS TRUE
+         SELECT DISTINCT company_id FROM employees
+          WHERE active IS TRUE AND vinculo IS NULL
        ) AND extrato_processado_id IS NOT NULL;
     `);
     if (rowCount > 0) {
