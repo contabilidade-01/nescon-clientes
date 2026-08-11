@@ -19,10 +19,15 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
 
+/** Os mesmos três valores do CHECK em `conversations.status` (ensureChatSchema.js).
+ *  Tipar como `string` foi o que deixou passar a comparação com "resolved" (inglês),
+ *  que nunca casava e fazia a conversa encerrada seguir parecendo aberta. */
+type ConversationStatus = "aberto" | "em_atendimento" | "resolvido";
+
 type Conversation = {
   id: string;
   subject: string | null;
-  status: string;
+  status: ConversationStatus;
   created_at: string;
   last_message_at: string;
   resolved_at: string | null;
@@ -68,7 +73,7 @@ const MensagensPage = () => {
     const abertas: Conversation[] = [];
     const resolvidas: Conversation[] = [];
     for (const c of conversations) {
-      if (c.status === "resolved") resolvidas.push(c);
+      if (c.status === "resolvido") resolvidas.push(c);
       else abertas.push(c);
     }
     abertas.sort(
@@ -124,8 +129,8 @@ const MensagensPage = () => {
 
   /** Enviar mensagem na conversa ativa. */
   const sendMut = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: string }) =>
-      api.chat.send(id, body, crypto.randomUUID()),
+    mutationFn: ({ id, body, clientMsgId }: { id: string; body: string; clientMsgId: string }) =>
+      api.chat.send(id, body, clientMsgId),
     onSuccess: (res) => {
       setDraft("");
       qc.invalidateQueries({ queryKey: ["chat-messages", activeId] });
@@ -142,13 +147,13 @@ const MensagensPage = () => {
   const handleSend = () => {
     const text = draft.trim();
     if (!text || !activeId) return;
-    sendMut.mutate({ id: activeId, body: text });
+    sendMut.mutate({ id: activeId, body: text, clientMsgId: crypto.randomUUID() });
   };
 
   /** Criar nova conversa. */
   const createMut = useMutation({
-    mutationFn: ({ body, subject }: { body: string; subject?: string }) =>
-      api.chat.create(body, subject, crypto.randomUUID()),
+    mutationFn: ({ body, subject, clientMsgId }: { body: string; subject?: string; clientMsgId: string }) =>
+      api.chat.create(body, subject, clientMsgId),
     onSuccess: (res) => {
       setShowNew(false);
       setNewSubject("");
@@ -167,7 +172,7 @@ const MensagensPage = () => {
     const body = newBody.trim();
     if (!body) return;
     const subject = newSubject.trim() || undefined;
-    createMut.mutate({ body, subject });
+    createMut.mutate({ body, subject, clientMsgId: crypto.randomUUID() });
   };
 
   /** Encerrar (resolver) a conversa ativa. */
@@ -191,7 +196,7 @@ const MensagensPage = () => {
     resolveMut.mutate(activeId);
   };
 
-  const isResolved = activeConv?.status === "resolved";
+  const isResolved = activeConv?.status === "resolvido";
 
   return (
     <PortalPage title="Mensagens" subtitle={company?.name} wide>
@@ -410,7 +415,7 @@ function ConversationItem({
   active: boolean;
   onClick: () => void;
 }) {
-  const isResolved = c.status === "resolved";
+  const isResolved = c.status === "resolvido";
   return (
     <button
       type="button"

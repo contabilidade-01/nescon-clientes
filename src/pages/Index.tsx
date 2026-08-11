@@ -145,6 +145,17 @@ const Index = () => {
     enabled: !!company,
   });
 
+  // Mensagens sem resposta do escritório. Sem este número, o cliente só descobre que
+  // foi respondido se abrir a tela por conta própria.
+  const podeChat = isToolAllowed(company?.toolAccess, "chat");
+  const { data: chatUnread } = useQuery({
+    queryKey: ["chat-unread"],
+    queryFn: () => api.chat.unread(),
+    enabled: !!company && podeChat,
+    refetchInterval: 60_000,
+  });
+  const naoLidasChat = chatUnread?.count ?? 0;
+
   const visibleItems = MENU_ITEMS.filter((item) => {
     if (company && !isToolAllowed(company.toolAccess, item.tool)) return false;
     // Férias só para quem tem funcionário celetista: empresa só com pró-labore não
@@ -358,7 +369,14 @@ const Index = () => {
                       <item.icon className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h3 className="truncate font-semibold">{item.title ?? meta.title}</h3>
+                      <h3 className="flex items-center gap-2 truncate font-semibold">
+                        {item.title ?? meta.title}
+                        {item.key === "chat" && naoLidasChat > 0 && (
+                          <Badge className="bg-destructive text-destructive-foreground">
+                            {naoLidasChat}
+                          </Badge>
+                        )}
+                      </h3>
                       <p className="truncate text-sm text-muted-foreground">
                         {item.description ?? meta.description}
                       </p>

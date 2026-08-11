@@ -60,6 +60,8 @@ type NavItem = {
   ownerOnly?: boolean;
   /** Mostra o número de pendências dos clientes do G-Click ao lado do item. */
   badgePendencias?: boolean;
+  /** Mostra quantas mensagens de cliente esperam resposta (ver /atendimentos/unread). */
+  badgeAtendimentos?: boolean;
 };
 
 const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
@@ -109,7 +111,13 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
     label: "Conformidade",
     items: [
       { to: "/admin/lgpd", label: "Consentimentos LGPD", icon: ShieldCheck, area: "lgpd" },
-      { to: "/admin/atendimentos", label: "Atendimentos", icon: MessageCircle, area: "atendimento" },
+      {
+        to: "/admin/atendimentos",
+        label: "Atendimentos",
+        icon: MessageCircle,
+        area: "atendimento",
+        badgeAtendimentos: true,
+      },
       { to: "/admin/sincronizacao", label: "Sincronização", icon: RefreshCw, area: "sincronizacao" },
       { to: "/admin/boletos-cora", label: "Boletos Cora", icon: Receipt, area: "sincronizacao" },
       { to: "/admin/usuarios", label: "Usuários do painel", icon: UserCog, ownerOnly: true },
@@ -135,6 +143,17 @@ export function AdminLayout({
   const { admin, logout, login } = useAuth();
   const { pathname } = useLocation();
   const { total: pendenciasGclick } = useGclickPendencias();
+
+  // Mensagens de cliente esperando resposta. O servidor já devolve só o que ESTE
+  // usuário pode ver (fila + as dele), então o número no menu nunca denuncia
+  // conversa de colega. Sem badge, só se descobre mensagem nova abrindo a tela.
+  const { data: naoLidas } = useQuery({
+    queryKey: ["admin-atendimentos-unread"],
+    queryFn: () => api.atendimentos.unread(),
+    enabled: Boolean(admin?.token),
+    refetchInterval: 60_000,
+  });
+  const atendimentosNaoLidos = naoLidas?.count ?? 0;
 
   // Permissões podem ter mudado desde o login: o painel busca as atuais e atualiza a
   // sessão. Quem manda de verdade é o servidor; isto só mantém o menu honesto.
@@ -210,6 +229,11 @@ export function AdminLayout({
                         {item.badgePendencias && pendenciasGclick > 0 && (
                           <SidebarMenuBadge className="bg-destructive text-destructive-foreground">
                             {pendenciasGclick}
+                          </SidebarMenuBadge>
+                        )}
+                        {item.badgeAtendimentos && atendimentosNaoLidos > 0 && (
+                          <SidebarMenuBadge className="bg-destructive text-destructive-foreground">
+                            {atendimentosNaoLidos}
                           </SidebarMenuBadge>
                         )}
                       </SidebarMenuItem>
