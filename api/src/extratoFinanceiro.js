@@ -197,10 +197,17 @@ function extrairSituacoes(texto) {
   const admissoes = acharPar(texto, "Doença", "Admissões");
   const afastados = acharPar(texto, "Afastado direitos integrais", "Mandato sindical");
 
-  // Se o par falhou, tenta extrair cada valor sozinho como fallback
+  // Se o par falhou, tenta extrair cada valor sozinho como fallback.
+  // Duas variantes de rótulo conforme o layout do relatório: "No. Empregados"
+  // (visto no ALZIRÃO) e "Número de empregados" (visto no NESCON — a mesma
+  // informação, na seção "das Bases/Situações" combinada). Sem a segunda forma,
+  // este layout sempre caía no fallback de MÉDIA da folha, e a média usa a
+  // contagem de empregados como divisor — errar a contagem erra o 13º/férias
+  // de todo mundo que depende da média, não só desta empresa.
   let nEmpregados = empregados?.["No. Empregados"] ?? null;
   if (nEmpregados === null) {
-    const m = new RegExp(`No\\.?\\s+Empregados\\s*:?\\s*(${NUM})`, "i").exec(texto);
+    const m = new RegExp(`N[úu]mero\\s+de\\s+empregados\\s*:?\\s*(${NUM})`, "i").exec(texto) ||
+              new RegExp(`No\\.?\\s+Empregados\\s*:?\\s*(${NUM})`, "i").exec(texto);
     if (m) nEmpregados = valor(m[1]);
   }
 

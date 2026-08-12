@@ -109,10 +109,29 @@ function extrairDoTexto(texto) {
   const capturarSalario = (linha) => {
     if (!atual || atual.salarioBase !== null) return;
     const m = linha.match(RE_SALARIO);
-    if (!m) return;
-    const v = numeroBR(m[1]);
-    // Salário zero não existe: melhor deixar em branco do que afirmar R$ 0,00.
-    atual.salarioBase = v && v > 0 ? v : null;
+    if (m) {
+      const v = numeroBR(m[1]);
+      // Salário zero não existe: melhor deixar em branco do que afirmar R$ 0,00.
+      if (v && v > 0) {
+        atual.salarioBase = v;
+        return;
+      }
+    }
+    // Mesmo layout de colunas fora de ordem do vínculo (ver capturarVinculo): o
+    // valor do salário aparece ANTES do rótulo "Salário:", grudado no fim do texto
+    // do cargo — ex. "Cargo: 2 Estagiario (a) 1.020,00<TAB>Salário:<TAB>C.B.O:...".
+    // O total da empresa fecha certo mesmo sem isto (o fallback de média usa o
+    // salário de contribuição agregado, não este campo por pessoa — ver
+    // folhaKpi.js), mas sem capturar aqui o detalhamento por funcionário mostra
+    // todo mundo com o mesmo valor em vez do salário real de cada um.
+    const idx = linha.search(/Sal[áa]rio:/i);
+    if (idx === -1) return;
+    const antes = linha.slice(0, idx).trim();
+    const m2 = /([\d.]*\d,\d{2})\s*$/.exec(antes);
+    if (m2) {
+      const v = numeroBR(m2[1]);
+      if (v && v > 0) atual.salarioBase = v;
+    }
   };
 
   const capturarCargo = (linha) => {
@@ -123,12 +142,39 @@ function extrairDoTexto(texto) {
     if (c) atual.cargo = c;
   };
 
+  /**
+   * Vocabulário fechado do vínculo. `capturarVinculo` só aceita um destes valores —
+   * nunca "o que vier" — porque o vínculo é o único sinal que tira estagiário e
+   * diretor do 13º/férias (ver payrollRoles.js). Um valor não reconhecido fica em
+   * branco: melhor um funcionário sem vínculo classificado (cai nos fallbacks
+   * seguros) do que um estagiário lido como "220,00" e contado como CLT de verdade.
+   */
+  const VOCAB_VINCULO = /^(celetista|diretor|diretora|estagi[aá]ri[oa]|aprendiz|aut[oô]nomo|terceirizado)$/i;
+
   const capturarVinculo = (linha) => {
     if (!atual || atual.vinculo) return;
     const m = linha.match(RE_VINCULO);
     if (!m) return;
-    const v = m[1].replace(/\s+/g, " ").trim();
-    if (v) atual.vinculo = v;
+    const depois = m[1].replace(/\s+/g, " ").trim();
+    if (VOCAB_VINCULO.test(depois)) {
+      atual.vinculo = depois;
+      return;
+    }
+    // Layout com colunas fora de ordem (visto num extrato NESCON real): o valor do
+    // vínculo aparece ANTES do próprio rótulo, e o que segue "Vínculo:" pertence ao
+    // PRÓXIMO campo — ex. "Estagiário<TAB>Vínculo: 220,00<TAB>Horas Mês:" (220,00 é
+    // a carga horária, não o vínculo). Sem esta segunda tentativa, o vínculo real
+    // (Estagiário) nunca era capturado — e sem vínculo capturado, o filtro do 13º
+    // não tinha como excluir a pessoa: o "220,00" que caía em `vinculo` não batia
+    // com "estagiário" nem com nada perigoso, então passava como se fosse CLT.
+    const antes = linha
+      .slice(0, m.index)
+      .trim()
+      .split(/[\t\s]+/)
+      .pop();
+    if (antes && VOCAB_VINCULO.test(antes)) {
+      atual.vinculo = antes;
+    }
   };
 
   for (const linha of String(texto || "").split(/\r?\n/)) {
