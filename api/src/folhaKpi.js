@@ -10,7 +10,7 @@ const { resolveUploadPath } = require("./uploads");
 const { extrairFinanceiro, conferirFinanceiro, diagnosticar } = require("./extratoFinanceiro");
 const { extrairDoTexto } = require("./extratoEmployees");
 const { projetar } = require("./decimoTerceiro");
-const { funcionarioRealSql } = require("./payrollRoles");
+const { funcionarioRealSql, ehProLabore, ehEstagiario } = require("./payrollRoles");
 
 /** Lê o texto de um PDF de entrega. Devolve null se o arquivo sumiu do volume. */
 async function textoDoExtrato(filePath) {
@@ -43,16 +43,44 @@ async function gravarSnapshot(db, { companyId, competencia, deliverableId, fileP
   const texto = await textoDoExtrato(filePath);
   if (!texto) return { ok: false, erro: "PDF não encontrado no volume" };
 
-  // Contagem de funcionários pelo CORPO do extrato — parser já validado contra PDF real
-  // (15/15 no QUEIJEIRO 3). Vira o fallback do quadro quando o rodapé não entrega.
+  // Funcionários pelo CORPO do extrato — parser já validado contra PDF real (15/15 no
+  // QUEIJEIRO 3). A CONTAGEM vira fallback do quadro quando o rodapé não entrega; a
+  // LISTA (com vinculo/salarioBase por pessoa) alimenta a base do 13º/férias logo abaixo.
   let funcionariosNoCorpo = null;
+  let funcionariosDetalhe = [];
   try {
-    funcionariosNoCorpo = extrairDoTexto(texto).funcionarios.length || null;
+    funcionariosDetalhe = extrairDoTexto(texto).funcionarios || [];
+    funcionariosNoCorpo = funcionariosDetalhe.length || null;
   } catch {
     funcionariosNoCorpo = null;
   }
 
   const f = extrairFinanceiro(texto, { funcionariosNoCorpo });
+
+  // Base de salário só dos celetistas — preferida a partir da SOMA dos blocos por
+  // funcionário, não da linha solta "Salário contribuição empregados" da página 2.
+  //
+  // Essa linha muda de redação entre layouts do relatório (visto em produção: dezenas
+  // de extratos com FGTS > 0 no rodapé — ou seja, HÁ celetista contribuindo — mas com
+  // esse campo vindo null, porque o rótulo da página 2 não bateu com o texto real).
+  // O bloco por funcionário já foi endurecido contra o mesmo tipo de layout fora de
+  // ordem (ver extratoEmployees.js) e valida vínculo contra vocabulário fechado — é o
+  // sinal mais confiável que temos hoje. Só sobrescreve quando houver pelo menos um
+  // salário válido; sem isso, mantém o que a página 2 achou (pode ser o único sinal
+  // disponível quando o corpo não trouxe o campo "Salário:" de ninguém).
+  const elegiveisCorpo = funcionariosDetalhe.filter(
+    (e) =>
+      e.salarioBase &&
+      e.salarioBase > 0 &&
+      !e.ehContribuinte &&
+      !ehProLabore(null, e.vinculo) &&
+      !ehEstagiario(e.vinculo)
+  );
+  if (elegiveisCorpo.length) {
+    const soma = elegiveisCorpo.reduce((s, e) => s + e.salarioBase, 0);
+    f.totais.salario_contrib_empregados = Number(soma.toFixed(2));
+  }
+
   const conf = conferirFinanceiro(f);
 
   // Quando não fecha, guarda POR QUE — e uma amostra do que o PDF realmente é. Sem isso
