@@ -13,11 +13,24 @@
 const { chamarIaConfigurada } = require("./iaProvider");
 
 // Rótulos onde a data costuma aparecer, do mais específico para o genérico.
+//
+// "Pagar até" vem ANTES de "Data de Vencimento" de propósito — divergência real
+// encontrada em 12/08/2026 com documento de exemplo (DAS/Simples Nacional via SENDA):
+// numa guia reemitida com multa/juros (pagamento atrasado), "Data de Vencimento" é a
+// data LEGAL original (já vencida) e "Pagar este documento até"/"Pagar até" é a data
+// que realmente vale para pagar ESTA guia impressa. Com "Data de Vencimento" primeiro,
+// o parser "acertava" a extração mas escolhia a data ERRADA — silenciosamente, com
+// 100% de confiança determinística, sem nunca cair na IA. Quando os dois rótulos
+// coincidem (guia paga em dia, sem multa), a ordem não muda nada.
+//
+// ⚠️ app/pdf_parser.py (sistema de guias, projeto GCLICK) tem a MESMA ordem antiga —
+// não sincronizado aqui de propósito, porque o GCLICK está pausado. Se for retomado,
+// revisar esse parser lá também.
 const ROTULOS_VENCIMENTO = [
+  String.raw`Pagar\s+este\s+documento\s+at[eé]`, // FGTS Digital (GFD), DAS
+  String.raw`Pagar\s+at[eé]`,
   String.raw`Data\s+de\s+Vencimento`,
   String.raw`Data\s+do?\s+Vencimento`,
-  String.raw`Pagar\s+este\s+documento\s+at[eé]`, // FGTS Digital (GFD)
-  String.raw`Pagar\s+at[eé]`,
   String.raw`Data\s+limite\s+(?:de|para)\s+pagamento`,
   String.raw`Data\s+de\s+Pagamento`,
   String.raw`Data\s+m[aá]xima\s+de\s+pagamento`,

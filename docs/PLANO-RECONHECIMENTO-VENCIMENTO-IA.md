@@ -37,6 +37,44 @@ quando o PDF **diverge** do que já está gravado — quando bate, segue em sil�
   atual" / "Trocar para a nova" nesse caso (mesmos endpoints de
   aprovar/rejeitar — só o texto muda).
 
+### Bug de produção corrigido em 12/08/2026 — prioridade de rótulo escolhia a data errada
+
+Auditoria pedida pelo usuário ("isso custa dinheiro, revise se está
+configurado pra reconhecer com suas variações"), com modelo real de guias
+(DAMSP/TFE, DAS Simples Nacional via SENDA, GFD/FGTS Digital, Receita
+Federal/INSS, recibos de parcelamento Guarulhos). Testado contra o texto
+real de cada um (script descartável, não faz parte do repo).
+
+**Achado — não era falta de cobertura, era prioridade errada.** Em guia de
+Simples Nacional reemitida com multa/juros (pagamento atrasado), o documento
+tem DUAS datas: "Data de Vencimento" (a data legal original, já vencida) e
+"Pagar este documento até" (a data real pra pagar ESTA guia, já com o
+atraso considerado). A ordem antiga testava "Data de Vencimento" primeiro —
+o parser **achava uma data e "acertava" com 100% de confiança
+determinística, mas era a data errada**, sem nunca cair na IA (que só é
+acionada quando o regex não acha nada). Exemplo real testado: guia
+reemitida em 23/05/2022 tinha "Data de Vencimento" = 21/03/2022 (vencida) e
+"Pagar até" = 31/05/2022 (a que valia) — o sistema escolheria a primeira.
+
+**Correção**: `Pagar este documento até`/`Pagar até` subiram para o topo da
+prioridade em `pdfDueDate.js` (`ROTULOS_VENCIMENTO`). Quando as duas datas
+coincidem (guia paga em dia, sem multa — a maioria), a ordem não muda nada;
+só corrige o caso de guia atrasada/reemitida, que é justamente quando um
+alerta certo importa mais. Validado com os 5 documentos-modelo: todos batem.
+
+⚠️ `app/pdf_parser.py` (sistema de guias, projeto GCLICK, **pausado**) tem a
+MESMA ordem antiga — não sincronizado de propósito porque o GCLICK está
+parado. Se for retomado, revisar esse parser lá também.
+
+**O que já está coberto sem custo de IA** (confirmado com os 5 documentos):
+DAMSP/TFE, DAS Simples Nacional (com ou sem multa), GFD/FGTS Digital,
+Receita Federal/INSS — todos resolvidos pelo regex determinístico, zero
+chamada de IA. Ficha de arrecadação (boleto bancário old-school, tipo os
+recibos de parcelamento de Guarulhos) também funciona quando tem "Vencimento"
+próximo da data; um recibo de parcela **já paga** (2ª via) legitimamente não
+tem vencimento futuro pra achar — cai em "sem vencimento identificável"
+corretamente, não gasta IA à toa.
+
 ### Bug de produção corrigido em 12/08/2026 — timeout do nginx
 
 "Rodar agora" rodava a varredura de forma SÍNCRONA dentro do request. Numa
