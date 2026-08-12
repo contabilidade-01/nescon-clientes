@@ -139,29 +139,30 @@ fixada em lei, igual para toda a carteira** (dia 20, último dia útil, etc.) �
 cabe nesse modelo**: é uma **dívida individual, negociada, com calendário
 próprio por empresa** — o oposto de "regra igual para todo mundo".
 
-**A estrutura certa é mais parecida com os Boletos Cora já existentes** (
-`coraSync.js`/`deliverables` com `category='boleto'`) do que com o catálogo de
-obrigações: um registro por parcelamento, com nº total de parcelas, valor da
-parcela (ou valor total ÷ parcelas), dia de vencimento mensal e data de início —
-**tudo cadastrado manualmente pelo escritório**, porque **não existe forma de
-detectar automaticamente que uma empresa aderiu a um parcelamento** (não vem
-guia recorrente clássica, não tem API pública de consulta confiável para isso
-no fluxo do escritório hoje).
+**Decisão revista em 12/08/2026, depois de o scanner de vencimento (
+`PLANO-RECONHECIMENTO-VENCIMENTO-IA.md`) entrar no ar: não construir uma
+tabela `parcelamentos` dedicada.** Cada parcela normalmente sai como um
+DARF/guia em PDF, com data de vencimento impressa. Se esse documento entra no
+sistema (upload manual do escritório, categoria `guia` ou `outro`), o scanner
+já lê essa data sozinho — mesmo fluxo de qualquer outro documento, sem
+tabela nova, sem tela de cadastro nova. O escritório sobe o PDF da parcela
+mês a mês, o scanner acha a data (ou confirma que já está certa), e ela entra
+na fila de revisão como qualquer outra.
 
-**Proposta de modelo** (esqueleto, a refinar na implementação):
-
-```
-tabela parcelamentos:
-  id, company_id, tipo ('simples_nacional' | 'pgfn' | 'outro'),
-  descricao (texto livre — ex.: "PERT 2024", "Parc. ordinário DAS 03/2025"),
-  numero_parcelas, valor_parcela, dia_vencimento, data_inicio,
-  parcelas_pagas (contador simples, ou tabela filha se quiser rastrear cada uma),
-  ativo (boolean — permite "encerrar" sem apagar o histórico)
-```
-
-Alerta reusa a MESMA infraestrutura que os boletos já usam (é um vencimento
-mensal recorrente com valor) — não precisa de motor novo, só de uma tela de
-cadastro manual + entrada na rotina de alerta.
+**O que isso NÃO resolve** (e por isso ainda fica registrado aqui, não é o
+plano inteiro riscado):
+- **Rastrear que a empresa TEM um parcelamento ativo** — isso é estado do
+  escritório, nenhum PDF individual conta essa história. Continua sendo
+  conhecimento de quem atende a carteira, não algo que o sistema hoje sabe
+  sozinho.
+- **Antecipar a parcela que ainda não foi gerada** — o scanner só lê o que
+  já existe como arquivo. Se a guia da parcela de outubro só é emitida em
+  outubro, não há como o sistema lembrar "gerar a guia" antes disso — é
+  aviso reativo (documento já subiu), não proativo.
+- Se essas duas lacunas se mostrarem um problema real na prática (parcelamento
+  esquecido porque a guia não foi subida a tempo), aí sim vale revisitar um
+  cadastro leve — mas só depois de testar se "só subir o PDF" já resolve a
+  maioria dos casos da carteira.
 
 ### 1.3.4 Nota de incerteza (importante)
 
@@ -278,6 +279,18 @@ recriar — o ponto real de melhoria é:
 
 **A parte mais cara do pedido — tratar com expectativa realista.**
 
+> **Revisão 12/08/2026 — rebaixado de "enviável" para o mesmo patamar do
+> scanner.** Hoje existe `ISS_UBERLANDIA` no catálogo (`obrigacoes.js`),
+> **hardcoded para uma única cidade**, `auto: null` (precisa marcação manual
+> por empresa) — mecanicamente funciona (mesmo motor do DAS/INSS/FGTS), mas
+> não é ISS genérico, é uma cidade só. Em vez de generalizar via §5.3
+> (tabela de referência município×dia, mantida manualmente), a mesma lógica
+> do §1.3 vale aqui: a guia de ISS também é um PDF com data impressa — se
+> ela entra no sistema, o **scanner de vencimento já lê sozinho**, sem
+> precisar saber a regra de nenhuma prefeitura. §5.1–§5.3 abaixo ficam como
+> registro de raciocínio, mas a via barata a testar primeiro é "só subir a
+> guia" antes de investir na tabela de referência.
+
 > **Resposta direta (automático × manual)**: é híbrido, mas o corte é preciso —
 > **automático** só até descobrir o MUNICÍPIO (via CNPJ); **manual** para o DIA
 > DE VENCIMENTO daquela prefeitura, porque não existe fonte pública confiável
@@ -329,12 +342,12 @@ recriar — o ponto real de melhoria é:
 | 2 | **Férias: `FERIAS_LIMITE` vira `auto`** (§3.1) | Baixo | ~meio dia | nada — infra pronta |
 | 3 | Campo de regime tributário no cadastro | Baixo | ~1 dia | nada |
 | 4 | Simples liga automação mesmo sem DAS ainda no mês | Baixo | ~meio dia | item 3 |
-| 5 | ISS: campos de município + dia manual | Médio | ~1-2 dias | nada |
+| 5 | ~~ISS: campos de município + dia manual~~ | — | — | **rebaixado 12/08 — testar via scanner primeiro (§5)** |
 | 6 | Férias: confirmar 1º x 2º aquisitivo (além do §3.1) | Médio | leitura primeiro | vacationParser.js |
 | 7 | IRPJ/CSLL trimestral, quota única | Médio | ~2 dias | item 3 |
 | 8 | IRPJ/CSLL 3 quotas + Selic | Alto | a definir (A vs B) | item 7 |
-| 9 | Tabela de referência de município x dia ISS | Baixo, cresce com o tempo | ~1 dia base | item 5 |
-| 10 | **Parcelamentos (Simples/PGFN) — tela de cadastro manual + alerta (§1.3.3)** | Baixo | ~1-2 dias | nada — reusa infra dos boletos Cora |
+| 9 | ~~Tabela de referência de município x dia ISS~~ | — | — | **rebaixado 12/08 — só revisitar se o scanner não bastar** |
+| 10 | ~~Parcelamentos (Simples/PGFN) — tela de cadastro manual~~ | — | — | **rebaixado 12/08 — vira upload comum + scanner (§1.3.3)** |
 
 **Não fazer nesta leva:** OCR de guia de ISS, cobertura de todos os municípios do
 Brasil de uma vez, cálculo automático de Selic acumulada, **qualquer tentativa de

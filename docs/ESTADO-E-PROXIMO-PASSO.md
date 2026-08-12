@@ -301,18 +301,19 @@ tela).
   `SETTINGS_ENC_KEY` no ambiente de produção, e rodar a varredura pela
   primeira vez pela tela.
 - **`docs/PLANO-OBRIGACOES-TRIMESTRAIS-ISS-SIMPLES.md`** — **ainda não
-  implementado.** IRPJ/CSLL trimestral (com parcelamento em até 3
-  quotas), correção de escopo importante: **parcelamento também existe
-  para Simples Nacional e PGFN**, e são estruturalmente diferentes entre
-  si (não cabem no motor de `obrigacoes.js`, que é para tributo recorrente
-  com regra fixada em lei — parcelamento é dívida individual negociada,
-  mais parecido com o modelo dos Boletos Cora). Também cobre: pró-labore →
-  INSS automático (baixo risco, reusa infra pronta), férias com marcação
-  automática (achou que `FERIAS_LIMITE` está com `auto: null` — não liga
-  sozinho hoje, apesar da infra de marcos 90/60/30/15 já existir),
-  Simples/DAS (já quase pronto), e ISS por município (híbrido: automático
-  até achar o município via CNPJ, manual o dia de vencimento — não existe
-  fonte pública confiável para isso nos +5.000 municípios do Brasil).
+  implementado.** Escopo revisto em 12/08/2026 depois do scanner de
+  vencimento entrar no ar: **parcelamento (Simples/PGFN) e ISS por
+  município deixaram de precisar de tabela/tela dedicada** — a guia de
+  cada um é um PDF com data impressa, então sobe como documento comum e o
+  scanner acha a data sozinho (mesmo fluxo de qualquer outro documento).
+  O que continua de pé, sem depender do scanner: IRPJ/CSLL trimestral
+  (com parcelamento em até 3 quotas — isso é modelagem de calendário, não
+  falta de dado), pró-labore → INSS automático (baixo risco, reusa infra
+  pronta), férias com marcação automática (achou que `FERIAS_LIMITE` está
+  com `auto: null` — não liga sozinho hoje, apesar da infra de marcos
+  90/60/30/15 já existir), e Simples/DAS (já quase pronto). O `ISS_UBERLANDIA`
+  hardcoded no catálogo continua existindo e funcionando (mesmo motor do
+  DAS/INSS/FGTS), mas é uma cidade só — não é ISS genérico.
 
 **Se o usuário pedir para seguir com qualquer um dos dois planos**, ler o
 documento inteiro primeiro — cada um já tem ordem de implementação sugerida
@@ -407,7 +408,7 @@ src/
 |---|---|
 | **este arquivo** | Estado geral e próximo passo |
 | [PLANO-CHAT-ATENDIMENTO-V2.md](PLANO-CHAT-ATENDIMENTO-V2.md) | Chat/atendimento — versão válida (a V1 tinha falhas de concorrência, corrigidas na V2) |
-| [PLANO-OBRIGACOES-TRIMESTRAIS-ISS-SIMPLES.md](PLANO-OBRIGACOES-TRIMESTRAIS-ISS-SIMPLES.md) | IRPJ/CSLL trimestral, parcelamentos (Simples/PGFN), pró-labore, férias automática, ISS por município — **não implementado** |
+| [PLANO-OBRIGACOES-TRIMESTRAIS-ISS-SIMPLES.md](PLANO-OBRIGACOES-TRIMESTRAIS-ISS-SIMPLES.md) | IRPJ/CSLL trimestral, pró-labore, férias automática — **não implementado**. Parcelamentos e ISS por município rebaixados: resolvem via scanner de vencimento, não tabela dedicada |
 | [PLANO-RECONHECIMENTO-VENCIMENTO-IA.md](PLANO-RECONHECIMENTO-VENCIMENTO-IA.md) | Reconhecimento de vencimento em qualquer documento via IA — **não implementado** |
 | [PLANO-FERIAS.md](PLANO-FERIAS.md) | Férias — as 6 fases originais, implementadas |
 | [PLANO-CLIENTES-GCLICK.md](PLANO-CLIENTES-GCLICK.md) | Clientes do G-Click — histórico |
