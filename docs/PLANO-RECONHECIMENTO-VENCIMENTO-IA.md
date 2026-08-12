@@ -56,15 +56,27 @@ acionada quando o regex não acha nada). Exemplo real testado: guia
 reemitida em 23/05/2022 tinha "Data de Vencimento" = 21/03/2022 (vencida) e
 "Pagar até" = 31/05/2022 (a que valia) — o sistema escolheria a primeira.
 
-**Correção**: `Pagar este documento até`/`Pagar até` subiram para o topo da
-prioridade em `pdfDueDate.js` (`ROTULOS_VENCIMENTO`). Quando as duas datas
-coincidem (guia paga em dia, sem multa — a maioria), a ordem não muda nada;
-só corrige o caso de guia atrasada/reemitida, que é justamente quando um
-alerta certo importa mais. Validado com os 5 documentos-modelo: todos batem.
+**Correção v1 (descartada)**: primeira tentativa foi só inverter a ordem —
+sempre preferir "Pagar até" quando existir. O usuário corrigiu: "Data de
+Vencimento" **ainda é a referência certa pra todo e qualquer documento**; o
+que precisa é identificar especificamente quando há juros/reemissão, não
+descartar "Data de Vencimento" de forma geral.
+
+**Correção final**: `pdfDueDate.js` busca as duas famílias de rótulo
+separadamente (`ROTULOS_VENCIMENTO_LEGAL` = "Data de Vencimento" e
+`ROTULOS_PAGAR_ATE` = "Pagar até"/"Pagar este documento até") e decide por
+comparação: se as duas aparecem no documento e **divergem**, usa "Pagar
+até" (a divergência em si já é a prova de juros/reemissão — não precisa
+tentar ler um campo "Juros (R$)" à parte, cujo layout varia demais entre
+tipos de guia pra ser confiável). Se as duas coincidem, ou só uma existe,
+usa a que houver — "Data de Vencimento" continua sendo o padrão sempre que
+não há motivo pra duvidar dela. O prompt da IA (fallback) recebeu a mesma
+regra, para os casos raros que chegam até ela. Revalidado com os mesmos 6
+documentos-modelo: todos batem, incluindo o "motivo" de cada escolha.
 
 ⚠️ `app/pdf_parser.py` (sistema de guias, projeto GCLICK, **pausado**) tem a
-MESMA ordem antiga — não sincronizado de propósito porque o GCLICK está
-parado. Se for retomado, revisar esse parser lá também.
+ordem antiga simples, sem essa comparação — não sincronizado de propósito
+porque o GCLICK está parado. Se for retomado, revisar esse parser lá também.
 
 **O que já está coberto sem custo de IA** (confirmado com os 5 documentos):
 DAMSP/TFE, DAS Simples Nacional (com ou sem multa), GFD/FGTS Digital,

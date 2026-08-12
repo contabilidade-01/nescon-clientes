@@ -12,30 +12,34 @@
  */
 const { chamarIaConfigurada } = require("./iaProvider");
 
-// Rótulos onde a data costuma aparecer, do mais específico para o genérico.
+// "Data de Vencimento" é a referência CANÔNICA — vale para todo e qualquer documento,
+// e é o que se usa por padrão. "Pagar até"/"Pagar este documento até" só prevalece
+// quando as duas aparecem no MESMO documento E divergem — isso, por si só, já é o
+// sinal de que a guia foi reemitida com multa/juros (pagamento atrasado): "Data de
+// Vencimento" fica sendo a data legal original (já vencida), e "Pagar até" é a que
+// vale pra pagar esta guia impressa agora. Não precisa tentar ler um campo "Juros
+// (R$)" à parte — o formato da tabela de composição varia demais entre layouts para
+// isso ser confiável; a PRÓPRIA divergência entre as duas datas já prova o caso.
+// Ver extrairVencimento() para a lógica de comparação.
 //
-// "Pagar até" vem ANTES de "Data de Vencimento" de propósito — divergência real
-// encontrada em 12/08/2026 com documento de exemplo (DAS/Simples Nacional via SENDA):
-// numa guia reemitida com multa/juros (pagamento atrasado), "Data de Vencimento" é a
-// data LEGAL original (já vencida) e "Pagar este documento até"/"Pagar até" é a data
-// que realmente vale para pagar ESTA guia impressa. Com "Data de Vencimento" primeiro,
-// o parser "acertava" a extração mas escolhia a data ERRADA — silenciosamente, com
-// 100% de confiança determinística, sem nunca cair na IA. Quando os dois rótulos
-// coincidem (guia paga em dia, sem multa), a ordem não muda nada.
+// Confirmado com documento de exemplo real em 12/08/2026 (DAS/Simples Nacional via
+// SENDA, reemitida): "Data de Vencimento" = 21/03/2022 (vencida), "Pagar até" =
+// 31/05/2022 (a que valia). Quando os dois rótulos coincidem (guia paga em dia, sem
+// multa — a maioria), o resultado é o mesmo de qualquer forma.
 //
-// ⚠️ app/pdf_parser.py (sistema de guias, projeto GCLICK) tem a MESMA ordem antiga —
-// não sincronizado aqui de propósito, porque o GCLICK está pausado. Se for retomado,
-// revisar esse parser lá também.
-const ROTULOS_VENCIMENTO = [
-  String.raw`Pagar\s+este\s+documento\s+at[eé]`, // FGTS Digital (GFD), DAS
-  String.raw`Pagar\s+at[eé]`,
-  String.raw`Data\s+de\s+Vencimento`,
-  String.raw`Data\s+do?\s+Vencimento`,
+// ⚠️ app/pdf_parser.py (sistema de guias, projeto GCLICK) ainda usa só a ordem antiga
+// (Data de Vencimento sempre primeiro, sem essa comparação) — não sincronizado aqui de
+// propósito, porque o GCLICK está pausado. Se for retomado, revisar esse parser lá.
+const ROTULOS_PAGAR_ATE = [String.raw`Pagar\s+este\s+documento\s+at[eé]`, String.raw`Pagar\s+at[eé]`];
+const ROTULOS_VENCIMENTO_LEGAL = [String.raw`Data\s+de\s+Vencimento`, String.raw`Data\s+do?\s+Vencimento`];
+const ROTULOS_FALLBACK = [
   String.raw`Data\s+limite\s+(?:de|para)\s+pagamento`,
   String.raw`Data\s+de\s+Pagamento`,
   String.raw`Data\s+m[aá]xima\s+de\s+pagamento`,
   String.raw`Vencimento`, // genérico — por último
 ];
+// Export só para quem quer a lista completa (nenhum código interno usa nessa ordem).
+const ROTULOS_VENCIMENTO = [...ROTULOS_VENCIMENTO_LEGAL, ...ROTULOS_PAGAR_ATE, ...ROTULOS_FALLBACK];
 
 // Alguns layouts intercalam outros campos entre o rótulo e a data.
 const JANELA_BUSCA = 220;
@@ -73,16 +77,9 @@ function montarData(dia, mes, ano) {
   return `${a}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
-/**
- * Devolve o vencimento como 'YYYY-MM-DD', ou null se não achar com confiança.
- */
-async function extrairVencimento(pdfBuffer) {
-  const texto = await extrairTexto(pdfBuffer);
-  if (!texto) return null;
-
-  const plano = texto.replace(/\s+/g, " ");
-
-  for (const rotulo of ROTULOS_VENCIMENTO) {
+/** Primeira data válida achada perto de qualquer rótulo do grupo, ou null. */
+function buscarPrimeiraData(plano, rotulos) {
+  for (const rotulo of rotulos) {
     const pat = new RegExp(`${rotulo}.{0,${JANELA_BUSCA}}`, "gi");
     let m;
     while ((m = pat.exec(plano)) !== null) {
@@ -101,6 +98,28 @@ async function extrairVencimento(pdfBuffer) {
 }
 
 /**
+ * Devolve o vencimento como 'YYYY-MM-DD', ou null se não achar com confiança.
+ *
+ * "Data de Vencimento" é o padrão. Só cede lugar para "Pagar até" quando as duas
+ * aparecem e DIVERGEM — a divergência em si é o sinal de guia reemitida com multa/juros.
+ */
+async function extrairVencimento(pdfBuffer) {
+  const texto = await extrairTexto(pdfBuffer);
+  if (!texto) return null;
+
+  const plano = texto.replace(/\s+/g, " ");
+
+  const vencimentoLegal = buscarPrimeiraData(plano, ROTULOS_VENCIMENTO_LEGAL);
+  const pagarAte = buscarPrimeiraData(plano, ROTULOS_PAGAR_ATE);
+
+  if (vencimentoLegal && pagarAte && vencimentoLegal !== pagarAte) return pagarAte;
+  if (vencimentoLegal) return vencimentoLegal;
+  if (pagarAte) return pagarAte;
+
+  return buscarPrimeiraData(plano, ROTULOS_FALLBACK);
+}
+
+/**
  * Fallback de IA quando o regex determinístico não encontra vencimento. Usa o mesmo
  * provedor configurado em /admin/config-ia (iaProvider.js) — nenhuma credencial nova.
  * Devolve null tanto para "não achou" quanto para "documento não tem vencimento
@@ -112,7 +131,11 @@ async function extrairVencimentoComIa(pdfBuffer, db, { timeoutMs } = {}) {
 
   const prompt = `Você é um especialista em leitura de documentos administrativos e fiscais brasileiros (contratos, guias, boletos, licenças, folha de pagamento, notificações).
 
-Encontre a DATA DE VENCIMENTO (data limite de pagamento ou de validade) no texto abaixo, se houver. Retorne APENAS um JSON válido:
+Encontre a DATA DE VENCIMENTO (data limite de pagamento ou de validade) no texto abaixo, se houver.
+
+Se o documento tiver DUAS datas candidatas — uma rotulada "Data de Vencimento" (a data legal original do tributo) e outra rotulada "Pagar até"/"Pagar este documento até" (a data impressa nesta guia específica) — e elas forem DIFERENTES, isso indica guia reemitida com multa/juros por atraso: use a data de "Pagar até", que é a que vale para pagar esta guia agora. Se as duas coincidirem, ou só uma existir, use a que houver.
+
+Retorne APENAS um JSON válido:
 {"data": "AAAA-MM-DD", "confianca": 90, "motivo": "encontrado após 'Vencimento'"}
 
 Se o documento genuinamente não tiver data de vencimento (ex.: holerite, recibo, extrato, contrato sem prazo definido), retorne:
