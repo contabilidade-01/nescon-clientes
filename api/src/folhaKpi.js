@@ -8,7 +8,7 @@
 const fs = require("fs");
 const { resolveUploadPath } = require("./uploads");
 const { extrairFinanceiro, conferirFinanceiro, diagnosticar } = require("./extratoFinanceiro");
-const { extrairDoTexto } = require("./extratoEmployees");
+const { extrairDoTexto, cpfValido } = require("./extratoEmployees");
 const { projetar } = require("./decimoTerceiro");
 const { funcionarioRealSql, ehProLabore, ehEstagiario } = require("./payrollRoles");
 
@@ -30,6 +30,59 @@ async function textoDoExtrato(filePath) {
       try {
         await parser.destroy();
       } catch { /* já liberado */ }
+    }
+  }
+}
+
+/**
+ * Sincroniza `employees.vinculo/cargo/salario_base/eh_contribuinte` com o que o
+ * extrato realmente diz, casando por CPF.
+ *
+ * Por que isto precisa existir: a leitura automática do extrato (`gravarSnapshot`,
+ * abaixo) sempre gravou só TOTAIS agregados em `payroll_snapshots` — nunca tocava a
+ * tabela `employees`, que é quem decide QUEM entra no 13º/férias
+ * (`funcionarioRealSql`, em payrollRoles.js, lê `employees.vinculo`). Sem isto,
+ * endurecer o parser (ver extratoEmployees.js) só arrumava a MÉDIA da empresa — a
+ * pessoa continuava cadastrada na tabela com o vínculo antigo (ou nenhum), e o
+ * filtro do 13º nunca via a correção. `employees` só era atualizada por upload
+ * manual de planilha (employeeImport.js) ou edição avulsa — processos que ninguém
+ * repete todo mês, então o cadastro ia ficando para trás da folha real.
+ *
+ * Casamento por CPF, o mesmo critério de `employeeImport.js`. Cria quem ainda não
+ * existe; atualiza quem existe — a folha nova é a fonte de verdade sobre
+ * vínculo/salário, mesma filosofia do import manual ("ATUALIZA o que a folha nova
+ * traz de fresco"). `eh_contribuinte` só vira `true`, nunca volta a `false` por
+ * aqui: uma vez identificado como pró-labore num extrato, continua protegido
+ * mesmo que um mês futuro leia mal a linha dele.
+ */
+async function sincronizarEmployeesDoExtrato(db, companyId, funcionarios) {
+  for (const f of funcionarios || []) {
+    if (!f.cpf || !cpfValido(f.cpf)) continue;
+    const nome = String(f.name || "").trim().toUpperCase();
+    if (!nome) continue;
+    const salario = f.salarioBase && f.salarioBase > 0 ? f.salarioBase : null;
+
+    const { rows: existentes } = await db.query(
+      "SELECT id FROM employees WHERE company_id = $1 AND cpf = $2 LIMIT 1",
+      [companyId, f.cpf]
+    );
+    if (existentes.length) {
+      await db.query(
+        `UPDATE employees
+            SET vinculo = COALESCE($3, vinculo),
+                cargo = COALESCE($4, cargo),
+                salario_base = COALESCE($5, salario_base),
+                eh_contribuinte = CASE WHEN $6 THEN true ELSE eh_contribuinte END
+          WHERE company_id = $1 AND cpf = $2`,
+        [companyId, f.cpf, f.vinculo || null, f.cargo || null, salario, Boolean(f.ehContribuinte)]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO employees
+           (company_id, name, cpf, active, salario_base, cargo, vinculo, eh_contribuinte)
+         VALUES ($1, $2, $3, true, $4, $5, $6, $7)`,
+        [companyId, nome, f.cpf, salario, f.cargo || null, f.vinculo || null, Boolean(f.ehContribuinte)]
+      );
     }
   }
 }
@@ -79,6 +132,16 @@ async function gravarSnapshot(db, { companyId, competencia, deliverableId, fileP
   if (elegiveisCorpo.length) {
     const soma = elegiveisCorpo.reduce((s, e) => s + e.salarioBase, 0);
     f.totais.salario_contrib_empregados = Number(soma.toFixed(2));
+  }
+
+  // Leva o vínculo/salário de cada pessoa até `employees` — é lá, não aqui, que o
+  // filtro do 13º/férias decide quem é elegível (ver sincronizarEmployeesDoExtrato
+  // acima). Nunca deixa a leitura do extrato inteira falhar por causa disto: dado de
+  // cadastro é secundário ao snapshot financeiro, que é o que fecha a conferência.
+  try {
+    await sincronizarEmployeesDoExtrato(db, companyId, funcionariosDetalhe);
+  } catch (err) {
+    console.warn(`[folhaKpi] ${competencia}: falha ao sincronizar employees:`, err.message);
   }
 
   const conf = conferirFinanceiro(f);
