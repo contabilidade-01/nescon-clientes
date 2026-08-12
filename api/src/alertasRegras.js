@@ -26,11 +26,17 @@ const { ddmm } = require("./diasBancarios");
  * Devolve os códigos com o motivo — o motivo aparece na tela, para o escritório
  * entender por que aquilo veio marcado sem ninguém ter clicado.
  */
-function decidirAutomaticas({ temFuncionario = false, temProLabore = false, temDasNoPortal = false } = {}) {
+function decidirAutomaticas({
+  temFuncionario = false,
+  temProLabore = false,
+  temDasNoPortal = false,
+  temDireitoFerias = false,
+} = {}) {
   const sinais = {
     funcionario: Boolean(temFuncionario),
     funcionario_ou_prolabore: Boolean(temFuncionario || temProLabore),
     das_no_portal: Boolean(temDasNoPortal),
+    funcionario_ou_estagiario: Boolean(temDireitoFerias),
   };
   const motivos = {
     funcionario: "a empresa tem funcionário registrado",
@@ -38,6 +44,7 @@ function decidirAutomaticas({ temFuncionario = false, temProLabore = false, temD
       ? "a empresa tem funcionário registrado"
       : "a empresa tem pró-labore na folha",
     das_no_portal: "há guia de DAS entre as entregas da empresa",
+    funcionario_ou_estagiario: "a empresa tem celetista ou estagiário com direito a férias",
   };
 
   return OBRIGACOES.filter((o) => o.auto && sinais[o.auto]).map((o) => ({

@@ -8,7 +8,7 @@
  * ainda vive no sistema de guias, o portal já pode montar, revisar e registrar o aviso
  * sem depender dele.
  */
-const { funcionarioRealSql, ehProLabore } = require("./payrollRoles");
+const { funcionarioRealSql, funcionarioFeriasSql, ehProLabore } = require("./payrollRoles");
 const { OBRIGACOES, obrigacao, ehObrigacaoValida, obrigacoesQueVencemEm } = require("./obrigacoes");
 const {
   decidirAutomaticas,
@@ -44,7 +44,7 @@ function portalUrl(caminho = "/") {
 }
 
 /**
- * Os três sinais que decidem a marcação automática, numa consulta só por empresa.
+ * Os sinais que decidem a marcação automática, numa consulta só por empresa.
  * `cargo` nulo conta como funcionário — mesma tolerância do payrollRoles.js: errar
  * marcando um alerta a mais é barato; errar para menos deixa o cliente sem aviso.
  */
@@ -61,6 +61,11 @@ async function retratoDasEmpresas(db, companyId = null) {
                      WHERE e.company_id = c.id AND ${funcionarioRealSql("e")}) AS tem_funcionario,
             EXISTS (SELECT 1 FROM employees e
                      WHERE e.company_id = c.id AND e.active IS TRUE) AS tem_alguem_na_folha,
+            -- Celetista OU estagiário: os dois têm direito a férias/recesso por lei —
+            -- é o mesmo filtro do cálculo de férias (funcionarioFeriasSql), só exclui
+            -- pró-labore/diretor.
+            EXISTS (SELECT 1 FROM employees e
+                     WHERE e.company_id = c.id AND ${funcionarioFeriasSql("e")}) AS tem_direito_ferias,
             -- Guia de carga histórica não serve de prova para marcar sozinho: uma empresa
             -- que saiu do Simples em março ainda tem DAS de janeiro no arquivo, e a regra
             -- passaria a alertá-la de um tributo que ela não recolhe mais.
@@ -77,6 +82,7 @@ async function retratoDasEmpresas(db, companyId = null) {
     // Pró-labore = tem gente na folha, mas nenhum celetista.
     temProLabore: r.tem_alguem_na_folha && !r.tem_funcionario,
     temDasNoPortal: r.tem_das,
+    temDireitoFerias: r.tem_direito_ferias,
   }));
 }
 

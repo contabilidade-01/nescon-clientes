@@ -230,7 +230,9 @@ const OBRIGACOES = [
     esfera: "trabalhista",
     regra: { tipo: "ferias_prazo" },
     avisarDiasAntes: 90,
-    auto: null,
+    // Empresa com celetista OU estagiário sempre tem direito a férias/recesso — não é
+    // "talvez", é lei. Mesmo sinal de funcionarioFeriasSql() (payrollRoles.js).
+    auto: "funcionario_ou_estagiario",
     docTypes: [],
     padrao: null,
   },
