@@ -1767,6 +1767,8 @@ export const api = {
         Array<{
           id: string;
           data_sugerida: string;
+          /** Nula = documento ainda não tinha vencimento. Preenchida = o PDF divergiu do que já estava gravado. */
+          data_anterior: string | null;
           origem: "deterministico" | "ia";
           confianca: number | null;
           provider_ia: string | null;
@@ -1783,10 +1785,13 @@ export const api = {
         }>
       >("/admin/vencimentos-sugeridos"),
     rodar: (desde: string, limite?: number) =>
-      request<{ processados: number; sugestoes_criadas: number; sem_vencimento: number; erros: number }>(
-        "/admin/vencimentos-sugeridos/rodar",
-        { method: "POST", body: JSON.stringify({ desde, limite }) }
-      ),
+      request<{
+        processados: number;
+        sugestoes_criadas: number;
+        confirmados: number;
+        sem_vencimento: number;
+        erros: number;
+      }>("/admin/vencimentos-sugeridos/rodar", { method: "POST", body: JSON.stringify({ desde, limite }) }),
     aprovar: (id: string) =>
       request<{ ok: boolean }>(`/admin/vencimentos-sugeridos/${id}/aprovar`, { method: "POST" }),
     rejeitar: (id: string) =>

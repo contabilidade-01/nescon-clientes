@@ -25,6 +25,14 @@ async function ensureDueDateSugestoesSchema(db) {
       );
     `);
 
+    // Data que já estava gravada em deliverables.due_date no momento da varredura — nula
+    // quando o documento ainda não tinha vencimento nenhum (caso "preenchimento"), com
+    // valor quando o PDF divergiu do que já estava lá (caso "validação"). É o que permite
+    // a tela mostrar "estava X, o PDF diz Y" em vez de só a data nova.
+    await db.query(`
+      ALTER TABLE due_date_sugestoes ADD COLUMN IF NOT EXISTS data_anterior DATE;
+    `);
+
     // Uma sugestão em aberto por documento — reprocessar não duplica a fila.
     await db.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_due_date_sugestoes_pendente

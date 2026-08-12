@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CalendarSearch, Check, Loader2, Sparkles, X } from "lucide-react";
+import { AlertTriangle, CalendarSearch, Check, Loader2, Sparkles, X } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,7 +58,8 @@ const VencimentosSugeridosPage = () => {
     mutationFn: () => api.vencimentosSugeridos.rodar(desde),
     onSuccess: (r) => {
       toast.success(
-        `Varredura concluída: ${r.processados} documento(s) analisados, ${r.sugestoes_criadas} sugestão(ões) nova(s).`
+        `Varredura concluída: ${r.processados} documento(s) analisados, ${r.confirmados} confirmado(s), ` +
+          `${r.sugestoes_criadas} para revisar.`
       );
       queryClient.invalidateQueries({ queryKey: ["admin-vencimentos-sugeridos"] });
     },
@@ -86,7 +87,7 @@ const VencimentosSugeridosPage = () => {
   return (
     <AdminLayout
       title="Vencimentos sugeridos"
-      description="Vencimento encontrado em documento (determinístico ou por IA) fica aqui até você decidir — nunca é aplicado sozinho ao calendário."
+      description="A varredura lê o vencimento de dentro do PDF e confronta com o que já está gravado. Quando bate, não aparece aqui. Quando diverge (ou não havia data nenhuma), fica nesta fila até você decidir manter ou trocar — nunca é aplicado sozinho."
     >
       <div className="space-y-6">
         <Card>
@@ -95,9 +96,10 @@ const VencimentosSugeridosPage = () => {
               <CalendarSearch className="h-4 w-4" /> Rodar varredura
             </CardTitle>
             <CardDescription>
-              Varre documentos sem vencimento cadastrado a partir da competência escolhida (nunca o histórico
-              inteiro). Primeiro tenta o rótulo do PDF; se não achar, tenta a IA configurada em{" "}
-              <span className="font-medium">Configuração de IA</span>, quando habilitada para esta tarefa.
+              Varre documentos a partir da competência escolhida (nunca o histórico inteiro) e confere o
+              vencimento de cada um contra o PDF. Primeiro tenta o rótulo do documento; se não achar, tenta a
+              IA configurada em <span className="font-medium">Configuração de IA</span>, quando habilitada
+              para esta tarefa. Boletos Cora ficam de fora — a data deles já vem direto da Cora.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex items-end gap-3">
@@ -150,7 +152,14 @@ const VencimentosSugeridosPage = () => {
                         {s.competencia ? ` · competência ${s.competencia}` : ""}
                       </div>
                       <div className="flex flex-wrap items-center gap-2 pt-1">
-                        <Badge variant="outline">Vencimento sugerido: {formatDate(s.data_sugerida)}</Badge>
+                        {s.data_anterior ? (
+                          <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30">
+                            <AlertTriangle className="mr-1 h-3 w-3" />
+                            Divergência: estava {formatDate(s.data_anterior)}, o PDF diz {formatDate(s.data_sugerida)}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">Vencimento encontrado: {formatDate(s.data_sugerida)}</Badge>
+                        )}
                         <OrigemBadge origem={s.origem} confianca={s.confianca} providerIa={s.provider_ia} />
                       </div>
                       {s.motivo && <p className="text-xs text-muted-foreground">{s.motivo}</p>}
@@ -162,14 +171,14 @@ const VencimentosSugeridosPage = () => {
                         onClick={() => rejeitar.mutate(s.id)}
                         disabled={rejeitar.isPending || aprovar.isPending}
                       >
-                        <X className="mr-1 h-4 w-4" /> Rejeitar
+                        <X className="mr-1 h-4 w-4" /> {s.data_anterior ? "Manter a atual" : "Rejeitar"}
                       </Button>
                       <Button
                         size="sm"
                         onClick={() => aprovar.mutate(s.id)}
                         disabled={rejeitar.isPending || aprovar.isPending}
                       >
-                        <Check className="mr-1 h-4 w-4" /> Aprovar
+                        <Check className="mr-1 h-4 w-4" /> {s.data_anterior ? "Trocar para a nova" : "Aprovar"}
                       </Button>
                     </div>
                   </div>

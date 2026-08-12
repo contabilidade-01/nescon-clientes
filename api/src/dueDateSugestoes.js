@@ -1,12 +1,16 @@
 /**
- * Rotina de varredura: encontra vencimento em `deliverables` sem due_date, a partir de
- * uma competência (nunca "tudo"), e enfileira sugestões em due_date_sugestoes para o
- * admin revisar. Nunca grava due_date sozinha.
+ * Rotina de varredura: lê o vencimento de dentro do PDF de cada `deliverable` no
+ * período (determinístico primeiro, IA como fallback) e CONFRONTA com o que já está
+ * gravado — não é só para preencher vazio, é para validar o que já existe:
  *
- * Ordem por documento: regex determinístico (pdfDueDate.js) primeiro; só cai para IA se
- * `ia_vencimento_habilitada` estiver ligada — toggle próprio, independente do de CNPJ,
- * porque um documento genérico tem mais chance de confundir a IA do que um DARF.
- * Nenhum resultado de nenhum dos dois: fica de fora da fila, não é erro.
+ *   - PDF não achou nada → nada a fazer (documento sem vencimento é normal).
+ *   - PDF confirma a mesma data já gravada → nada a fazer, está ok.
+ *   - PDF acha data diferente da gravada (ou não havia nenhuma) → vira sugestão na
+ *     fila, com a data ANTERIOR e a NOVA lado a lado, para o admin decidir manter ou
+ *     trocar. Nunca troca sozinha.
+ *
+ * Boletos Cora ficam de fora: due_date já vem direto da API da Cora, mais confiável
+ * que reler o PDF, e nem sempre têm arquivo local (alguns só têm `pdf_url` externo).
  */
 const fs = require("fs");
 const { resolveUploadPath } = require("./uploads");
@@ -28,11 +32,13 @@ async function varrerVencimentos(db, { desde, limite = LIMITE_PADRAO } = {}) {
   }
   const desdeData = competenciaParaData(desde);
 
+  // Um documento só é reprocessado enquanto não tiver sugestão decidida — depois de
+  // aprovar/rejeitar uma vez, o mesmo arquivo não muda, então não há o que reler.
   const { rows } = await db.query(
-    `SELECT d.id, d.company_id, d.file_path, d.category, d.competencia
+    `SELECT d.id, d.company_id, d.file_path, d.category, d.competencia, d.due_date
      FROM deliverables d
-     WHERE d.due_date IS NULL
-       AND d.cancelado IS NOT TRUE
+     WHERE d.cancelado IS NOT TRUE
+       AND d.source <> 'cora'
        AND (
          (d.competencia IS NOT NULL AND d.competencia >= $1)
          OR (d.competencia IS NULL AND d.created_at >= $2::date)
@@ -48,6 +54,7 @@ async function varrerVencimentos(db, { desde, limite = LIMITE_PADRAO } = {}) {
   const iaHabilitada = (await getSetting(db, "ia_vencimento_habilitada")) === "true";
 
   let sugestoesCriadas = 0;
+  let confirmados = 0;
   let semVencimento = 0;
   let erros = 0;
 
@@ -60,32 +67,35 @@ async function varrerVencimentos(db, { desde, limite = LIMITE_PADRAO } = {}) {
       }
       const buffer = fs.readFileSync(full);
 
+      let achado = null; // { data, origem, confianca, provider, motivo }
       const det = await extrairVencimento(buffer);
       if (det) {
-        await db.query(
-          `INSERT INTO due_date_sugestoes (deliverable_id, data_sugerida, origem, confianca, motivo)
-           VALUES ($1, $2, 'deterministico', 100, 'rótulo de vencimento reconhecido no PDF')`,
-          [doc.id, det]
-        );
-        sugestoesCriadas++;
-        continue;
-      }
-
-      if (iaHabilitada) {
+        achado = { data: det, origem: "deterministico", confianca: 100, provider: null, motivo: "rótulo de vencimento reconhecido no PDF" };
+      } else if (iaHabilitada) {
         const viaIa = await extrairVencimentoComIa(buffer, db);
         if (viaIa && viaIa.data) {
-          await db.query(
-            `INSERT INTO due_date_sugestoes
-               (deliverable_id, data_sugerida, origem, confianca, provider_ia, motivo)
-             VALUES ($1, $2, 'ia', $3, $4, $5)`,
-            [doc.id, viaIa.data, viaIa.confianca, viaIa.provider, viaIa.motivo]
-          );
-          sugestoesCriadas++;
-          continue;
+          achado = { data: viaIa.data, origem: "ia", confianca: viaIa.confianca, provider: viaIa.provider, motivo: viaIa.motivo };
         }
       }
 
-      semVencimento++;
+      if (!achado) {
+        semVencimento++;
+        continue;
+      }
+
+      // PDF confirma o que já está gravado: nada para revisar, está correto.
+      if (doc.due_date && String(doc.due_date).slice(0, 10) === achado.data) {
+        confirmados++;
+        continue;
+      }
+
+      await db.query(
+        `INSERT INTO due_date_sugestoes
+           (deliverable_id, data_sugerida, data_anterior, origem, confianca, provider_ia, motivo)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [doc.id, achado.data, doc.due_date || null, achado.origem, achado.confianca, achado.provider, achado.motivo]
+      );
+      sugestoesCriadas++;
     } catch (err) {
       console.error("[dueDateSugestoes] falha ao processar", doc.id, err.message);
       erros++;
@@ -95,6 +105,7 @@ async function varrerVencimentos(db, { desde, limite = LIMITE_PADRAO } = {}) {
   return {
     processados: rows.length,
     sugestoes_criadas: sugestoesCriadas,
+    confirmados,
     sem_vencimento: semVencimento,
     erros,
   };

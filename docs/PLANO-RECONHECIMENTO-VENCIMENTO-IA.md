@@ -17,6 +17,26 @@ existia no sistema, construído para outro fim (CNPJ) — este plano foi, em boa
 | 5 | Fila de revisão | `/admin/vencimentos-sugeridos` (`src/pages/admin/VencimentosSugeridosPage.tsx`) + rotas em `api/src/routes/admin.js` (`GET/POST /admin/vencimentos-sugeridos*`) |
 | 6 | Configuração da rotina na tela | Campo de competência + "Rodar agora" na própria fila; toggle de IA para vencimento dentro de `ConfigIaPage.tsx` |
 
+### Ajuste de escopo pedido pelo usuário após a 1ª entrega (12/08/2026)
+
+O desenho original só varria documento **sem** `due_date` (preencher vazio). O
+usuário pediu para o scanner também **validar** o que já está previsto: reler o
+PDF de todo documento no período (não só os sem data), e só interromper o admin
+quando o PDF **diverge** do que já está gravado — quando bate, segue em silêncio.
+
+- `varrerVencimentos()` (`dueDateSugestoes.js`) não filtra mais por
+  `due_date IS NULL` — varre tudo no período, exceto boletos Cora (`source <>
+  'cora'`, já confiáveis pela API da Cora direto).
+- Nova coluna `due_date_sugestoes.data_anterior`: nula quando o documento não
+  tinha vencimento (caso "preenchimento"), preenchida quando havia um valor
+  diferente do achado no PDF (caso "divergência").
+- PDF confirma a data já gravada → não vira sugestão, some da fila (contador
+  `confirmados` no retorno de `/vencimentos-sugeridos/rodar`).
+- Fila (`VencimentosSugeridosPage.tsx`) mostra "Divergência: estava X, o PDF diz
+  Y" com badge de alerta quando há `data_anterior`; os botões viram "Manter a
+  atual" / "Trocar para a nova" nesse caso (mesmos endpoints de
+  aprovar/rejeitar — só o texto muda).
+
 ### O que ficou de fora desta leva (não bloqueante, ver §6 perguntas em aberto)
 
 - Rotina não roda sozinha em intervalo (é sob demanda, botão "Rodar agora") — se quiser
