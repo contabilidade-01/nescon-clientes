@@ -12,6 +12,7 @@
 const router = require("express").Router();
 const db = require("../db");
 const { ehEstagiario } = require("../payrollRoles");
+const { mediaSalarialDaEmpresa } = require("../folhaKpi");
 const { authMiddleware } = require("../middleware/auth");
 const { companyHasTool } = require("../middleware/companyToolAccess");
 const { validateUUID } = require("../middleware/validate");
@@ -78,36 +79,19 @@ async function salariosDaEmpresa(companyId) {
   return { porCodigo, porNome };
 }
 
-/** Média salarial a partir do último snapshot da folha (fallback). */
-async function mediaDaFolha(companyId) {
-  const { rows } = await db.query(
-    `SELECT proventos, empregados
-       FROM payroll_snapshots
-      WHERE company_id = $1 AND proventos > 0
-      ORDER BY competencia DESC
-      LIMIT 1`,
-    [companyId]
-  );
-  if (!rows.length) return null;
-  const proventos = Number(rows[0].proventos);
-  const empregados = Number(rows[0].empregados);
-  // empregados do snapshot = quadro CLT no Domínio (já exclui pró-labore)
-  if (empregados > 0) {
-    const media = proventos / empregados;
-    if (Number.isFinite(media) && media > 0) return media;
-  }
-  // empregados NULL: contar employees ativos como fallback
-  const { rows: qtd } = await db.query(
-    `SELECT COUNT(*)::int AS total FROM employees WHERE company_id = $1 AND active IS TRUE`,
-    [companyId]
-  );
-  const total = qtd[0]?.total || 0;
-  if (total > 0) {
-    const media = proventos / total;
-    if (Number.isFinite(media) && media > 0) return media;
-  }
-  return null;
-}
+/**
+ * Média salarial de fallback — a MESMA do 13º, de propósito.
+ *
+ * Aqui existia uma cópia desta função. Ela dividia `proventos` (Total Geral, que soma o
+ * pró-labore do diretor) pelo quadro, e ainda contava como empregado qualquer linha
+ * ativa — inclusive o próprio diretor. Quando a base do 13º foi corrigida para usar só
+ * o salário de contribuição dos empregados, a cópia ficou para trás: o 13º passou a
+ * sair certo e as férias continuaram no dobro para quem tem sócio na folha.
+ *
+ * Duas funções para a mesma pergunta divergem na primeira correção. Por isso agora há
+ * uma só.
+ */
+const mediaDaFolha = (companyId) => mediaSalarialDaEmpresa(db, companyId);
 
 function enriquecer(periodos, salarios, mediaFolha, hoje = new Date()) {
   return periodos.map((p) => {

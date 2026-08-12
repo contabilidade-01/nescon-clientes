@@ -332,4 +332,13 @@ async function mediaSalarialDaEmpresa(db, companyId) {
   return null;
 }
 
-module.exports = { gravarSnapshot, reprocessarExtratos, serie, projecaoDecimoTerceiro };
+module.exports = {
+  gravarSnapshot,
+  reprocessarExtratos,
+  serie,
+  projecaoDecimoTerceiro,
+  // Exportada para as férias usarem a MESMA média do 13º. Havia uma cópia em
+  // routes/vacations.js, e foi a cópia que ficou para trás quando a base passou a
+  // excluir o pró-labore: o 13º corrigiu, as férias continuaram no dobro.
+  mediaSalarialDaEmpresa,
+};
