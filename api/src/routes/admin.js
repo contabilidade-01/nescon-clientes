@@ -1434,7 +1434,10 @@ router.get("/vencimentos-sugeridos/status", adminOnly, (_req, res) => {
 router.get("/vencimentos-sugeridos", adminOnly, async (req, res) => {
   try {
     const { rows } = await db.query(`
-      SELECT s.id, s.data_sugerida, s.data_anterior, s.origem, s.confianca, s.provider_ia, s.motivo, s.criado_em,
+      SELECT s.id,
+             to_char(s.data_sugerida, 'YYYY-MM-DD') AS data_sugerida,
+             to_char(s.data_anterior, 'YYYY-MM-DD') AS data_anterior,
+             s.origem, s.confianca, s.provider_ia, s.motivo, s.criado_em,
              d.id AS deliverable_id, d.title, d.category, d.competencia, d.file_name,
              c.id AS company_id, c.name AS company_nome, c.cnpj AS company_cnpj
       FROM due_date_sugestoes s

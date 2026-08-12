@@ -65,7 +65,8 @@ async function executarVarredura(db, { desde, limite }) {
   // Um documento só é reprocessado enquanto não tiver sugestão decidida — depois de
   // aprovar/rejeitar uma vez, o mesmo arquivo não muda, então não há o que reler.
   const { rows } = await db.query(
-    `SELECT d.id, d.company_id, d.file_path, d.category, d.competencia, d.due_date
+    `SELECT d.id, d.company_id, d.file_path, d.category, d.competencia,
+            to_char(d.due_date, 'YYYY-MM-DD') AS due_date
      FROM deliverables d
      WHERE d.cancelado IS NOT TRUE
        AND d.source <> 'cora'
@@ -114,7 +115,10 @@ async function executarVarredura(db, { desde, limite }) {
       }
 
       // PDF confirma o que já está gravado: nada para revisar, está correto.
-      if (doc.due_date && String(doc.due_date).slice(0, 10) === achado.data) {
+      // due_date já vem como 'YYYY-MM-DD' (to_char no SELECT) — comparar o objeto Date
+      // que o driver devolveria por padrão nunca bateria com a string do parser, e todo
+      // documento virava "divergência" falsa.
+      if (doc.due_date && doc.due_date === achado.data) {
         confirmados++;
         continue;
       }

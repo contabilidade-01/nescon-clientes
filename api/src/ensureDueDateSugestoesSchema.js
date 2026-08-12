@@ -43,6 +43,27 @@ async function ensureDueDateSugestoesSchema(db) {
         ON due_date_sugestoes(status, criado_em);
     `);
 
+    /**
+     * Limpeza única de "divergência" falsa: a primeira versão de `varrerVencimentos()`
+     * comparava `due_date` (objeto Date, do jeito que o driver do Postgres devolve por
+     * padrão) contra a data em texto ('YYYY-MM-DD') achada no PDF — nunca batia, mesmo
+     * quando a data era exatamente igual. Todo pendente com `data_anterior = data_sugerida`
+     * é prova desse bug, não uma divergência real (o valor real de DATE no banco não tem
+     * esse problema — só a comparação em JS tinha). Idempotente: sem linha nessa condição,
+     * é no-op.
+     */
+    const limpeza = await db.query(`
+      DELETE FROM due_date_sugestoes
+       WHERE status = 'pendente'
+         AND data_anterior IS NOT NULL
+         AND data_anterior = data_sugerida
+    `);
+    if (limpeza.rowCount) {
+      console.log(
+        `[DB] due_date_sugestoes: ${limpeza.rowCount} "divergência(s)" falsa(s) removida(s) (bug de comparação de data, corrigido).`
+      );
+    }
+
     console.log("[DB] due_date_sugestoes: tabela verificada/criada.");
   } catch (err) {
     console.error("[DB] ensureDueDateSugestoesSchema falhou:", err.message, err.code || "");
