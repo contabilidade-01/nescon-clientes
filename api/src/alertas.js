@@ -318,6 +318,7 @@ async function feriasPorAvisar(db, { hoje = null } = {}) {
  */
 async function previsao(db, { data = null, simular = true } = {}) {
   const hoje = data || hojeSP();
+  const permitidos = [];
 
   const { rows: empresas } = await db.query(
     `SELECT c.id, c.name, c.cnpj, ${whatsappSql("c")} AS whatsapp, c.incentivo_ativo,
