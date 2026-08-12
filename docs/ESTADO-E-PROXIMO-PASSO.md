@@ -188,6 +188,32 @@ acima continua valendo em produção.
 
 ---
 
+## 3.6 Marcação automática de obrigação — agora liga sozinha, não só por clique
+
+Resolvido em 12/08/2026, depois de `FERIAS_LIMITE` virar `auto` (§3.1 do
+`PLANO-OBRIGACOES-TRIMESTRAIS-ISS-SIMPLES.md`). O botão **"Aplicar marcações
+automáticas"** (Admin → Alertas → aba Empresas) sempre existiu, mas só rodava
+quando alguém clicava — se um cliente contratasse o primeiro funcionário e
+ninguém clicasse o botão depois, `FERIAS_LIMITE`/`INSS`/`FGTS` ficavam sem
+marcar até alguém lembrar.
+
+**Agora `aplicarAutomaticas(db)` roda sozinha toda vez que a folha é
+sincronizada** — os dois lugares que atualizam `employees.vinculo` (o dado
+que os sinais de marcação automática leem) chamam a rotina no fim:
+- `extratoAuto.js` (`processarExtratos`) — dispara depois de toda
+  sincronização com o G-Click, e no reprocessamento de boot quando há
+  `employees` sem vínculo. Só roda se pelo menos uma empresa teve extrato
+  processado na rodada (`total.empresas > 0`) — sem varrer a carteira à toa
+  quando nada mudou.
+- `folhaKpi.js` (`reprocessarExtratos`, o botão **"Reler extratos"** em
+  Admin → Folha) — dispara depois de gravar pelo menos um snapshot, escopado
+  à mesma empresa quando o reprocessamento é de uma só.
+
+O botão manual continua existindo (útil para rodar na hora, sem esperar a
+próxima sincronização) — agora é reforço, não a única porta de entrada.
+
+---
+
 ## 4. Boletos Cora
 
 Sincronização automática (a cada 6h) da conta Cora do escritório para

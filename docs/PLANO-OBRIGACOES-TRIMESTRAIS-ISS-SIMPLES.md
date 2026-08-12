@@ -195,8 +195,15 @@ Isso é praticamente reaproveitar infraestrutura pronta — estimativa de meio d
 
 ## 3. Limites e alertas de férias (2º período aquisitivo)
 
-**Já existe base forte — é extensão, não feature nova. E há uma lacuna concreta,
-confirmada no código: hoje o alerta não liga sozinho.**
+> **§3.1 IMPLEMENTADO em 12/08/2026.** `FERIAS_LIMITE` já liga sozinho (auto:
+> "funcionario_ou_estagiario", em `obrigacoes.js`), e a marcação automática
+> agora roda sozinha toda vez que a folha é sincronizada — não só quando
+> alguém clica "Aplicar marcações automáticas" (que continua existindo, para
+> rodar na hora sem esperar). Ver `docs/ESTADO-E-PROXIMO-PASSO.md` §3.5/§3.6
+> para o detalhe de onde foi ligado (`extratoAuto.js`, `folhaKpi.js`). O que
+> falta de §3 é só o item de 1º×2º período aquisitivo, descrito mais abaixo.
+
+**Já existe base forte — é extensão, não feature nova.**
 
 O sistema já tem: `feriasPorAvisar()` com marcos de 90/60/30/15 dias
 (`alertas.js`, `MARCOS_FERIAS_DIAS`), já cobre estagiário (recesso, ver
@@ -339,7 +346,7 @@ recriar — o ponto real de melhoria é:
 | # | Item | Risco | Esforço | Depende de |
 |---|---|---|---|---|
 | 1 | INSS Pró-Labore automático | Baixo | ~meio dia | nada — infra pronta |
-| 2 | **Férias: `FERIAS_LIMITE` vira `auto`** (§3.1) | Baixo | ~meio dia | nada — infra pronta |
+| 2 | ~~Férias: `FERIAS_LIMITE` vira `auto`~~ (§3.1) | — | — | **feito 12/08/2026** |
 | 3 | Campo de regime tributário no cadastro | Baixo | ~1 dia | nada |
 | 4 | Simples liga automação mesmo sem DAS ainda no mês | Baixo | ~meio dia | item 3 |
 | 5 | ~~ISS: campos de município + dia manual~~ | — | — | **rebaixado 12/08 — testar via scanner primeiro (§5)** |

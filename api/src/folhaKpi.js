@@ -11,6 +11,7 @@ const { extrairFinanceiro, conferirFinanceiro, diagnosticar } = require("./extra
 const { extrairDoTexto, cpfValido } = require("./extratoEmployees");
 const { projetar } = require("./decimoTerceiro");
 const { funcionarioRealSql, ehProLabore, ehEstagiario } = require("./payrollRoles");
+const { aplicarAutomaticas } = require("./alertas");
 
 /** Lê o texto de um PDF de entrega. Devolve null se o arquivo sumiu do volume. */
 async function textoDoExtrato(filePath) {
@@ -254,6 +255,23 @@ async function reprocessarExtratos(db, { companyId = null, desde = null } = {}) 
       erros.push({ competencia: d.competencia, erro: err.message });
     }
   }
+
+  // Reler extrato sincroniza employees.vinculo (gravarSnapshot -> sincronizarEmployeesDoExtrato)
+  // — mesmo gatilho de `extratoAuto.js`: os sinais de marcação automática de obrigação
+  // (INSS, FGTS, férias) podem ter mudado.
+  if (gravados > 0) {
+    try {
+      const r = await aplicarAutomaticas(db, companyId);
+      if (r.marcacoes_criadas) {
+        console.log(
+          `[folha] ${r.marcacoes_criadas} marcação(ões) automática(s) de obrigação criada(s) após reler extratos.`
+        );
+      }
+    } catch (err) {
+      console.error("[folha] aplicarAutomaticas falhou:", err.message);
+    }
+  }
+
   return { extratos: rows.length, gravados, com_problema: comProblema, erros: erros.slice(0, 20) };
 }
 

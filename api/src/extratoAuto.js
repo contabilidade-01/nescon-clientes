@@ -14,6 +14,7 @@ const fs = require("fs");
 const { parseExtratoEmployees } = require("./extratoEmployees");
 const { importEmployeesForCompany } = require("./employeeImport");
 const { resolveUploadPath } = require("./uploads");
+const { aplicarAutomaticas } = require("./alertas");
 
 /**
  * Quem está cadastrado e ativo mas não apareceu no extrato — função pura, testada.
@@ -163,6 +164,23 @@ async function processarExtratos(db) {
       total.inseridos += r.inseridos;
       total.atualizados += r.atualizados;
       total.avisos += r.avisos;
+    }
+
+    // Vínculo/salário podem ter mudado (celetista novo, estagiário que saiu, pró-labore
+    // que virou CLT...) — os sinais que decidem a marcação automática de obrigação
+    // (INSS, FGTS, férias) dependem exatamente disso. Só roda quando algo mudou de
+    // verdade: sem isso, aplicarAutomaticas() varreria a carteira toda a cada 6h à toa.
+    if (total.empresas > 0) {
+      try {
+        const r = await aplicarAutomaticas(db);
+        if (r.marcacoes_criadas) {
+          console.log(
+            `[extrato auto] ${r.marcacoes_criadas} marcação(ões) automática(s) de obrigação criada(s).`
+          );
+        }
+      } catch (err) {
+        console.error("[extrato auto] aplicarAutomaticas falhou:", err.message);
+      }
     }
 
     ultimoResultado = {
