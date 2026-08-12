@@ -98,16 +98,22 @@ function situacao(limiteGozo, hoje = new Date(), dias = DIAS_SEGURANCA) {
  *
  * O FGTS incide sobre férias **já com o terço** — por isso ele multiplica o subtotal,
  * não só o bruto. Devolve `null` quando não há salário: ver o comentário do topo.
+ *
+ * **Estagiário é outro cálculo.** O recesso de 30 dias da Lei 11.788/2008 não é férias
+ * da CLT: paga-se a bolsa-auxílio proporcional e mais nada. Não há terço constitucional
+ * (o adicional é direito do trabalhador celetista) nem FGTS (estágio não gera vínculo
+ * empregatício). Somar os dois inflava o custo previsto de quem tem estagiário — e o
+ * erro passava despercebido porque o número ficava só um pouco maior, nunca absurdo.
  */
-function custoFerias(salarioBase, dias) {
+function custoFerias(salarioBase, dias, { estagiario = false } = {}) {
   const salario = Number(salarioBase);
   const d = Number(dias);
   if (!Number.isFinite(salario) || salario <= 0) return null;
   if (!Number.isFinite(d) || d <= 0) return null;
 
   const bruto = (salario / 30) * d;
-  const umTerco = bruto / 3;
-  const fgts = (bruto + umTerco) * ALIQUOTA_FGTS;
+  const umTerco = estagiario ? 0 : bruto / 3;
+  const fgts = estagiario ? 0 : (bruto + umTerco) * ALIQUOTA_FGTS;
   return {
     bruto: arredondar(bruto),
     umTerco: arredondar(umTerco),

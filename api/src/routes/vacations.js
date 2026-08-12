@@ -11,6 +11,7 @@
  */
 const router = require("express").Router();
 const db = require("../db");
+const { ehEstagiario } = require("../payrollRoles");
 const { authMiddleware } = require("../middleware/auth");
 const { companyHasTool } = require("../middleware/companyToolAccess");
 const { validateUUID } = require("../middleware/validate");
@@ -58,7 +59,9 @@ function empresaDe(req) {
 /** Salário por funcionário, indexado por código e por nome (nessa ordem de confiança). */
 async function salariosDaEmpresa(companyId) {
   const { rows } = await db.query(
-    `SELECT codigo, name, salario_base, salario_competencia
+    // `vinculo` entra aqui porque o custo do recesso do estagiário é diferente do
+    // das férias do celetista (ver custoFerias).
+    `SELECT codigo, name, salario_base, salario_competencia, vinculo
        FROM employees WHERE company_id = $1`,
     [companyId]
   );
@@ -67,7 +70,7 @@ async function salariosDaEmpresa(companyId) {
   for (const e of rows) {
     const salario = e.salario_base === null ? null : Number(e.salario_base);
     if (salario === null || salario <= 0) continue;
-    const dado = { salario, competencia: e.salario_competencia };
+    const dado = { salario, competencia: e.salario_competencia, vinculo: e.vinculo };
     if (e.codigo) porCodigo.set(String(e.codigo).replace(/^0+/, ""), dado);
     const chave = normalizar(e.name);
     if (chave && !porNome.has(chave)) porNome.set(chave, dado);
@@ -142,7 +145,11 @@ function enriquecer(periodos, salarios, mediaFolha, hoje = new Date()) {
       salario_base: salarioFinal,
       salario_competencia: achado?.competencia ?? null,
       origem_salario: origemSalario,
-      custo: custoFerias(salarioFinal, diasAPagar),
+      // Sem funcionário casado (salário veio da média da folha) não há vínculo
+      // conhecido: assume celetista, que é o caso comum e o mais conservador.
+      custo: custoFerias(salarioFinal, diasAPagar, {
+        estagiario: ehEstagiario(achado?.vinculo),
+      }),
     };
   });
 }
