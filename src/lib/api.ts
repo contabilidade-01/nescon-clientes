@@ -1763,6 +1763,26 @@ export const api = {
       request<{ ok: boolean; marcada: boolean }>(`/admin/atendimentos/${id}/read`, { method: "POST" }),
   },
 
+  /** Configuração de IA (Claude/Gemini/ChatGPT) para CNPJ e vencimento em documentos. */
+  configIa: {
+    get: () =>
+      request<{
+        provider: string;
+        habilitada: boolean;
+        limiar_confianca: number;
+        timeout_ms: number;
+        vencimento_habilitada: boolean;
+        provedores_disponiveis: string[];
+      }>("/admin/config/ia"),
+    salvar: (body: Record<string, unknown>) =>
+      request<{ ok: boolean }>("/admin/config/ia", { method: "PUT", body: JSON.stringify(body) }),
+    testar: (provider: string) =>
+      request<{ ok: boolean; erro?: string }>("/admin/config/ia/testar", {
+        method: "POST",
+        body: JSON.stringify({ provider }),
+      }),
+  },
+
   /** Fila de revisão de vencimentos sugeridos (reconhecimento em lote, PLANO-RECONHECIMENTO-VENCIMENTO-IA.md). */
   vencimentosSugeridos: {
     list: () =>

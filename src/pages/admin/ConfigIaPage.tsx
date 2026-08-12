@@ -18,15 +18,6 @@ import {
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
 
-interface IaConfig {
-  provider: string;
-  habilitada: boolean;
-  limiar_confianca: number;
-  timeout_ms: number;
-  vencimento_habilitada: boolean;
-  provedores_disponiveis: string[];
-}
-
 const PROVIDER_LABELS: Record<string, { nome: string; descricao: string }> = {
   claude: { nome: "Claude (Anthropic)", descricao: "Mais preciso em documentos fiscais" },
   gemini: { nome: "Gemini (Google)", descricao: "Rápido e econômico" },
@@ -38,47 +29,13 @@ const ConfigIaPage = () => {
   const [apiKey, setApiKey] = useState("");
   const [testResult, setTestResult] = useState<{ ok: boolean; erro?: string } | null>(null);
 
-  async function fetchConfig() {
-    const res = await fetch("/api/admin/config/ia", {
-      headers: { Authorization: `Bearer ${localStorage.getItem("token") || ""}` },
-    });
-    if (!res.ok) throw new Error(res.statusText);
-    return res.json();
-  }
-
-  async function salvarConfig(body: Record<string, unknown>) {
-    const res = await fetch("/api/admin/config/ia", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-      },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(res.statusText);
-    return res.json();
-  }
-
-  async function testarConfig(provider: string) {
-    const res = await fetch("/api/admin/config/ia/testar", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-      },
-      body: JSON.stringify({ provider }),
-    });
-    if (!res.ok) throw new Error(res.statusText);
-    return res.json();
-  }
-
-  const { data: config, isLoading } = useQuery<IaConfig>({
+  const { data: config, isLoading } = useQuery({
     queryKey: ["admin-config-ia"],
-    queryFn: () => fetchConfig(),
+    queryFn: () => api.configIa.get(),
   });
 
   const salvar = useMutation({
-    mutationFn: (body: Record<string, unknown>) => salvarConfig(body),
+    mutationFn: (body: Record<string, unknown>) => api.configIa.salvar(body),
     onSuccess: () => {
       toast.success("Configuração salva");
       queryClient.invalidateQueries({ queryKey: ["admin-config-ia"] });
@@ -87,7 +44,7 @@ const ConfigIaPage = () => {
   });
 
   const testar = useMutation({
-    mutationFn: (provider: string) => testarConfig(provider),
+    mutationFn: (provider: string) => api.configIa.testar(provider),
     onSuccess: (r) => setTestResult(r),
     onError: (e: Error) => setTestResult({ ok: false, erro: e.message }),
   });
