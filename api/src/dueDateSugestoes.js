@@ -66,10 +66,15 @@ async function executarVarredura(db, { desde, limite }) {
   // aprovar/rejeitar uma vez, o mesmo arquivo não muda, então não há o que reler.
   const { rows } = await db.query(
     `SELECT d.id, d.company_id, d.file_path, d.category, d.competencia,
+            d.title, d.file_name,
             to_char(d.due_date, 'YYYY-MM-DD') AS due_date
      FROM deliverables d
      WHERE d.cancelado IS NOT TRUE
        AND d.source <> 'cora'
+       AND d.category <> 'folha'
+       AND (d.doc_type IS NULL OR d.doc_type NOT IN ('EXTRATO_FOLHA', 'RECIBO_PAGTO'))
+       AND COALESCE(d.title, '') NOT ILIKE '%Programa__o de F_rias%'
+       AND COALESCE(d.file_name, '') NOT ILIKE '%Programa__o de F_rias%'
        AND (
          (d.competencia IS NOT NULL AND d.competencia >= $1)
          OR (d.competencia IS NULL AND d.created_at >= $2::date)
@@ -91,6 +96,13 @@ async function executarVarredura(db, { desde, limite }) {
 
   for (const doc of rows) {
     try {
+      // Barreira extra: nomes que passaram do filtro SQL mas são claramente sem vencimento
+      const nomeDoc = (doc.title || doc.file_name || "").toLowerCase();
+      if (/programa[çc][ãa]o\s*de\s*f[eé]rias|extrato\s*(mensal|da\s*folha)|recibo\s*de\s*pagamento|holerite/i.test(nomeDoc)) {
+        semVencimento++;
+        continue;
+      }
+
       const full = resolveUploadPath(doc.file_path);
       if (!full || !fs.existsSync(full)) {
         erros++;
