@@ -23,6 +23,7 @@ const { ensureEngagementSchema } = require("./ensureEngagementSchema");
 const { ensureAlertasSchema } = require("./ensureAlertasSchema");
 const { ensurePayrollHistorySchema } = require("./ensurePayrollHistorySchema");
 const { ensureCoraSchema } = require("./ensureCoraSchema");
+const { ensureDueDateSugestoesSchema } = require("./ensureDueDateSugestoesSchema");
 const { ensureChatSchema } = require("./ensureChatSchema");
 const { ensureArquivamentoSchema } = require("./ensureArquivamentoSchema");
 
@@ -154,6 +155,7 @@ async function start() {
     await ensureCoraSchema(db);
     await ensureChatSchema(db);
     await ensureArquivamentoSchema(db);
+    await ensureDueDateSugestoesSchema(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).
     // Roda em background para não travar o arranque.
     setTimeout(async () => {

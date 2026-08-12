@@ -1759,4 +1759,37 @@ export const api = {
     markRead: (id: string) =>
       request<{ ok: boolean; marcada: boolean }>(`/admin/atendimentos/${id}/read`, { method: "POST" }),
   },
+
+  /** Fila de revisão de vencimentos sugeridos (reconhecimento em lote, PLANO-RECONHECIMENTO-VENCIMENTO-IA.md). */
+  vencimentosSugeridos: {
+    list: () =>
+      request<
+        Array<{
+          id: string;
+          data_sugerida: string;
+          origem: "deterministico" | "ia";
+          confianca: number | null;
+          provider_ia: string | null;
+          motivo: string | null;
+          criado_em: string;
+          deliverable_id: string;
+          title: string;
+          category: string;
+          competencia: string | null;
+          file_name: string;
+          company_id: string;
+          company_nome: string;
+          company_cnpj: string;
+        }>
+      >("/admin/vencimentos-sugeridos"),
+    rodar: (desde: string, limite?: number) =>
+      request<{ processados: number; sugestoes_criadas: number; sem_vencimento: number; erros: number }>(
+        "/admin/vencimentos-sugeridos/rodar",
+        { method: "POST", body: JSON.stringify({ desde, limite }) }
+      ),
+    aprovar: (id: string) =>
+      request<{ ok: boolean }>(`/admin/vencimentos-sugeridos/${id}/aprovar`, { method: "POST" }),
+    rejeitar: (id: string) =>
+      request<{ ok: boolean }>(`/admin/vencimentos-sugeridos/${id}/rejeitar`, { method: "POST" }),
+  },
 };

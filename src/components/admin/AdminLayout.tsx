@@ -3,8 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   BellRing,
+  Bot,
   Building2,
   CalendarCheck,
+  CalendarSearch,
   CircleDollarSign,
   UserCog,
   UserPlus,
@@ -98,6 +100,8 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
       { to: "/admin/doc-upload", label: "Upload de documentos", icon: Upload, area: "entregas" },
       { to: "/admin/envio-guias", label: "Envio de guias", icon: Send, area: "envio_guias" },
       { to: "/admin/alertas", label: "Alertas de vencimento", icon: BellRing, area: "alertas" },
+      { to: "/admin/vencimentos-sugeridos", label: "Vencimentos sugeridos", icon: CalendarSearch, area: "entregas" },
+      { to: "/admin/config-ia", label: "Configuração de IA", icon: Bot, area: "entregas" },
     ],
   },
   {

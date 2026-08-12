@@ -254,15 +254,18 @@ funciona a IA aqui" ou "preciso adicionar uma tarefa nova de IA".**
   PDF. **Já existe e já funciona**, mas só roda no **upload manual** — não
   varre o banco automaticamente. Não tem fallback de IA ainda.
 
-### 7.2 ⚠️ Problema de segurança real, ainda não corrigido
+### 7.2 ⚠️ Problema de segurança — corrigido em 12/08/2026, falta ligar em produção
 
 Chave de API salva pela tela (`ConfigIaPage.tsx` → `PUT /admin/config/ia`)
-é gravada **em texto puro** em `app_settings` (`getSetting`/`setSetting`,
-sem cifra). Hoje o risco é parcialmente mitigado porque variável de
-ambiente tem prioridade — mas quem salvar a chave pela tela (não pelo
-ambiente) deixa ela legível para qualquer acesso direto ao banco.
-**Prioridade alta antes de expandir o uso da IA para novas tarefas** (ver
-plano em §7.4).
+**agora é cifrada** (AES-256-GCM) antes de ir para `app_settings` —
+`setSecretSetting`/`getSecretSetting` em `api/src/appSettings.js`, chave de
+cifra vinda da variável de ambiente `SETTINGS_ENC_KEY` (nunca do banco).
+**Sem essa variável definida, o sistema ainda funciona mas volta a gravar
+em texto puro** (com aviso no log a cada gravação) — **definir
+`SETTINGS_ENC_KEY` no ambiente de produção é o que falta** para o problema
+estar realmente fechado. Trocar essa variável depois de já ter chaves
+salvas invalida as chaves antigas (o admin precisa salvar de novo pela
+tela).
 
 ### 7.3 Como uma sessão futura deve ligar uma NOVA capacidade de IA
 
@@ -283,30 +286,33 @@ plano em §7.4).
    confirmação → só então grava" (é assim que CNPJ funciona hoje; é assim
    que o plano de vencimento também propõe).
 
-### 7.4 Planos escritos, ainda não implementados
+### 7.4 Planos escritos
 
-Dois documentos de plano foram criados nesta sessão e **ainda não foram
-commitados/enviados** (confirmar com `git log --oneline -5` e
-`git status` antes de assumir o estado):
-
-- **`docs/PLANO-OBRIGACOES-TRIMESTRAIS-ISS-SIMPLES.md`** — IRPJ/CSLL
-  trimestral (com parcelamento em até 3 quotas), correção de escopo
-  importante: **parcelamento também existe para Simples Nacional e PGFN**,
-  e são estruturalmente diferentes entre si (não cabem no motor de
-  `obrigacoes.js`, que é para tributo recorrente com regra fixada em lei —
-  parcelamento é dívida individual negociada, mais parecido com o modelo
-  dos Boletos Cora). Também cobre: pró-labore → INSS automático (baixo
-  risco, reusa infra pronta), férias com marcação automática (achou que
-  `FERIAS_LIMITE` está com `auto: null` — não liga sozinho hoje, apesar da
-  infra de marcos 90/60/30/15 já existir), Simples/DAS (já quase pronto),
-  e ISS por município (híbrido: automático até achar o município via CNPJ,
-  manual o dia de vencimento — não existe fonte pública confiável para
-  isso nos +5.000 municípios do Brasil).
-- **`docs/PLANO-RECONHECIMENTO-VENCIMENTO-IA.md`** — estender
-  `pdfDueDate.js` para rodar automaticamente sobre `deliverables` a partir
-  de uma competência (nunca "tudo"), com fila de revisão do admin antes de
-  aplicar `due_date`, e a extração da função genérica de chamada à IA
-  (§7.3 acima). Inclui o alerta de segurança da chave em texto puro (§7.2).
+- **`docs/PLANO-RECONHECIMENTO-VENCIMENTO-IA.md`** — **IMPLEMENTADO em
+  12/08/2026.** Chave de IA agora cifrada (`SETTINGS_ENC_KEY`, §7.2
+  resolvido — **falta só definir a variável em produção**, sem ela ainda
+  grava em texto puro com aviso no log); `iaProvider.js` novo com
+  `chamarIaConfigurada()` genérica, reusada por CNPJ e por vencimento;
+  tabela `due_date_sugestoes` + rotina `varrerVencimentos()`; fila de
+  revisão em `/admin/vencimentos-sugeridos`; toggle próprio
+  `ia_vencimento_habilitada` dentro de `ConfigIaPage.tsx`. Ver o próprio
+  plano (seção "O que foi feito") para o mapa completo arquivo-a-arquivo.
+  **Falta**: redeploy (a tabela nova só é criada no arranque), definir
+  `SETTINGS_ENC_KEY` no ambiente de produção, e rodar a varredura pela
+  primeira vez pela tela.
+- **`docs/PLANO-OBRIGACOES-TRIMESTRAIS-ISS-SIMPLES.md`** — **ainda não
+  implementado.** IRPJ/CSLL trimestral (com parcelamento em até 3
+  quotas), correção de escopo importante: **parcelamento também existe
+  para Simples Nacional e PGFN**, e são estruturalmente diferentes entre
+  si (não cabem no motor de `obrigacoes.js`, que é para tributo recorrente
+  com regra fixada em lei — parcelamento é dívida individual negociada,
+  mais parecido com o modelo dos Boletos Cora). Também cobre: pró-labore →
+  INSS automático (baixo risco, reusa infra pronta), férias com marcação
+  automática (achou que `FERIAS_LIMITE` está com `auto: null` — não liga
+  sozinho hoje, apesar da infra de marcos 90/60/30/15 já existir),
+  Simples/DAS (já quase pronto), e ISS por município (híbrido: automático
+  até achar o município via CNPJ, manual o dia de vencimento — não existe
+  fonte pública confiável para isso nos +5.000 municípios do Brasil).
 
 **Se o usuário pedir para seguir com qualquer um dos dois planos**, ler o
 documento inteiro primeiro — cada um já tem ordem de implementação sugerida
@@ -319,19 +325,21 @@ antes de codificar.
 
 1. **Redeploy no EasyPanel.** Há commits recentes fora do ar cobrindo: as
    4 camadas do bug de folha/13º (§3), boleto cancelado (§4), chat (§5),
-   arquivamento/exclusão de empresa (§6). As migrações rodam sozinhas no
-   arranque — o log deve mostrar linhas `[DB] ... verificadas/criadas.`.
+   arquivamento/exclusão de empresa (§6), e agora o reconhecimento de
+   vencimento por IA (§7.4 — tabela `due_date_sugestoes` só é criada no
+   arranque). As migrações rodam sozinhas no arranque — o log deve
+   mostrar linhas `[DB] ... verificadas/criadas.`.
 2. **"Reler extratos" (Admin → Folha)** depois do redeploy — obrigatório
    para os snapshots e o cadastro `employees` existentes pegarem as
    correções da §3. Sem isso, empresas com pró-labore continuam mostrando
    número errado mesmo com o código já certo.
-3. **Cifrar a chave de IA em `app_settings`** (§7.2) antes de expandir o
-   uso da IA para novas tarefas.
-4. **Decidir e possivelmente implementar** os dois planos de §7.4.
-5. **Confirmar se os dois arquivos de plano foram commitados** — foram
-   criados via edição de arquivo nesta sessão, mas o commit/push não foi
-   confirmado antes desta sessão terminar.
-6. Ligar `CHAT_EMAIL_EQUIPE` (env) se o escritório tiver mais de um
+3. **Definir `SETTINGS_ENC_KEY` no ambiente de produção** (§7.2) — sem
+   ela, a chave de IA salva pela tela continua em texto puro (o código já
+   está pronto, falta a variável no compose de produção).
+4. **Decidir e possivelmente implementar** o plano de obrigações
+   trimestrais/parcelamento/ISS (§7.4) — o de reconhecimento de vencimento
+   já foi implementado nesta sessão.
+5. Ligar `CHAT_EMAIL_EQUIPE` (env) se o escritório tiver mais de um
    atendente — evita e-mail pulverizado para todos a cada mensagem nova.
 
 ---
@@ -363,8 +371,14 @@ api/src/
   pdfCnpj.js                   regex de CNPJ
   pdfCnpjAi.js                 cascata regex → contexto → IA (CNPJ)
   pdfIa.js                     fallback de IA legado (gateway Lovable)
-  pdfDueDate.js                leitor determinístico de vencimento (upload manual)
-  appSettings.js               chave/valor sem redeploy — ⚠️ sem cifra
+  pdfDueDate.js                vencimento: regex determinístico + extrairVencimentoComIa()
+  iaProvider.js                chamarIaConfigurada() — chamada genérica ao provedor de IA
+                                configurado, reusada por CNPJ e vencimento
+  dueDateSugestoes.js          varrerVencimentos() — varredura por competência, enfileira em
+                                due_date_sugestoes (nunca aplica due_date sozinha)
+  ensureDueDateSugestoesSchema.js  tabela due_date_sugestoes
+  appSettings.js                chave/valor sem redeploy — segredos cifrados com
+                                SETTINGS_ENC_KEY (setSecretSetting/getSecretSetting)
   adminAreas.js                áreas do painel (espelhado em src/lib/adminAreas.ts)
   companyTools.js              permissões do cliente (espelhado em src/lib/companyTools.ts)
   middleware/adminArea.js      requireArea / requireOwner — a trava de acesso

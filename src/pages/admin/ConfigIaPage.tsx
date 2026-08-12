@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Bot, Check, Loader2, X } from "lucide-react";
+import { Bot, CalendarSearch, Check, Loader2, X } from "lucide-react";
+import { Link } from "react-router-dom";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +23,7 @@ interface IaConfig {
   habilitada: boolean;
   limiar_confianca: number;
   timeout_ms: number;
+  vencimento_habilitada: boolean;
   provedores_disponiveis: string[];
 }
 
@@ -175,6 +177,38 @@ const ConfigIaPage = () => {
                 Tempo máximo de espera pela resposta da IA.
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarSearch className="h-4 w-4" /> Inteligência Artificial para vencimento em documentos
+            </CardTitle>
+            <CardDescription>
+              Usa o mesmo provedor e credencial configurados acima, mas é um interruptor à parte: liga a IA
+              como fallback quando a varredura de vencimentos (fila de revisão) não encontra um rótulo
+              conhecido no PDF. Um documento genérico (contrato, holerite) confunde mais do que um DARF —
+              por isso não fica ligado junto com o de CNPJ por padrão.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Usar IA quando o PDF não tiver rótulo de vencimento reconhecível</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Se desligado, a varredura só encontra vencimento por regex — o que não achar fica sem
+                  sugestão até o admin corrigir à mão.
+                </p>
+              </div>
+              <Switch
+                checked={config.vencimento_habilitada}
+                onCheckedChange={(v) => salvar.mutate({ vencimento_habilitada: v })}
+              />
+            </div>
+            <Button variant="outline" asChild>
+              <Link to="/admin/vencimentos-sugeridos">Abrir fila de revisão de vencimentos</Link>
+            </Button>
           </CardContent>
         </Card>
 

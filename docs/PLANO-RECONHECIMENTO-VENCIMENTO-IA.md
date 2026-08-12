@@ -1,11 +1,31 @@
 # Plano — Reconhecimento de vencimento em qualquer documento + IA multi-provedor
 
-## Status: PLANEJADO (não implementado)
+## Status: IMPLEMENTADO (12/08/2026) — itens 1 a 6 da ordem de implementação (§5)
 
-Pedido do usuário em 12/08/2026. Este documento é só o plano — nada foi codificado.
-**Achado importante**: boa parte do que foi pedido já existe no sistema, construído
-para outro fim (CNPJ). Este plano é, em boa parte, **estender e conectar** infra
-pronta — não construir do zero. Ver §0 para o inventário do que já existe.
+Pedido do usuário em 12/08/2026. **Achado importante**: boa parte do que foi pedido já
+existia no sistema, construído para outro fim (CNPJ) — este plano foi, em boa parte,
+**estender e conectar** infra pronta, não construir do zero (ver §0).
+
+### O que foi feito
+
+| # | Item | Onde |
+|---|---|---|
+| 1 | Chave de IA cifrada em `app_settings` | `api/src/appSettings.js` (`encryptSecret`/`decryptSecret`, prefixo `enc:v1:`), `SETTINGS_ENC_KEY` em `.env.example`/`docker-compose.yml`. Sem a variável definida, ainda grava em texto puro (com aviso no log) — **definir em produção**. |
+| 2 | `chamarIaConfigurada()` genérica | `api/src/iaProvider.js` (novo) — `pdfCnpjAi.js` foi simplificado para delegar aqui, mesma cascata de antes, sem duplicar chamada HTTP por provedor |
+| 3 | Tabela + rotina de varredura | `api/src/ensureDueDateSugestoesSchema.js`, `api/src/dueDateSugestoes.js` (`varrerVencimentos`) |
+| 4 | Prompt de vencimento + fallback de IA | `api/src/pdfDueDate.js` (`extrairVencimentoComIa`), toggle próprio `ia_vencimento_habilitada` (independente do de CNPJ) |
+| 5 | Fila de revisão | `/admin/vencimentos-sugeridos` (`src/pages/admin/VencimentosSugeridosPage.tsx`) + rotas em `api/src/routes/admin.js` (`GET/POST /admin/vencimentos-sugeridos*`) |
+| 6 | Configuração da rotina na tela | Campo de competência + "Rodar agora" na própria fila; toggle de IA para vencimento dentro de `ConfigIaPage.tsx` |
+
+### O que ficou de fora desta leva (não bloqueante, ver §6 perguntas em aberto)
+
+- Rotina não roda sozinha em intervalo (é sob demanda, botão "Rodar agora") — se quiser
+  agendamento automático (ex.: diário), é extensão futura simples sobre `varrerVencimentos()`.
+- Sem badge de contagem de pendentes no menu (o Chat tem, esta fila não ganhou ainda).
+- Perguntas do §6 (quais categorias entram na varredura, provedor padrão por tarefa)
+  resolvidas com o comportamento mais simples: todas as categorias sem `due_date` entram,
+  e o provedor é o mesmo já escolhido para CNPJ (não há hoje separação de provedor por
+  tarefa — só o toggle de habilitar/desabilitar é separado).
 
 ---
 

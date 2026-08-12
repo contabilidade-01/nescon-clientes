@@ -2,12 +2,15 @@
  * Extração da data de vencimento de guias em PDF.
  *
  * Porte da lógica já validada no sistema de guias (app/pdf_parser.py) — mantenha as
- * duas em sincronia ao acrescentar rótulos. Só é usada no upload MANUAL do escritório:
- * nas guias automáticas o vencimento já chega lido pelo sistema de guias.
+ * duas em sincronia ao acrescentar rótulos. Usada no upload manual do escritório e na
+ * varredura em lote (dueDateSugestoes.js); nas guias automáticas o vencimento já chega
+ * lido pelo sistema de guias.
  *
- * Política: nunca chuta. Sem rótulo conhecido por perto, devolve null e o admin informa
- * a data à mão — melhor pedir do que publicar vencimento errado.
+ * Política: nunca chuta. Sem rótulo conhecido por perto, devolve null — a IA
+ * (extrairVencimentoComIa) tenta em seguida, e se também não achar, o admin informa a
+ * data à mão. Melhor pedir do que publicar vencimento errado.
  */
+const { chamarIaConfigurada } = require("./iaProvider");
 
 // Rótulos onde a data costuma aparecer, do mais específico para o genérico.
 const ROTULOS_VENCIMENTO = [
@@ -84,4 +87,55 @@ async function extrairVencimento(pdfBuffer) {
   return null;
 }
 
-module.exports = { extrairVencimento, ROTULOS_VENCIMENTO };
+/**
+ * Fallback de IA quando o regex determinístico não encontra vencimento. Usa o mesmo
+ * provedor configurado em /admin/config-ia (iaProvider.js) — nenhuma credencial nova.
+ * Devolve null tanto para "não achou" quanto para "documento não tem vencimento
+ * mesmo" — os dois casos são o mesmo resultado prático (nada para sugerir).
+ */
+async function extrairVencimentoComIa(pdfBuffer, db, { timeoutMs } = {}) {
+  const texto = await extrairTexto(pdfBuffer);
+  if (!texto || texto.length < 10) return null;
+
+  const prompt = `Você é um especialista em leitura de documentos administrativos e fiscais brasileiros (contratos, guias, boletos, licenças, folha de pagamento, notificações).
+
+Encontre a DATA DE VENCIMENTO (data limite de pagamento ou de validade) no texto abaixo, se houver. Retorne APENAS um JSON válido:
+{"data": "AAAA-MM-DD", "confianca": 90, "motivo": "encontrado após 'Vencimento'"}
+
+Se o documento genuinamente não tiver data de vencimento (ex.: holerite, recibo, extrato, contrato sem prazo definido), retorne:
+{"data": null, "confianca": 0, "motivo": "documento sem data de vencimento identificável"}
+
+Confiança = número 0-100, onde 100 é certeza total.
+
+--- DOCUMENTO ---
+${texto.slice(0, 3000)}
+--- FIM ---`;
+
+  try {
+    const { resposta, provider } = await chamarIaConfigurada(db, { prompt, timeoutMs });
+    if (!resposta || !resposta.data) return null;
+
+    const md = RE_DATA.exec(String(resposta.data).replace(/-/g, "/"));
+    const iso = md ? montarData(md[1], md[2], md[3]) : montarDataIso(resposta.data);
+    if (!iso) return null;
+
+    return { data: iso, confianca: Number(resposta.confianca) || 0, motivo: resposta.motivo || "", provider };
+  } catch (err) {
+    console.error("[pdfDueDate] IA falhou:", err.message);
+    return null;
+  }
+}
+
+/** Valida uma data já em 'AAAA-MM-DD' (o formato que a IA foi instruída a devolver). */
+function montarDataIso(valor) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(valor || ""));
+  if (!m) return null;
+  return montarData(m[3], m[2], m[1]);
+}
+
+module.exports = {
+  extrairVencimento,
+  extrairVencimentoComIa,
+  extrairTexto,
+  ROTULOS_VENCIMENTO,
+};

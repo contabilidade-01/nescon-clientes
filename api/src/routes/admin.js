@@ -22,13 +22,14 @@ const {
   salvarProgramacao,
   ultimaProgramacao,
 } = require("../vacationImport");
-const { getSetting, setBoolSetting, setSetting } = require("../appSettings");
+const { getSetting, setBoolSetting, setSetting, getSecretSetting, setSecretSetting } = require("../appSettings");
 const gclickClient = require("../gclick/client");
 const coraSync = require("../coraSync");
 const coraClient = require("../cora");
 const { TIPOS: TIPOS_GCLICK } = require("../gclick/guides");
 const { gerarSenhaInicial } = require("../senhaInicial");
 const { enviarTexto } = require("../uazapi");
+const { varrerVencimentos } = require("../dueDateSugestoes");
 const fs = require("fs");
 
 function adminOnly(req, res, next) {
@@ -1274,12 +1275,17 @@ router.get("/config/ia", adminOnly, async (req, res) => {
     const habilitada = (await getSetting(db, "ia_cnpj_habilitada")) === "true";
     const limiar = Number(await getSetting(db, "ia_cnpj_limiar_confianca")) || 85;
     const timeout = Number(await getSetting(db, "ia_cnpj_timeout_ms")) || 30000;
+    // Toggle próprio: usa o MESMO provedor/chave acima, mas o admin liga a IA para CNPJ
+    // e vencimento de forma independente — um documento genérico confunde mais do que
+    // um DARF, então nem todo escritório vai querer os dois ligados juntos.
+    const vencimentoHabilitada = (await getSetting(db, "ia_vencimento_habilitada")) === "true";
 
     res.json({
       provider,
       habilitada,
       limiar_confianca: limiar,
       timeout_ms: timeout,
+      vencimento_habilitada: vencimentoHabilitada,
       provedores_disponiveis: ["claude", "gemini", "chatgpt"],
     });
   } catch (err) {
@@ -1292,7 +1298,7 @@ router.get("/config/ia", adminOnly, async (req, res) => {
  * PUT /admin/config/ia — Salvar configuração de IA
  */
 router.put("/config/ia", adminOnly, async (req, res) => {
-  const { provider, habilitada, limiar_confianca, timeout_ms, api_key } = req.body || {};
+  const { provider, habilitada, limiar_confianca, timeout_ms, api_key, vencimento_habilitada } = req.body || {};
 
   if (provider && !["claude", "gemini", "chatgpt"].includes(provider)) {
     return res.status(400).json({ error: "Provider inválido" });
@@ -1309,7 +1315,10 @@ router.put("/config/ia", adminOnly, async (req, res) => {
     if (habilitada !== undefined) await setSetting(db, "ia_cnpj_habilitada", habilitada ? "true" : "false");
     if (limiar_confianca !== undefined) await setSetting(db, "ia_cnpj_limiar_confianca", String(limiar_confianca));
     if (timeout_ms !== undefined) await setSetting(db, "ia_cnpj_timeout_ms", String(timeout_ms));
-    if (api_key && provider) await setSetting(db, `ia_api_key_${provider}`, api_key);
+    if (vencimento_habilitada !== undefined) {
+      await setSetting(db, "ia_vencimento_habilitada", vencimento_habilitada ? "true" : "false");
+    }
+    if (api_key && provider) await setSecretSetting(db, `ia_api_key_${provider}`, api_key);
 
     res.json({ ok: true });
   } catch (err) {
@@ -1329,7 +1338,7 @@ router.post("/config/ia/testar", adminOnly, async (req, res) => {
     gemini: process.env.GOOGLE_API_KEY,
     chatgpt: process.env.OPENAI_API_KEY,
   }[provider];
-  const chaveDb = await getSetting(db, `ia_api_key_${provider}`);
+  const chaveDb = await getSecretSetting(db, `ia_api_key_${provider}`);
   const chave = chaveEnv || chaveDb;
 
   if (!chave) {
@@ -1386,6 +1395,108 @@ router.post("/config/ia/testar", adminOnly, async (req, res) => {
     res.json({ ok: resultado.ok, erro: resultado.ok ? null : `HTTP ${resultado.status}` });
   } catch (err) {
     res.json({ ok: false, erro: err.message });
+  }
+});
+
+/**
+ * POST /admin/vencimentos-sugeridos/rodar — varre deliverables sem due_date a partir de
+ * uma competência e enfileira sugestões (determinístico → IA, se habilitada). Nunca
+ * aplica due_date sozinha.
+ */
+router.post("/vencimentos-sugeridos/rodar", adminOnly, async (req, res) => {
+  const { desde, limite } = req.body || {};
+  try {
+    const resultado = await varrerVencimentos(db, { desde, limite });
+    res.json(resultado);
+  } catch (err) {
+    console.error("[admin] vencimentos-sugeridos/rodar:", err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /admin/vencimentos-sugeridos — fila de revisão (só pendentes).
+ */
+router.get("/vencimentos-sugeridos", adminOnly, async (req, res) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT s.id, s.data_sugerida, s.origem, s.confianca, s.provider_ia, s.motivo, s.criado_em,
+             d.id AS deliverable_id, d.title, d.category, d.competencia, d.file_name,
+             c.id AS company_id, c.name AS company_nome, c.cnpj AS company_cnpj
+      FROM due_date_sugestoes s
+      JOIN deliverables d ON d.id = s.deliverable_id
+      JOIN companies c ON c.id = d.company_id
+      WHERE s.status = 'pendente'
+      ORDER BY s.criado_em ASC
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("[admin] GET vencimentos-sugeridos:", err.message);
+    res.status(500).json({ error: "Erro ao carregar sugestões" });
+  }
+});
+
+/**
+ * POST /admin/vencimentos-sugeridos/:id/aprovar — grava due_date em deliverables e marca
+ * a sugestão como aprovada. Só agora o vencimento vira fato — antes disso era palpite.
+ */
+router.post("/vencimentos-sugeridos/:id/aprovar", adminOnly, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rows } = await db.query(
+      `SELECT deliverable_id, data_sugerida FROM due_date_sugestoes
+       WHERE id = $1 AND status = 'pendente'`,
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Sugestão não encontrada ou já decidida" });
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`UPDATE deliverables SET due_date = $1 WHERE id = $2`, [
+        rows[0].data_sugerida,
+        rows[0].deliverable_id,
+      ]);
+      await client.query(
+        `UPDATE due_date_sugestoes
+         SET status = 'aprovada', decidido_em = now(), decidido_por = $2
+         WHERE id = $1`,
+        [id, req.admin.id]
+      );
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[admin] aprovar vencimento-sugerido:", err.message);
+    res.status(500).json({ error: "Erro ao aprovar sugestão" });
+  }
+});
+
+/**
+ * POST /admin/vencimentos-sugeridos/:id/rejeitar — não repete a mesma sugestão no
+ * próximo ciclo de varredura (o índice único é por deliverable_id só entre pendentes).
+ */
+router.post("/vencimentos-sugeridos/:id/rejeitar", adminOnly, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rows } = await db.query(
+      `UPDATE due_date_sugestoes
+       SET status = 'rejeitada', decidido_em = now(), decidido_por = $2
+       WHERE id = $1 AND status = 'pendente'
+       RETURNING id`,
+      [id, req.admin.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Sugestão não encontrada ou já decidida" });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[admin] rejeitar vencimento-sugerido:", err.message);
+    res.status(500).json({ error: "Erro ao rejeitar sugestão" });
   }
 });
 

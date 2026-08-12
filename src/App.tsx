@@ -34,6 +34,7 @@ import MensagensPage from "./pages/MensagensPage.tsx";
 import UsuariosPage from "./pages/admin/UsuariosPage.tsx";
 import DocumentUploadPage from "./pages/admin/DocumentUploadPage.tsx";
 import ConfigIaPage from "./pages/admin/ConfigIaPage.tsx";
+import VencimentosSugeridosPage from "./pages/admin/VencimentosSugeridosPage.tsx";
 import FeriasUploadLotePage from "./pages/admin/FeriasUploadLotePage.tsx";
 import EnviarAcessoPage from "./pages/admin/EnviarAcessoPage.tsx";
 import EnvioGuiasAdminPage from "./pages/EnvioGuiasAdminPage.tsx";
@@ -164,6 +165,7 @@ const AppRoutes = () => (
     <Route path="/admin/usuarios" element={<OwnerOnlyRoute><UsuariosPage /></OwnerOnlyRoute>} />
     <Route path="/admin/doc-upload" element={<AdminAreaRoute area="entregas"><DocumentUploadPage /></AdminAreaRoute>} />
     <Route path="/admin/config-ia" element={<AdminAreaRoute area="entregas"><ConfigIaPage /></AdminAreaRoute>} />
+    <Route path="/admin/vencimentos-sugeridos" element={<AdminAreaRoute area="entregas"><VencimentosSugeridosPage /></AdminAreaRoute>} />
     <Route path="/admin/ferias-lote" element={<AdminAreaRoute area="funcionarios"><FeriasUploadLotePage /></AdminAreaRoute>} />
     <Route path="/admin/enviar-acesso" element={<AdminAreaRoute area="empresas"><EnviarAcessoPage /></AdminAreaRoute>} />
     {/* Única tela liberada enquanto a senha for a inicial */}

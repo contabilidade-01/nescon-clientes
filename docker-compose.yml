@@ -94,6 +94,9 @@ services:
       LOVABLE_API_KEY: ${LOVABLE_API_KEY:-}
       IA_PDF_BASE_URL: ${IA_PDF_BASE_URL:-}
       IA_PDF_MODELO: ${IA_PDF_MODELO:-}
+      # Cifra em repouso da chave de IA (Claude/Gemini/ChatGPT) salva pela tela de
+      # Configuração de IA. Sem ela, a chave é gravada em texto puro (com aviso no log).
+      SETTINGS_ENC_KEY: ${SETTINGS_ENC_KEY:-}
       # Senha que cifra o backup diário do banco. GUARDE-A FORA DO SERVIDOR: sem ela o
       # arquivo é inútil, e o dia de precisar dele é o dia em que o servidor sumiu.
       BACKUP_SENHA: ${BACKUP_SENHA:-}

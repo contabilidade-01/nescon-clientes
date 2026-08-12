@@ -5,6 +5,7 @@
 
 const { extrairTexto, onlyDigits, validarDigitosCnpj } = require("./pdfCnpj");
 const { getSetting } = require("./appSettings");
+const { chamarIaConfigurada } = require("./iaProvider");
 
 // Nível 1: Regex puro (já existe em pdfCnpj.js)
 const RE_CNPJ = /(\d{2}\.?\d{3}\.?\d{3}\/\d{4}-?\d{2})/g;
@@ -76,12 +77,11 @@ async function nivel3Ia(texto, db) {
   const habilitada = await getSetting(db, "ia_cnpj_habilitada");
   if (habilitada !== "true") return [];
 
-  const provider = (await getSetting(db, "provider_ia_cnpj")) || "claude";
   const limiar = Number(await getSetting(db, "ia_cnpj_limiar_confianca")) || 85;
   const timeout = Number(await getSetting(db, "ia_cnpj_timeout_ms")) || 30000;
 
   try {
-    const resultado = await chamarIaParaCnpj(texto, provider, db, timeout);
+    const resultado = await chamarIaParaCnpj(texto, db, timeout);
 
     if (!resultado) return [];
 
@@ -107,14 +107,10 @@ async function nivel3Ia(texto, db) {
 }
 
 /**
- * Chamada para IA com suporte a múltiplos provedores.
+ * Monta o prompt de CNPJ e delega a chamada ao provedor configurado (iaProvider.js) —
+ * mesma infraestrutura de provedor/chave/timeout reusada por outras tarefas de extração.
  */
-async function chamarIaParaCnpj(texto, provider, db, timeout) {
-  const chave = await obterChaveApi(provider, db);
-  if (!chave) {
-    throw new Error(`Sem credencial para provider ${provider}`);
-  }
-
+async function chamarIaParaCnpj(texto, db, timeout) {
   const prompt = `Você é um especialista em leitura de documentos fiscais brasileiros.
 
 Extraia o CNPJ do texto do documento abaixo. Retorne APENAS um JSON válido:
@@ -129,128 +125,8 @@ Confiança = número 0-100, onde 100 é certeza total.
 ${texto.slice(0, 2000)}
 --- FIM ---`;
 
-  if (provider === "claude") {
-    return await chamarClaude(prompt, chave, timeout);
-  } else if (provider === "gemini") {
-    return await chamarGemini(prompt, chave, timeout);
-  } else if (provider === "chatgpt") {
-    return await chamarChatGpt(prompt, chave, timeout);
-  } else {
-    throw new Error(`Provider desconhecido: ${provider}`);
-  }
-}
-
-async function obterChaveApi(provider, db) {
-  const chaveEnv = {
-    claude: process.env.ANTHROPIC_API_KEY,
-    gemini: process.env.GOOGLE_API_KEY,
-    chatgpt: process.env.OPENAI_API_KEY,
-  }[provider];
-
-  if (chaveEnv) return chaveEnv;
-
-  const chaveDb = await getSetting(db, `ia_api_key_${provider}`);
-  return chaveDb || null;
-}
-
-async function chamarClaude(prompt, apiKey, timeout) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 256,
-        messages: [{ role: "user", content: prompt }],
-      }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(`Claude API error: ${err.error?.message || res.statusText}`);
-    }
-
-    const data = await res.json();
-    const content = data.content[0]?.text || "";
-    const json = JSON.parse(content);
-    return json;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-async function chamarGemini(prompt, apiKey, timeout) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 256 },
-        }),
-        signal: controller.signal,
-      }
-    );
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(`Gemini API error: ${err.error?.message || res.statusText}`);
-    }
-
-    const data = await res.json();
-    const content = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    const json = JSON.parse(content);
-    return json;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-async function chamarChatGpt(prompt, apiKey, timeout) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-  try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        max_tokens: 256,
-        temperature: 0,
-        messages: [{ role: "user", content: prompt }],
-      }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(`ChatGPT API error: ${err.error?.message || res.statusText}`);
-    }
-
-    const data = await res.json();
-    const content = data.choices[0]?.message?.content || "";
-    const json = JSON.parse(content);
-    return json;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  const { resposta } = await chamarIaConfigurada(db, { prompt, timeoutMs: timeout });
+  return resposta;
 }
 
 /**
