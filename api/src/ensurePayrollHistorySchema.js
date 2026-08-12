@@ -99,6 +99,15 @@ async function ensurePayrollHistorySchema(db) {
     // no meio do ano.
     await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS admissao DATE;`);
 
+    // Base de salário SÓ dos celetistas ("Salário contribuição empregados" do extrato).
+    // `proventos` é o Total Geral e soma o pró-labore do diretor — dividi-lo pelo nº de
+    // empregados entrega ao CLT o salário do sócio. Num extrato real (ALZIRÃO 07/2026):
+    // Total Geral 3.242,00 para UM empregado que ganha 1.621,00.
+    await db.query(
+      `ALTER TABLE payroll_snapshots
+       ADD COLUMN IF NOT EXISTS salario_contrib_empregados NUMERIC(14,2)`
+    );
+
     console.log("[DB] histórico de folha: tabela verificada/criada.");
   } catch (err) {
     console.error("[DB] ensurePayrollHistorySchema falhou:", err.message, err.code || "");

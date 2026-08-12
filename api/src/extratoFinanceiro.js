@@ -94,6 +94,11 @@ function extrairTotais(texto) {
     fgts: null,
     base_fgts: null,
     irrf: null,
+    // Base de salário SÓ dos celetistas. `proventos` (Total Geral) soma o pró-labore
+    // do diretor junto — usar aquele como base de média entrega ao empregado CLT o
+    // salário do sócio. Num extrato real (ALZIRÃO 07/2026): Total Geral 3.242,00
+    // para UM empregado que ganha 1.621,00, porque o diretor ganha os outros 1.621,00.
+    salario_contrib_empregados: null,
   };
 
   // --- Proventos + Descontos (par junto) ---
@@ -140,6 +145,17 @@ function extrairTotais(texto) {
     new RegExp(`I\\.?N\\.?S\\.?S\\.?\\s*:?\\s*Total\\s*:?\\s*(${NUM})`, "i"),
   ]);
   if (mInss) totais.inss = valor(mInss[1]);
+
+  // --- Salário de contribuição dos EMPREGADOS (exclui contribuintes/pró-labore) ---
+  // O extrato separa as duas linhas de propósito:
+  //   Salário contribuição empregados:   1.621,00   <- celetistas
+  //   Salário contribuição contribuintes: 1.621,00  <- diretor/pró-labore
+  // A âncora precisa do "empregados" no fim para não casar com a linha dos
+  // contribuintes, que vem logo abaixo e tem rótulo quase idêntico.
+  const mSalEmp = tentarRegex(plano, [
+    new RegExp(`Sal[áa]rio\\s+contribui[çc][ãa]o\\s+empregados\\s*:?\\s*(${NUM})`, "i"),
+  ]);
+  if (mSalEmp) totais.salario_contrib_empregados = valor(mSalEmp[1]);
 
   // --- Base FGTS ---
   const mBase = tentarRegex(plano, [

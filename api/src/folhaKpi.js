@@ -75,8 +75,9 @@ async function gravarSnapshot(db, { companyId, competencia, deliverableId, fileP
         proventos, descontos, liquido, inss, fgts, base_fgts, irrf,
         empregados, admitidos, demitidos, trabalhando, em_ferias,
         afastamento_valor, afastamento_dias, afastamento_funcionarios,
-        faltas_dias, faltas_dias_dsr, conferido, problemas, causa, diagnostico, origem_quadro)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+        faltas_dias, faltas_dias_dsr, conferido, problemas, causa, diagnostico, origem_quadro,
+        salario_contrib_empregados)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
      ON CONFLICT (company_id, competencia) DO UPDATE SET
        deliverable_id = EXCLUDED.deliverable_id,
        proventos = EXCLUDED.proventos, descontos = EXCLUDED.descontos,
@@ -92,6 +93,7 @@ async function gravarSnapshot(db, { companyId, competencia, deliverableId, fileP
        conferido = EXCLUDED.conferido, problemas = EXCLUDED.problemas,
        causa = EXCLUDED.causa, diagnostico = EXCLUDED.diagnostico,
        origem_quadro = EXCLUDED.origem_quadro,
+       salario_contrib_empregados = EXCLUDED.salario_contrib_empregados,
        atualizado_em = now()`,
     [
       companyId, competencia, deliverableId,
@@ -108,6 +110,7 @@ async function gravarSnapshot(db, { companyId, competencia, deliverableId, fileP
 
 O PDF veio assim: ${diag.amostra}` : null,
       f.origem_quadro,
+      f.totais.salario_contrib_empregados,
     ]
   );
 
@@ -260,14 +263,17 @@ async function projecaoDecimoTerceiro(db, { companyId = null, ano = new Date().g
   // Se employees está vazio mas há snapshot, criar linhas genéricas baseadas no quadro
   if (!rows.length && companyId) {
     const { rows: snap } = await db.query(
-      `SELECT proventos, empregados FROM payroll_snapshots
+      `SELECT proventos, empregados, salario_contrib_empregados FROM payroll_snapshots
         WHERE company_id = $1 AND proventos > 0
         ORDER BY competencia DESC LIMIT 1`,
       [companyId]
     );
     if (snap.length) {
       const empregados = Number(snap[0].empregados) || 0;
-      const proventos = Number(snap[0].proventos);
+      // Mesma correção da média: o Total Geral inclui o pró-labore do diretor.
+      const baseCLT = Number(snap[0].salario_contrib_empregados);
+      const proventos =
+        Number.isFinite(baseCLT) && baseCLT > 0 ? baseCLT : Number(snap[0].proventos);
       // Usar o quadro do snapshot como número de CLT
       const n = empregados > 0 ? empregados : 1;
       const media = proventos / n;
@@ -294,13 +300,19 @@ async function projecaoDecimoTerceiro(db, { companyId = null, ano = new Date().g
  */
 async function mediaSalarialDaEmpresa(db, companyId) {
   const { rows: snap } = await db.query(
-    `SELECT proventos, empregados FROM payroll_snapshots
+    `SELECT proventos, empregados, salario_contrib_empregados FROM payroll_snapshots
       WHERE company_id = $1 AND proventos > 0
       ORDER BY competencia DESC LIMIT 1`,
     [companyId]
   );
   if (!snap.length) return null;
-  const proventos = Number(snap[0].proventos);
+  // `proventos` é o Total Geral e SOMA o pró-labore do diretor. Usá-lo como base da
+  // média entregava ao empregado CLT o salário do sócio: no ALZIRÃO (07/2026) daria
+  // 3.242,00 para um empregado que ganha 1.621,00 — 13º e férias projetados no dobro.
+  // `salario_contrib_empregados` é a linha do extrato que já exclui os contribuintes.
+  // Sem ela (extrato antigo, ainda não reprocessado), cai no Total Geral como antes.
+  const base = Number(snap[0].salario_contrib_empregados);
+  const proventos = Number.isFinite(base) && base > 0 ? base : Number(snap[0].proventos);
   const empregados = Number(snap[0].empregados);
   if (empregados > 0) {
     const media = proventos / empregados;
