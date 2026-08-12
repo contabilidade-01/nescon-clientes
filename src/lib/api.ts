@@ -1134,6 +1134,31 @@ export const api = {
           arquivada_por_nome: string | null;
         }>
       >("/admin/companies/arquivadas"),
+
+    excluirEmpresa: (id: string, motivo?: string) =>
+      request<{ ok: boolean; ja_estava_excluida: boolean }>(
+        `/admin/companies/${id}/excluir`,
+        { method: "POST", body: JSON.stringify({ motivo }) }
+      ),
+
+    revertExclusao: (id: string) =>
+      request<{ ok: boolean }>(`/admin/companies/${id}/reverter-exclusao`, {
+        method: "POST",
+      }),
+
+    /** Empresas excluídas (só o dono enxerga). */
+    empresasExcluidas: () =>
+      request<
+        Array<{
+          id: string;
+          name: string;
+          cnpj: string;
+          excluida_em: string | null;
+          excluida_motivo: string | null;
+          excluida_por_nome: string | null;
+        }>
+      >("/admin/companies/excluidas"),
+
     createCompany: (data: {
       name: string;
       cnpj: string;

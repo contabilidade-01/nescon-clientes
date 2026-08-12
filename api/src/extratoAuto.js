@@ -145,7 +145,7 @@ async function processarExtratos(db) {
                  WHERE e.company_id = c.id AND e.active IS TRUE AND e.vinculo IS NULL
               ) AS tem_sem_vinculo
          FROM companies c
-        WHERE c.arquivada IS NOT TRUE
+        WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
         ORDER BY c.name`
     );
     for (const empresa of empresas) {

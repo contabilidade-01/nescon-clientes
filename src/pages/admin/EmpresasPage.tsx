@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Archive, Building2, KeyRound, Plus, RotateCcw, ShieldAlert } from "lucide-react";
+import { Archive, Building2, KeyRound, Plus, RotateCcw, ShieldAlert, Trash2 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { CompanyFilter } from "@/components/admin/CompanyFilter";
 import { useAdminCompanies } from "@/hooks/useAdminCompanies";
@@ -21,6 +21,8 @@ const EmpresasPage = () => {
   const [companyId, setCompanyId] = useState("");
   const [motivoArquivar, setMotivoArquivar] = useState("");
   const [confirmArquivar, setConfirmArquivar] = useState(false);
+  const [motivoExcluir, setMotivoExcluir] = useState("");
+  const [confirmExcluir, setConfirmExcluir] = useState(false);
   const [buscaEmpresa, setBuscaEmpresa] = useState("");
 
   // A senha inicial é mostrada UMA vez, num aviso persistente. Não existe rota que a
@@ -104,6 +106,12 @@ const EmpresasPage = () => {
     enabled: !!admin?.isOwner,
   });
 
+  const excluidas = useQuery({
+    queryKey: ["admin-empresas-excluidas"],
+    queryFn: () => api.admin.empresasExcluidas(),
+    enabled: !!admin?.isOwner,
+  });
+
   // Arquivar rápido (da lista, sem motivo — o confirm do browser já é a confirmação)
   const arquivar2 = useMutation({
     mutationFn: (id: string) => api.admin.arquivarEmpresa(id),
@@ -111,6 +119,31 @@ const EmpresasPage = () => {
       toast.success("Empresa arquivada.");
       queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
       queryClient.invalidateQueries({ queryKey: ["admin-empresas-arquivadas"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-summary"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const excluir = useMutation({
+    mutationFn: () => api.admin.excluirEmpresa(companyId, motivoExcluir.trim() || undefined),
+    onSuccess: () => {
+      toast.success("Empresa excluída. Dados históricos mantidos no banco.");
+      setCompanyId("");
+      setMotivoExcluir("");
+      setConfirmExcluir(false);
+      queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-empresas-excluidas"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-summary"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const revertExcluir = useMutation({
+    mutationFn: (id: string) => api.admin.revertExclusao(id),
+    onSuccess: () => {
+      toast.success("Exclusão revertida.");
+      queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-empresas-excluidas"] });
       queryClient.invalidateQueries({ queryKey: ["admin-summary"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -385,6 +418,62 @@ const EmpresasPage = () => {
         </CardContent>
       </Card>
 
+      {/* Botão de exclusão na seção de gestão */}
+      {selected && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Trash2 className="h-4 w-4 text-red-600" /> Excluir empresa
+            </CardTitle>
+            <CardDescription>
+              A empresa some de todos os painéis e não pode mais acessar o portal.
+              Dados históricos ficam no banco (reversível). Só você (dono) pode reverter.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {!confirmExcluir ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-red-600/50 text-red-600 hover:bg-red-500/10"
+                onClick={() => setConfirmExcluir(true)}
+              >
+                <Trash2 className="mr-1 h-4 w-4" /> Excluir {selected.name}
+              </Button>
+            ) : (
+              <div className="space-y-2">
+                <Input
+                  placeholder="Motivo (opcional)"
+                  value={motivoExcluir}
+                  onChange={(e) => setMotivoExcluir(e.target.value)}
+                  className="max-w-sm"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => excluir.mutate()}
+                    disabled={excluir.isPending}
+                  >
+                    Confirmar exclusão
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setConfirmExcluir(false);
+                      setMotivoExcluir("");
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Lista de empresas arquivadas — só o dono do sistema */}
       {admin?.isOwner && (arquivadas.data?.length ?? 0) > 0 && (
         <Card>
@@ -418,6 +507,47 @@ const EmpresasPage = () => {
                   disabled={reativar.isPending}
                 >
                   <RotateCcw className="mr-1 h-3.5 w-3.5" /> Reativar
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Lista de empresas excluídas — só o dono do sistema */}
+      {admin?.isOwner && (excluidas.data?.length ?? 0) > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Trash2 className="h-4 w-4" /> Empresas excluídas ({excluidas.data?.length})
+            </CardTitle>
+            <CardDescription>
+              Empresas removidas do sistema. Dados históricos (entregas, funcionários, boletos)
+              permanecem. Só você (dono) pode reverter.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {excluidas.data?.map((c) => (
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{c.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {maskCNPJ(c.cnpj)}
+                    {c.excluida_motivo && <> · {c.excluida_motivo}</>}
+                    {c.excluida_por_nome && <> · por {c.excluida_por_nome}</>}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (confirm(`Reverter exclusão de ${c.name}? Volta a aparecer nos painéis.`)) {
+                      revertExcluir.mutate(c.id);
+                    }
+                  }}
+                  disabled={revertExcluir.isPending}
+                >
+                  <RotateCcw className="mr-1 h-3.5 w-3.5" /> Reverter
                 </Button>
               </div>
             ))}

@@ -14,6 +14,7 @@ async function listCompanies(db) {
               c.tool_access, c.gclick_status, c.created_at
          FROM companies c
          LEFT JOIN gclick_clients g ON g.company_id = c.id
+        WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
         ORDER BY c.name`
     );
     return rows;
@@ -34,7 +35,7 @@ async function getCompanyByCnpjForLogin(db, cnpjDigits) {
       // encontrado"). Uma mensagem específica de "conta arquivada" contaria a quem
       // tentasse que aquele CNPJ é cliente da casa.
       `SELECT id, name, cnpj, password_hash, tool_access, must_change_password, password_expires_at
-       FROM companies WHERE cnpj = $1 AND arquivada IS NOT TRUE`,
+       FROM companies WHERE cnpj = $1 AND arquivada IS NOT TRUE AND excluida IS NOT TRUE`,
       [cnpjDigits]
     );
     return rows;

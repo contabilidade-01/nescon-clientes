@@ -44,7 +44,7 @@ router.use(adminOnly);
 router.get("/summary", async (_req, res) => {
   try {
     const [c, d, e, cert, deliv] = await Promise.all([
-      db.query("SELECT COUNT(*)::int AS n FROM companies WHERE arquivada IS NOT TRUE"),
+      db.query("SELECT COUNT(*)::int AS n FROM companies WHERE arquivada IS NOT TRUE AND excluida IS NOT TRUE"),
       db.query("SELECT COUNT(*)::int AS n FROM issued_documents"),
       db.query("SELECT COUNT(*)::int AS n FROM employees"),
       db.query("SELECT COUNT(*)::int AS n FROM medical_certificates"),
@@ -87,7 +87,7 @@ router.get("/deliverables-overview", async (_req, res) => {
               to_char(MAX(d.created_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS ultima_entrada
          FROM companies c
          JOIN deliverables d ON d.company_id = c.id
-        WHERE c.arquivada IS NOT TRUE
+        WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
         GROUP BY c.id, c.name, c.cnpj
         ORDER BY total DESC, c.name ASC`
     );
@@ -113,7 +113,7 @@ router.get("/lgpd-consents", requireArea("lgpd"), async (_req, res) => {
                 ELSE 'pendente'
               END AS situacao
          FROM companies
-        WHERE arquivada IS NOT TRUE
+        WHERE arquivada IS NOT TRUE AND excluida IS NOT TRUE
         ORDER BY (lgpd_consent_at IS NOT NULL), name`
     );
     const resumo = { aceito: 0, visto: 0, pendente: 0 };
@@ -434,7 +434,7 @@ router.get("/cora/empresas", requireArea("sincronizacao"), async (_req, res) => 
              MAX(d.created_at) FILTER (WHERE d.source = 'cora') AS ultimo_importado
       FROM companies c
       LEFT JOIN deliverables d ON d.company_id = c.id AND d.source = 'cora'
-      WHERE c.cnpj IS NOT NULL AND c.cnpj != '' AND c.arquivada IS NOT TRUE
+      WHERE c.cnpj IS NOT NULL AND c.cnpj != '' AND c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
       GROUP BY c.id
       ORDER BY c.name
     `);
@@ -561,7 +561,7 @@ router.get("/companies/senha-pendente", requireArea("empresas"), async (_req, re
     const { rows } = await db.query(
       `SELECT id, name, cnpj, created_at
          FROM companies
-        WHERE must_change_password IS TRUE AND arquivada IS NOT TRUE
+        WHERE must_change_password IS TRUE AND arquivada IS NOT TRUE AND excluida IS NOT TRUE
         ORDER BY name`
     );
     res.json({ total: rows.length, empresas: rows });
@@ -769,7 +769,7 @@ router.get("/cobertura", async (_req, res) => {
                 EXISTS (SELECT 1 FROM deliverables d
                          WHERE d.company_id = c.id AND d.doc_type = 'EXTRATO_FOLHA') AS tem_extrato
            FROM companies c
-          WHERE c.arquivada IS NOT TRUE
+          WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
        )
        SELECT * FROM base ORDER BY name`
     );
@@ -1568,6 +1568,64 @@ router.get("/companies/arquivadas", requireOwner, async (_req, res) => {
   } catch (err) {
     console.error("[admin] listar arquivadas:", err.message);
     res.status(500).json({ error: "Não foi possível carregar as empresas arquivadas" });
+  }
+});
+
+/** Excluir empresa (soft-delete). Só o dono. */
+router.post("/companies/:id/excluir", requireOwner, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { motivo } = req.body || {};
+    const { rowCount } = await db.query(
+      `UPDATE companies
+          SET excluida = true, excluida_em = now(),
+              excluida_por = $2::uuid, excluida_motivo = $3
+        WHERE id = $1::uuid AND excluida IS NOT TRUE`,
+      [id, req.admin.id, motivo?.trim() || null]
+    );
+    res.json({ ok: true, ja_estava_excluida: rowCount === 0 });
+  } catch (err) {
+    console.error("[admin] excluir empresa:", err.message);
+    res.status(500).json({ error: "Não foi possível excluir a empresa" });
+  }
+});
+
+/** Reverter exclusão de empresa. Só o dono. */
+router.post("/companies/:id/reverter-exclusao", requireOwner, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rowCount } = await db.query(
+      `UPDATE companies
+          SET excluida = false, excluida_em = NULL,
+              excluida_por = NULL, excluida_motivo = NULL
+        WHERE id = $1::uuid AND excluida IS TRUE`,
+      [id]
+    );
+    if (rowCount === 0) {
+      return res.status(404).json({ error: "Empresa não encontrada ou não está excluída" });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[admin] reverter exclusao empresa:", err.message);
+    res.status(500).json({ error: "Não foi possível reverter a exclusão" });
+  }
+});
+
+/** Lista das excluídas — só o dono. */
+router.get("/companies/excluidas", requireOwner, async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT c.id, c.name, c.cnpj, c.excluida_em, c.excluida_motivo,
+              a.nome AS excluida_por_nome
+         FROM companies c
+         LEFT JOIN platform_admins a ON a.id = c.excluida_por
+        WHERE c.excluida IS TRUE
+        ORDER BY c.excluida_em DESC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("[admin] listar excluidas:", err.message);
+    res.status(500).json({ error: "Não foi possível carregar as empresas excluídas" });
   }
 });
 

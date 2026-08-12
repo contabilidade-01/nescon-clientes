@@ -328,6 +328,7 @@ async function previsao(db, { data = null, simular = true } = {}) {
       WHERE c.alertas_ativos IS TRUE
         -- Cliente arquivado nao recebe mais nada: nem lembrete, nem cobranca.
         AND c.arquivada IS NOT TRUE
+        AND c.excluida IS NOT TRUE
         AND ($1::text[] IS NULL
              OR regexp_replace(c.cnpj, '\\D', '', 'g') = ANY($1::text[]))
       GROUP BY c.id, g.phone

@@ -42,7 +42,21 @@ async function ensureArquivamentoSchema(db) {
         ON companies(arquivada) WHERE arquivada IS TRUE
     `);
 
-    console.log("[DB] arquivamento de empresas: colunas verificadas/criadas.");
+    // Exclusão (soft-delete): mesma lógica do arquivamento, mas irreversível para o
+    // operador comum — só o dono pode reverter.
+    await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS excluida BOOLEAN NOT NULL DEFAULT false`);
+    await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS excluida_em TIMESTAMPTZ`);
+    await db.query(`
+      ALTER TABLE companies
+      ADD COLUMN IF NOT EXISTS excluida_por UUID REFERENCES platform_admins(id) ON DELETE SET NULL
+    `);
+    await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS excluida_motivo TEXT`);
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_companies_excluida
+        ON companies(excluida) WHERE excluida IS TRUE
+    `);
+
+    console.log("[DB] arquivamento/exclusão de empresas: colunas verificadas/criadas.");
   } catch (err) {
     console.error("[DB] ensureArquivamentoSchema falhou:", err.message, err.code || "");
     throw err;
