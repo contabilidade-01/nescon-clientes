@@ -1,9 +1,11 @@
 /**
- * Integração servidor-a-servidor com o sistema de guias (GCLICK).
+ * Integração servidor-a-servidor com o sistema de guias (GCLICK) — hoje dispensável no
+ * caminho normal, mantida para compatibilidade e para o caso raro de resíduo retido.
  *
- * O portal busca os documentos sozinho na API do G-Click (ver src/gclick/sync.js).
- * O sistema de guias não envia mais arquivo nenhum: ele apenas LIBERA os documentos
- * de um cliente — no mesmo clique em que dispara o aviso por WhatsApp.
+ * O portal busca os documentos sozinho na API do G-Click (ver src/gclick/sync.js) e já
+ * libera E avisa por WhatsApp sem depender de ninguém chamar esta rota. `/release` só
+ * tem efeito hoje se houver alguma linha antiga ainda retida (`released_at IS NULL`) —
+ * resíduo de antes desta mudança. Ver docNotify.js para o envio de verdade.
  *
  * Autenticação de serviço por X-Ingest-Key (quem chama é outro servidor, não um browser).
  */
@@ -17,6 +19,7 @@ const { validateString, validateUUID } = require("../middleware/validate");
 const { accessSummary } = require("../deliverableAccess");
 const sync = require("../gclick/sync");
 const { chaveDocumento } = require("../gclick/guides");
+const { notificarDocumentosNovos } = require("../docNotify");
 
 /** Comparação em tempo constante — evita descobrir a chave por tempo de resposta. */
 function keyMatches(provided, expected) {
@@ -108,6 +111,19 @@ router.post("/release", requireIngestKey, async (req, res) => {
       [companyId]
     );
 
+    // Quem manda o WhatsApp agora é o PRÓPRIO PORTAL (docNotify.js) — não depende mais
+    // de quem chamou este endpoint decidir/executar o envio. Isto normalmente não acha
+    // nada para avisar: o sync direto do G-Click (`gclick/sync.js`) já libera e já avisa
+    // sozinho; esta rota só teria efeito num resíduo (linha antiga que ficou retida).
+    let aviso = { enviado: false, motivo: "nada liberado nesta chamada" };
+    if (result.rows.length) {
+      aviso = await notificarDocumentosNovos(
+        db,
+        companyId,
+        result.rows.map((d) => ({ title: d.title, competencia: d.competencia }))
+      );
+    }
+
     res.json({
       liberados_agora: result.rows.length,
       documentos: result.rows,
@@ -116,18 +132,11 @@ router.post("/release", requireIngestKey, async (req, res) => {
       empresa: empresa[0].name,
       portal_url: portalUrl("/"),
       sincronizou,
-      // O cliente pediu, no portal dele, para não ser avisado de documento novo.
-      //
-      // A liberação acontece de todo jeito — ele continua vendo tudo quando entrar; o
-      // que ele recusou foi a mensagem. Quem manda a mensagem é o sistema de guias, e é
-      // por este campo que ele fica sabendo: SE `avisar_cliente` vier false, não envie.
-      // Enquanto o outro lado não olhar para este campo, a vontade do cliente não é
-      // obedecida — ver docs/ESTADO-E-PROXIMO-PASSO.md §4d.
+      aviso_enviado: aviso.enviado,
+      motivo_nao_avisar: aviso.enviado ? null : aviso.motivo,
+      // Mantidos por compatibilidade com quem ainda lê este campo — mas o envio real
+      // não depende mais dele, o portal já decidiu e já mandou (ou não) acima.
       avisar_cliente: empresa[0].avisos_documentos_ativos !== false,
-      motivo_nao_avisar:
-        empresa[0].avisos_documentos_ativos === false
-          ? "O cliente desativou os avisos de documento novo no portal."
-          : null,
     });
   } catch (err) {
     console.error("[release]", err);

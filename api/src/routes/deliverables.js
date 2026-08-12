@@ -17,6 +17,7 @@ const { validateUUID, validateDate, validateString } = require("../middleware/va
 const { uploadPdf, resolveUploadPath, removeUploadFile } = require("../uploads");
 const { recordAccess } = require("../deliverableAccess");
 const { extrairVencimento } = require("../pdfDueDate");
+const { notificarDocumentosNovos } = require("../docNotify");
 const {
   CATEGORIES,
   TOOL_BY_CATEGORY,
@@ -185,6 +186,12 @@ router.post("/", adminOnly, uploadPdf.single("file"), async (req, res) => {
         crypto.randomBytes(24).toString("hex"),
       ]
     );
+    // Não bloqueia a resposta: o WhatsApp pode demorar (retry, teto/hora), e o admin já
+    // tem confirmação do upload sem precisar esperar isso terminar.
+    notificarDocumentosNovos(db, company_id, [{ title: title.trim(), competencia: competencia || null }]).catch(
+      (err) => console.error("[docNotify] upload manual:", err.message)
+    );
+
     res.status(201).json({ ...rows[0], due_date_from_pdf: dueDateFromPdf });
   } catch (err) {
     console.error(err);

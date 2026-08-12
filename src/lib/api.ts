@@ -1343,6 +1343,9 @@ export const api = {
           erros: number;
           segundos: number;
           em: string;
+          /** Avisos de "documento novo" mandados pelo próprio portal ao fim desta sincronização. */
+          avisos_enviados?: number;
+          avisos_nao_enviados?: number;
         } | null;
       }>("/admin/sync-gclick/status"),
     /** Dispara a sincronização com o G-Click (traz documentos e cria empresas que faltam). */

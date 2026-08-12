@@ -5,8 +5,12 @@
  * guarda o PDF e sempre mantém a ÚLTIMA versão de cada documento (retificação
  * atualiza a linha em vez de criar outra — ver `chaveDocumento`).
  *
- * O documento entra RETIDO (`released_at` nulo): o cliente só vê depois que o
- * escritório libera, no mesmo momento em que o aviso sai por WhatsApp.
+ * Documento novo entra JÁ LIBERADO (`released_at` preenchido na hora) e o aviso por
+ * WhatsApp sai DAQUI MESMO, no fim da sincronização — ver `docNotify.js`. Não depende
+ * mais do sistema de guias (GCLICK) chamar nada: antes o aviso saía só quando o GCLICK
+ * chamava POST /api/fiscal/release e decidia mandar do lado dele; com o GCLICK pausado,
+ * essa ponta nunca era chamada e o cliente parava de ser avisado sem nenhum erro
+ * aparecer em lugar nenhum. Ver docs/ESTADO-E-PROXIMO-PASSO.md.
  */
 const crypto = require("crypto");
 const fs = require("fs");
@@ -27,6 +31,7 @@ const { UPLOAD_DIR } = require("../uploads");
 const { extrairVencimento } = require("../pdfDueDate");
 const { PORTAL_ONLY_TOOL_ACCESS } = require("../companyTools");
 const { gerarSenhaInicial } = require("../senhaInicial");
+const { notificarDocumentosNovos } = require("../docNotify");
 
 const MESES_PADRAO = Number(process.env.GCLICK_SYNC_MESES || 6);
 const CONCORRENCIA_TAREFAS = 8;
@@ -115,7 +120,11 @@ async function mapaEmpresas(cnpjsNecessarios) {
   return { mapa, criadas };
 }
 
-/** Grava (ou atualiza) uma guia. Devolve 'criado' | 'atualizado' | 'sem-mudanca' | 'erro'. */
+/**
+ * Grava (ou atualiza) uma guia.
+ * Devolve `{ status, title, competencia }` — status: 'criado' | 'atualizado' | 'sem-mudanca' | 'erro'.
+ * `title`/`competencia` só importam para 'criado' (é o que alimenta o aviso de documento novo).
+ */
 async function gravarGuia(guia, companyId, { historico = false } = {}) {
   const cls = classificar(guia.arquivoNome, guia.atividadeNome, guia.obrigacaoNome);
   const docType = cls?.codigo || null;
@@ -131,9 +140,9 @@ async function gravarGuia(guia, companyId, { historico = false } = {}) {
 
   // Mesma versão já guardada: não rebaixa o PDF nem toca na linha.
   if (atual && atual.gclick_versao_em && atual.gclick_versao_em === (guia.respondidaEm || "")) {
-    return "sem-mudanca";
+    return { status: "sem-mudanca" };
   }
-  if (!guia.arquivoUrl) return "erro";
+  if (!guia.arquivoUrl) return { status: "erro" };
 
   const pdf = await client.baixarPdf(guia.arquivoUrl);
 
@@ -158,7 +167,7 @@ async function gravarGuia(guia, companyId, { historico = false } = {}) {
        String(guia.atividadeId || ""), guia.numVersoes || 1, atual.id]
     );
     removerPdf(atual.file_path);
-    return "atualizado";
+    return { status: "atualizado" };
   }
 
   // Documento novo entra JÁ LIBERADO: se o G-Click tem o arquivo pronto, o cliente
@@ -174,7 +183,7 @@ async function gravarGuia(guia, companyId, { historico = false } = {}) {
      crypto.randomBytes(24).toString("hex"), guia.respondidaEm || "",
      String(guia.atividadeId || ""), guia.numVersoes || 1, historico]
   );
-  return "criado";
+  return { status: "criado", title: titulo, competencia: guia.competencia || null };
 }
 
 /**
@@ -209,8 +218,21 @@ async function regularizarHistorico(competencias, tipos = null) {
  * Sincroniza as competências pedidas (padrão: últimos GCLICK_SYNC_MESES meses).
  * `cnpj` limita a uma empresa — usado na liberação, para trazer o dado fresco antes
  * de publicar sem varrer a base toda.
+ * `notificar` (padrão: liga sozinho fora de carga histórica) manda o WhatsApp de
+ * "documento novo" por empresa no fim — desligar é para carga em massa/histórica, onde
+ * o volume de documento "novo" não é chegada de verdade.
  */
-async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = null, historico = false, tipos = null } = {}) {
+async function sincronizar({
+  meses = MESES_PADRAO,
+  competencias = null,
+  cnpj = null,
+  historico = false,
+  tipos = null,
+  // Carga histórica nunca avisa (documento de arquivo, não chegada nova) — e quem chama
+  // pode desligar explicitamente também, caso da carga inicial de portal vazio (senão
+  // seria um WhatsApp por cliente avisando de meses de documento antigo de uma vez).
+  notificar = !historico,
+} = {}) {
   if (!client.isConfigured()) {
     return { ok: false, erro: "G-Click não configurado (GCLICK_CLIENT_ID/SECRET)" };
   }
@@ -221,6 +243,9 @@ async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = n
   const total = { criados: 0, atualizados: 0, semMudanca: 0, erros: 0, empresasCriadas: 0 };
   const comps = competencias || ultimasCompetencias(meses);
   const cnpjFiltro = cnpj ? String(cnpj).replace(/\D/g, "") : null;
+  // Documentos criados nesta rodada, agrupados por empresa — vira UM aviso por empresa
+  // no fim, não um por documento (senão dez guias no mesmo dia viram dez mensagens).
+  const novosPorEmpresa = new Map();
 
   try {
     // Carga completa também atualiza o espelho de clientes (novos e mudanças de
@@ -292,9 +317,12 @@ async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = n
         }
         try {
           const r = await gravarGuia(g, companyId, { historico });
-          if (r === "criado") total.criados++;
-          else if (r === "atualizado") total.atualizados++;
-          else if (r === "sem-mudanca") total.semMudanca++;
+          if (r.status === "criado") {
+            total.criados++;
+            if (!novosPorEmpresa.has(companyId)) novosPorEmpresa.set(companyId, []);
+            novosPorEmpresa.get(companyId).push({ title: r.title, competencia: r.competencia });
+          } else if (r.status === "atualizado") total.atualizados++;
+          else if (r.status === "sem-mudanca") total.semMudanca++;
           else total.erros++;
         } catch (err) {
           console.error("[sync] guia", g.chave, err.message);
@@ -329,6 +357,23 @@ async function sincronizar({ meses = MESES_PADRAO, competencias = null, cnpj = n
     if (liberados) {
       total.liberados = liberados;
       console.log(`[sync] ${liberados} documento(s) retido(s) liberado(s) automaticamente.`);
+    }
+
+    // Aviso de documento novo — direto do portal, sem depender do sistema de guias
+    // (ver docNotify.js). Sequencial (não Promise.all): reusa o mesmo teto/hora do
+    // envio de alertas de vencimento, e paralelizar N chamadas de uma vez estouraria
+    // esse teto de propósito.
+    if (notificar && novosPorEmpresa.size) {
+      total.avisos_enviados = 0;
+      total.avisos_nao_enviados = 0;
+      for (const [companyId, docs] of novosPorEmpresa) {
+        const r = await notificarDocumentosNovos(db, companyId, docs);
+        if (r.enviado) total.avisos_enviados++;
+        else {
+          total.avisos_nao_enviados++;
+          console.log(`[sync] aviso de documento novo não enviado (${companyId}): ${r.motivo}`);
+        }
+      }
     }
 
     ultimoResultado = {
@@ -367,7 +412,10 @@ function iniciarAgendador() {
           return;
         }
         console.log("[sync] carga inicial (portal vazio)...");
-        await sincronizar();
+        // Sem `notificar: false` aqui, todo cliente com guia nos últimos meses levaria
+        // um WhatsApp "documento novo" de uma vez só no primeiro boot — é histórico
+        // para quem está vendo agora, não chegada de verdade.
+        await sincronizar({ notificar: false });
       } catch (err) {
         console.error("[sync] carga inicial falhou:", err.message);
       }

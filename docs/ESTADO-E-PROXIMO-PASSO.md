@@ -147,6 +147,47 @@ num refactor anterior, referência ficou.
 
 ---
 
+## 3.5 Aviso de "documento novo" — resolvido em 12/08/2026
+
+Bug de arquitetura encontrado numa auditoria pedida pelo usuário ("certifique-se
+de que a lógica de envio é real"): o aviso de documento novo por WhatsApp
+**nunca disparava**, e nada no sistema acusava isso como erro.
+
+**Causa**: o contrato original dependia do sistema de guias (GCLICK) chamar
+`POST /api/fiscal/release` e, do lado de lá, decidir mandar o WhatsApp — o
+portal só devolvia um campo `avisar_cliente` de sinalização. Quando o portal
+passou a puxar e liberar documento sozinho (`gclick/sync.js`, direto na API
+do G-Click, sem depender do GCLICK), **ninguém mais chamava essa ponta** —
+e como o GCLICK está pausado a pedido do usuário, o lado que decidiria mandar
+a mensagem nunca rodava. Achado só de propósito: `/release` foi auditado, o
+código continuava sintaticamente correto, só que inerte.
+
+**Correção — o Portal manda o aviso sozinho, sem depender de mais nada**:
+- `api/src/docNotify.js` (novo) — `notificarDocumentosNovos(db, companyId,
+  documentos)`, reusa o MESMO limitador de envio de `alertasEnvio.js` (teto
+  de 180/hora, retry, trava contra mandar pro próprio número da instância) —
+  é a mesma instância de WhatsApp, não dois limitadores somando.
+- `gclick/sync.js` — cada sincronização acumula os documentos **realmente
+  novos** (`status: "criado"`) por empresa e manda UM aviso por empresa no
+  fim (não um por documento). Carga histórica e a carga inicial de portal
+  vazio **não avisam** (`notificar: false`) — senão seria um WhatsApp por
+  cliente avisando meses de documento antigo de uma vez.
+- Upload manual do escritório (`routes/deliverables.js`) também avisa, sem
+  bloquear a resposta HTTP (fire-and-forget).
+- `/api/fiscal/release` (`fiscalIngest.js`) continua existindo por
+  compatibilidade, mas hoje só teria efeito num resíduo de linha antiga
+  ainda retida — o caminho normal nem passa mais por ali.
+
+**Continua igual**: a preferência do cliente (`avisos_documentos_ativos`,
+desligada no portal dele) é respeitada do mesmo jeito, e o número de WhatsApp
+resolvido é o mesmo espelho já usado nos alertas de vencimento
+(`whatsappSql`/`JOIN_ESPELHO`, exportados de `alertas.js` para reuso).
+
+**Falta**: redeploy para pegar essas mudanças; sem redeploy, o gap descrito
+acima continua valendo em produção.
+
+---
+
 ## 4. Boletos Cora
 
 Sincronização automática (a cada 6h) da conta Cora do escritório para
@@ -363,7 +404,10 @@ api/src/
   extratoFinanceiro.js        parser dos totais agregados do extrato
   obrigacoes.js                catálogo de tributos + regra de vencimento
   alertas.js / alertasRegras.js  motor de marcação automática + texto do alerta
-  alertasEnvio.js              disparo por WhatsApp (uazapi.js)
+  alertasEnvio.js              disparo por WhatsApp (uazapi.js) — vencimento, lote diário
+  docNotify.js                  disparo por WhatsApp de "documento novo" — reusa o
+                                limitador de alertasEnvio.js; chamado por gclick/sync.js
+                                e pelo upload manual (deliverables.js)
   coraSync.js / cora.js        sincronização de boletos Cora
   chatCore.js                  regras de visibilidade/transição do chat (puro)
   chatEmail.js                 notificação por e-mail do chat

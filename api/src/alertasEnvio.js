@@ -57,6 +57,11 @@ function sobOTeto() {
   return carimbos.length < MAX_POR_HORA;
 }
 
+/** Registra um envio no teto/hora. Compartilhado com docNotify.js — é a mesma instância. */
+function marcarEnviado() {
+  carimbos.push(Date.now());
+}
+
 function portalUrl(caminho = "/") {
   const base = (process.env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
   return base ? `${base}${caminho}` : null;
@@ -141,7 +146,7 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, comp
 
     try {
       await enviarComRetry({ numero: v.numero, texto: m.texto });
-      carimbos.push(Date.now());
+      marcarEnviado();
       enviados += 1;
 
       await registrarEnvio(db, {
@@ -258,4 +263,11 @@ function iniciarAgendadorAlertas(db) {
   setTimeout(tique, 60 * 1000); // uma checagem logo após o arranque
 }
 
-module.exports = { enviarAlertasDoDia, iniciarAgendadorAlertas, horaSP };
+module.exports = {
+  enviarAlertasDoDia,
+  iniciarAgendadorAlertas,
+  horaSP,
+  enviarComRetry,
+  sobOTeto,
+  marcarEnviado,
+};

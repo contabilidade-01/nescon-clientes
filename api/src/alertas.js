@@ -663,4 +663,6 @@ module.exports = {
   falhasRecentes,
   MARCOS_FERIAS_DIAS,
   ehProLabore,
+  whatsappSql,
+  JOIN_ESPELHO,
 };
