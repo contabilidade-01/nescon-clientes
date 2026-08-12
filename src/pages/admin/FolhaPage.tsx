@@ -132,6 +132,10 @@ const FolhaPage = () => {
   // "" = carteira inteira. O painel é de gestão DE CADA CLIENTE — sem o seletor ele só
   // respondia a pergunta do escritório, e a pergunta de quem paga a folha é por empresa.
   const [empresa, setEmpresa] = useState("");
+  // Detalhamento por funcionário do 13º: fechado por padrão (é auditoria, não o número
+  // que o dia a dia precisa), mas precisa estar a um clique — é o que transforma "por
+  // que este total está estranho?" em resposta na hora, sem consulta ao banco.
+  const [mostrarDetalheDecimo, setMostrarDetalheDecimo] = useState(false);
 
   const empresas = useQuery({
     queryKey: ["admin-companies-all"],
@@ -435,6 +439,68 @@ const FolhaPage = () => {
               (empresa do Simples nos anexos I, II, III e V não recolhe cota patronal), e um
               percentual único daria número exato e errado para a maioria.
             </p>
+
+            {(decimo.data?.linhas?.length ?? 0) > 0 && (
+              <div className="pt-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-muted-foreground"
+                  onClick={() => setMostrarDetalheDecimo((v) => !v)}
+                >
+                  {mostrarDetalheDecimo ? "Ocultar" : "Ver"} detalhamento por funcionário
+                </Button>
+                {mostrarDetalheDecimo && (
+                  <div className="mt-2 overflow-x-auto rounded-md border">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50 text-muted-foreground">
+                        <tr>
+                          <th className="p-2 text-left font-medium">Funcionário</th>
+                          <th className="p-2 text-left font-medium">Admissão</th>
+                          <th className="p-2 text-right font-medium">Avos</th>
+                          <th className="p-2 text-right font-medium">Bruto</th>
+                          <th className="p-2 text-right font-medium">1ª parcela</th>
+                          <th className="p-2 text-right font-medium">2ª parcela</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {decimo.data?.linhas.map((l, i) => (
+                          <tr key={`${l.nome}-${i}`} className="border-t">
+                            <td className="p-2">{l.nome}</td>
+                            <td className="p-2 tabular-nums text-muted-foreground">
+                              {l.admissao
+                                ? new Date(`${l.admissao}T00:00:00`).toLocaleDateString("pt-BR")
+                                : "— (assume ano inteiro)"}
+                            </td>
+                            <td
+                              className={`p-2 text-right tabular-nums ${
+                                // Menos que 12 avos com admissão desconhecida seria bug da
+                                // fórmula; menos que 12 COM data é legítimo só se a pessoa
+                                // realmente entrou/saiu no meio do ano. Sinalizado para
+                                // conferência — não é veredito automático.
+                                l.avos < 12 ? "font-semibold text-amber-600 dark:text-amber-500" : ""
+                              }`}
+                            >
+                              {l.avos}/12
+                            </td>
+                            <td className="p-2 text-right tabular-nums">
+                              {l.sem_salario ? (
+                                <span className="text-amber-600 dark:text-amber-500">sem salário</span>
+                              ) : (
+                                brl(l.bruto)
+                              )}
+                            </td>
+                            <td className="p-2 text-right tabular-nums">{brl(l.primeira_parcela)}</td>
+                            <td className="p-2 text-right tabular-nums">{brl(l.segunda_parcela)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

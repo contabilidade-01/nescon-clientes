@@ -548,6 +548,23 @@ export interface FolhaProblemas {
   }>;
 }
 
+export interface DecimoTerceiroLinha {
+  nome: string;
+  /** 'YYYY-MM-DD', ou null quando a admissão não é conhecida (assume ano inteiro). */
+  admissao: string | null;
+  /** Avos no ano (0 a 12) — 12 = ano inteiro. Menos que isso costuma ser admissão no
+   * meio do ano; se não bater com a data real do funcionário, é sinal de cadastro
+   * desatualizado, não da fórmula. */
+  avos: number;
+  bruto: number | null;
+  primeira_parcela?: number;
+  inss_empregado?: number;
+  segunda_parcela?: number;
+  fgts?: number;
+  /** Sem salário na folha mais recente: entrou na conta do "sem_salario", não no bruto. */
+  sem_salario: boolean;
+}
+
 export interface DecimoTerceiro {
   ano: number;
   funcionarios: number;
@@ -559,6 +576,8 @@ export interface DecimoTerceiro {
   inss_empregado: number;
   fgts: number;
   custo_total: number;
+  /** Detalhamento por funcionário — a mesma soma acima, aberta pessoa a pessoa. */
+  linhas: DecimoTerceiroLinha[];
 }
 
 export interface BackupConfig {
