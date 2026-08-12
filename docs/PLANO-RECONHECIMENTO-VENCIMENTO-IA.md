@@ -37,6 +37,17 @@ quando o PDF **diverge** do que já está gravado — quando bate, segue em sil�
   atual" / "Trocar para a nova" nesse caso (mesmos endpoints de
   aprovar/rejeitar — só o texto muda).
 
+### Bug de produção corrigido em 12/08/2026 — timeout do nginx
+
+"Rodar agora" rodava a varredura de forma SÍNCRONA dentro do request. Numa
+competência com muitos documentos (ou com IA habilitada, até 30s por
+documento) passava dos 60s do timeout padrão do nginx — o nginx devolvia a
+própria página de erro dele (HTML) no lugar da resposta da API, e o front
+mostrava "A API não respondeu em JSON (foi recebido HTML)". Corrigido:
+`POST /admin/vencimentos-sugeridos/rodar` agora dispara em segundo plano e
+volta na hora (202); `GET .../status` para o painel acompanhar — mesmo
+padrão já usado pela sincronização com o G-Click (`sync.estaRodando()`).
+
 ### O que ficou de fora desta leva (não bloqueante, ver §6 perguntas em aberto)
 
 - Rotina não roda sozinha em intervalo (é sob demanda, botão "Rodar agora") — se quiser

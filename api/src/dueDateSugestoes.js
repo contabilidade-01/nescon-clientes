@@ -11,6 +11,12 @@
  *
  * Boletos Cora ficam de fora: due_date já vem direto da API da Cora, mais confiável
  * que reler o PDF, e nem sempre têm arquivo local (alguns só têm `pdf_url` externo).
+ *
+ * Pode demorar (PDF grande, muitos documentos, chamada de IA) — quem chama (admin.js)
+ * dispara em segundo plano e usa `estaRodando()`/`ultimaExecucao()` para o painel
+ * acompanhar, mesmo padrão de `gclick/sync.js`. Rodar de forma síncrona dentro do
+ * request estourava o timeout do nginx (60s padrão) e devolvia a página de erro dele
+ * em vez da resposta da API — sintoma: "A API não respondeu em JSON (foi recebido HTML)".
  */
 const fs = require("fs");
 const { resolveUploadPath } = require("./uploads");
@@ -18,6 +24,16 @@ const { extrairVencimento, extrairVencimentoComIa } = require("./pdfDueDate");
 const { getSetting } = require("./appSettings");
 
 const LIMITE_PADRAO = 300;
+
+let emExecucao = false;
+let ultimoResultado = null;
+
+function estaRodando() {
+  return emExecucao;
+}
+function ultimaExecucao() {
+  return ultimoResultado;
+}
 
 /** 'AAAA-MM' -> primeiro dia do mês, para comparar com created_at de quem não tem competencia. */
 function competenciaParaData(competencia) {
@@ -30,6 +46,20 @@ async function varrerVencimentos(db, { desde, limite = LIMITE_PADRAO } = {}) {
   if (!desde || !/^\d{4}-\d{2}$/.test(desde)) {
     throw new Error("Parâmetro 'desde' deve estar no formato AAAA-MM");
   }
+  if (emExecucao) throw new Error("Já existe uma varredura em andamento");
+
+  emExecucao = true;
+  const inicio = Date.now();
+  try {
+    const resultado = await executarVarredura(db, { desde, limite });
+    ultimoResultado = { ...resultado, desde, segundos: Math.round((Date.now() - inicio) / 1000), em: new Date().toISOString() };
+    return resultado;
+  } finally {
+    emExecucao = false;
+  }
+}
+
+async function executarVarredura(db, { desde, limite }) {
   const desdeData = competenciaParaData(desde);
 
   // Um documento só é reprocessado enquanto não tiver sugestão decidida — depois de
@@ -111,4 +141,4 @@ async function varrerVencimentos(db, { desde, limite = LIMITE_PADRAO } = {}) {
   };
 }
 
-module.exports = { varrerVencimentos };
+module.exports = { varrerVencimentos, estaRodando, ultimaExecucao };

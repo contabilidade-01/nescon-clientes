@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle, CalendarSearch, Check, Loader2, Sparkles, X } from "lucide-react";
@@ -54,14 +54,38 @@ const VencimentosSugeridosPage = () => {
     queryFn: () => api.vencimentosSugeridos.list(),
   });
 
+  // A varredura roda em segundo plano (pode levar minutos com muitos documentos ou IA
+  // ligada) — rodar de forma síncrona no request estourava o timeout do nginx. O painel
+  // acompanha aqui, mesmo padrão da sincronização com o G-Click.
+  const { data: status } = useQuery({
+    queryKey: ["admin-vencimentos-sugeridos-status"],
+    queryFn: () => api.vencimentosSugeridos.status(),
+    refetchInterval: (q) => (q.state.data?.rodando ? 3000 : false),
+  });
+
+  const rodandoAntes = useRef(false);
+  useEffect(() => {
+    const rodando = Boolean(status?.rodando);
+    if (rodandoAntes.current && !rodando && status?.ultima) {
+      const u = status.ultima;
+      toast.success(
+        `Varredura concluída: ${u.processados} documento(s) analisados, ${u.confirmados} confirmado(s), ` +
+          `${u.sugestoes_criadas} para revisar.`
+      );
+      queryClient.invalidateQueries({ queryKey: ["admin-vencimentos-sugeridos"] });
+    }
+    rodandoAntes.current = rodando;
+  }, [status, queryClient]);
+
   const rodar = useMutation({
     mutationFn: () => api.vencimentosSugeridos.rodar(desde),
     onSuccess: (r) => {
-      toast.success(
-        `Varredura concluída: ${r.processados} documento(s) analisados, ${r.confirmados} confirmado(s), ` +
-          `${r.sugestoes_criadas} para revisar.`
+      toast.success(r.message);
+      // Passa a poluir o status até o backend marcar rodando=true.
+      setTimeout(
+        () => queryClient.invalidateQueries({ queryKey: ["admin-vencimentos-sugeridos-status"] }),
+        500
       );
-      queryClient.invalidateQueries({ queryKey: ["admin-vencimentos-sugeridos"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -84,6 +108,8 @@ const VencimentosSugeridosPage = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const rodando = Boolean(status?.rodando) || rodar.isPending;
+
   return (
     <AdminLayout
       title="Vencimentos sugeridos"
@@ -99,23 +125,35 @@ const VencimentosSugeridosPage = () => {
               Varre documentos a partir da competência escolhida (nunca o histórico inteiro) e confere o
               vencimento de cada um contra o PDF. Primeiro tenta o rótulo do documento; se não achar, tenta a
               IA configurada em <span className="font-medium">Configuração de IA</span>, quando habilitada
-              para esta tarefa. Boletos Cora ficam de fora — a data deles já vem direto da Cora.
+              para esta tarefa. Boletos Cora ficam de fora — a data deles já vem direto da Cora. Roda em
+              segundo plano — pode fechar esta aba que a varredura continua.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex items-end gap-3">
-            <div>
-              <Label>A partir da competência</Label>
-              <Input
-                type="month"
-                value={desde}
-                onChange={(e) => setDesde(e.target.value)}
-                className="mt-1 max-w-[180px]"
-              />
+          <CardContent className="space-y-3">
+            <div className="flex items-end gap-3">
+              <div>
+                <Label>A partir da competência</Label>
+                <Input
+                  type="month"
+                  value={desde}
+                  onChange={(e) => setDesde(e.target.value)}
+                  className="mt-1 max-w-[180px]"
+                  disabled={rodando}
+                />
+              </div>
+              <Button onClick={() => rodar.mutate()} disabled={rodando}>
+                {rodando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {rodando ? "Rodando..." : "Rodar agora"}
+              </Button>
             </div>
-            <Button onClick={() => rodar.mutate()} disabled={rodar.isPending}>
-              {rodar.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Rodar agora
-            </Button>
+            {status?.ultima && (
+              <p className="text-xs text-muted-foreground">
+                Última varredura ({status.ultima.desde} em diante): {status.ultima.processados} analisados,{" "}
+                {status.ultima.confirmados} confirmados, {status.ultima.sugestoes_criadas} para revisar,{" "}
+                {status.ultima.sem_vencimento} sem vencimento
+                {status.ultima.erros > 0 ? `, ${status.ultima.erros} erro(s)` : ""} — {status.ultima.segundos}s.
+              </p>
+            )}
           </CardContent>
         </Card>
 

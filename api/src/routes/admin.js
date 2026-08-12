@@ -29,7 +29,8 @@ const coraClient = require("../cora");
 const { TIPOS: TIPOS_GCLICK } = require("../gclick/guides");
 const { gerarSenhaInicial } = require("../senhaInicial");
 const { enviarTexto } = require("../uazapi");
-const { varrerVencimentos } = require("../dueDateSugestoes");
+const dueDateSugestoes = require("../dueDateSugestoes");
+const { varrerVencimentos } = dueDateSugestoes;
 const fs = require("fs");
 
 function adminOnly(req, res, next) {
@@ -1399,19 +1400,32 @@ router.post("/config/ia/testar", adminOnly, async (req, res) => {
 });
 
 /**
- * POST /admin/vencimentos-sugeridos/rodar — varre deliverables sem due_date a partir de
- * uma competência e enfileira sugestões (determinístico → IA, se habilitada). Nunca
- * aplica due_date sozinha.
+ * POST /admin/vencimentos-sugeridos/rodar — dispara a varredura EM SEGUNDO PLANO e volta
+ * na hora. Rodar de forma síncrona no request estourava o timeout do nginx (60s) em
+ * competências com muitos documentos ou com IA habilitada — o nginx devolvia a própria
+ * página de erro (HTML) no lugar da resposta da API. Painel acompanha via GET .../status,
+ * mesmo padrão de /sync-gclick.
  */
 router.post("/vencimentos-sugeridos/rodar", adminOnly, async (req, res) => {
   const { desde, limite } = req.body || {};
-  try {
-    const resultado = await varrerVencimentos(db, { desde, limite });
-    res.json(resultado);
-  } catch (err) {
-    console.error("[admin] vencimentos-sugeridos/rodar:", err.message);
-    res.status(400).json({ error: err.message });
+  if (!desde || !/^\d{4}-\d{2}$/.test(desde)) {
+    return res.status(400).json({ error: "Parâmetro 'desde' deve estar no formato AAAA-MM" });
   }
+  if (dueDateSugestoes.estaRodando()) {
+    return res.status(409).json({ error: "Já existe uma varredura em andamento." });
+  }
+  varrerVencimentos(db, { desde, limite }).catch((e) =>
+    console.error("[admin] vencimentos-sugeridos/rodar:", e.message)
+  );
+  res.status(202).json({ message: "Varredura iniciada." });
+});
+
+/**
+ * GET /admin/vencimentos-sugeridos/status — para o painel acompanhar a varredura em
+ * segundo plano (mesmo padrão de /sync-gclick/status).
+ */
+router.get("/vencimentos-sugeridos/status", adminOnly, (_req, res) => {
+  res.json({ rodando: dueDateSugestoes.estaRodando(), ultima: dueDateSugestoes.ultimaExecucao() });
 });
 
 /**

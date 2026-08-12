@@ -1807,14 +1807,26 @@ export const api = {
           company_cnpj: string;
         }>
       >("/admin/vencimentos-sugeridos"),
+    /** Dispara em segundo plano — acompanhar pelo status(), não pelo retorno desta chamada. */
     rodar: (desde: string, limite?: number) =>
+      request<{ message: string }>("/admin/vencimentos-sugeridos/rodar", {
+        method: "POST",
+        body: JSON.stringify({ desde, limite }),
+      }),
+    status: () =>
       request<{
-        processados: number;
-        sugestoes_criadas: number;
-        confirmados: number;
-        sem_vencimento: number;
-        erros: number;
-      }>("/admin/vencimentos-sugeridos/rodar", { method: "POST", body: JSON.stringify({ desde, limite }) }),
+        rodando: boolean;
+        ultima: {
+          desde: string;
+          processados: number;
+          sugestoes_criadas: number;
+          confirmados: number;
+          sem_vencimento: number;
+          erros: number;
+          segundos: number;
+          em: string;
+        } | null;
+      }>("/admin/vencimentos-sugeridos/status"),
     aprovar: (id: string) =>
       request<{ ok: boolean }>(`/admin/vencimentos-sugeridos/${id}/aprovar`, { method: "POST" }),
     rejeitar: (id: string) =>
