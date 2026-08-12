@@ -11,6 +11,31 @@
  */
 const { getSetting, getSecretSetting } = require("./appSettings");
 
+/**
+ * Interpreta a resposta de texto do modelo como JSON, tolerante ao que os modelos
+ * costumam fazer mesmo instruídos a devolver "só JSON":
+ *  - embrulhar em cerca markdown (```json ... ``` ou ``` ... ```);
+ *  - preceder/seguir de texto explicativo ("Aqui está: {...}").
+ * Sem isso, uma resposta perfeitamente correta embrulhada em ```json quebrava com
+ * "Unexpected token '`'" e a chamada inteira era descartada como falha.
+ */
+function parseJsonDoModelo(texto) {
+  const bruto = String(texto || "").trim();
+  // 1) Tira a cerca markdown, se houver (```json\n...\n``` ou ```\n...\n```).
+  const semCerca = bruto.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  try {
+    return JSON.parse(semCerca);
+  } catch {
+    // 2) Último recurso: pega do primeiro { até o último } (texto antes/depois do JSON).
+    const ini = semCerca.indexOf("{");
+    const fim = semCerca.lastIndexOf("}");
+    if (ini !== -1 && fim > ini) {
+      return JSON.parse(semCerca.slice(ini, fim + 1));
+    }
+    throw new Error(`resposta da IA não é JSON: ${bruto.slice(0, 80)}`);
+  }
+}
+
 async function obterChaveApi(provider, db) {
   const chaveEnv = {
     claude: process.env.ANTHROPIC_API_KEY,
@@ -50,7 +75,7 @@ async function chamarClaude(prompt, apiKey, timeout) {
 
     const data = await res.json();
     const content = data.content[0]?.text || "";
-    return JSON.parse(content);
+    return parseJsonDoModelo(content);
   } finally {
     clearTimeout(timeoutId);
   }
@@ -81,7 +106,7 @@ async function chamarGemini(prompt, apiKey, timeout) {
 
     const data = await res.json();
     const content = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    return JSON.parse(content);
+    return parseJsonDoModelo(content);
   } finally {
     clearTimeout(timeoutId);
   }
@@ -114,7 +139,7 @@ async function chamarChatGpt(prompt, apiKey, timeout) {
 
     const data = await res.json();
     const content = data.choices[0]?.message?.content || "";
-    return JSON.parse(content);
+    return parseJsonDoModelo(content);
   } finally {
     clearTimeout(timeoutId);
   }
