@@ -221,14 +221,25 @@ async function sincronizar({ cnpjFiltro = null, de = null, ate = null } = {}) {
       if (!cnpj || cnpj.length < 11) return; // CNPJ inválido
 
       try {
-        const result = await cora.searchInvoices(cnpj, { start, end });
-        const items = result?.items || [];
+        // Paginar: a API Cora tem limite de 200 por página
+        let page = 1;
+        let allItems = [];
+        while (true) {
+          const result = await cora.searchInvoices(cnpj, { start, end, page, perPage: 200 });
+          const items = result?.items || [];
+          allItems.push(...items);
+          // Se veio menos que o máximo, não há mais páginas
+          if (items.length < 200) break;
+          page++;
+          // Segurança: máximo 20 páginas (4000 boletos por empresa é absurdo)
+          if (page > 20) break;
+        }
 
-        if (!items.length) return;
+        if (!allItems.length) return;
 
         total.empresasProcessadas++;
 
-        for (const boleto of items) {
+        for (const boleto of allItems) {
           if (!boleto.id) continue;
           // Ignorar drafts que não foram emitidos
           if (boleto.status === "DRAFT" || boleto.status === "RECURRENCE_DRAFT") continue;
