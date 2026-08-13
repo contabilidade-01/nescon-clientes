@@ -527,6 +527,26 @@ router.delete("/cora/boletos/:id", requireArea("sincronizacao"), async (req, res
   }
 });
 
+/**
+ * POST /admin/cora/boletos/cancelar-atrasados — exclui todos os boletos Cora vencidos
+ * e não pagos. Para quando a sync não funciona e precisa limpar a fila manualmente.
+ */
+router.post("/cora/boletos/cancelar-atrasados", requireArea("sincronizacao"), async (req, res) => {
+  try {
+    const { rowCount } = await db.query(
+      `DELETE FROM deliverables
+        WHERE source = 'cora'
+          AND status IS DISTINCT FROM 'paid'
+          AND cancelado IS NOT TRUE
+          AND due_date < CURRENT_DATE`
+    );
+    res.json({ ok: true, excluidos: rowCount });
+  } catch (err) {
+    console.error("[admin] cancelar atrasados cora:", err.message);
+    res.status(500).json({ error: "Erro ao limpar boletos atrasados" });
+  }
+});
+
 /** Os tipos de documento que o G-Click entrega — para a tela montar a escolha. */
 router.get("/sync-gclick/tipos", requireArea("sincronizacao"), (_req, res) => {
   res.json(
