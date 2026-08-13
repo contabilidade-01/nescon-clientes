@@ -232,7 +232,7 @@ router.get("/config", async (_req, res) => {
 });
 
 router.put("/config", async (req, res) => {
-  const { envio_automatico, hora, escritorio_cnpj } = req.body || {};
+  const { envio_automatico, hora, escritorio_cnpj, boleto_dias_antes, boleto_cobranca_dias } = req.body || {};
   if (envio_automatico !== undefined && typeof envio_automatico !== "boolean") {
     return res.status(400).json({ error: "envio_automatico deve ser booleano" });
   }
@@ -243,8 +243,17 @@ router.put("/config", async (req, res) => {
     const so = String(escritorio_cnpj).replace(/\D/g, "");
     if (so && so.length !== 14) return res.status(400).json({ error: "CNPJ deve ter 14 dígitos" });
   }
+  if (boleto_dias_antes !== undefined && (!Number.isInteger(boleto_dias_antes) || boleto_dias_antes < 0 || boleto_dias_antes > 30)) {
+    return res.status(400).json({ error: "boleto_dias_antes deve ser um inteiro de 0 a 30" });
+  }
+  if (boleto_cobranca_dias !== undefined) {
+    const lista = Array.isArray(boleto_cobranca_dias) ? boleto_cobranca_dias : [];
+    if (!Array.isArray(boleto_cobranca_dias) || lista.some((d) => !Number.isInteger(d) || d < 1 || d > 90)) {
+      return res.status(400).json({ error: "boleto_cobranca_dias deve ser uma lista de inteiros de 1 a 90" });
+    }
+  }
   try {
-    res.json(await salvarConfig(db, { envio_automatico, hora, escritorio_cnpj }));
+    res.json(await salvarConfig(db, { envio_automatico, hora, escritorio_cnpj, boleto_dias_antes, boleto_cobranca_dias }));
   } catch (err) {
     console.error("[alertas] salvar config:", err.message);
     res.status(500).json({ error: "Erro ao salvar a configuração" });

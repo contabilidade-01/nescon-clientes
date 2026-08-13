@@ -17,6 +17,7 @@ const {
   montarMensagemAlerta,
 } = require("./alertasRegras");
 const { hojeSP, somarDias } = require("./diasBancarios");
+const { lerConfig } = require("./alertasConfig");
 const { trechoDeIncentivo } = require("./engagement");
 const numeroWpp = require("./whatsappNumero");
 
@@ -238,28 +239,17 @@ const MARCOS_FERIAS_DIAS = [90, 60, 30, 15];
  * Não vira obrigação de catálogo (`obrigacoes.js`) de propósito: catálogo é regra fiscal
  * recorrente, com vencimento derivado do calendário. Boleto tem data própria, vinda da
  * Cora — quem manda é a linha em `deliverables`, não uma regra.
+ *
+ * A antecedência do lembrete e os marcos de cobrança do vencido agora vêm da TELA
+ * (alertasConfig.js: `boleto_dias_antes` e `boleto_cobranca_dias`), lidos em runtime
+ * dentro de `previsao`. O ambiente (ALERTAS_BOLETO_*) segue como valor inicial/padrão.
+ *
+ * Cobrança do boleto VENCIDO em MARCOS (ex.: 3, 10 e 30 dias), não em janela ("todo dia
+ * enquanto vencido"): janela mandaria a mesma cobrança todo santo dia, e o cliente ou
+ * bloqueia o número ou ignora o canal — pior do que não cobrar. Três toques cobrem o
+ * esquecimento, a segunda chance e o caso que já virou cobrança de verdade; daí em diante
+ * é assunto para uma pessoa, não para uma rotina.
  */
-const BOLETO_AVISAR_DIAS_ANTES = Number(process.env.ALERTAS_BOLETO_DIAS_ANTES ?? 1);
-
-/**
- * Cobrança do boleto VENCIDO: marcos, em dias APÓS o vencimento.
- *
- * Sem isto o aviso só saía na véspera e o boleto que vencia ficava em silêncio para
- * sempre — ou seja, justamente o que precisa de cobrança era o único que nunca era
- * cobrado, e a régua dependia de alguém lembrar de olhar a tela.
- *
- * Marcos, e não janela ("todo dia enquanto estiver vencido"), pela mesma razão do aviso
- * de férias: janela mandaria a mesma cobrança todo santo dia, e o cliente ou bloqueia o
- * número ou passa a ignorar o canal — que é pior do que não cobrar.
- *
- * Três toques (3, 10 e 30 dias) cobrem o esquecimento, a segunda chance e o caso que já
- * virou conversa de cobrança de verdade; daí em diante é assunto para uma pessoa, não
- * para uma rotina.
- */
-const BOLETO_COBRANCA_DIAS_DEPOIS = (process.env.ALERTAS_BOLETO_COBRANCA_DIAS || "3,10,30")
-  .split(",")
-  .map((d) => Number(d.trim()))
-  .filter((d) => Number.isFinite(d) && d > 0);
 
 /**
  * Funcionários cujo limite de gozo cai exatamente num dos marcos.
@@ -325,6 +315,10 @@ async function feriasPorAvisar(db, { hoje = null } = {}) {
 async function previsao(db, { data = null, simular = true } = {}) {
   const hoje = data || hojeSP();
   const permitidos = [];
+
+  // Cadência do boleto vem da tela (alertasConfig), não mais de constante de ambiente.
+  const { boleto_dias_antes: BOLETO_AVISAR_DIAS_ANTES, boleto_cobranca_dias: BOLETO_COBRANCA_DIAS_DEPOIS } =
+    await lerConfig(db);
 
   const { rows: empresas } = await db.query(
     `SELECT c.id, c.name, c.cnpj, ${whatsappSql("c")} AS whatsapp, c.incentivo_ativo,

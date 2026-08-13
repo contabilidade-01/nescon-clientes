@@ -330,8 +330,15 @@ const AlertasPage = () => {
   });
 
   const salvarConfig = useMutation({
-    mutationFn: (v: Partial<{ envio_automatico: boolean; hora: number; escritorio_cnpj: string }>) =>
-      api.alertas.salvarConfig(v),
+    mutationFn: (
+      v: Partial<{
+        envio_automatico: boolean;
+        hora: number;
+        escritorio_cnpj: string;
+        boleto_dias_antes: number;
+        boleto_cobranca_dias: number[];
+      }>
+    ) => api.alertas.salvarConfig(v),
     onSuccess: () => {
       toast.success("Configuração salva.");
       queryClient.invalidateQueries({ queryKey: ["alertas", "config"] });
@@ -603,6 +610,58 @@ const AlertasPage = () => {
                     }
                   }}
                 />
+              </div>
+
+              {/* Cadência de cobrança do BOLETO (Cora). Antes só existia em variável de
+                  ambiente — agora é ajustável aqui. */}
+              <div className="border-t pt-4 space-y-3">
+                <p className="text-sm font-medium">Cobrança de boleto (Cora)</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Label htmlFor="boleto-dias-antes" className="font-normal text-sm">
+                    Lembrete
+                  </Label>
+                  <Input
+                    id="boleto-dias-antes"
+                    type="number"
+                    min={0}
+                    max={30}
+                    className="h-9 w-20"
+                    defaultValue={config.data?.boleto_dias_antes ?? 1}
+                    onBlur={(e) => {
+                      const d = Number(e.target.value);
+                      if (Number.isInteger(d) && d >= 0 && d <= 30 && d !== config.data?.boleto_dias_antes) {
+                        salvarConfig.mutate({ boleto_dias_antes: d });
+                      }
+                    }}
+                  />
+                  <span className="text-sm text-muted-foreground">dia(s) antes do vencimento (0 = sem lembrete)</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Label htmlFor="boleto-cobranca-dias" className="font-normal text-sm">
+                    Cobrar o vencido em
+                  </Label>
+                  <Input
+                    id="boleto-cobranca-dias"
+                    className="h-9 w-40"
+                    placeholder="3, 10, 30"
+                    defaultValue={(config.data?.boleto_cobranca_dias ?? []).join(", ")}
+                    onBlur={(e) => {
+                      const dias = Array.from(
+                        new Set(
+                          e.target.value
+                            .split(",")
+                            .map((s) => parseInt(s.trim(), 10))
+                            .filter((n) => Number.isInteger(n) && n >= 1 && n <= 90)
+                        )
+                      ).sort((a, b) => a - b);
+                      const atual = config.data?.boleto_cobranca_dias ?? [];
+                      if (dias.join(",") !== atual.join(",")) {
+                        salvarConfig.mutate({ boleto_cobranca_dias: dias });
+                      }
+                    }}
+                  />
+                  <span className="text-sm text-muted-foreground">dia(s) após o vencimento (vazio = não cobrar)</span>
+                </div>
               </div>
             </CardContent>
           </Card>
