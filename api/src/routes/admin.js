@@ -1518,7 +1518,33 @@ router.post("/vencimentos-sugeridos/:id/rejeitar", adminOnly, async (req, res) =
 });
 
 /**
- * Envia acesso (senha provisória) por WhatsApp para empresas selecionadas ou todas.
+ * POST /admin/vencimentos-sugeridos/rejeitar-ferias — rejeita em lote todas as sugestões
+ * pendentes que vieram de Programação de Férias (erro de leituras anteriores ao filtro).
+ */
+router.post("/vencimentos-sugeridos/rejeitar-ferias", adminOnly, async (req, res) => {
+  try {
+    const { rowCount } = await db.query(
+      `UPDATE due_date_sugestoes s
+          SET status = 'rejeitada', decidido_em = now(), decidido_por = $1
+        WHERE s.status = 'pendente'
+          AND EXISTS (
+            SELECT 1 FROM deliverables d
+             WHERE d.id = s.deliverable_id
+               AND (d.file_name ILIKE '%Programa__o de F_rias%'
+                 OR d.title ILIKE '%Programa__o de F_rias%'
+                 OR d.file_name ILIKE '%Programacao de Ferias%'
+                 OR d.title ILIKE '%Programacao de Ferias%')
+          )`,
+      [req.admin.id]
+    );
+    res.json({ ok: true, rejeitadas: rowCount });
+  } catch (err) {
+    console.error("[admin] rejeitar-ferias:", err.message);
+    res.status(500).json({ error: "Erro ao rejeitar sugestões de férias" });
+  }
+});
+
+/**
  *
  * Fluxo: gera senha aleatória → salva hash + must_change_password → envia mensagem.
  * A senha expira em 30 dias (campo password_expires_at). No primeiro login o cliente
