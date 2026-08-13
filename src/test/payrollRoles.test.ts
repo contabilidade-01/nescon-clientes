@@ -3,7 +3,7 @@
  * esconder de quem tem funcionário seria tirar um serviço contratado da vista.
  */
 import { describe, it, expect } from "vitest";
-import { ehProLabore, apenasFuncionarios } from "../../api/src/payrollRoles.js";
+import { ehProLabore, apenasFuncionariosFerias } from "../../api/src/payrollRoles.js";
 
 describe("ehProLabore", () => {
   it("reconhece as formas que aparecem no extrato", () => {
@@ -36,14 +36,19 @@ describe("ehProLabore", () => {
   });
 });
 
-describe("apenasFuncionarios", () => {
+describe("apenasFuncionariosFerias", () => {
   it("empresa só com sócio fica sem funcionário", () => {
     const lista = [{ cargo: "SOCIO ADMINISTRADOR" }, { cargo: "DIRETORA" }];
-    expect(apenasFuncionarios(lista)).toHaveLength(0);
+    expect(apenasFuncionariosFerias(lista)).toHaveLength(0);
   });
 
   it("mistura de sócio e celetista devolve só o celetista", () => {
     const lista = [{ cargo: "SOCIO" }, { cargo: "COZINHEIRA" }, { cargo: null }];
-    expect(apenasFuncionarios(lista)).toHaveLength(2);
+    expect(apenasFuncionariosFerias(lista)).toHaveLength(2);
+  });
+
+  it("estagiário TEM férias (entra na lista, diferente do 13º)", () => {
+    const lista = [{ cargo: "AUX ADMINISTRATIVO", vinculo: "Estagiário" }];
+    expect(apenasFuncionariosFerias(lista)).toHaveLength(1);
   });
 });

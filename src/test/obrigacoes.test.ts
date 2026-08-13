@@ -21,7 +21,13 @@ describe("catálogo", () => {
   });
 
   it("só as automáticas têm gatilho, e o gatilho é conhecido", () => {
-    const validos = [null, "funcionario", "funcionario_ou_prolabore", "das_no_portal"];
+    const validos = [
+      null,
+      "funcionario",
+      "funcionario_ou_prolabore",
+      "funcionario_ou_estagiario",
+      "das_no_portal",
+    ];
     for (const o of OBRIGACOES) expect(validos).toContain(o.auto);
   });
 
