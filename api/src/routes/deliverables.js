@@ -16,7 +16,10 @@ const { companyHasTool } = require("../middleware/companyToolAccess");
 const { validateUUID, validateDate, validateString } = require("../middleware/validate");
 const { uploadPdf, resolveUploadPath, removeUploadFile } = require("../uploads");
 const { recordAccess } = require("../deliverableAccess");
-const { extrairVencimento } = require("../pdfDueDate");
+const { extrairVencimento, extrairVencimentoComIa } = require("../pdfDueDate");
+const { vencimentoPorRegra, temRegraFixa } = require("../vencimentoRegra");
+const { classificar } = require("../gclick/guides");
+const { getSetting } = require("../appSettings");
 const { notificarDocumentosNovos } = require("../docNotify");
 const {
   CATEGORIES,
@@ -130,7 +133,7 @@ router.use(authMiddleware);
 /** Upload manual do escritório (contratos, relatórios, folha fora do fluxo automático). */
 router.post("/", adminOnly, uploadPdf.single("file"), async (req, res) => {
   try {
-    const { company_id, category, doc_type, title, competencia, due_date } = req.body;
+    const { company_id, category, doc_type, title, competencia, due_date, usar_ia } = req.body;
     const file = req.file;
 
     if (!file) return res.status(400).json({ error: "Arquivo obrigatório" });
@@ -151,17 +154,47 @@ router.post("/", adminOnly, uploadPdf.single("file"), async (req, res) => {
       return res.status(404).json({ error: "Empresa não encontrada" });
     }
 
-    // Guia/boleto sem data informada: tenta ler do próprio PDF. Se não achar com
-    // confiança, fica sem vencimento (não entra no calendário) e o admin corrige.
+    // Identifica o tipo, se o admin não informou: é o que decide se o documento é do
+    // núcleo (FGTS/DAS/INSS-DCTFWeb) e, portanto, se a regra manda no vencimento.
+    let resolvedDocType = doc_type || null;
+    if (!resolvedDocType && (category === "guia" || category === "boleto")) {
+      const cls = classificar(title, file.originalname);
+      if (cls) resolvedDocType = cls.codigo;
+    }
+
+    // Vencimento, na mesma ordem de confiança do sync automático:
+    //   1. data digitada pelo admin — respeitada sempre;
+    //   2. REGRA, se o documento é núcleo e há competência (dia fixo em lei);
+    //   3. leitura determinística do PDF;
+    //   4. IA — só quando o admin pede (usar_ia) e a IA está ligada nas configurações.
+    // Sem nenhum dos quatro: fica sem vencimento (não entra no calendário) e o admin
+    // informa a data à mão. `origem_vencimento` volta ao front para ele saber o que
+    // oferecer (ex.: botão "descobrir com IA" quando nada foi encontrado).
     let dueDate = due_date || null;
-    let dueDateFromPdf = false;
+    let origemVencimento = due_date ? "manual" : null;
     if (!dueDate && (category === "guia" || category === "boleto")) {
-      const fullPath = resolveUploadPath(file.filename);
-      if (fullPath) {
-        const lido = await extrairVencimento(fs.readFileSync(fullPath));
-        if (lido) {
-          dueDate = lido;
-          dueDateFromPdf = true;
+      const porRegra = vencimentoPorRegra(resolvedDocType, competencia);
+      if (porRegra) {
+        dueDate = porRegra;
+        origemVencimento = "regra";
+      } else {
+        const fullPath = resolveUploadPath(file.filename);
+        if (fullPath) {
+          const buffer = fs.readFileSync(fullPath);
+          const lido = await extrairVencimento(buffer);
+          if (lido) {
+            dueDate = lido;
+            origemVencimento = "pdf";
+          } else if (usar_ia === true || usar_ia === "true") {
+            const iaHabilitada = (await getSetting(db, "ia_vencimento_habilitada")) === "true";
+            if (iaHabilitada) {
+              const viaIa = await extrairVencimentoComIa(buffer, db);
+              if (viaIa && viaIa.data) {
+                dueDate = viaIa.data;
+                origemVencimento = "ia";
+              }
+            }
+          }
         }
       }
     }
@@ -177,7 +210,7 @@ router.post("/", adminOnly, uploadPdf.single("file"), async (req, res) => {
       [
         company_id,
         category,
-        doc_type || null,
+        resolvedDocType,
         title.trim(),
         competencia || null,
         dueDate,
@@ -192,7 +225,14 @@ router.post("/", adminOnly, uploadPdf.single("file"), async (req, res) => {
       (err) => console.error("[docNotify] upload manual:", err.message)
     );
 
-    res.status(201).json({ ...rows[0], due_date_from_pdf: dueDateFromPdf });
+    // `due_date_from_pdf` mantido por compatibilidade; `origem_vencimento` é o novo,
+    // mais rico ('manual'|'regra'|'pdf'|'ia'|null).
+    res.status(201).json({
+      ...rows[0],
+      due_date_from_pdf: origemVencimento === "pdf",
+      origem_vencimento: origemVencimento,
+      doc_type_detectado: resolvedDocType,
+    });
   } catch (err) {
     console.error(err);
     if (req.file) removeUploadFile(req.file.filename);

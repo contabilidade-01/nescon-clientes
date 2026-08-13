@@ -30,6 +30,7 @@ export function AdminDeliverableUpload({ companyId, companyName }: Props) {
   const [docType, setDocType] = useState("");
   const [competencia, setCompetencia] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [usarIa, setUsarIa] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -40,6 +41,7 @@ export function AdminDeliverableUpload({ companyId, companyName }: Props) {
     setDocType("");
     setCompetencia("");
     setDueDate("");
+    setUsarIa(false);
     setFile(null);
     if (fileRef.current) fileRef.current.value = "";
   };
@@ -65,16 +67,28 @@ export function AdminDeliverableUpload({ companyId, companyName }: Props) {
       if (docType.trim()) fd.append("doc_type", docType.trim().toUpperCase());
       if (competencia) fd.append("competencia", competencia);
       if (dueDate) fd.append("due_date", dueDate);
+      if (usarIa) fd.append("usar_ia", "true");
       return api.deliverables.adminUpload(fd);
     },
     onSuccess: (doc) => {
       queryClient.invalidateQueries({ queryKey: ["deliverables"] });
-      if (doc.due_date_from_pdf && doc.due_date) {
-        const [a, m, d] = doc.due_date.split("-");
-        toast.success(`Enviado para ${companyName}. Vencimento ${d}/${m}/${a} lido do PDF.`);
-      } else if (comVencimento && !doc.due_date) {
+      const fmt = (d: string) => d.split("-").reverse().join("/");
+      const tipo = doc.doc_type_detectado ? ` (${doc.doc_type_detectado})` : "";
+      if (doc.due_date) {
+        const como =
+          doc.origem_vencimento === "regra"
+            ? "pela regra do tributo"
+            : doc.origem_vencimento === "ia"
+              ? "descoberto pela IA"
+              : doc.origem_vencimento === "pdf" || doc.due_date_from_pdf
+                ? "lido do PDF"
+                : "informado";
+        toast.success(`Enviado para ${companyName}${tipo}. Vencimento ${fmt(doc.due_date)} — ${como}.`);
+      } else if (comVencimento) {
         toast.warning(
-          `Enviado para ${companyName}, mas sem vencimento — informe a data para entrar no calendário.`
+          `Enviado para ${companyName}, mas sem vencimento identificado — informe a data à mão` +
+            (usarIa ? "" : ` ou marque "descobrir com IA"`) +
+            " para entrar no calendário."
         );
       } else {
         toast.success(`Documento enviado para ${companyName}`);
@@ -187,8 +201,22 @@ export function AdminDeliverableUpload({ companyId, companyName }: Props) {
             <Label className="text-xs">Vencimento</Label>
             <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             <p className="text-xs text-muted-foreground">
-              Deixe em branco que o portal tenta ler do PDF. Sem vencimento não entra no calendário.
+              Deixe em branco que o portal resolve sozinho: guias do núcleo (FGTS, DAS, DCTF Web) recebem o
+              vencimento <span className="font-medium">pela regra</span>; as demais, o portal tenta ler o rótulo
+              do PDF. Sem vencimento não entra no calendário.
             </p>
+            <label className="mt-1 flex items-start gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={usarIa}
+                onChange={(e) => setUsarIa(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5"
+              />
+              <span>
+                Se não for do núcleo e o PDF não tiver rótulo de vencimento, tentar descobrir com IA (usa a IA
+                configurada, quando habilitada).
+              </span>
+            </label>
           </div>
         )}
       </div>

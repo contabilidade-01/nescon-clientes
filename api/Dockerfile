@@ -7,6 +7,8 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --production
 COPY src/ ./src/
+# Scripts de manutenção pontual (ex.: backfill de vencimentos), rodados à mão no container.
+COPY scripts/ ./scripts/
 RUN mkdir -p /app/uploads
 EXPOSE 3001
 CMD ["node", "src/index.js"]

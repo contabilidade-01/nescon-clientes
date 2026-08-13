@@ -29,6 +29,7 @@ const {
 } = require("./guides");
 const { UPLOAD_DIR } = require("../uploads");
 const { extrairVencimento } = require("../pdfDueDate");
+const { vencimentoPorRegra } = require("../vencimentoRegra");
 const { PORTAL_ONLY_TOOL_ACCESS } = require("../companyTools");
 const { gerarSenhaInicial } = require("../senhaInicial");
 const { notificarDocumentosNovos } = require("../docNotify");
@@ -146,11 +147,21 @@ async function gravarGuia(guia, companyId, { historico = false } = {}) {
 
   const pdf = await client.baixarPdf(guia.arquivoUrl);
 
-  // Vencimento: o do PDF manda (o do G-Click erra sistematicamente, ex. FGTS Digital).
+  // Vencimento, por ordem de confiança:
+  //   1. REGRA do catálogo, quando o documento é de um tipo identificado SEM ambiguidade
+  //      (FGTS/DAS/INSS-DCTFWeb). O dia é fixado em lei e não depende do que o PDF ou o
+  //      G-Click trazem — os dois erram (o G-Click sistematicamente, ex. FGTS Digital; o
+  //      PDF enquanto o leitor não está 100% validado). Ver vencimentoRegra.js.
+  //   2. Data lida do PDF (leitor determinístico) — para o que o catálogo não identifica.
+  //   3. Último recurso: a data do próprio G-Click.
   let dueDate = null;
   if (cls?.temVencimento !== false) {
-    dueDate = await extrairVencimento(pdf);
-    if (!dueDate && guia.dataVencimento) dueDate = String(guia.dataVencimento).slice(0, 10);
+    // competencia (do G-Click) já é o mês de PAGAMENTO — âncora certa para a regra.
+    dueDate = vencimentoPorRegra(docType, guia.competencia || guia.dataVencimento);
+    if (!dueDate) {
+      dueDate = await extrairVencimento(pdf);
+      if (!dueDate && guia.dataVencimento) dueDate = String(guia.dataVencimento).slice(0, 10);
+    }
   }
 
   const fileName = gravarPdf(pdf, guia.arquivoNome);

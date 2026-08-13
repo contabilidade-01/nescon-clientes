@@ -31,6 +31,7 @@ const { gerarSenhaInicial } = require("../senhaInicial");
 const { enviarTexto } = require("../uazapi");
 const dueDateSugestoes = require("../dueDateSugestoes");
 const { varrerVencimentos } = dueDateSugestoes;
+const { reaplicarRegraNucleo } = require("../reaplicarRegraNucleo");
 const fs = require("fs");
 
 function adminOnly(req, res, next) {
@@ -1466,6 +1467,25 @@ router.post("/vencimentos-sugeridos/rodar", adminOnly, async (req, res) => {
  */
 router.get("/vencimentos-sugeridos/status", adminOnly, (_req, res) => {
   res.json({ rodando: dueDateSugestoes.estaRodando(), ultima: dueDateSugestoes.ultimaExecucao() });
+});
+
+/**
+ * POST /admin/vencimentos/reaplicar-regra — recalcula pela REGRA o vencimento do núcleo
+ * (FGTS/DAS/DCTF Web) já gravado. É cálculo puro, então roda síncrono aqui mesmo.
+ *
+ * `aplicar` (bool): false (padrão) só PRÉ-VISUALIZA o que mudaria; true grava. É a forma
+ * de corrigir pela interface os documentos que entraram com data errada, sem terminal na
+ * VPS — mesma lógica do script scripts/backfill-vencimentos.js.
+ */
+router.post("/vencimentos/reaplicar-regra", adminOnly, async (req, res) => {
+  try {
+    const { desde, aplicar } = req.body || {};
+    const resultado = await reaplicarRegraNucleo(db, { desde, simular: aplicar !== true });
+    res.json(resultado);
+  } catch (err) {
+    console.error("[admin] vencimentos/reaplicar-regra:", err.message);
+    res.status(400).json({ error: err.message });
+  }
 });
 
 /**

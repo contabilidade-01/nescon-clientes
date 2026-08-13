@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertTriangle, CalendarSearch, Check, Loader2, Sparkles, X } from "lucide-react";
+import { AlertTriangle, CalendarSearch, Check, Loader2, Scale, Sparkles, X } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,9 +45,23 @@ function OrigemBadge({
   );
 }
 
+type MudancaRegra = {
+  id: string;
+  empresa: string;
+  doc_type: string;
+  competencia: string;
+  title: string;
+  de: string | null;
+  para: string;
+};
+
 const VencimentosSugeridosPage = () => {
   const queryClient = useQueryClient();
   const [desde, setDesde] = useState(mesAtual());
+  // Correção pela regra do núcleo: competência de corte mais ampla que a varredura de IA
+  // (o objetivo aqui é varrer o passado que entrou errado, não só o mês corrente).
+  const [desdeRegra, setDesdeRegra] = useState("2024-04");
+  const [previaRegra, setPreviaRegra] = useState<MudancaRegra[] | null>(null);
 
   const { data: sugestoes, isLoading } = useQuery({
     queryKey: ["admin-vencimentos-sugeridos"],
@@ -90,6 +104,27 @@ const VencimentosSugeridosPage = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const preVisualizarRegra = useMutation({
+    mutationFn: () => api.vencimentosSugeridos.reaplicarRegra(desdeRegra, false),
+    onSuccess: (r) => {
+      setPreviaRegra(r.mudancas);
+      if (r.corrigidos === 0) {
+        toast.success(`Nada a corrigir: ${r.analisados} documento(s) do núcleo já estão certos.`);
+      }
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const aplicarRegra = useMutation({
+    mutationFn: () => api.vencimentosSugeridos.reaplicarRegra(desdeRegra, true),
+    onSuccess: (r) => {
+      toast.success(`${r.corrigidos} vencimento(s) corrigido(s) pela regra.`);
+      setPreviaRegra(null);
+      queryClient.invalidateQueries({ queryKey: ["admin-vencimentos-sugeridos"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const aprovar = useMutation({
     mutationFn: (id: string) => api.vencimentosSugeridos.aprovar(id),
     onSuccess: () => {
@@ -116,6 +151,81 @@ const VencimentosSugeridosPage = () => {
       description="A varredura lê o vencimento de dentro do PDF e confronta com o que já está gravado. Quando bate, não aparece aqui. Quando diverge (ou não havia data nenhuma), fica nesta fila até você decidir manter ou trocar — nunca é aplicado sozinho."
     >
       <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Scale className="h-4 w-4" /> Corrigir pela regra (FGTS · DAS · DCTF Web)
+            </CardTitle>
+            <CardDescription>
+              Para o núcleo, o vencimento é <span className="font-medium">fixado em lei</span> (dia 20, com
+              antecipação/adiamento conforme o tributo) — não depende de ler o PDF. Este botão recalcula pela
+              regra os documentos já gravados e conserta os que entraram com data errada. Primeiro
+              pré-visualiza; nada é gravado até você confirmar. O corte por competência protege o histórico
+              antigo (FGTS pré-Digital vencia dia 7, legítimo).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-end gap-3">
+              <div>
+                <Label>A partir da competência</Label>
+                <Input
+                  type="month"
+                  value={desdeRegra}
+                  onChange={(e) => {
+                    setDesdeRegra(e.target.value);
+                    setPreviaRegra(null);
+                  }}
+                  className="mt-1 max-w-[180px]"
+                  disabled={preVisualizarRegra.isPending || aplicarRegra.isPending}
+                />
+              </div>
+              <Button
+                variant="secondary"
+                onClick={() => preVisualizarRegra.mutate()}
+                disabled={preVisualizarRegra.isPending || aplicarRegra.isPending}
+              >
+                {preVisualizarRegra.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Pré-visualizar
+              </Button>
+              {previaRegra && previaRegra.length > 0 && (
+                <Button
+                  onClick={() => aplicarRegra.mutate()}
+                  disabled={aplicarRegra.isPending}
+                >
+                  {aplicarRegra.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Aplicar {previaRegra.length} correção(ões)
+                </Button>
+              )}
+            </div>
+
+            {previaRegra && previaRegra.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                Nenhuma correção necessária a partir de {desdeRegra}.
+              </p>
+            )}
+
+            {previaRegra && previaRegra.length > 0 && (
+              <div className="space-y-2 rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">
+                  {previaRegra.length} documento(s) serão corrigidos ao aplicar:
+                </p>
+                <div className="space-y-1.5">
+                  {previaRegra.map((m) => (
+                    <div key={m.id} className="flex flex-wrap items-center gap-2 text-sm">
+                      <Badge variant="secondary">{m.doc_type}</Badge>
+                      <span className="font-medium">{m.empresa}</span>
+                      <span className="text-xs text-muted-foreground">comp. {m.competencia}</span>
+                      <span className="flex items-center gap-1 text-amber-700 dark:text-amber-400">
+                        {formatDate(m.de)} <span aria-hidden>→</span> {formatDate(m.para)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">

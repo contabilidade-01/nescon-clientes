@@ -661,6 +661,10 @@ export interface AlertOpConfig {
   envio_automatico: boolean;
   hora: number;
   escritorio_cnpj: string;
+  /** Antecedência do lembrete do boleto Cora, em dias (0 = sem véspera). */
+  boleto_dias_antes: number;
+  /** Marcos de cobrança do boleto vencido, em dias após o vencimento (ex.: [3,10,30]; vazio = desligado). */
+  boleto_cobranca_dias: number[];
 }
 
 export interface AlertWhatsappStatus {
@@ -1640,8 +1644,14 @@ export const api = {
         const err = data as { error?: string };
         throw new Error(err.error || `HTTP ${res.status}`);
       }
-      // due_date_from_pdf: o portal leu a data do próprio PDF (upload sem data informada).
-      return data as Deliverable & { due_date_from_pdf?: boolean };
+      // origem_vencimento: como a data foi resolvida ('manual'|'regra'|'pdf'|'ia'|null).
+      // doc_type_detectado: tipo identificado no envio (ex.: FGTS). due_date_from_pdf
+      // mantido por compatibilidade (equivale a origem_vencimento === 'pdf').
+      return data as Deliverable & {
+        due_date_from_pdf?: boolean;
+        origem_vencimento?: "manual" | "regra" | "pdf" | "ia" | null;
+        doc_type_detectado?: string | null;
+      };
     },
     /** Link do WhatsApp: token opaco, sem login. */
     public: {
@@ -1834,5 +1844,28 @@ export const api = {
       request<{ ok: boolean }>(`/admin/vencimentos-sugeridos/${id}/aprovar`, { method: "POST" }),
     rejeitar: (id: string) =>
       request<{ ok: boolean }>(`/admin/vencimentos-sugeridos/${id}/rejeitar`, { method: "POST" }),
+    /**
+     * Recalcula pela REGRA o vencimento do núcleo (FGTS/DAS/DCTF Web) já gravado.
+     * `aplicar=false` (padrão) só pré-visualiza; `aplicar=true` grava. Síncrono.
+     */
+    reaplicarRegra: (desde: string, aplicar: boolean) =>
+      request<{
+        desde: string;
+        analisados: number;
+        corrigidos: number;
+        aplicado: boolean;
+        mudancas: Array<{
+          id: string;
+          empresa: string;
+          doc_type: string;
+          competencia: string;
+          title: string;
+          de: string | null;
+          para: string;
+        }>;
+      }>("/admin/vencimentos/reaplicar-regra", {
+        method: "POST",
+        body: JSON.stringify({ desde, aplicar }),
+      }),
   },
 };
