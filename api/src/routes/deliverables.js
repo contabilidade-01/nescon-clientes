@@ -396,7 +396,12 @@ router.patch("/:id", async (req, res) => {
         [req.params.id]
       );
       if (check.length && check[0].source === "cora") {
-        return res.status(403).json({ error: "O status deste boleto é atualizado automaticamente pela Cora." });
+        if (!req.isAdmin) {
+          return res.status(403).json({ error: "O status deste boleto é atualizado automaticamente pela Cora." });
+        }
+        // Admin pode marcar como pago/cancelado (override manual) — na próxima sync o
+        // status real da Cora prevalece de volta, mas resolve o caso de "paguei via PIX
+        // fora do boleto" onde a Cora não sabe que foi quitado.
       }
     }
 

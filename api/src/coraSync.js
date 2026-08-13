@@ -119,6 +119,11 @@ async function gravarBoleto(boleto, companyId) {
 
   if (existentes.length) {
     const atual = existentes[0];
+    // Se o admin marcou como pago manualmente (override), não reverter para o status da Cora.
+    // O admin sabe que foi pago por fora (PIX direto, TED, etc.) — a Cora não sabe.
+    if (atual.status === "paid" && status !== "paid") {
+      return "sem-mudanca";
+    }
     // Checar se algo mudou
     if (atual.status === status && atual.pdf_url === pdfUrl && atual.cancelado === cancelado) {
       return "sem-mudanca";
