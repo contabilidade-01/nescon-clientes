@@ -1435,6 +1435,9 @@ export const api = {
         created_at: string;
       }>>(`/admin/cora/boletos${q ? `?${q}` : ""}`);
     },
+    /** Cancelar (excluir) um boleto Cora do portal. */
+    coraDeleteBoleto: (id: string) =>
+      request<{ ok: boolean }>(`/admin/cora/boletos/${id}`, { method: "DELETE" }),
     /** Empresas que ainda não trocaram a senha inicial — a fila de risco a zerar. */
     senhaPendente: () =>
       request<{ total: number; empresas: Array<{ id: string; name: string; cnpj: string }> }>(

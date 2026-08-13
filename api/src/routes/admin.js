@@ -507,6 +507,26 @@ router.get("/cora/boletos", requireArea("sincronizacao"), async (req, res) => {
   }
 });
 
+/**
+ * DELETE /admin/cora/boletos/:id — cancelar (excluir) um boleto do portal.
+ * Convenção: boleto cancelado não existe para o cliente.
+ */
+router.delete("/cora/boletos/:id", requireArea("sincronizacao"), async (req, res) => {
+  const { id } = req.params;
+  if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
+  try {
+    const { rowCount } = await db.query(
+      "DELETE FROM deliverables WHERE id = $1 AND source = 'cora'",
+      [id]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Boleto não encontrado" });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[admin] deletar boleto cora:", err.message);
+    res.status(500).json({ error: "Erro ao excluir boleto" });
+  }
+});
+
 /** Os tipos de documento que o G-Click entrega — para a tela montar a escolha. */
 router.get("/sync-gclick/tipos", requireArea("sincronizacao"), (_req, res) => {
   res.json(

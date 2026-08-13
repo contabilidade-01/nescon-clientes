@@ -161,6 +161,16 @@ const BoletosCoraPage = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Cancelar (excluir) boleto
+  const cancelarBoleto = useMutation({
+    mutationFn: (id: string) => api.admin.coraDeleteBoleto(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-cora-boletos"] });
+      toast.success("Boleto cancelado (removido do portal)");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const rodando = syncStatus?.rodando || syncAll.isPending;
   const totalBoletos = boletos?.length || 0;
   const boletosPendentes = boletos?.filter((b) => b.status === "pending").length || 0;
@@ -441,6 +451,7 @@ const BoletosCoraPage = () => {
                     <th className="px-3 py-2 text-left font-medium text-muted-foreground">Valor</th>
                     <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
                     <th className="px-3 py-2 text-left font-medium text-muted-foreground">Competência</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Ação</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -462,6 +473,19 @@ const BoletosCoraPage = () => {
                       </td>
                       <td className="px-3 py-2 text-muted-foreground">
                         {b.competencia || "—"}
+                      </td>
+                      <td className="px-3 py-2">
+                        {b.status !== "paid" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-destructive hover:text-destructive"
+                            onClick={() => cancelarBoleto.mutate(b.id)}
+                            disabled={cancelarBoleto.isPending}
+                          >
+                            <XCircle className="mr-1 h-3 w-3" /> Cancelar
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   ))}
