@@ -62,19 +62,19 @@ async function varrerVencimentos(db, { desde, limite = LIMITE_PADRAO } = {}) {
 async function executarVarredura(db, { desde, limite }) {
   const desdeData = competenciaParaData(desde);
 
-  // Um documento só é reprocessado enquanto não tiver sugestão decidida — depois de
-  // aprovar/rejeitar uma vez, o mesmo arquivo não muda, então não há o que reler.
+  // Só processa categorias que PODEM ter vencimento: guia, boleto, outro, avulso.
+  // Folha (extrato, recibo) nunca tem. Dentro de outro/avulso, a IA só é chamada
+  // para documentos cujo título NÃO indica Programação de Férias (que a IA confunde
+  // com vencimento por causa de "Vencto. Férias" no corpo).
   const { rows } = await db.query(
     `SELECT d.id, d.company_id, d.file_path, d.category, d.competencia,
-            d.title, d.file_name,
+            d.title, d.file_name, d.doc_type,
             to_char(d.due_date, 'YYYY-MM-DD') AS due_date
      FROM deliverables d
      WHERE d.cancelado IS NOT TRUE
        AND d.source <> 'cora'
-       AND d.category <> 'folha'
+       AND d.category IN ('guia', 'boleto', 'outro', 'avulso')
        AND (d.doc_type IS NULL OR d.doc_type NOT IN ('EXTRATO_FOLHA', 'RECIBO_PAGTO'))
-       AND COALESCE(d.title, '') NOT ILIKE '%Programa__o de F_rias%'
-       AND COALESCE(d.file_name, '') NOT ILIKE '%Programa__o de F_rias%'
        AND (
          (d.competencia IS NOT NULL AND d.competencia >= $1)
          OR (d.competencia IS NULL AND d.created_at >= $2::date)
@@ -96,9 +96,11 @@ async function executarVarredura(db, { desde, limite }) {
 
   for (const doc of rows) {
     try {
-      // Barreira extra: nomes que passaram do filtro SQL mas são claramente sem vencimento
-      const nomeDoc = (doc.title || doc.file_name || "").toLowerCase();
-      if (/programa[çc][ãa]o\s*de\s*f[eé]rias|extrato\s*(mensal|da\s*folha)|recibo\s*de\s*pagamento|holerite/i.test(nomeDoc)) {
+      // Detectar Programação de Férias pelo nome (encoding pode estar quebrado no banco)
+      const nomeDoc = (doc.title || "") + " " + (doc.file_name || "");
+      const ehFerias = /f[eé\xc3]rias|ferias/i.test(nomeDoc) && /programa/i.test(nomeDoc);
+
+      if (ehFerias) {
         semVencimento++;
         continue;
       }
@@ -110,11 +112,14 @@ async function executarVarredura(db, { desde, limite }) {
       }
       const buffer = fs.readFileSync(full);
 
-      let achado = null; // { data, origem, confianca, provider, motivo }
+      let achado = null;
       const det = await extrairVencimento(buffer);
       if (det) {
         achado = { data: det, origem: "deterministico", confianca: 100, provider: null, motivo: "rótulo de vencimento reconhecido no PDF" };
-      } else if (iaHabilitada) {
+      } else if (iaHabilitada && (doc.category === "guia" || doc.category === "boleto")) {
+        // IA só para guias/boletos onde o parser determinístico falhou.
+        // Para avulso/outro: se o parser não achar, o documento simplesmente não tem
+        // vencimento — a IA confunde datas internas com vencimento nesses casos.
         const viaIa = await extrairVencimentoComIa(buffer, db);
         if (viaIa && viaIa.data) {
           achado = { data: viaIa.data, origem: "ia", confianca: viaIa.confianca, provider: viaIa.provider, motivo: viaIa.motivo };
