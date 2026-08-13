@@ -13,7 +13,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { BellRing, Search, Send, Sparkles, Wand2 } from "lucide-react";
+import { BellRing, FlaskConical, Search, Send, Sparkles, Wand2 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -357,6 +357,22 @@ const AlertasPage = () => {
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [resultado, setResultado] = useState<AlertSendResult | null>(null);
 
+  // Envio de teste (isolado): não mexe na trava do dia nem no fluxo automático.
+  const [testeEmpresa, setTesteEmpresa] = useState("");
+  const [testeResult, setTesteResult] = useState<
+    { ok: boolean; numero?: string | null; texto?: string; erro?: string } | null
+  >(null);
+  const enviarTeste = useMutation({
+    mutationFn: (tipo: "documentos" | "boleto_em_dia" | "boleto_vencido") =>
+      api.alertas.enviarTeste(testeEmpresa, tipo),
+    onSuccess: (r) => {
+      setTesteResult(r);
+      if (r.ok) toast.success(`Teste enviado para ${r.numero}.`);
+      else toast.error(r.erro || "Falha no envio de teste.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const enviar = useMutation({
     mutationFn: (v: { simular: boolean }) =>
       api.alertas.enviar({
@@ -517,12 +533,13 @@ const AlertasPage = () => {
                 Vencimentos de {catalogo.data?.referencia ?? "—"}
               </CardTitle>
               <CardDescription>
-                Calculado na hora, com feriados nacionais e a regra de cada tributo. Data
-                nunca é gravada: se o calendário mudar, esta tabela muda junto.
+                Só as obrigações <span className="font-medium">automáticas</span> — as que o sistema aplica
+                sozinho aos clientes (Simples Nacional). Calculado na hora, com feriados nacionais e a regra
+                de cada tributo. Data nunca é gravada: se o calendário mudar, esta tabela muda junto.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-1">
-              {(catalogo.data?.obrigacoes ?? []).map((o) => (
+              {(catalogo.data?.obrigacoes ?? []).filter((o) => o.automatica).map((o) => (
                 <div
                   key={o.codigo}
                   className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0"
@@ -747,6 +764,75 @@ const AlertasPage = () => {
               {motivoEnvioTravado && (
                 <p className="w-full text-xs text-muted-foreground">{motivoEnvioTravado}</p>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Envio de teste isolado — depurar o recebimento sem esperar um vencimento
+              real e sem consumir a trava do dia (o automático segue intacto). */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FlaskConical className="h-4 w-4" /> Enviar teste
+              </CardTitle>
+              <CardDescription>
+                Manda uma mensagem real ao número da empresa (o mesmo do envio: manual, ou o do G-Click
+                se o manual estiver vazio) para você conferir o recebimento. Vem marcada como TESTE e
+                <span className="font-medium"> não consome a trava do dia</span> — o envio automático continua igual.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  value={testeEmpresa}
+                  onChange={(e) => {
+                    setTesteEmpresa(e.target.value);
+                    setTesteResult(null);
+                  }}
+                >
+                  <option value="">Escolha a empresa…</option>
+                  {(panorama.data?.empresas ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!testeEmpresa || enviarTeste.isPending}
+                  onClick={() => enviarTeste.mutate("documentos")}
+                >
+                  Há documentos no portal
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!testeEmpresa || enviarTeste.isPending}
+                  onClick={() => enviarTeste.mutate("boleto_em_dia")}
+                >
+                  Boleto em dia
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!testeEmpresa || enviarTeste.isPending}
+                  onClick={() => enviarTeste.mutate("boleto_vencido")}
+                >
+                  Boleto vencido
+                </Button>
+              </div>
+              {testeResult &&
+                (testeResult.ok ? (
+                  <div className="rounded-md border p-3">
+                    <p className="text-sm text-emerald-600">Enviado para {testeResult.numero}.</p>
+                    <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-muted p-3 text-xs">
+                      {testeResult.texto}
+                    </pre>
+                  </div>
+                ) : (
+                  <p className="text-sm text-red-600">{testeResult.erro}</p>
+                ))}
             </CardContent>
           </Card>
 

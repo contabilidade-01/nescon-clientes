@@ -163,7 +163,7 @@ function diasNoMes(ano, mes) {
   return new Date(Date.UTC(ano, mes, 0)).getUTCDate();
 }
 
-/** Último dia bancário do mês — vencimento de IRPJ, CSLL, carnê-leão e parcelamentos. */
+/** Último dia bancário do mês — vencimento de carnê-leão, quotas do IR e parcelamentos. */
 function ultimoDiaBancarioDoMes(ano, mes) {
   return diaBancarioAnterior(iso(ano, mes, diasNoMes(ano, mes)));
 }

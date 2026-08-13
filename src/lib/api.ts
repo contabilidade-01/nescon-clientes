@@ -994,6 +994,12 @@ export const api = {
     config: () => request<AlertOpConfig>("/alertas/config"),
     salvarConfig: (data: Partial<AlertOpConfig>) =>
       request<AlertOpConfig>("/alertas/config", { method: "PUT", body: JSON.stringify(data) }),
+    /** Envio manual de teste (isolado do fluxo automático). */
+    enviarTeste: (companyId: string, tipo: "documentos" | "boleto_em_dia" | "boleto_vencido") =>
+      request<{ ok: boolean; numero?: string | null; texto?: string; erro?: string }>(
+        "/alertas/enviar-teste",
+        { method: "POST", body: JSON.stringify({ company_id: companyId, tipo }) }
+      ),
     registrarEnvio: (data: {
       company_id: string;
       obrigacoes: string[];

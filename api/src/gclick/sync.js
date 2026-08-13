@@ -30,6 +30,8 @@ const {
 const { UPLOAD_DIR } = require("../uploads");
 const { extrairVencimento } = require("../pdfDueDate");
 const { vencimentoPorRegra } = require("../vencimentoRegra");
+// Filtro do aviso de "documento novo": INSS-GPS/ICMS/ISS entram calados. Ver avisoDocumento.js.
+const { avisaDocumentoNovo } = require("./avisoDocumento");
 const { PORTAL_ONLY_TOOL_ACCESS } = require("../companyTools");
 const { gerarSenhaInicial } = require("../senhaInicial");
 const { notificarDocumentosNovos } = require("../docNotify");
@@ -194,7 +196,7 @@ async function gravarGuia(guia, companyId, { historico = false } = {}) {
      crypto.randomBytes(24).toString("hex"), guia.respondidaEm || "",
      String(guia.atividadeId || ""), guia.numVersoes || 1, historico]
   );
-  return { status: "criado", title: titulo, competencia: guia.competencia || null };
+  return { status: "criado", title: titulo, competencia: guia.competencia || null, docType };
 }
 
 /**
@@ -330,8 +332,13 @@ async function sincronizar({
           const r = await gravarGuia(g, companyId, { historico });
           if (r.status === "criado") {
             total.criados++;
-            if (!novosPorEmpresa.has(companyId)) novosPorEmpresa.set(companyId, []);
-            novosPorEmpresa.get(companyId).push({ title: r.title, competencia: r.competencia });
+            // O documento é criado/liberado normalmente; só o AVISO por WhatsApp segue
+            // uma allowlist (núcleo + folha + Programação de Férias). Todo o resto —
+            // IRRF, INSS-GPS, ICMS, ISS, DARF avulso... — entra calado.
+            if (avisaDocumentoNovo(r.docType, r.title)) {
+              if (!novosPorEmpresa.has(companyId)) novosPorEmpresa.set(companyId, []);
+              novosPorEmpresa.get(companyId).push({ title: r.title, competencia: r.competencia });
+            }
           } else if (r.status === "atualizado") total.atualizados++;
           else if (r.status === "sem-mudanca") total.semMudanca++;
           else total.erros++;

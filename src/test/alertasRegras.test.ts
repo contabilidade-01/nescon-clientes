@@ -49,58 +49,31 @@ describe("decidirAutomaticas", () => {
 });
 
 describe("sugerirPorEntregas", () => {
-  const entregas = [
-    { doc_type: "ICMS", title: "ICMS Comércio", competencia: "2026-06" },
-    { doc_type: "ICMS", title: "ICMS Comércio", competencia: "2026-07" },
-    { doc_type: "ISS", title: "ISS Uberlândia", competencia: "2026-07" },
-  ];
-
-  it("sugere o que aparece nas guias, com quantas vezes e a última competência", () => {
-    const r = sugerirPorEntregas(entregas, []);
-    expect(codigos(r)).toEqual(["ICMS", "ISS_UBERLANDIA"]);
-    const icms = r.find((x: { codigo: string }) => x.codigo === "ICMS");
-    expect(icms.ocorrencias).toBe(2);
-    expect(icms.ultima_competencia).toBe("2026-07");
+  // Depois de o catálogo ficar só com o núcleo Simples + trabalhista, TODAS as obrigações
+  // são automáticas (auto != null). Não há mais obrigação "só manual" para sugerir — a
+  // função segue existindo, mas devolve vazio. (Se um dia voltar uma obrigação manual,
+  // revisar este bloco.)
+  it("não sugere nada: o catálogo só tem obrigações automáticas", () => {
+    const entregas = [
+      { doc_type: "FGTS", title: "FGTS", competencia: "2026-07" },
+      { doc_type: "DCTF_WEB", title: "INSS (DCTF Web)", competencia: "2026-07" },
+      { doc_type: null, title: "DARF qualquer", competencia: "2026-07" },
+    ];
+    expect(sugerirPorEntregas(entregas, [])).toEqual([]);
   });
+});
 
-  it("não sugere o que já foi decidido — nem o que foi recusado", () => {
-    const r = sugerirPorEntregas(entregas, ["ICMS"]);
-    expect(codigos(r)).toEqual(["ISS_UBERLANDIA"]);
-  });
-
-  it("não sugere o que a regra já marca sozinha", () => {
-    const r = sugerirPorEntregas([{ doc_type: "FGTS", title: "FGTS", competencia: "2026-07" }], []);
-    expect(r).toEqual([]);
-  });
-
-  it("reconhece pelo título quando o G-Click não classifica o tipo", () => {
-    const r = sugerirPorEntregas([{ doc_type: null, title: "DARF COFINS 2172", competencia: "2026-07" }], []);
-    expect(codigos(r)).toEqual(["COFINS"]);
-  });
-
-  it("guia já classificada NÃO casa por texto — senão a DCTF Web sugeriria GPS", () => {
-    // O título gravado pelo sync é literalmente "INSS (DCTF Web)"; o padrão da GPS
-    // (/INSS|GPS/) casaria com ele e sugeriria GPS para toda empresa com folha.
-    const r = sugerirPorEntregas(
-      [{ doc_type: "DCTF_WEB", title: "INSS (DCTF Web)", competencia: "2026-07" }],
-      []
+describe("textoDaEvidencia", () => {
+  it("resume ocorrências e última competência (plural)", () => {
+    expect(textoDaEvidencia({ ocorrencias: 2, ultima_competencia: "2026-07" })).toBe(
+      "2 guias encontradas no portal, a última em 2026-07."
     );
-    expect(r).toEqual([]);
   });
 
-  it("mas o tipo certo continua sugerindo", () => {
-    const r = sugerirPorEntregas([{ doc_type: "INSS", title: "INSS / GPS", competencia: "2026-07" }], []);
-    expect(codigos(r)).toEqual(["INSS_GPS"]);
-  });
-
-  it("ordena pelo que aparece mais — o mais provável primeiro", () => {
-    const r = sugerirPorEntregas(entregas, []);
-    expect(r[0].codigo).toBe("ICMS");
-  });
-
-  it("evidência legível para a tela", () => {
-    const r = sugerirPorEntregas(entregas, []);
-    expect(textoDaEvidencia(r[0])).toBe("2 guias encontradas no portal, a última em 2026-07.");
+  it("no singular usa 'guia encontrada'", () => {
+    expect(textoDaEvidencia({ ocorrencias: 1, ultima_competencia: "2026-07" })).toBe(
+      "1 guia encontrada no portal, a última em 2026-07."
+    );
   });
 });
 

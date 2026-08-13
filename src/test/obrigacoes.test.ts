@@ -39,43 +39,21 @@ describe("catálogo", () => {
 
 describe("dia 20 — antecipa ou adia conforme o tributo", () => {
   it("em setembro/2026 o dia 20 é domingo", () => {
-    // FGTS, INSS e DCTF Web antecipam.
+    // FGTS e INSS (DCTF Web) antecipam.
     expect(calcularVencimento("FGTS", 2026, 9)?.data).toBe("2026-09-18");
     expect(calcularVencimento("INSS_DCTFWEB", 2026, 9)?.data).toBe("2026-09-18");
-    expect(calcularVencimento("INSS_GPS", 2026, 9)?.data).toBe("2026-09-18");
-    expect(calcularVencimento("IRRF_SERVICOS", 2026, 9)?.data).toBe("2026-09-18");
     // O Simples adia (LC 123, art. 21 §3º).
     expect(calcularVencimento("DAS", 2026, 9)?.data).toBe("2026-09-21");
   });
 
   it("quando o dia 20 é útil, todos caem no mesmo dia", () => {
-    for (const c of ["FGTS", "DAS", "INSS_GPS", "INSS_DCTFWEB"]) {
+    for (const c of ["FGTS", "DAS", "INSS_DCTFWEB"]) {
       expect(calcularVencimento(c, 2026, 8)?.data).toBe("2026-08-20");
     }
   });
 });
 
 describe("demais regras da tabela do escritório", () => {
-  it("ICMS dia 8 adia; ISS e GPS-CI dia 15 antecipam", () => {
-    // 08/08/2026 é sábado -> ICMS vai para segunda 10.
-    expect(calcularVencimento("ICMS", 2026, 8)?.data).toBe("2026-08-10");
-    // 15/08/2026 é sábado -> ISS e contribuinte individual voltam para sexta 14.
-    expect(calcularVencimento("ISS_UBERLANDIA", 2026, 8)?.data).toBe("2026-08-14");
-    expect(calcularVencimento("INSS_GPS_CI", 2026, 8)?.data).toBe("2026-08-14");
-  });
-
-  it("PIS e COFINS dia 25, antecipando", () => {
-    // 25/10/2026 é domingo -> sexta 23.
-    expect(calcularVencimento("PIS_FATURAMENTO", 2026, 10)?.data).toBe("2026-10-23");
-    expect(calcularVencimento("COFINS", 2026, 10)?.data).toBe("2026-10-23");
-  });
-
-  it("IRPJ, CSLL, carnê-leão e parcelamentos no último dia bancário", () => {
-    for (const c of ["IRPJ_MENSAL", "CSLL_MENSAL", "IRPF_CARNE_LEAO", "PARCELAMENTOS", "IRPF_QUOTAS"]) {
-      expect(calcularVencimento(c, 2026, 5)?.data).toBe("2026-05-29");
-    }
-  });
-
   it("salário no 5º dia útil, antecipando para sexta quando cair em sábado", () => {
     expect(calcularVencimento("SALARIO", 2026, 8)?.data).toBe("2026-08-06");
     expect(calcularVencimento("SALARIO", 2026, 8)?.observacao).toBeNull();
@@ -95,7 +73,7 @@ describe("competência × mês de pagamento", () => {
 });
 
 describe("obrigacoesQueVencemEm", () => {
-  const todas = ["FGTS", "DAS", "ICMS", "SALARIO"];
+  const todas = ["FGTS", "DAS", "SALARIO"];
 
   it("acha o que cai exatamente no dia", () => {
     const r = obrigacoesQueVencemEm("2026-08-20", todas);
@@ -107,7 +85,8 @@ describe("obrigacoesQueVencemEm", () => {
   });
 
   it("só considera as obrigações que a empresa recebe", () => {
-    const r = obrigacoesQueVencemEm("2026-08-20", ["ICMS"]);
+    // SALARIO vence no 5º dia útil, não no dia 20 — logo, não entra nesta data.
+    const r = obrigacoesQueVencemEm("2026-08-20", ["SALARIO"]);
     expect(r).toEqual([]);
   });
 

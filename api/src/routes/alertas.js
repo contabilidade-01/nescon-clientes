@@ -24,6 +24,7 @@ const {
   falhasRecentes,
 } = require("../alertas");
 const { enviarAlertasDoDia } = require("../alertasEnvio");
+const { enviarAlertaTeste } = require("../alertaTeste");
 const { statusInstancia } = require("../uazapi");
 const { lerConfig, salvarConfig } = require("../alertasConfig");
 
@@ -299,6 +300,26 @@ router.post("/enviar", async (req, res) => {
   } catch (err) {
     console.error("[alertas] enviar:", err.message);
     res.status(500).json({ error: "Erro ao disparar os alertas" });
+  }
+});
+
+/**
+ * POST /alertas/enviar-teste  { company_id, tipo }
+ * Envio manual de UMA mensagem de teste ao número resolvido da empresa. Isolado: não
+ * grava alert_sends nem interfere no envio automático. tipo ∈ documentos|boleto_em_dia|
+ * boleto_vencido. Ver alertaTeste.js.
+ */
+router.post("/enviar-teste", async (req, res) => {
+  const { company_id, tipo } = req.body || {};
+  if (!validateUUID(company_id || "")) {
+    return res.status(400).json({ error: "company_id inválido" });
+  }
+  try {
+    const r = await enviarAlertaTeste(db, { companyId: company_id, tipo: String(tipo || "") });
+    res.json(r);
+  } catch (err) {
+    console.error("[alertas] enviar-teste:", err.message);
+    res.status(500).json({ error: "Erro ao enviar o teste" });
   }
 });
 

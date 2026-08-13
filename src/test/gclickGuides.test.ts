@@ -36,8 +36,11 @@ const atividade = (over: Record<string, unknown> = {}) => ({
 describe("classificação de tipos", () => {
   it("reconhece as guias fiscais", () => {
     expect(classificar("FGTS")?.codigo).toBe("FGTS");
-    expect(classificar("INSS")?.codigo).toBe("INSS");
     expect(classificar("DAS Simples")?.codigo).toBe("DAS");
+    expect(classificar("DCTF Web")?.codigo).toBe("DCTF_WEB");
+    // INSS-GPS/ICMS/ISS foram removidos do catálogo (foco no Simples): não classificam.
+    expect(classificar("INSS")).toBeNull();
+    expect(classificar("ICMS Comércio")).toBeNull();
   });
 
   it("reconhece folha e marca que não tem vencimento", () => {

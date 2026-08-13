@@ -12,10 +12,7 @@
 const TIPOS = [
   { codigo: "FGTS", nome: "FGTS", matchers: "FGTS", ordem: 10, temVencimento: true },
   { codigo: "DCTF_WEB", nome: "INSS (DCTF Web)", matchers: "DCTF Web|DCTFWeb|DCTF-Web", ordem: 20, temVencimento: true },
-  { codigo: "INSS", nome: "INSS / GPS", matchers: "INSS|GPS", ordem: 30, temVencimento: true },
   { codigo: "DAS", nome: "DAS / Simples", matchers: "DAS Simples|DAS|Simples Nacional", ordem: 40, temVencimento: true },
-  { codigo: "ICMS", nome: "ICMS", matchers: "ICMS", ordem: 50, temVencimento: true },
-  { codigo: "ISS", nome: "ISS", matchers: "ISS|ISSQN", ordem: 60, temVencimento: true },
   {
     codigo: "RECIBO_PAGTO",
     nome: "Recibos da Folha",
@@ -47,10 +44,7 @@ const PADROES = TIPOS.map((t) => ({
 const CATEGORIA_POR_TIPO = {
   FGTS: "guia",
   DCTF_WEB: "guia",
-  INSS: "guia",
   DAS: "guia",
-  ICMS: "guia",
-  ISS: "guia",
   RECIBO_PAGTO: "folha",
   EXTRATO_FOLHA: "folha",
 };

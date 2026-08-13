@@ -90,4 +90,4 @@ async function notificarDocumentosNovos(db, companyId, documentos) {
   }
 }
 
-module.exports = { notificarDocumentosNovos };
+module.exports = { notificarDocumentosNovos, montarTexto };
