@@ -88,13 +88,21 @@ function competenciaDe(dueDate) {
 async function gravarBoleto(boleto, companyId) {
   const externalRef = `cora_${boleto.id}`;
   const status = cora.mapCoraStatusToPortal(boleto.status);
-  // Cancelado/rejeitado na Cora: some das telas, permanece no banco. Reavaliado a cada
-  // sync, então se a Cora reabrir a cobranca o boleto volta sozinho.
   const cancelado = cora.ehCancelado(boleto.status);
   const dueDate = boleto.due_date || null;
   const competencia = competenciaDe(dueDate);
   const valorCentavos = boleto.total_amount || null;
   const paidAt = status === "paid" ? "now()" : "NULL";
+
+  // Cancelado/rejeitado na Cora: EXCLUIR do portal. Boleto cancelado não deve existir
+  // para o cliente — só pago, em aberto ou atrasado.
+  if (cancelado) {
+    const { rowCount } = await db.query(
+      "DELETE FROM deliverables WHERE company_id = $1 AND external_ref = $2",
+      [companyId, externalRef]
+    );
+    return rowCount ? "excluido" : "sem-mudanca";
+  }
 
   // Buscar detalhe do boleto para obter a URL do PDF (não vem na listagem).
   // Só busca PDF de boletos a partir de 07/2026 — antes disso seria peso desnecessário
@@ -179,7 +187,7 @@ async function sincronizar({ cnpjFiltro = null, de = null, ate = null } = {}) {
 
   emExecucao = true;
   const inicio = Date.now();
-  const total = { criados: 0, atualizados: 0, semMudanca: 0, erros: 0, empresasProcessadas: 0 };
+  const total = { criados: 0, atualizados: 0, excluidos: 0, semMudanca: 0, erros: 0, empresasProcessadas: 0 };
 
   try {
     // Buscar empresas com boletos ativo
@@ -229,6 +237,7 @@ async function sincronizar({ cnpjFiltro = null, de = null, ate = null } = {}) {
             const r = await gravarBoleto(boleto, empresa.id);
             if (r === "criado") total.criados++;
             else if (r === "atualizado") total.atualizados++;
+            else if (r === "excluido") total.excluidos++;
             else if (r === "sem-mudanca") total.semMudanca++;
           } catch (err) {
             console.error(`[cora] boleto ${boleto.id} empresa ${cnpj}:`, err.message);
