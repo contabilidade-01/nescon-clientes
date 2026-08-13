@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
+  Activity,
   BellRing,
   Bot,
   Building2,
@@ -122,6 +123,7 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
         area: "atendimento",
         badgeAtendimentos: true,
       },
+      { to: "/admin/acessos", label: "Controle de acessos", icon: Activity, area: "acessos" },
       { to: "/admin/sincronizacao", label: "Sincronização", icon: RefreshCw, area: "sincronizacao" },
       { to: "/admin/boletos-cora", label: "Boletos Cora", icon: Receipt, area: "sincronizacao" },
       { to: "/admin/usuarios", label: "Usuários do painel", icon: UserCog, ownerOnly: true },

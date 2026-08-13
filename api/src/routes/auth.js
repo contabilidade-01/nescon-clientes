@@ -6,6 +6,7 @@ const db = require("../db");
 const { generateToken, generateAdminToken, authMiddleware } = require("../middleware/auth");
 const { mergeToolAccess } = require("../companyTools");
 const { getCompanyByCnpjForLogin } = require("../toolAccessDb");
+const { registrarLogin } = require("../portalEventos");
 const {
   validateCNPJ,
   validateString,
@@ -273,6 +274,8 @@ router.post("/login", loginIpLimiter, loginContaLimiter, async (req, res) => {
       db.query("UPDATE companies SET ultimo_login_em = now() WHERE id = $1", [company.id]).catch(
         (e) => console.error("ultimo_login_em:", e.message)
       );
+      // Histórico de logins para a tela "Controle de acessos" (últimos 5, ativos etc.).
+      registrarLogin(company.id, req);
       return res.json({
         token,
         role: "company",

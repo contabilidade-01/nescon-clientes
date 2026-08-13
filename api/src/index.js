@@ -26,6 +26,7 @@ const { ensureCoraSchema } = require("./ensureCoraSchema");
 const { ensureDueDateSugestoesSchema } = require("./ensureDueDateSugestoesSchema");
 const { ensureChatSchema } = require("./ensureChatSchema");
 const { ensureArquivamentoSchema } = require("./ensureArquivamentoSchema");
+const { ensureAcessosSchema } = require("./ensureAcessosSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -108,6 +109,7 @@ app.use("/api/alertas", require("./routes/alertas"));
 app.use("/api/preferencias", require("./routes/preferencias"));
 app.use("/api/doc-upload", require("./routes/documentUpload"));
 app.use("/api/mensagens", require("./routes/engagement"));
+app.use("/api/portal", require("./routes/portal"));
 
 // Health: sempre HTTP 200 para o healthcheck do Docker / proxy não derrubar o contentor.
 // Estado da BD vai no JSON (use database: "down" para diagnosticar login 500).
@@ -156,6 +158,7 @@ async function start() {
     await ensureChatSchema(db);
     await ensureArquivamentoSchema(db);
     await ensureDueDateSugestoesSchema(db);
+    await ensureAcessosSchema(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).
     // Roda em background para não travar o arranque.
     setTimeout(async () => {

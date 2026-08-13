@@ -1489,6 +1489,118 @@ router.post("/vencimentos/reaplicar-regra", adminOnly, async (req, res) => {
 });
 
 /**
+ * GET /admin/acessos?dias=90 — dados da tela "Controle de acessos".
+ *
+ * Junta portal_eventos (login/uso) com deliverable_accesses (visualização/download).
+ * `dias` filtra ranking, contagens e views/downloads (0/ausente = desde sempre). Os
+ * "últimos 5 acessos" de cada cliente são sempre os 5 mais recentes, ignorando `dias`.
+ * O front filtra a tabela (busca/status) em memória — o volume é de dezenas de clientes.
+ */
+router.get("/acessos", adminOnly, async (req, res) => {
+  try {
+    // dias é inteiro sanitizado — seguro inlinar no intervalo (sem injeção).
+    const dias = Math.max(0, parseInt(req.query.dias, 10) || 0);
+    const janelaPortal = dias > 0 ? `AND criado_em >= now() - interval '${dias} days'` : "";
+    const janelaAcc = dias > 0 ? `AND a.acessado_em >= now() - interval '${dias} days'` : "";
+    const emUTC = `to_char(criado_em AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS')`;
+
+    const [totais, ranking, documentos, clientes, logins, docsPorEmpresa, ultimos, topFerr] =
+      await Promise.all([
+        db.query(`
+          SELECT count(*)::int AS total,
+                 count(*) FILTER (WHERE ultimo_login_em IS NOT NULL)::int AS acessaram,
+                 count(*) FILTER (WHERE ultimo_login_em >= now() - interval '30 days')::int AS ativos_30d
+            FROM companies WHERE excluida IS NOT TRUE`),
+        db.query(`
+          SELECT ferramenta, count(*)::int AS usos
+            FROM portal_eventos
+           WHERE tipo = 'uso' ${janelaPortal}
+           GROUP BY ferramenta ORDER BY usos DESC`),
+        db.query(`
+          SELECT count(*) FILTER (WHERE a.evento = 'pagina')::int   AS visualizados,
+                 count(*) FILTER (WHERE a.evento = 'download')::int AS baixados
+            FROM deliverable_accesses a
+           WHERE a.eh_bot = false ${janelaAcc}`),
+        db.query(`
+          SELECT id, name, cnpj,
+                 to_char(ultimo_login_em AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS') AS ultimo_acesso
+            FROM companies WHERE excluida IS NOT TRUE ORDER BY name`),
+        db.query(`
+          SELECT company_id, count(*)::int AS num_logins
+            FROM portal_eventos WHERE tipo = 'login' ${janelaPortal}
+           GROUP BY company_id`),
+        db.query(`
+          SELECT d.company_id,
+                 count(*) FILTER (WHERE a.evento = 'pagina')::int   AS views,
+                 count(*) FILTER (WHERE a.evento = 'download')::int AS downloads
+            FROM deliverable_accesses a
+            JOIN deliverables d ON d.id = a.deliverable_id
+           WHERE a.eh_bot = false ${janelaAcc}
+           GROUP BY d.company_id`),
+        db.query(`
+          SELECT company_id, ${emUTC} AS em, ip FROM (
+            SELECT company_id, criado_em, ip,
+                   ROW_NUMBER() OVER (PARTITION BY company_id ORDER BY criado_em DESC) AS rn
+              FROM portal_eventos WHERE tipo = 'login'
+          ) t WHERE rn <= 5 ORDER BY company_id, criado_em DESC`),
+        db.query(`
+          SELECT company_id, ferramenta, usos FROM (
+            SELECT company_id, ferramenta, count(*)::int AS usos,
+                   ROW_NUMBER() OVER (PARTITION BY company_id ORDER BY count(*) DESC) AS rn
+              FROM portal_eventos WHERE tipo = 'uso' ${janelaPortal}
+             GROUP BY company_id, ferramenta
+          ) t WHERE rn <= 3 ORDER BY company_id, usos DESC`),
+      ]);
+
+    const loginsMap = new Map(logins.rows.map((r) => [r.company_id, r.num_logins]));
+    const docsMap = new Map(docsPorEmpresa.rows.map((r) => [r.company_id, r]));
+    const ultimosMap = new Map();
+    for (const r of ultimos.rows) {
+      if (!ultimosMap.has(r.company_id)) ultimosMap.set(r.company_id, []);
+      ultimosMap.get(r.company_id).push({ em: r.em, ip: r.ip });
+    }
+    const topMap = new Map();
+    for (const r of topFerr.rows) {
+      if (!topMap.has(r.company_id)) topMap.set(r.company_id, []);
+      topMap.get(r.company_id).push({ ferramenta: r.ferramenta, usos: r.usos });
+    }
+
+    const listaClientes = clientes.rows.map((c) => {
+      const d = docsMap.get(c.id) || { views: 0, downloads: 0 };
+      return {
+        id: c.id,
+        name: c.name,
+        cnpj: c.cnpj,
+        ultimo_acesso: c.ultimo_acesso,
+        num_logins: loginsMap.get(c.id) || 0,
+        views: d.views,
+        downloads: d.downloads,
+        nunca_acessou: !c.ultimo_acesso,
+        ultimos_acessos: ultimosMap.get(c.id) || [],
+        top_ferramentas: topMap.get(c.id) || [],
+      };
+    });
+
+    const t = totais.rows[0];
+    res.json({
+      dias,
+      totais: {
+        total: t.total,
+        acessaram: t.acessaram,
+        nunca_acessaram: t.total - t.acessaram,
+        ativos_30d: t.ativos_30d,
+      },
+      ranking: ranking.rows,
+      documentos: documentos.rows[0],
+      clientes: listaClientes,
+    });
+  } catch (err) {
+    console.error("[admin] acessos:", err.message);
+    res.status(500).json({ error: "Erro ao carregar controle de acessos" });
+  }
+});
+
+/**
  * GET /admin/vencimentos-sugeridos — fila de revisão (só pendentes).
  */
 router.get("/vencimentos-sugeridos", adminOnly, async (req, res) => {

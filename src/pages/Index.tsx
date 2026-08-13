@@ -89,6 +89,13 @@ const GROUP_SUBTITLE: Record<ToolGroup, string> = {
 const Index = () => {
   const navigate = useNavigate();
   const { company, logout, login } = useAuth();
+
+  // Registra a abertura de uma ferramenta (tela "Controle de acessos") e navega.
+  // Best-effort: se o registro falhar, a navegação acontece do mesmo jeito.
+  const abrirFerramenta = (tool: CompanyToolKey, path: string) => {
+    api.portal.registrarUso(tool);
+    navigate(path);
+  };
   // Aviso de LGPD: só abre se o servidor disser que a empresa nunca respondeu.
   const [mostrarLgpd, setMostrarLgpd] = useState(false);
 
@@ -261,7 +268,7 @@ const Index = () => {
               </div>
               <button
                 type="button"
-                onClick={() => navigate("/proximos-pagamentos")}
+                onClick={() => abrirFerramenta("calendar", "/proximos-pagamentos")}
                 className="flex shrink-0 items-center gap-1 text-sm font-medium text-primary hover:underline"
               >
                 Ver todos <ArrowUpRight className="h-4 w-4" />
@@ -290,7 +297,7 @@ const Index = () => {
                   <button
                     key={d.id}
                     type="button"
-                    onClick={() => navigate("/proximos-pagamentos")}
+                    onClick={() => abrirFerramenta("calendar", "/proximos-pagamentos")}
                     className="rounded-2xl border bg-card/70 p-5 text-left transition-colors hover:border-primary/40 hover:bg-card"
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -321,7 +328,7 @@ const Index = () => {
         {podeFerias && ferias?.resumo && (ferias.resumo.vencidas > 0 || ferias.resumo.em_risco_faltas > 0) && (
           <button
             type="button"
-            onClick={() => navigate("/ferias")}
+            onClick={() => abrirFerramenta("vacations", "/ferias")}
             className="flex w-full items-center gap-3 rounded-2xl border-2 border-amber-500/50 bg-amber-500/10 px-5 py-4 text-left"
           >
             <Palmtree className="h-6 w-6 shrink-0 text-amber-600" />
@@ -362,7 +369,7 @@ const Index = () => {
                   <button
                     key={item.key}
                     type="button"
-                    onClick={() => navigate(item.path)}
+                    onClick={() => abrirFerramenta(item.tool, item.path)}
                     className="group flex min-w-0 items-center gap-4 rounded-2xl border bg-card/70 p-4 text-left transition-colors hover:border-primary/40 hover:bg-card"
                   >
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">

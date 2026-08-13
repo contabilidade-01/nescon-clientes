@@ -656,6 +656,28 @@ export interface AlertHeldGuides {
   }>;
 }
 
+/** Um cliente na tela de Controle de acessos. */
+export interface AcessoCliente {
+  id: string;
+  name: string;
+  cnpj: string;
+  ultimo_acesso: string | null;
+  num_logins: number;
+  views: number;
+  downloads: number;
+  nunca_acessou: boolean;
+  ultimos_acessos: Array<{ em: string; ip: string | null }>;
+  top_ferramentas: Array<{ ferramenta: string; usos: number }>;
+}
+
+export interface AcessosData {
+  dias: number;
+  totais: { total: number; acessaram: number; nunca_acessaram: number; ativos_30d: number };
+  ranking: Array<{ ferramenta: string; usos: number }>;
+  documentos: { visualizados: number; baixados: number };
+  clientes: AcessoCliente[];
+}
+
 /** Configuração operacional — no banco, não no ambiente. */
 export interface AlertOpConfig {
   envio_automatico: boolean;
@@ -1867,5 +1889,20 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ desde, aplicar }),
       }),
+  },
+
+  /** Controle de acessos (admin). `dias` filtra ranking/contagens (0/omitido = tudo). */
+  acessos: {
+    dados: (dias?: number) =>
+      request<AcessosData>(`/admin/acessos${dias ? `?dias=${dias}` : ""}`),
+  },
+
+  /** Telemetria de uso do portal (cliente logado). Best-effort — nunca atrapalha a navegação. */
+  portal: {
+    registrarUso: (ferramenta: string) =>
+      request<{ ok: boolean }>("/portal/uso", {
+        method: "POST",
+        body: JSON.stringify({ ferramenta }),
+      }).catch(() => undefined),
   },
 };
