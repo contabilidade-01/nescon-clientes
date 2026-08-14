@@ -11,7 +11,8 @@ async function listCompanies(db) {
     const { rows } = await db.query(
       `SELECT c.id, c.name, c.cnpj, c.contact_email,
               COALESCE(c.phone, g.phone) AS phone,
-              c.tool_access, c.gclick_status, c.created_at
+              c.tool_access, c.gclick_status, c.created_at,
+              c.acesso_enviado_em, c.ultimo_login_em
          FROM companies c
          LEFT JOIN gclick_clients g ON g.company_id = c.id
         WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE

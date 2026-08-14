@@ -1880,6 +1880,11 @@ router.post("/companies/enviar-acesso", requireArea("empresas"), async (req, res
 
         await enviarTexto({ numero: v.numero, texto, delayMs: 2000 });
 
+        // Só carimba DEPOIS que a mensagem saiu: o verde da tela significa "o cliente
+        // recebeu de fato", não "geramos a senha". Se o envio falhar, cai no catch abaixo
+        // e a empresa continua vermelha (ainda não enviada), como deve ser.
+        await db.query(`UPDATE companies SET acesso_enviado_em = now() WHERE id = $1`, [emp.id]);
+
         resultados.push({ id: emp.id, name: emp.name, status: "enviado" });
       } catch (err) {
         erros.push({ id: emp.id, name: emp.name, erro: err.message });

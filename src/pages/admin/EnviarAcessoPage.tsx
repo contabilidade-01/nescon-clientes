@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Send, AlertCircle, CheckCircle, Clock } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -10,14 +10,30 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { api } from "@/lib/api";
 import { maskCNPJ } from "@/lib/masks";
 
+/** 'YYYY-MM-DDT...' → 'DD/MM/AAAA'. Vazio quando não há data. */
+function formatarData(iso: string | null | undefined) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("pt-BR");
+}
+
 const EnviarAcessoPage = () => {
   const { data: companies, isLoading } = useAdminCompanies();
+  const queryClient = useQueryClient();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<any>(null);
 
   const companiesComWhatsApp = useMemo(() => {
     return (companies || []).filter((c) => c.phone);
   }, [companies]);
+
+  // Evidência da tela: quantos já receberam o acesso (verde) e quantos ainda não (vermelho).
+  const { enviados, pendentes } = useMemo(() => {
+    let e = 0;
+    for (const c of companiesComWhatsApp) if (c.acesso_enviado_em) e += 1;
+    return { enviados: e, pendentes: companiesComWhatsApp.length - e };
+  }, [companiesComWhatsApp]);
 
   const selectAll = () => {
     setSelectedIds(new Set(companiesComWhatsApp.map((c) => c.id)));
@@ -44,6 +60,9 @@ const EnviarAcessoPage = () => {
     },
     onSuccess: (data) => {
       setResult(data);
+      // Recarrega a lista: quem acabou de receber troca o selo vermelho pelo verde.
+      queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      setSelectedIds(new Set());
       if (data.erros.length === 0) {
         toast.success(`${data.enviados} acessos enviados por WhatsApp`);
       } else {
@@ -89,10 +108,24 @@ const EnviarAcessoPage = () => {
               <Clock className="w-4 h-4" />
               Senhas Provisórias
             </CardTitle>
-            <CardDescription>
-              {companiesComWhatsApp.length === 0
-                ? "Nenhuma empresa com WhatsApp cadastrado"
-                : `${companiesComWhatsApp.length} empresa${companiesComWhatsApp.length !== 1 ? "s" : ""} com WhatsApp disponível para envio`}
+            <CardDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {companiesComWhatsApp.length === 0 ? (
+                "Nenhuma empresa com WhatsApp cadastrado"
+              ) : (
+                <>
+                  <span>
+                    {companiesComWhatsApp.length} empresa{companiesComWhatsApp.length !== 1 ? "s" : ""} com WhatsApp
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-green-700">
+                    <span className="h-2 w-2 rounded-full bg-green-600" />
+                    {enviados} enviado{enviados !== 1 ? "s" : ""}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-red-700">
+                    <span className="h-2 w-2 rounded-full bg-red-600" />
+                    {pendentes} ainda não enviado{pendentes !== 1 ? "s" : ""}
+                  </span>
+                </>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -126,20 +159,39 @@ const EnviarAcessoPage = () => {
               ) : companiesComWhatsApp.length === 0 ? (
                 <div className="p-4 text-sm text-muted-foreground">Nenhuma empresa com WhatsApp</div>
               ) : (
-                companiesComWhatsApp.map((company) => (
-                  <div key={company.id} className="p-3 flex items-center gap-3 hover:bg-muted/50">
-                    <Checkbox
-                      checked={selectedIds.has(company.id)}
-                      onCheckedChange={() => toggleId(company.id)}
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium text-sm">{company.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {maskCNPJ(company.cnpj)} • {company.phone}
+                companiesComWhatsApp.map((company) => {
+                  const enviado = Boolean(company.acesso_enviado_em);
+                  return (
+                    <div
+                      key={company.id}
+                      className={`p-3 flex items-center gap-3 hover:bg-muted/50 border-l-4 ${
+                        enviado ? "border-l-green-500" : "border-l-red-500"
+                      }`}
+                    >
+                      <Checkbox
+                        checked={selectedIds.has(company.id)}
+                        onCheckedChange={() => toggleId(company.id)}
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium text-sm">{company.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {maskCNPJ(company.cnpj)} • {company.phone}
+                        </div>
                       </div>
+                      {enviado ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-800 whitespace-nowrap">
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          Enviado{formatarData(company.acesso_enviado_em) ? ` • ${formatarData(company.acesso_enviado_em)}` : ""}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-800 whitespace-nowrap">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          Ainda não enviado
+                        </span>
+                      )}
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </CardContent>

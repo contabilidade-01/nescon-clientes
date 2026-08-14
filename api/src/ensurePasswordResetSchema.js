@@ -22,6 +22,14 @@ async function ensurePasswordResetSchema(db) {
     ALTER TABLE companies
       ADD COLUMN IF NOT EXISTS password_expires_at TIMESTAMPTZ;
   `);
+  // Quando o acesso foi ENVIADO por WhatsApp (a mensagem com a senha temporária). É o
+  // que a tela "Enviar Acesso" usa para evidenciar quem já recebeu (verde) e quem ainda
+  // não recebeu (vermelho). Diferente de `password_expires_at`, que zera quando o cliente
+  // troca a senha: este carimbo fica, para o registro de "já mandamos" não se apagar.
+  await db.query(`
+    ALTER TABLE companies
+      ADD COLUMN IF NOT EXISTS acesso_enviado_em TIMESTAMPTZ;
+  `);
   await db.query(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

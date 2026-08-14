@@ -1253,6 +1253,10 @@ export const api = {
           /** Situação no G-Click (ATIVO/DESATIVADO). Informativo — não bloqueia nada. */
           gclick_status: string | null;
           created_at: string;
+          /** Quando o acesso foi enviado por WhatsApp (null = ainda não enviado). */
+          acesso_enviado_em: string | null;
+          /** Último login do cliente no portal (null = nunca entrou). */
+          ultimo_login_em: string | null;
         }>
       >("/admin/companies"),
     /** Tira a empresa do ar: some dos paineis, para de receber e perde o portal. */
