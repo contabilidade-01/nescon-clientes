@@ -40,6 +40,24 @@ async function ensureAlertasSchema(db) {
     );
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS avisos_alterados_em TIMESTAMPTZ;`);
 
+    // Subchaves do envio, POR EMPRESA, abaixo da chave geral (`alertas_ativos`).
+    //
+    // A chave geral corta TUDO. Abaixo dela, três canais independentes, porque o
+    // escritório precisa poder tratá-los em separado — em especial vencimento e vencido
+    // do boleto: um cliente pode não querer o lembrete e ainda assim ser cobrado do que
+    // já venceu (e vice-versa).
+    //
+    //   alertas_ativos (geral) ─ off = nada
+    //   ├── avisos_gerais_ativos   → tributos, guias e férias
+    //   ├── boleto_lembrete_ativo  → boleto: aviso de VENCIMENTO (véspera)
+    //   └── boleto_cobranca_ativo  → boleto: aviso de VENCIDO (marcos de cobrança)
+    //
+    // Default true em todas: a migração não pode fazer ninguém deixar de receber o que
+    // já recebia.
+    await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS avisos_gerais_ativos  BOOLEAN NOT NULL DEFAULT true;`);
+    await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS boleto_lembrete_ativo BOOLEAN NOT NULL DEFAULT true;`);
+    await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS boleto_cobranca_ativo BOOLEAN NOT NULL DEFAULT true;`);
+
     await db.query(`
       CREATE TABLE IF NOT EXISTS company_obligations (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -111,9 +129,27 @@ async function ensureAlertasSchema(db) {
         criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
       );
     `);
+    // Identidade da dispensa passa a ser o CÓDIGO do funcionário, não o nome: dois
+    // homônimos na mesma empresa não podem compartilhar a dispensa. O código é único
+    // DENTRO da empresa (empresas diferentes repetem códigos — por isso a chave é sempre
+    // (company_id, codigo, limite_gozo)). `funcionario` (nome) fica só para exibição.
+    await db.query(`ALTER TABLE vacation_alert_acks ADD COLUMN IF NOT EXISTS codigo TEXT;`);
+    // Backfill das dispensas antigas (chaveadas por nome): casa com o código do período.
     await db.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_acks_unico
-        ON vacation_alert_acks(company_id, funcionario, limite_gozo);
+      UPDATE vacation_alert_acks a
+         SET codigo = vp.codigo
+        FROM vacation_periods vp
+       WHERE a.codigo IS NULL
+         AND vp.company_id = a.company_id
+         AND vp.nome = a.funcionario
+         AND vp.limite_gozo = a.limite_gozo
+         AND vp.codigo IS NOT NULL;
+    `);
+    // Troca a chave de unicidade: nome → código. A antiga sai para a nova valer.
+    await db.query(`DROP INDEX IF EXISTS idx_vacation_acks_unico;`);
+    await db.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_acks_codigo
+        ON vacation_alert_acks(company_id, codigo, limite_gozo);
     `);
 
     // Falha de envio precisa ficar registrada. Sem isto, um disparo que quebrou às 8h
@@ -134,6 +170,76 @@ async function ensureAlertasSchema(db) {
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_alert_failures_dia
         ON alert_failures(dia_alerta DESC, criado_em DESC);
+    `);
+
+    // Fila de entrega (outbox) para reenvio robusto. O motor entrega na hora; o que
+    // FALHA (instância caída, erro transitório, teto de hora) é gravado aqui e um
+    // drenador reprocessa com backoff até entregar ou esgotar as tentativas. Sem isto,
+    // um aviso que falhou no dia — em especial o de FÉRIAS, cujo marco é uma data exata —
+    // se perderia: no dia seguinte o marco já passou e ele nunca seria recalculado.
+    //
+    // UNIQUE (company_id, dia_alerta): mesma invariante do alert_sends — uma mensagem
+    // por cliente por dia, também na fila. `status`: pendente | enviado | falhou | ignorado.
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS alert_outbox (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        dia_alerta DATE NOT NULL,
+        obrigacoes TEXT NOT NULL,
+        texto TEXT NOT NULL,
+        incentivo_message_id UUID,
+        whatsapp TEXT,
+        status TEXT NOT NULL DEFAULT 'pendente',
+        tentativas INT NOT NULL DEFAULT 0,
+        proxima_tentativa_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+        ultimo_erro TEXT,
+        criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+        atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await db.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_outbox_dia
+        ON alert_outbox(company_id, dia_alerta);
+    `);
+    // O drenador busca por "pendente cujo horário de re-tentativa já chegou".
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_alert_outbox_pendentes
+        ON alert_outbox(status, proxima_tentativa_em);
+    `);
+
+    // Fila do aviso de "documento novo" com JANELA DE HORÁRIO. O documento pode ser
+    // sincronizado a qualquer hora (o G-Click trouxe um DAS às 00:07, por exemplo), mas
+    // o cliente não deve ser acordado de madrugada nem avisado tarde da noite: fora da
+    // janela (08h–19h de São Paulo), o aviso espera aqui e sai às 08h. `enviar_dia` é a
+    // data (SP) em que ele pode sair; o drenador só entrega dentro da janela.
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS doc_notify_queue (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        documentos JSONB NOT NULL,
+        enviar_dia DATE NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pendente',
+        tentativas INT NOT NULL DEFAULT 0,
+        ultimo_erro TEXT,
+        criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+        atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_doc_notify_pendentes
+        ON doc_notify_queue(status, enviar_dia);
+    `);
+
+    // Trava de 48h contra cobrança repetida de BOLETO. O boleto é da Cora: ela baixa
+    // o status quando o cliente paga, e a sincronização tem latência. Sem este flag o
+    // motor da manhã seguinte mandaria cobrança de um boleto que já está pago — não
+    // dá para confiar só no `status` no momento da consulta. Atualizado em
+    // `alertas.registrarEnvio` toda vez que um BOLETO entra numa mensagem enviada.
+    //
+    // Sem índice de propósito: a leitura é por `category = 'boleto' AND status IS
+    // DISTINCT FROM 'paid'`, que já é restritivo; o flag é só um filtro fino em cima.
+    await db.query(`
+      ALTER TABLE deliverables ADD COLUMN IF NOT EXISTS alert_sent_at TIMESTAMPTZ;
     `);
 
     console.log("[DB] alertas: tabelas verificadas/criadas.");

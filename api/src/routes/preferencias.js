@@ -49,7 +49,7 @@ router.get("/", async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: "Empresa não encontrada" });
 
     const { rows: acks } = await db.query(
-      `SELECT funcionario, to_char(limite_gozo, 'YYYY-MM-DD') AS limite_gozo, criado_em
+      `SELECT codigo, funcionario, to_char(limite_gozo, 'YYYY-MM-DD') AS limite_gozo, criado_em
          FROM vacation_alert_acks WHERE company_id = $1
         ORDER BY limite_gozo`,
       [companyId]
@@ -97,7 +97,11 @@ router.put("/", async (req, res) => {
 router.post("/ferias-visto", async (req, res) => {
   const { companyId, erro } = empresaDe(req);
   if (erro) return res.status(400).json({ error: erro });
-  const { funcionario, limite_gozo } = req.body || {};
+  const { codigo, funcionario, limite_gozo } = req.body || {};
+  // A dispensa é por CÓDIGO do funcionário (único por empresa) — nome é só exibição.
+  if (!validateString(codigo, 1, 40)) {
+    return res.status(400).json({ error: "codigo do funcionário é obrigatório" });
+  }
   if (!validateString(funcionario, 1, 200)) {
     return res.status(400).json({ error: "funcionario inválido" });
   }
@@ -106,12 +110,12 @@ router.post("/ferias-visto", async (req, res) => {
   }
   try {
     await db.query(
-      `INSERT INTO vacation_alert_acks (company_id, funcionario, limite_gozo)
-       VALUES ($1, $2, $3::date)
-       ON CONFLICT (company_id, funcionario, limite_gozo) DO NOTHING`,
-      [companyId, funcionario, limite_gozo]
+      `INSERT INTO vacation_alert_acks (company_id, codigo, funcionario, limite_gozo)
+       VALUES ($1, $2, $3, $4::date)
+       ON CONFLICT (company_id, codigo, limite_gozo) DO NOTHING`,
+      [companyId, String(codigo), funcionario, limite_gozo]
     );
-    res.json({ dispensado: true, funcionario, limite_gozo });
+    res.json({ dispensado: true, codigo, funcionario, limite_gozo });
   } catch (err) {
     console.error("[preferencias] ferias-visto:", err.message);
     res.status(500).json({ error: "Erro ao registrar" });
@@ -122,15 +126,15 @@ router.post("/ferias-visto", async (req, res) => {
 router.delete("/ferias-visto", async (req, res) => {
   const { companyId, erro } = empresaDe(req);
   if (erro) return res.status(400).json({ error: erro });
-  const { funcionario, limite_gozo } = req.body || {};
-  if (!validateString(funcionario, 1, 200) || !/^\d{4}-\d{2}-\d{2}$/.test(String(limite_gozo || ""))) {
-    return res.status(400).json({ error: "funcionario e limite_gozo são obrigatórios" });
+  const { codigo, limite_gozo } = req.body || {};
+  if (!validateString(codigo, 1, 40) || !/^\d{4}-\d{2}-\d{2}$/.test(String(limite_gozo || ""))) {
+    return res.status(400).json({ error: "codigo e limite_gozo são obrigatórios" });
   }
   try {
     await db.query(
       `DELETE FROM vacation_alert_acks
-        WHERE company_id = $1 AND funcionario = $2 AND limite_gozo = $3::date`,
-      [companyId, funcionario, limite_gozo]
+        WHERE company_id = $1 AND codigo = $2 AND limite_gozo = $3::date`,
+      [companyId, String(codigo), limite_gozo]
     );
     res.json({ dispensado: false });
   } catch (err) {

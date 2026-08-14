@@ -16,18 +16,24 @@
  *   - DAS       → dia 20 (adia — LC 123)    [obrigacoes: DAS]
  *   - DCTF Web  → dia 20 (antecipa, INSS)   [obrigacoes: INSS_DCTFWEB]
  *
+ * Os três acima são exatamente `OBRIGACOES_NUCLEO` (exportada de obrigacoes.js) — fonte
+ * única da verdade. Aqui abaixo o DOC_TYPE_PARA_OBRIGACAO traduz o doc_type do G-Click
+ * (chave) para o código do catálogo (valor).
+ *
  * Ficam DE FORA de propósito, porque o dia varia e não há regra única confiável:
  *   - ISS   → municipal (o catálogo só conhece Uberlândia)
  *   - ICMS  → estadual (dia varia por UF)
  *   - INSS  → doc_type genérico ambíguo (GPS comum dia 20, contribuinte individual dia 15)
  * Para esses, a data lida do documento continua valendo (comportamento anterior).
  */
-const { calcularVencimento } = require("./obrigacoes");
+const { calcularVencimento, OBRIGACOES_NUCLEO } = require("./obrigacoes");
 
 /**
  * doc_type do G-Click (ver gclick/guides.js) → código de obrigação (ver obrigacoes.js).
  * Só os de regra nacional inequívoca. Acrescentar aqui é o único passo para ligar um novo
- * tributo à regra fixa.
+ * tributo à regra fixa. Os três códigos do VALUES devem ser um subconjunto de
+ * OBRIGACOES_NUCLEO (FGTS, INSS_DCTFWEB, DAS) — se divergir, o teste de obrição
+ * núcleo+test abaixo pega.
  */
 const DOC_TYPE_PARA_OBRIGACAO = {
   FGTS: "FGTS",

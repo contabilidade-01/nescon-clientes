@@ -45,7 +45,27 @@ const THROTTLE_S = num(process.env.ALERTAS_THROTTLE_S, 0.6);
 const MAX_POR_HORA = Math.max(1, num(process.env.ALERTAS_MAX_POR_HORA, 180));
 const DELAY_DIGITANDO_MS = Math.max(0, num(process.env.ALERTAS_DELAY_MS, 1200));
 
+// Fila de reenvio: quantas vezes tentar e por quantos dias uma mensagem pendente ainda
+// faz sentido. Depois de 3 dias, um aviso do dia (inclusive férias) está velho demais —
+// vira falha definitiva em vez de continuar tentando para sempre.
+const MAX_TENTATIVAS = Math.max(1, num(process.env.ALERTAS_MAX_TENTATIVAS, 5));
+const OUTBOX_EXPIRA_DIAS = Math.max(1, num(process.env.ALERTAS_OUTBOX_EXPIRA_DIAS, 3));
+
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Próximo passo da fila depois de uma tentativa que falhou. Função pura para o backoff
+ * ser testável sem banco.
+ *
+ * Backoff exponencial em minutos (2, 4, 8, 16…), com teto de 6h para não afastar demais
+ * a re-tentativa. Ao atingir o teto de tentativas, esgota — vira falha definitiva.
+ */
+function calcularBackoff(tentativas, max = MAX_TENTATIVAS) {
+  const t = Math.max(1, Number(tentativas) || 1);
+  if (t >= max) return { esgotou: true, proximaMin: null };
+  const proximaMin = Math.min(2 ** t, 360);
+  return { esgotou: false, proximaMin };
+}
 
 // Janela deslizante de uma hora, em memória. Reinicia a cada deploy — e tudo bem: o
 // teto existe contra rajada dentro de uma execução, não como cota contábil.
@@ -102,16 +122,22 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, comp
   let falhas = 0;
   let ignorados = 0;
 
-  for (const m of mensagens) {
+  for (let i = 0; i < mensagens.length; i += 1) {
+    const m = mensagens[i];
     // Registrar o motivo de NÃO ter avisado é tão importante quanto registrar o envio:
     // é o que o escritório precisa ver para corrigir cadastro em vez de descobrir o
     // problema pelo cliente reclamando que não recebeu.
     const anotar = async (motivo, tipo = "ignorado") => {
       if (!apenasSimular) await registrarFalha(db, { companyId: m.company_id, diaAlerta: dia, motivo, tipo });
     };
+    // Enfileira para reenvio. `tentativas` já vem contando a tentativa que acabou de
+    // falhar (1), ou 0 quando a mensagem nem chegou a ser tentada (teto, interrupção).
+    const enfileirar = (tentativas) => enfileirarAlerta(db, m, { tentativas });
 
     const v = numeroWpp.validar(m.whatsapp);
     if (!v.ok) {
+      // Número inválido é problema de CADASTRO — reenviar não resolve. Não vai para a
+      // fila; fica só na lista de falhas para alguém corrigir o número.
       ignorados += 1;
       resultados.push({ empresa: m.empresa, company_id: m.company_id, status: "ignorado", motivo: v.motivo });
       await anotar(v.motivo);
@@ -137,10 +163,11 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, comp
     }
 
     if (!sobOTeto()) {
-      ignorados += 1;
+      // Teto de hora: é transitório. Vai para a fila para o drenador retomar depois.
       const motivo = `Teto de ${MAX_POR_HORA} envios/hora atingido. O que sobrou sai na próxima execução.`;
       resultados.push({ empresa: m.empresa, company_id: m.company_id, status: "adiado", motivo });
       await anotar(motivo, "adiado");
+      await enfileirar(0);
       continue;
     }
 
@@ -175,12 +202,18 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, comp
         motivo: err.message,
       });
       await anotar(err.message, "falhou");
+      // Falha transitória: para a fila retentar com backoff.
+      await enfileirar(1);
       // Token inválido/desconectado não melhora na próxima empresa: para tudo aqui em
-      // vez de colecionar o mesmo erro sessenta vezes.
+      // vez de colecionar o mesmo erro sessenta vezes. As mensagens que ainda não foram
+      // tentadas também entram na fila, para o drenador retomá-las quando a instância voltar.
       if (tokenRuim) {
         const motivo = "Envio interrompido: a instância precisa de atenção.";
         resultados.push({ status: "interrompido", motivo });
         await registrarFalha(db, { companyId: null, diaAlerta: dia, motivo, tipo: "interrompido" });
+        for (const restante of mensagens.slice(i + 1)) {
+          await enfileirarAlerta(db, restante, { tentativas: 0 });
+        }
         break;
       }
     }
@@ -216,6 +249,158 @@ async function enviarComRetry({ numero, texto, tentativas = 2 }) {
   throw ultimo;
 }
 
+/**
+ * Enfileira uma mensagem JÁ COMPOSTA para reenvio. Idempotente por (empresa, dia): se já
+ * está na fila, respeita o que lá está; se já foi entregue (alert_sends), nem entra.
+ *
+ * `tentativas` já conta a tentativa que acabou de falhar (1), ou 0 quando a mensagem nem
+ * chegou a ser tentada (teto de hora, interrupção por instância caída).
+ */
+async function enfileirarAlerta(db, m, { tentativas = 0 } = {}) {
+  const { esgotou, proximaMin } = calcularBackoff(Math.max(1, tentativas), MAX_TENTATIVAS);
+  const proxima = tentativas > 0 && !esgotou ? proximaMin : 0;
+  const obrig = Array.isArray(m.obrigacoes) ? [...m.obrigacoes].sort().join(",") : String(m.obrigacoes || "");
+  try {
+    await db.query(
+      `INSERT INTO alert_outbox
+         (company_id, dia_alerta, obrigacoes, texto, incentivo_message_id, whatsapp,
+          status, tentativas, proxima_tentativa_em)
+       SELECT $1, $2::date, $3, $4, $5, $6, 'pendente', $7,
+              now() + ($8 || ' minutes')::interval
+        WHERE NOT EXISTS (
+          SELECT 1 FROM alert_sends s WHERE s.company_id = $1 AND s.dia_alerta = $2::date
+        )
+       ON CONFLICT (company_id, dia_alerta) DO NOTHING`,
+      [m.company_id, m.dia_alerta, obrig, m.texto, m.incentivo_id ?? null, m.whatsapp ?? null, tentativas, String(proxima)]
+    );
+  } catch (err) {
+    console.error("[alertas] enfileirar:", err.message);
+  }
+}
+
+/**
+ * Reprocessa a fila: pega os pendentes cuja hora de re-tentativa já chegou, tenta
+ * entregar com as MESMAS travas do envio direto e atualiza o estado. Expira antes o que
+ * está pendente há dias demais. Ao esgotar as tentativas de uma mensagem, ela vira falha
+ * definitiva e o escritório é avisado.
+ */
+async function drenarOutbox(db) {
+  if (!uazapi.configurado()) return { enviados: 0, definitivas: 0, tentadas: 0 };
+
+  // Aviso velho demais não deve mais ser entregue — vira falha definitiva.
+  const { rows: expiradas } = await db.query(
+    `UPDATE alert_outbox
+        SET status = 'falhou',
+            ultimo_erro = 'Expirado: pendente há mais de ' || $1::text || ' dia(s).',
+            atualizado_em = now()
+      WHERE status = 'pendente'
+        AND dia_alerta < (current_date - $1::int)
+      RETURNING company_id, dia_alerta::text AS dia_alerta`,
+    [OUTBOX_EXPIRA_DIAS]
+  );
+  for (const e of expiradas) {
+    await registrarFalha(db, {
+      companyId: e.company_id, diaAlerta: e.dia_alerta,
+      motivo: "Aviso expirou na fila (não entregue a tempo).", tipo: "falhou",
+    });
+  }
+
+  // Fecha o que já foi entregue por outro caminho (ex.: envio manual depois).
+  await db.query(
+    `UPDATE alert_outbox o
+        SET status = 'enviado', atualizado_em = now()
+      WHERE o.status = 'pendente'
+        AND EXISTS (SELECT 1 FROM alert_sends s
+                     WHERE s.company_id = o.company_id AND s.dia_alerta = o.dia_alerta)`
+  );
+
+  const { rows } = await db.query(
+    `SELECT o.id, o.company_id, o.dia_alerta::text AS dia_alerta, o.obrigacoes, o.texto,
+            o.incentivo_message_id, o.whatsapp, o.tentativas
+       FROM alert_outbox o
+      WHERE o.status = 'pendente' AND o.proxima_tentativa_em <= now()
+      ORDER BY o.criado_em
+      LIMIT 500`
+  );
+
+  const meuNumero = await uazapi.owner();
+  let enviados = 0;
+  let definitivas = expiradas.length;
+
+  for (const o of rows) {
+    const v = numeroWpp.validar(o.whatsapp);
+    if (!v.ok || (meuNumero && v.numero === meuNumero)) {
+      // Problema de cadastro: retentar não resolve. Fecha como ignorado.
+      const motivo = v.ok ? "É o próprio número da instância." : v.motivo;
+      await db.query(`UPDATE alert_outbox SET status='ignorado', ultimo_erro=$2, atualizado_em=now() WHERE id=$1`, [o.id, motivo]);
+      await registrarFalha(db, { companyId: o.company_id, diaAlerta: o.dia_alerta, motivo, tipo: "ignorado" });
+      continue;
+    }
+    if (!sobOTeto()) break; // teto de hora: o resto continua pendente para o próximo ciclo
+
+    try {
+      await enviarComRetry({ numero: v.numero, texto: o.texto });
+      marcarEnviado();
+      enviados += 1;
+      await registrarEnvio(db, {
+        companyId: o.company_id,
+        obrigacoes: o.obrigacoes ? o.obrigacoes.split(",") : [],
+        diaAlerta: o.dia_alerta,
+        texto: o.texto,
+        incentivoId: o.incentivo_message_id,
+      });
+      if (o.incentivo_message_id) {
+        await trechoDeIncentivo(db, { companyId: o.company_id, portalUrl: portalUrl("/"), simular: false });
+      }
+      await db.query(`UPDATE alert_outbox SET status='enviado', atualizado_em=now() WHERE id=$1`, [o.id]);
+    } catch (err) {
+      const tentativas = (o.tentativas || 0) + 1;
+      if (err instanceof uazapi.UazapiTokenInvalido) {
+        // Instância caída: não gasta tentativa, tenta no próximo ciclo. Para o laço.
+        await db.query(
+          `UPDATE alert_outbox SET ultimo_erro=$2, proxima_tentativa_em = now() + interval '15 minutes', atualizado_em=now() WHERE id=$1`,
+          [o.id, err.message]
+        );
+        break;
+      }
+      const { esgotou, proximaMin } = calcularBackoff(tentativas, MAX_TENTATIVAS);
+      if (esgotou) {
+        await db.query(`UPDATE alert_outbox SET status='falhou', tentativas=$2, ultimo_erro=$3, atualizado_em=now() WHERE id=$1`, [o.id, tentativas, err.message]);
+        await registrarFalha(db, {
+          companyId: o.company_id, diaAlerta: o.dia_alerta,
+          motivo: `Falha definitiva após ${tentativas} tentativas: ${err.message}`, tipo: "falhou",
+        });
+        definitivas += 1;
+      } else {
+        await db.query(
+          `UPDATE alert_outbox SET tentativas=$2, ultimo_erro=$3, proxima_tentativa_em = now() + ($4 || ' minutes')::interval, atualizado_em=now() WHERE id=$1`,
+          [o.id, tentativas, err.message, String(proximaMin)]
+        );
+      }
+    }
+    if (THROTTLE_S > 0) await espera(THROTTLE_S * 1000);
+  }
+
+  if (definitivas > 0) await avisarEscritorio(db, definitivas);
+  return { enviados, definitivas, tentadas: rows.length };
+}
+
+/** Aviso ativo ao escritório quando mensagens esgotam as re-tentativas. */
+async function avisarEscritorio(db, quantas) {
+  try {
+    const { escritorio_whatsapp: numero } = await lerConfig(db);
+    if (!numero) return; // sem número configurado: a falha fica só no Dashboard.
+    const v = numeroWpp.validar(numero);
+    if (!v.ok) return;
+    const texto =
+      `⚠️ *Alertas Nescon:* ${quantas} mensagem(ns) não foram entregues e esgotaram as re-tentativas.\n\n` +
+      `Confira em *Alertas → Dashboard* e verifique o WhatsApp/instância.`;
+    await uazapi.enviarTexto({ numero: v.numero, texto, delayMs: 0 });
+  } catch (err) {
+    console.error("[alertas] aviso ao escritório:", err.message);
+  }
+}
+
 /** Hora local de São Paulo (0-23). O servidor roda em UTC. */
 function horaSP(agora = new Date()) {
   return Number(
@@ -244,6 +429,30 @@ function iniciarAgendadorAlertas(db) {
       // a valer no próximo quarto de hora, sem redeploy. Era esse o custo de guardar a
       // decisão numa variável de ambiente.
       const cfg = await lerConfig(db);
+
+      // Reprocessa a fila TODO ciclo (a cada 15 min), ANTES da checagem de automático:
+      // reenviar o que já foi decidido (manual ou automático) e falhou não depende do
+      // envio automático estar ligado — inclui falhas de dias anteriores, até entregar.
+      try {
+        const d = await drenarOutbox(db);
+        if (d.enviados || d.definitivas) {
+          console.log(`[alertas] fila: ${d.enviados} reenviado(s), ${d.definitivas} definitiva(s).`);
+        }
+      } catch (err) {
+        console.error("[alertas] drenar fila:", err.message);
+      }
+
+      // Fila do aviso de "documento novo" (janela 07:50–19h). Require tardio para não
+      // criar ciclo com docNotify, que importa deste módulo. Roda antes do motor de
+      // vencimento para o aviso das 07:50 sair na frente dos alertas das 08h.
+      try {
+        const { drenarDocNotify } = require("./docNotify");
+        const dd = await drenarDocNotify(db);
+        if (dd.enviados) console.log(`[docNotify] fila: ${dd.enviados} aviso(s) enviado(s).`);
+      } catch (err) {
+        console.error("[docNotify] drenar fila:", err.message);
+      }
+
       if (!cfg.envio_automatico) return;
 
       const dia = hojeSP();
@@ -266,6 +475,9 @@ function iniciarAgendadorAlertas(db) {
 module.exports = {
   enviarAlertasDoDia,
   iniciarAgendadorAlertas,
+  drenarOutbox,
+  enfileirarAlerta,
+  calcularBackoff,
   horaSP,
   enviarComRetry,
   sobOTeto,

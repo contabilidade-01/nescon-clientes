@@ -48,7 +48,7 @@ const FeriasPage = () => {
   const dispensados = useMemo(
     () =>
       new Set(
-        (prefs.data?.ferias_dispensadas ?? []).map((d) => `${d.funcionario}|${d.limite_gozo}`)
+        (prefs.data?.ferias_dispensadas ?? []).map((d) => `${d.codigo}|${d.limite_gozo}`)
       ),
     [prefs.data]
   );
@@ -67,10 +67,10 @@ const FeriasPage = () => {
   });
 
   const dispensar = useMutation({
-    mutationFn: (v: { funcionario: string; limite: string; dispensar: boolean }) =>
+    mutationFn: (v: { codigo: string; funcionario: string; limite: string; dispensar: boolean }) =>
       v.dispensar
-        ? api.preferencias.feriasVisto(v.funcionario, v.limite)
-        : api.preferencias.desfazerFeriasVisto(v.funcionario, v.limite),
+        ? api.preferencias.feriasVisto(v.codigo, v.limite, v.funcionario)
+        : api.preferencias.desfazerFeriasVisto(v.codigo, v.limite),
     onSuccess: (_r, v) => {
       toast.success(
         v.dispensar
@@ -190,9 +190,10 @@ const FeriasPage = () => {
                 <LinhaFerias
                   key={p.id}
                   p={p}
-                  dispensado={dispensados.has(`${p.nome}|${(p.limite_gozo ?? "").slice(0, 10)}`)}
+                  dispensado={dispensados.has(`${p.codigo}|${(p.limite_gozo ?? "").slice(0, 10)}`)}
                   onDispensar={(v) =>
                     dispensar.mutate({
+                      codigo: p.codigo ?? "",
                       funcionario: p.nome,
                       limite: (p.limite_gozo ?? "").slice(0, 10),
                       dispensar: v,

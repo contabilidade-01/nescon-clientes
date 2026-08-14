@@ -35,6 +35,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { api, type AlertCompanyRow, type AlertSendResult } from "@/lib/api";
+import { validar as validarWhatsapp } from "@/lib/whatsappNumero";
 
 const ESFERA_LABEL: Record<string, string> = {
   federal: "Federal",
@@ -70,8 +71,20 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
   });
 
   const preferencias = useMutation({
-    mutationFn: (v: { alertas_ativos?: boolean; incentivo_ativo?: boolean; whatsapp?: string }) =>
-      api.alertas.preferencias(companyId, v),
+    mutationFn: (v: {
+      alertas_ativos?: boolean;
+      incentivo_ativo?: boolean;
+      avisos_gerais_ativos?: boolean;
+      boleto_lembrete_ativo?: boolean;
+      boleto_cobranca_ativo?: boolean;
+      whatsapp?: string;
+    }) => api.alertas.preferencias(companyId, v),
+    onSuccess: invalidar,
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const limpar = useMutation({
+    mutationFn: (codigo: string) => api.alertas.limpar(companyId, codigo),
     onSuccess: invalidar,
     onError: (e: Error) => toast.error(e.message),
   });
@@ -96,9 +109,11 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Chave geral: corta TUDO. As subchaves abaixo ficam desabilitadas quando
+              ela está desligada — não some, para o admin ver o que voltará ao religar. */}
           <div className="flex items-center justify-between gap-4">
-            <Label htmlFor="alertas-ativos" className="font-normal">
-              Recebe alertas de vencimento
+            <Label htmlFor="alertas-ativos" className="font-medium">
+              Recebe alertas (chave geral)
             </Label>
             <Switch
               id="alertas-ativos"
@@ -106,12 +121,59 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
               onCheckedChange={(v) => preferencias.mutate({ alertas_ativos: v })}
             />
           </div>
+
+          {/* Subchaves, um degrau abaixo da geral. Vencimento e vencido do boleto são
+              independentes: dá para receber só um dos dois. */}
+          <div className="ml-1 space-y-3 border-l-2 pl-4">
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="avisos-gerais" className="font-normal">
+                Avisos gerais
+                <span className="block text-xs text-muted-foreground">
+                  tributos, guias e férias
+                </span>
+              </Label>
+              <Switch
+                id="avisos-gerais"
+                disabled={!empresa.alertas_ativos}
+                checked={empresa.avisos_gerais_ativos}
+                onCheckedChange={(v) => preferencias.mutate({ avisos_gerais_ativos: v })}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="boleto-lembrete" className="font-normal">
+                Boleto — aviso de vencimento
+                <span className="block text-xs text-muted-foreground">lembrete na véspera</span>
+              </Label>
+              <Switch
+                id="boleto-lembrete"
+                disabled={!empresa.alertas_ativos}
+                checked={empresa.boleto_lembrete_ativo}
+                onCheckedChange={(v) => preferencias.mutate({ boleto_lembrete_ativo: v })}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="boleto-cobranca" className="font-normal">
+                Boleto — aviso de vencido
+                <span className="block text-xs text-muted-foreground">cobrança nos marcos</span>
+              </Label>
+              <Switch
+                id="boleto-cobranca"
+                disabled={!empresa.alertas_ativos}
+                checked={empresa.boleto_cobranca_ativo}
+                onCheckedChange={(v) => preferencias.mutate({ boleto_cobranca_ativo: v })}
+              />
+            </div>
+          </div>
+
           <div className="flex items-center justify-between gap-4">
             <Label htmlFor="incentivo-ativo" className="font-normal">
               Aceita a frase sobre o portal no fim do alerta
             </Label>
             <Switch
               id="incentivo-ativo"
+              disabled={!empresa.alertas_ativos}
               checked={empresa.incentivo_ativo}
               onCheckedChange={(v) => preferencias.mutate({ incentivo_ativo: v })}
             />
@@ -132,17 +194,25 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
                 id="whatsapp"
                 inputMode="numeric"
                 placeholder="34999998888"
+                className={whatsapp && !validarWhatsapp(whatsapp).ok ? "border-red-500" : ""}
                 value={whatsapp ?? empresa.whatsapp_manual ?? ""}
                 onChange={(e) => setWhatsapp(e.target.value)}
               />
               <Button
                 variant="outline"
-                onClick={() => preferencias.mutate({ whatsapp: whatsapp ?? "" })}
-                disabled={whatsapp === null || preferencias.isPending}
+                onClick={() => {
+                  const v = whatsapp?.trim();
+                  if (v && !validarWhatsapp(v).ok) return;
+                  preferencias.mutate({ whatsapp: v ?? "" });
+                }}
+                disabled={whatsapp === null || preferencias.isPending || (!!whatsapp?.trim() && !validarWhatsapp(whatsapp.trim()).ok)}
               >
                 Salvar
               </Button>
             </div>
+            {whatsapp?.trim() && !validarWhatsapp(whatsapp.trim()).ok && (
+              <span className="text-xs text-red-600">{validarWhatsapp(whatsapp.trim()).motivo}</span>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -211,6 +281,20 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
                 onCheckedChange={(v) => decidir.mutate({ codigo: o.codigo, ativo: Boolean(v) })}
                 className="mt-0.5"
               />
+              {o.origem === "manual" && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-xs"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    limpar.mutate(o.codigo);
+                  }}
+                  disabled={limpar.isPending}
+                >
+                  Redefinir automático
+                </Button>
+              )}
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{o.nome}</span>
@@ -249,49 +333,72 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
 /**
  * Campo de WhatsApp editável na própria lista.
  *
- * Salva ao sair do campo, e só quando mudou. O servidor recusa fixo e número torto com
- * motivo próprio, e é esse motivo que aparece no toast — o admin corrige o cadastro na
- * hora, em vez de descobrir semanas depois que aquele cliente nunca recebeu nada.
+ * Valida LOCALMENTE ao sair do campo (mesmo regex do backend) e mostra erro inline —
+ * sem depender de toast efêmero. Erro persistente chama a atenção do admin.
  */
 function WhatsappInline({ company }: { company: AlertCompanyRow }) {
   const queryClient = useQueryClient();
-  // O campo edita a EXCEÇÃO manual. Vazio com o número do G-Click de marca-d'água
-  // significa "usando o cadastro do G-Click" — que é o normal e o desejável. Mostrar o
-  // número do espelho dentro do campo faria parecer que ele foi digitado aqui, e o
-  // primeiro salvamento congelaria uma cópia que nunca mais acompanharia o cadastro.
   const [valor, setValor] = useState(company.whatsapp_manual ?? "");
+  const [erro, setErro] = useState("");
 
   const salvar = useMutation({
     mutationFn: (v: string) => api.alertas.preferencias(company.id, { whatsapp: v }),
     onSuccess: (r) => {
       setValor(r.whatsapp ?? "");
+      setErro("");
       toast.success(`WhatsApp de ${company.name} salvo.`);
       queryClient.invalidateQueries({ queryKey: ["alertas", "panorama"] });
     },
     onError: (e: Error) => {
       toast.error(e.message);
+      setErro(e.message);
       setValor(company.whatsapp_manual ?? "");
     },
   });
 
+  const handleBlur = () => {
+    const trimmed = valor.trim();
+    if (trimmed === (company.whatsapp_manual ?? "")) {
+      setErro("");
+      return;
+    }
+    // Vazio = limpar (volta pro G-Click) — aceito sem validar
+    if (!trimmed) {
+      setErro("");
+      salvar.mutate("");
+      return;
+    }
+    // Validação local (mesma lógica do backend)
+    const v = validarWhatsapp(trimmed);
+    if (!v.ok) {
+      setErro(v.motivo);
+      return;
+    }
+    setErro("");
+    salvar.mutate(trimmed);
+  };
+
   return (
-    <Input
-      className={`h-8 w-44 text-xs ${!company.whatsapp ? "border-amber-500/60" : ""}`}
-      placeholder={company.whatsapp_gclick ? `${company.whatsapp_gclick} (G-Click)` : "Sem WhatsApp"}
-      title={
-        company.whatsapp_manual
-          ? "Número manual — sobrepõe o cadastro do G-Click"
-          : "Vazio = usa o número do cadastro do G-Click"
-      }
-      inputMode="numeric"
-      value={valor}
-      onChange={(e) => setValor(e.target.value)}
-      onBlur={() => {
-        if (valor.trim() === (company.whatsapp_manual ?? "")) return;
-        salvar.mutate(valor.trim());
-      }}
-      disabled={salvar.isPending}
-    />
+    <div className="flex flex-col">
+      <Input
+        className={`h-8 w-44 text-xs ${erro ? "border-red-500" : !company.whatsapp ? "border-amber-500/60" : ""}`}
+        placeholder={company.whatsapp_gclick ? `${company.whatsapp_gclick} (G-Click)` : "Sem WhatsApp"}
+        title={
+          company.whatsapp_manual
+            ? "Número manual — sobrepõe o cadastro do G-Click"
+            : "Vazio = usa o número do cadastro do G-Click"
+        }
+        inputMode="numeric"
+        value={valor}
+        onChange={(e) => {
+          setValor(e.target.value);
+          if (erro) setErro("");
+        }}
+        onBlur={handleBlur}
+        disabled={salvar.isPending}
+      />
+      {erro && <span className="mt-0.5 text-[10px] leading-tight text-red-600">{erro}</span>}
+    </div>
   );
 }
 
@@ -335,6 +442,7 @@ const AlertasPage = () => {
         envio_automatico: boolean;
         hora: number;
         escritorio_cnpj: string;
+        escritorio_whatsapp: string;
         boleto_dias_antes: number;
         boleto_cobranca_dias: number[];
       }>
@@ -349,6 +457,16 @@ const AlertasPage = () => {
   const retidos = useQuery({
     queryKey: ["alertas", "retidos"],
     queryFn: () => api.alertas.retidos(7),
+  });
+
+  const dashboard = useQuery({
+    queryKey: ["alertas", "dashboard"],
+    queryFn: () => api.alertas.dashboard(),
+  });
+
+  const projecaoFerias = useQuery({
+    queryKey: ["alertas", "projecao-ferias"],
+    queryFn: () => api.alertas.projecaoFerias(),
   });
 
   const [soSemWhatsapp, setSoSemWhatsapp] = useState(false);
@@ -403,6 +521,25 @@ const AlertasPage = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Aplicar a mesma subchave a TODA a carteira ("marcar todos"). O pontual é no detalhe.
+  const [loteConfirm, setLoteConfirm] = useState<
+    { campo: string; label: string; valor: boolean } | null
+  >(null);
+  const preferenciasLote = useMutation({
+    mutationFn: (v: Parameters<typeof api.alertas.preferenciasLote>[0]) =>
+      api.alertas.preferenciasLote(v),
+    onSuccess: (r) => {
+      toast.success(`${r.atualizadas} empresa(s) atualizada(s).`);
+      queryClient.invalidateQueries({ queryKey: ["alertas", "panorama"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const CATEGORIAS_LOTE: Array<{ campo: string; label: string }> = [
+    { campo: "avisos_gerais_ativos", label: "Avisos gerais (tributos, guias, férias)" },
+    { campo: "boleto_lembrete_ativo", label: "Boleto — aviso de vencimento" },
+    { campo: "boleto_cobranca_ativo", label: "Boleto — aviso de vencido" },
+  ];
+
   const termo = busca.trim().toLowerCase();
   const empresas = (panorama.data?.empresas ?? []).filter((c) => {
     if (soSemWhatsapp && c.whatsapp) return false;
@@ -430,6 +567,8 @@ const AlertasPage = () => {
           <TabsTrigger value="empresas">Empresas</TabsTrigger>
           <TabsTrigger value="catalogo">Catálogo</TabsTrigger>
           <TabsTrigger value="hoje">O que sai hoje</TabsTrigger>
+          <TabsTrigger value="projecao">Projeção</TabsTrigger>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
         </TabsList>
 
         <TabsContent value="empresas" className="space-y-4">
@@ -478,6 +617,48 @@ const AlertasPage = () => {
               Aplicar marcações automáticas
             </Button>
           </div>
+
+          {/* Aplicar a mesma subchave a TODA a carteira de uma vez. O ajuste pontual
+              (uma empresa) é no detalhe. A chave geral não entra aqui de propósito:
+              desligar a carteira inteira de uma vez é o tipo de clique que ninguém
+              quer dar sem querer. */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Aplicar a todos os clientes</CardTitle>
+              <CardDescription>
+                Liga ou desliga uma subchave para a carteira inteira. Para um cliente só,
+                abra o detalhe dele.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {CATEGORIAS_LOTE.map((cat) => (
+                <div
+                  key={cat.campo}
+                  className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0"
+                >
+                  <span className="text-sm">{cat.label}</span>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={preferenciasLote.isPending}
+                      onClick={() => setLoteConfirm({ campo: cat.campo, label: cat.label, valor: true })}
+                    >
+                      Ligar a todos
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={preferenciasLote.isPending}
+                      onClick={() => setLoteConfirm({ campo: cat.campo, label: cat.label, valor: false })}
+                    >
+                      Desligar a todos
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardContent className="p-0">
@@ -624,6 +805,24 @@ const AlertasPage = () => {
                     const v = e.target.value.replace(/\D/g, "");
                     if (v !== (config.data?.escritorio_cnpj ?? "")) {
                       salvarConfig.mutate({ escritorio_cnpj: v });
+                    }
+                  }}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="escritorio-whatsapp" className="font-normal text-sm">
+                  WhatsApp do escritório
+                </Label>
+                <Input
+                  id="escritorio-whatsapp"
+                  className="h-9 w-48"
+                  inputMode="numeric"
+                  placeholder="avisos de falha (opcional)"
+                  defaultValue={config.data?.escritorio_whatsapp ?? ""}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v !== (config.data?.escritorio_whatsapp ?? "")) {
+                      salvarConfig.mutate({ escritorio_whatsapp: v });
                     }
                   }}
                 />
@@ -869,6 +1068,85 @@ const AlertasPage = () => {
             </Card>
           )}
 
+          {/* Conferência visual: quem vai receber e o quê — tabela limpa pro admin checar. */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">
+                Conferência: quem recebe o quê ({previsao.data?.total ?? 0} cliente{(previsao.data?.total ?? 0) !== 1 ? "s" : ""})
+              </CardTitle>
+              <CardDescription>
+                Cada linha é uma mensagem que sairá {dataPrevisao ? `em ${formatarData(dataPrevisao)}` : "hoje"}.
+                Confira se as obrigações e o número estão corretos antes de enviar.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {previsao.isLoading ? (
+                <p className="py-4 text-center text-sm text-muted-foreground">Carregando…</p>
+              ) : (previsao.data?.mensagens.length ?? 0) === 0 ? (
+                <p className="py-4 text-center text-sm text-muted-foreground">
+                  Nenhum alerta previsto para {dataPrevisao ? formatarData(dataPrevisao) : "hoje"}.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-xs text-muted-foreground">
+                        <th className="py-2 pr-3 font-medium">Empresa</th>
+                        <th className="py-2 pr-3 font-medium">WhatsApp</th>
+                        <th className="py-2 pr-3 font-medium">Obrigações</th>
+                        <th className="py-2 font-medium">Vencimento</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {previsao.data?.mensagens.map((m) => {
+                        const nomesPorCodigo = new Map(
+                          (catalogo.data?.obrigacoes ?? []).map((o) => [o.codigo, o.nome])
+                        );
+                        const obrigacoesLegivel = m.obrigacoes.map((cod) => {
+                          if (cod.startsWith("BOLETO:")) return "Boleto";
+                          if (cod.startsWith("FERIAS_LIMITE")) return "Férias";
+                          return nomesPorCodigo.get(cod) ?? cod;
+                        });
+                        // Deduplicar (múltiplos boletos viram "Boleto" repetido)
+                        const unicos = [...new Set(obrigacoesLegivel)];
+
+                        return (
+                          <tr key={m.company_id} className="hover:bg-muted/50">
+                            <td className="py-2 pr-3">
+                              <span className="font-medium">{m.empresa}</span>
+                              <span className="ml-2 text-[10px] text-muted-foreground">{m.cnpj}</span>
+                            </td>
+                            <td className="py-2 pr-3">
+                              {m.whatsapp ? (
+                                <span className="font-mono text-xs">{m.whatsapp}</span>
+                              ) : (
+                                <Badge variant="outline" className="text-[10px] text-amber-600">
+                                  sem número
+                                </Badge>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3">
+                              <div className="flex flex-wrap gap-1">
+                                {unicos.map((nome) => (
+                                  <Badge key={nome} variant="secondary" className="text-[10px]">
+                                    {nome}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="py-2 whitespace-nowrap">
+                              {formatarData(m.vencimento)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -920,6 +1198,157 @@ const AlertasPage = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Projeção de férias: próximos 7 dias */}
+        <TabsContent value="projecao" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Projeção de alertas de férias (7 dias)</CardTitle>
+              <CardDescription>
+                Acompanhe quais funcionários receberão avisos de limite de férias nos próximos dias.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {projecaoFerias.isLoading ? (
+                <div className="space-y-4">
+                  <p className="text-center text-sm text-muted-foreground">Carregando…</p>
+                </div>
+              ) : (projecaoFerias.data?.total ?? 0) === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  Nenhum aviso de férias previsto para os próximos 7 dias.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-xs text-muted-foreground">
+                        <th className="py-2 pr-3 font-medium">Dia</th>
+                        <th className="py-2 pr-3 font-medium">Empresa</th>
+                        <th className="py-2 pr-3 font-medium">Funcionário</th>
+                        <th className="py-2 pr-3 font-medium">Marco</th>
+                        <th className="py-2 font-medium">Limite</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {(projecaoFerias.data?.avisos ?? []).map((aviso, idx) => (
+                        <tr key={`${aviso.dia}-${aviso.company_id}-${idx}`} className="hover:bg-muted/50">
+                          <td className="py-2 pr-3 font-medium">{aviso.dia_formatado}</td>
+                          <td className="py-2 pr-3">
+                            <button
+                              className="hover:underline text-left"
+                              onClick={() => setAberta(aviso.company_id)}
+                            >
+                              {aviso.empresa}
+                            </button>
+                          </td>
+                          <td className="py-2 pr-3">{aviso.funcionario}</td>
+                          <td className="py-2 pr-3">
+                            <Badge variant="secondary" className="text-[10px]">
+                              {aviso.marco_dias ? `${aviso.marco_dias}d` : "—"}
+                            </Badge>
+                          </td>
+                          <td className="py-2">{aviso.limite_gozo}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Dashboard de falhas: resumo visual + histórico. */}
+        <TabsContent value="dashboard" className="space-y-4">
+          {dashboard.isLoading ? (
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="p-6 text-center text-sm text-muted-foreground">Carregando…</CardContent>
+              </Card>
+            </div>
+          ) : (
+            <>
+              {/* Cartões de resumo: total de falhas, por tipo, empresas afetadas, envios bem-sucedidos */}
+              <div className="grid gap-3 sm:grid-cols-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <p className="text-2xl font-bold">{dashboard.data?.resumo.total_falhas ?? 0}</p>
+                    <p className="text-xs text-muted-foreground">Falhas (48h)</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <p className="text-2xl font-bold">{dashboard.data?.resumo.empresas_afetadas ?? 0}</p>
+                    <p className="text-xs text-muted-foreground">Empresas afetadas</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <p className="text-2xl font-bold">{dashboard.data?.resumo.envios_24h ?? 0}</p>
+                    <p className="text-xs text-muted-foreground">Envios bem-sucedidos (24h)</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="space-y-1">
+                      {(dashboard.data?.resumo.por_tipo ?? []).map((t) => (
+                        <div key={t.tipo} className="flex justify-between text-xs">
+                          <span className="capitalize text-muted-foreground">{t.tipo}</span>
+                          <span className="font-medium">{t.total}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Tabela de detalhes: empresa, motivo, tipo, quantidade. */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Histórico de falhas (últimas 48h)</CardTitle>
+                  <CardDescription>
+                    {(dashboard.data?.detalhe ?? []).length === 0
+                      ? "Nenhuma falha — tudo operacional!"
+                      : "Clique na empresa para abrir o detalhe."}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {(dashboard.data?.detalhe ?? []).length === 0 ? (
+                    <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma falha nos últimos 2 dias.</p>
+                  ) : (
+                    <ul className="divide-y">
+                      {(dashboard.data?.detalhe ?? []).map((f, i) => (
+                        <li
+                          key={`${f.company_id ?? "null"}-${f.tipo}-${i}`}
+                          className="flex flex-wrap items-start justify-between gap-3 py-2 text-sm"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <button
+                              className="block text-left hover:underline"
+                              onClick={() => {
+                                if (f.company_id) setAberta(f.company_id);
+                              }}
+                              disabled={!f.company_id}
+                            >
+                              <span className="font-medium">{f.empresa ?? "Sistema"}</span>
+                            </button>
+                            <p className="break-words text-xs text-muted-foreground">{f.motivo}</p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <Badge variant="outline" className="text-[10px]">
+                              {f.tipo}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">×{f.vezes}</span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </TabsContent>
       </Tabs>
 
       <Dialog open={Boolean(aberta)} onOpenChange={(o) => !o && setAberta(null)}>
@@ -951,6 +1380,34 @@ const AlertasPage = () => {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={() => enviar.mutate({ simular: false })}>
               Enviar agora
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação da aplicação em massa: mexe na carteira toda, então pede um ok. */}
+      <AlertDialog open={Boolean(loteConfirm)} onOpenChange={(o) => !o && setLoteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {loteConfirm?.valor ? "Ligar" : "Desligar"} “{loteConfirm?.label}” para todos?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Vale para toda a carteira ({panorama.data?.total ?? 0} empresa{(panorama.data?.total ?? 0) !== 1 ? "s" : ""}).
+              A escolha de cada cliente é sobrescrita. Você pode reajustar um cliente pelo detalhe depois.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (loteConfirm) {
+                  preferenciasLote.mutate({ [loteConfirm.campo]: loteConfirm.valor });
+                }
+                setLoteConfirm(null);
+              }}
+            >
+              {loteConfirm?.valor ? "Ligar a todos" : "Desligar a todos"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

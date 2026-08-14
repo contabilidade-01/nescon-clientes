@@ -106,6 +106,16 @@ const OBRIGACOES = [
   },
 ];
 
+/**
+ * Obrigações do "núcleo" — tributos de regra fixa nacional, em que a lei é
+ * inequívoca quanto ao dia de vencimento. É o conjunto que vencimentoRegra.js
+ * usa para sobrescrever a data lida do documento. Os NOMES já estão em
+ * OBRIGACOES (codigo); aqui ficam só para iteração barata. Se acrescentar
+ * uma quarta obrigação deste tipo, atualize este array E o
+ * DOC_TYPE_PARA_OBRIGACAO em vencimentoRegra.js.
+ */
+const OBRIGACOES_NUCLEO = ["FGTS", "INSS_DCTFWEB", "DAS"]; // Tributos de regra fixa nacional — a lei é inequívoca
+
 const POR_CODIGO = new Map(OBRIGACOES.map((o) => [o.codigo, o]));
 
 function obrigacao(codigo) {
@@ -196,6 +206,8 @@ function obrigacoesQueVencemEm(data, codigos) {
 
 module.exports = {
   OBRIGACOES,
+  OBRIGACOES_NUCLEO,
+  POR_CODIGO,
   obrigacao,
   ehObrigacaoValida,
   calcularVencimento,

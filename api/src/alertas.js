@@ -115,6 +115,7 @@ async function aplicarAutomaticas(db, companyId = null) {
 async function detalheDaEmpresa(db, companyId) {
   const { rows: empresa } = await db.query(
     `SELECT c.id, c.name, c.cnpj, c.alertas_ativos, c.incentivo_ativo,
+            c.avisos_gerais_ativos, c.boleto_lembrete_ativo, c.boleto_cobranca_ativo,
             c.whatsapp AS whatsapp_manual,
             ${whatsappSql("c")} AS whatsapp,
             g.phone AS whatsapp_gclick,
@@ -191,6 +192,7 @@ async function panorama(db, { busca = "" } = {}) {
   }
   const { rows } = await db.query(
     `SELECT c.id, c.name, c.cnpj, c.alertas_ativos, c.incentivo_ativo,
+            c.avisos_gerais_ativos, c.boleto_lembrete_ativo, c.boleto_cobranca_ativo,
             c.whatsapp AS whatsapp_manual,
             ${whatsappSql("c")} AS whatsapp,
             g.phone AS whatsapp_gclick,
@@ -268,6 +270,7 @@ async function feriasPorAvisar(db, { hoje = null } = {}) {
 
   const { rows } = await db.query(
     `SELECT vp.company_id,
+            vp.codigo,
             vp.nome,
             vp.dias_direito,
             vp.ferias_vencidas,
@@ -283,7 +286,7 @@ async function feriasPorAvisar(db, { hoje = null } = {}) {
        -- este período; quando surgir outro limite, o aviso volta sozinho.
        LEFT JOIN vacation_alert_acks ack
               ON ack.company_id = vp.company_id
-             AND ack.funcionario = vp.nome
+             AND ack.codigo = vp.codigo
              AND ack.limite_gozo = vp.limite_gozo
       WHERE to_char(vp.limite_gozo, 'YYYY-MM-DD') = ANY($1::text[])
         AND ack.id IS NULL
@@ -293,13 +296,107 @@ async function feriasPorAvisar(db, { hoje = null } = {}) {
 
   return rows.map((f) => ({
     company_id: f.company_id,
+    // Código do FUNCIONÁRIO (identidade da dispensa, única por empresa).
+    func_codigo: f.codigo,
     nome: f.nome,
     dias_direito: f.dias_direito,
     ferias_vencidas: f.ferias_vencidas,
     limite_gozo: f.limite_gozo,
     dias_restantes: porData.get(f.limite_gozo) ?? null,
+    // Código da OBRIGAÇÃO (sempre FERIAS_LIMITE) — não confundir com func_codigo.
     codigo: "FERIAS_LIMITE",
   }));
+}
+
+/**
+ * Projeção de férias: quais avisos cairiam nos próximos N dias.
+ *
+ * Reutiliza `feriasPorAvisar()` dia a dia — cada chamada resolve os marcos daquele
+ * dia. O resultado é granular: um registro por funcionário por dia, sorted por dia
+ * e depois empresa (para a tela agrupar num timeline).
+ */
+async function projecaoFerias(db, { dias = 7 } = {}) {
+  const hoje = hojeSP();
+  const resultado = [];
+
+  // Coleta todos os avisos dia a dia
+  for (let i = 0; i < dias; i++) {
+    const data = somarDias(hoje, i);
+    const avisos = await feriasPorAvisar(db, { hoje: data });
+    for (const aviso of avisos) {
+      resultado.push({
+        dia: data,
+        company_id: aviso.company_id,
+        funcionario: aviso.nome,
+        marco_dias: aviso.dias_restantes,
+        limite_gozo: aviso.limite_gozo,
+        dias_restantes: aviso.dias_restantes,
+      });
+    }
+  }
+
+  // Busca nomes das empresas de uma vez
+  const companyIds = [...new Set(resultado.map((r) => r.company_id))];
+  const nomesPorId = new Map();
+  if (companyIds.length) {
+    const { rows } = await db.query(
+      `SELECT id, name FROM companies WHERE id = ANY($1::uuid[])`,
+      [companyIds]
+    );
+    for (const r of rows) nomesPorId.set(r.id, r.name);
+  }
+
+  // Enriquece e formata
+  const avisosFinal = resultado
+    .map((r) => ({
+      dia: r.dia,
+      dia_formatado: ddmm(r.dia),
+      company_id: r.company_id,
+      empresa: nomesPorId.get(r.company_id) || null,
+      funcionario: r.funcionario,
+      marco_dias: r.marco_dias,
+      limite_gozo: r.limite_gozo,
+      dias_restantes: r.dias_restantes,
+    }))
+    .sort((a, b) => a.dia.localeCompare(b.dia) || (a.empresa || "").localeCompare(b.empresa || ""));
+
+  return { periodos: dias, total: avisosFinal.length, avisos: avisosFinal };
+}
+
+/**
+ * Quais boletos de uma empresa entram na mensagem do dia, e em que papel.
+ *
+ * Função pura (sem banco) para o gating por canal ser testável em isolamento:
+ *  · `lembreteOn`  → aviso de VENCIMENTO, na véspera (`hoje + diasAntes`);
+ *  · `cobrancaOn`  → aviso de VENCIDO, e só nos marcos (`hoje - d`, d ∈ cobrancaDias),
+ *                     nunca todo dia.
+ *
+ * Um boleto pode gerar no máximo um item por dia. Canal desligado simplesmente não
+ * produz aquele item — é assim que "recebe vencido mas não vencimento" (ou o inverso)
+ * se resolve, sem tratar o boleto como obrigação de catálogo.
+ */
+function itensBoletoDoDia(boletos, { hoje, diasAntes, cobrancaDias, lembreteOn, cobrancaOn }) {
+  const itens = [];
+  for (const b of boletos || []) {
+    const eLembrete = lembreteOn && b.due_date === somarDias(hoje, diasAntes);
+    const diasEmAtraso = cobrancaOn
+      ? (cobrancaDias || []).find((d) => b.due_date === somarDias(hoje, -d))
+      : undefined;
+    if (!eLembrete && diasEmAtraso === undefined) continue;
+
+    itens.push({
+      // O id entra na chave para dois boletos do mesmo dia não colapsarem num só na
+      // trava de duplicidade — e para um não calar o outro.
+      codigo: `BOLETO:${b.id}`,
+      nome: b.title || "Boleto",
+      observacao: null,
+      vencimento: b.due_date,
+      valorCentavos: b.valor_centavos,
+      isBoleto: true,
+      diasEmAtraso: diasEmAtraso ?? null,
+    });
+  }
+  return itens;
 }
 
 /**
@@ -322,9 +419,13 @@ async function previsao(db, { data = null, simular = true } = {}) {
 
   const { rows: empresas } = await db.query(
     `SELECT c.id, c.name, c.cnpj, ${whatsappSql("c")} AS whatsapp, c.incentivo_ativo,
+            c.avisos_gerais_ativos, c.boleto_lembrete_ativo, c.boleto_cobranca_ativo,
             array_remove(array_agg(o.obrigacao) FILTER (WHERE o.ativo IS TRUE), NULL) AS obrigacoes
        FROM companies c
-       JOIN company_obligations o ON o.company_id = c.id
+       -- LEFT JOIN, não INNER: uma empresa pode não ter NENHUMA obrigação marcada e
+       -- ainda assim dever boleto ao escritório. Com INNER ela sumia da previsão e o
+       -- boleto nunca era cobrado — o filtro por subchave de boleto acontece no laço.
+       LEFT JOIN company_obligations o ON o.company_id = c.id
        ${JOIN_ESPELHO}
       WHERE c.alertas_ativos IS TRUE
         -- Cliente arquivado nao recebe mais nada: nem lembrete, nem cobranca.
@@ -393,6 +494,11 @@ async function previsao(db, { data = null, simular = true } = {}) {
         -- esquecido de 2024 entraria na conta todo dia sem nunca casar com um marco.
         AND due_date >= ($1::date - $2::int)
         AND historico IS NOT TRUE
+        -- Trava de 48h: se já mandei mensagem deste boleto nas últimas 48h, não
+        -- remando. Resolve o atraso entre o pagamento na Cora e a sincronização
+        -- do status (que pode levar horas); o webhook real-time fica para depois.
+        -- Boleto nunca avisado (NULL) entra normalmente — é o caso do primeiro envio.
+        AND (alert_sent_at IS NULL OR alert_sent_at < now() - interval '48 hours')
       ORDER BY due_date`,
     [hoje, Math.max(0, ...BOLETO_COBRANCA_DIAS_DEPOIS, 0)]
   );
@@ -412,9 +518,18 @@ async function previsao(db, { data = null, simular = true } = {}) {
 
   const saida = [];
   for (const e of empresas) {
-    const codigos = e.obrigacoes || [];
+    // Subchaves por empresa (default true; ver ensureAlertasSchema). A chave geral
+    // (`alertas_ativos`) já foi aplicada no WHERE — aqui é o degrau abaixo dela.
+    const geraisOn = e.avisos_gerais_ativos !== false;
+    const lembreteOn = e.boleto_lembrete_ativo !== false;
+    const cobrancaOn = e.boleto_cobranca_ativo !== false;
+
+    // Avisos gerais desligados = zera tributos/guias/férias desta empresa (mas o boleto,
+    // que é canal à parte, pode continuar saindo).
+    const codigos = geraisOn ? e.obrigacoes || [] : [];
     const temFeriasAlerta = codigos.includes("FERIAS_LIMITE");
-    const boletosDaEmpresa = boletosPorEmpresa.get(e.id) || [];
+    // Só busca boletos se ao menos um dos dois canais está ligado.
+    const boletosDaEmpresa = lembreteOn || cobrancaOn ? boletosPorEmpresa.get(e.id) || [] : [];
     // Sem obrigação marcada a empresa ainda pode ter boleto a vencer — e boleto é
     // dívida com o escritório, o último aviso que se pode deixar de mandar.
     if (!codigos.length && !boletosDaEmpresa.length) continue;
@@ -431,6 +546,7 @@ async function previsao(db, { data = null, simular = true } = {}) {
       for (const f of feriasPorEmpresa.get(e.id) || []) {
         itens.push({
           codigo: "FERIAS_LIMITE",
+          funcCodigo: f.func_codigo,
           nome: f.nome,
           observacao: null,
           vencimento: f.limite_gozo,
@@ -440,29 +556,17 @@ async function previsao(db, { data = null, simular = true } = {}) {
     }
 
     // Boletos que vencem no dia do aviso. A data é a do próprio boleto (Cora), não de
-    // regra de calendário — por isso a comparação é direta, sem catálogo no meio.
-    for (const b of boletosDaEmpresa) {
-      // Dois momentos, um item só:
-      //  · véspera  → lembrete ("vence amanhã");
-      //  · vencido  → cobrança, e só nos marcos (3/10/30 dias), nunca todo dia.
-      const eLembrete = b.due_date === somarDias(hoje, BOLETO_AVISAR_DIAS_ANTES);
-      const diasEmAtraso = BOLETO_COBRANCA_DIAS_DEPOIS.find(
-        (d) => b.due_date === somarDias(hoje, -d)
-      );
-      if (!eLembrete && diasEmAtraso === undefined) continue;
-
-      itens.push({
-        // O id entra na chave para dois boletos do mesmo dia não colapsarem num só na
-        // trava de duplicidade — e para um não calar o outro.
-        codigo: `BOLETO:${b.id}`,
-        nome: b.title || "Boleto",
-        observacao: null,
-        vencimento: b.due_date,
-        valorCentavos: b.valor_centavos,
-        isBoleto: true,
-        diasEmAtraso: diasEmAtraso ?? null,
-      });
-    }
+    // regra de calendário — por isso a comparação é direta, sem catálogo no meio. O
+    // gating por canal (lembrete/cobrança) fica em itensBoletoDoDia, função pura.
+    itens.push(
+      ...itensBoletoDoDia(boletosDaEmpresa, {
+        hoje,
+        diasAntes: BOLETO_AVISAR_DIAS_ANTES,
+        cobrancaDias: BOLETO_COBRANCA_DIAS_DEPOIS,
+        lembreteOn,
+        cobrancaOn,
+      })
+    );
 
     // Guias JÁ LIBERADAS com vencimento à frente.
     //
@@ -503,7 +607,9 @@ async function previsao(db, { data = null, simular = true } = {}) {
     // Para férias, a chave de duplicidade inclui os nomes dos funcionários alertados,
     // de modo que o mesmo conjunto não seja alertado novamente.
     const codigosDoDia = itens.map((i) => {
-      if (i.codigo === "FERIAS_LIMITE") return `FERIAS_LIMITE:${i.nome}`;
+      // Chave por CÓDIGO do funcionário (cai no nome só se faltar código): homônimos
+      // não colapsam num item só.
+      if (i.codigo === "FERIAS_LIMITE") return `FERIAS_LIMITE:${i.funcCodigo ?? i.nome}`;
       return i.codigo;
     }).sort();
 
@@ -576,6 +682,11 @@ async function guiasRetidas(db, { dias = 7, hoje = null } = {}) {
 /**
  * Registra que a mensagem saiu. O índice único é a trava real contra duplicidade:
  * se duas execuções correrem juntas, a segunda bate no conflito e não vira envio.
+ *
+ * Quando a mensagem carrega BOLETO(s), o `alert_sent_at` do `deliverable` é
+ * atualizado para now(). É esse campo que a query de `previsao` consulta para
+ * aplicar a trava de 48h — sem isto, o boleto pago na Cora mas ainda não
+ * sincronizado seria cobrado de novo na execução seguinte.
  */
 async function registrarEnvio(db, { companyId, obrigacoes, diaAlerta, texto, incentivoId = null }) {
   const { rows } = await db.query(
@@ -585,6 +696,22 @@ async function registrarEnvio(db, { companyId, obrigacoes, diaAlerta, texto, inc
      RETURNING id`,
     [companyId, [...obrigacoes].sort().join(","), diaAlerta, texto, incentivoId]
   );
+
+  // Marca os boletos desta mensagem para que a trava de 48h os ignore na próxima
+  // execução. O código do item é `BOLETO:<uuid>` (ver previsao()), e o id extraído
+  // é o UUID do `deliverables.id`. Outros códigos (FÉRIAS, guia fiscal) não usam este
+  // flag porque o `alert_sends` com chave (empresa, dia) já cobre a duplicidade.
+  const idsBoletos = obrigacoes
+    .filter((c) => typeof c === "string" && c.startsWith("BOLETO:"))
+    .map((c) => c.slice("BOLETO:".length))
+    .filter((id) => /^[a-z0-9-]{8,}$/i.test(id));
+  if (idsBoletos.length) {
+    await db.query(
+      `UPDATE deliverables SET alert_sent_at = now() WHERE id = ANY($1::uuid[])`,
+      [idsBoletos]
+    );
+  }
+
   return rows[0] ?? null;
 }
 
@@ -614,18 +741,86 @@ async function falhasRecentes(db, { limite = 50 } = {}) {
   return { total: rows.length, falhas: rows };
 }
 
+/**
+ * Dashboard de falhas: resumo visual (últimas 48h) + histórico recente.
+ *
+ * Agrega por tipo (ignorado/falhou/adiado/interrompido) e inclui a lista de empresas
+ * afetadas com motivo — o escritório vê de um olhar quantas precisam de atenção.
+ */
+async function dashboardFalhas(db) {
+  // Contagem por tipo nas últimas 48h
+  const { rows: porTipo } = await db.query(`
+    SELECT tipo, count(*)::int AS total
+      FROM alert_failures
+     WHERE criado_em >= now() - interval '48 hours'
+     GROUP BY tipo
+     ORDER BY total DESC
+  `);
+
+  // Total de empresas distintas afetadas nas últimas 48h
+  const { rows: empresasAfetadas } = await db.query(`
+    SELECT count(DISTINCT company_id)::int AS total
+      FROM alert_failures
+     WHERE criado_em >= now() - interval '48 hours'
+       AND company_id IS NOT NULL
+  `);
+
+  // Últimos envios bem-sucedidos nas últimas 24h (pra mostrar que o motor está saudável)
+  const { rows: ultimosEnvios } = await db.query(`
+    SELECT count(*)::int AS total
+      FROM alert_sends
+     WHERE enviado_em >= now() - interval '24 hours'
+  `);
+
+  // Falhas detalhadas das últimas 48h, agrupadas por empresa + motivo (dedup)
+  const { rows: detalhe } = await db.query(`
+    SELECT f.company_id, c.name AS empresa, f.motivo, f.tipo,
+           max(f.criado_em) AS ultima_vez, count(*)::int AS vezes
+      FROM alert_failures f
+      LEFT JOIN companies c ON c.id = f.company_id
+     WHERE f.criado_em >= now() - interval '48 hours'
+     GROUP BY f.company_id, c.name, f.motivo, f.tipo
+     ORDER BY ultima_vez DESC
+     LIMIT 100
+  `);
+
+  return {
+    periodo: "48h",
+    resumo: {
+      total_falhas: porTipo.reduce((s, r) => s + r.total, 0),
+      por_tipo: porTipo,
+      empresas_afetadas: empresasAfetadas[0]?.total ?? 0,
+      envios_24h: ultimosEnvios[0]?.total ?? 0,
+    },
+    detalhe,
+  };
+}
+
 /** Preferências por empresa: o desligamento de quem não gosta de mensagem. */
-async function salvarPreferencias(db, companyId, { alertasAtivos, incentivoAtivo, whatsapp }) {
+async function salvarPreferencias(
+  db,
+  companyId,
+  {
+    alertasAtivos,
+    incentivoAtivo,
+    avisosGeraisAtivos,
+    boletoLembreteAtivo,
+    boletoCobrancaAtivo,
+    whatsapp,
+  }
+) {
   const campos = [];
   const params = [companyId];
-  if (alertasAtivos !== undefined) {
-    params.push(Boolean(alertasAtivos));
-    campos.push(`alertas_ativos = $${params.length}`);
-  }
-  if (incentivoAtivo !== undefined) {
-    params.push(Boolean(incentivoAtivo));
-    campos.push(`incentivo_ativo = $${params.length}`);
-  }
+  const flag = (valor, coluna) => {
+    if (valor === undefined) return;
+    params.push(Boolean(valor));
+    campos.push(`${coluna} = $${params.length}`);
+  };
+  flag(alertasAtivos, "alertas_ativos");
+  flag(incentivoAtivo, "incentivo_ativo");
+  flag(avisosGeraisAtivos, "avisos_gerais_ativos");
+  flag(boletoLembreteAtivo, "boleto_lembrete_ativo");
+  flag(boletoCobrancaAtivo, "boleto_cobranca_ativo");
   if (whatsapp !== undefined) {
     // Grava já normalizado (com o 55). Assim o número no banco é o número que a uazapi
     // recebe — sem conversão espalhada por quem for enviar.
@@ -642,10 +837,56 @@ async function salvarPreferencias(db, companyId, { alertasAtivos, incentivoAtivo
   if (!campos.length) return null;
   const { rows } = await db.query(
     `UPDATE companies SET ${campos.join(", ")} WHERE id = $1
-     RETURNING id, whatsapp, alertas_ativos, incentivo_ativo`,
+     RETURNING id, whatsapp, alertas_ativos, incentivo_ativo,
+               avisos_gerais_ativos, boleto_lembrete_ativo, boleto_cobranca_ativo`,
     params
   );
   return rows[0] ?? null;
+}
+
+/**
+ * Aplica as MESMAS subchaves a várias empresas de uma vez — o "marcar todos".
+ *
+ * `companyIds` vazio/ausente = carteira inteira; preenchido = só essas. Só as flags
+ * passadas são tocadas (as demais ficam como estão em cada empresa). WhatsApp fica de
+ * fora de propósito: número é dado por empresa, não faz sentido em lote.
+ */
+async function salvarPreferenciasLote(db, campos = {}, companyIds = null) {
+  const sets = [];
+  const params = [];
+  const flag = (valor, coluna) => {
+    if (valor === undefined) return;
+    params.push(Boolean(valor));
+    sets.push(`${coluna} = $${params.length}`);
+  };
+  flag(campos.alertas_ativos, "alertas_ativos");
+  flag(campos.incentivo_ativo, "incentivo_ativo");
+  flag(campos.avisos_gerais_ativos, "avisos_gerais_ativos");
+  flag(campos.boleto_lembrete_ativo, "boleto_lembrete_ativo");
+  flag(campos.boleto_cobranca_ativo, "boleto_cobranca_ativo");
+  if (!sets.length) return { atualizadas: 0 };
+
+  const ids = Array.isArray(companyIds) ? companyIds.filter(Boolean) : null;
+  let where = "";
+  if (ids && ids.length) {
+    params.push(ids);
+    where = `WHERE id = ANY($${params.length}::uuid[])`;
+  }
+  const { rowCount } = await db.query(
+    `UPDATE companies SET ${sets.join(", ")} ${where}`,
+    params
+  );
+  return { atualizadas: rowCount };
+}
+
+/** Limpar decisão manual — voltar a deixar sistema auto-decidir. */
+async function limparDecisaoManual(db, companyId, codigo) {
+  if (!ehObrigacaoValida(codigo)) return null;
+  const { rowCount } = await db.query(
+    `DELETE FROM company_obligations WHERE company_id = $1 AND obrigacao = $2`,
+    [companyId, String(codigo).toUpperCase()]
+  );
+  return { deletado: rowCount > 0 };
 }
 
 module.exports = {
@@ -655,12 +896,17 @@ module.exports = {
   decidir,
   panorama,
   previsao,
+  itensBoletoDoDia,
   registrarEnvio,
   salvarPreferencias,
+  salvarPreferenciasLote,
   feriasPorAvisar,
+  projecaoFerias,
   guiasRetidas,
   registrarFalha,
   falhasRecentes,
+  dashboardFalhas,
+  limparDecisaoManual,
   MARCOS_FERIAS_DIAS,
   ehProLabore,
   whatsappSql,

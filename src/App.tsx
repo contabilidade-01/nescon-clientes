@@ -49,6 +49,7 @@ import FeriasPage from "./pages/FeriasPage.tsx";
 import ProximosPagamentosPage from "./pages/ProximosPagamentosPage.tsx";
 import EntregaPublicaPage from "./pages/EntregaPublicaPage.tsx";
 import AlterarSenhaPage from "./pages/AlterarSenhaPage.tsx";
+import ManutencaoPage from "./pages/ManutencaoPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -145,6 +146,7 @@ function OwnerOnlyRoute({ children }: { children: React.ReactNode }) {
 const AppRoutes = () => (
   <Routes>
     <Route path="/login" element={<LoginPage />} />
+    <Route path="/manutencao" element={<ManutencaoPage />} />
     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
     <Route path="/reset-password" element={<ResetPasswordPage />} />
     {/* Link do WhatsApp: sem login, identificado por token opaco */}

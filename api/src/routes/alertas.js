@@ -20,8 +20,12 @@ const {
   previsao,
   registrarEnvio,
   salvarPreferencias,
+  salvarPreferenciasLote,
   guiasRetidas,
   falhasRecentes,
+  dashboardFalhas,
+  limparDecisaoManual,
+  projecaoFerias,
 } = require("../alertas");
 const { enviarAlertasDoDia } = require("../alertasEnvio");
 const { enviarAlertaTeste } = require("../alertaTeste");
@@ -121,10 +125,43 @@ router.put("/empresas/:id/obrigacoes", async (req, res) => {
   }
 });
 
+/** Limpar decisão manual — voltar a deixar sistema auto-decidir. */
+router.delete("/empresas/:id/obrigacoes/:codigo", async (req, res) => {
+  if (!validateUUID(req.params.id)) return res.status(400).json({ error: "id inválido" });
+  if (!validateString(req.params.codigo, 1, 40)) return res.status(400).json({ error: "codigo inválido" });
+  try {
+    const r = await limparDecisaoManual(db, req.params.id, req.params.codigo);
+    if (!r) return res.status(400).json({ error: "Obrigação desconhecida" });
+    res.json(r);
+  } catch (err) {
+    console.error("[alertas] limpar:", err.message);
+    res.status(500).json({ error: "Erro ao limpar a decisão" });
+  }
+});
+
 /** Ligar/desligar alertas e incentivo da empresa, e o número de WhatsApp. */
 router.put("/empresas/:id/preferencias", async (req, res) => {
   if (!validateUUID(req.params.id)) return res.status(400).json({ error: "id inválido" });
-  const { alertas_ativos, incentivo_ativo, whatsapp } = req.body || {};
+  const {
+    alertas_ativos,
+    incentivo_ativo,
+    avisos_gerais_ativos,
+    boleto_lembrete_ativo,
+    boleto_cobranca_ativo,
+    whatsapp,
+  } = req.body || {};
+  // Cada flag, se vier, tem de ser booleana — evita gravar "true" (string) por engano.
+  const booleana = (v, nome) =>
+    v === undefined || typeof v === "boolean" ? null : `${nome} deve ser booleano`;
+  for (const erro of [
+    booleana(alertas_ativos, "alertas_ativos"),
+    booleana(incentivo_ativo, "incentivo_ativo"),
+    booleana(avisos_gerais_ativos, "avisos_gerais_ativos"),
+    booleana(boleto_lembrete_ativo, "boleto_lembrete_ativo"),
+    booleana(boleto_cobranca_ativo, "boleto_cobranca_ativo"),
+  ]) {
+    if (erro) return res.status(400).json({ error: erro });
+  }
   if (whatsapp !== undefined && whatsapp !== null && !validateString(String(whatsapp), 0, 20)) {
     return res.status(400).json({ error: "whatsapp inválido" });
   }
@@ -132,6 +169,9 @@ router.put("/empresas/:id/preferencias", async (req, res) => {
     const r = await salvarPreferencias(db, req.params.id, {
       alertasAtivos: alertas_ativos,
       incentivoAtivo: incentivo_ativo,
+      avisosGeraisAtivos: avisos_gerais_ativos,
+      boletoLembreteAtivo: boleto_lembrete_ativo,
+      boletoCobrancaAtivo: boleto_cobranca_ativo,
       whatsapp,
     });
     if (!r) return res.status(400).json({ error: "Nada para salvar" });
@@ -142,6 +182,42 @@ router.put("/empresas/:id/preferencias", async (req, res) => {
   } catch (err) {
     console.error("[alertas] preferencias:", err.message);
     res.status(500).json({ error: "Erro ao salvar as preferências" });
+  }
+});
+
+/**
+ * Aplica as MESMAS subchaves a várias empresas ("marcar todos"). `company_ids` vazio ou
+ * ausente = carteira inteira; preenchido = só essas. Só as flags enviadas são tocadas.
+ */
+router.put("/preferencias-lote", async (req, res) => {
+  const body = req.body || {};
+  const flags = {};
+  const nomes = [
+    "alertas_ativos",
+    "incentivo_ativo",
+    "avisos_gerais_ativos",
+    "boleto_lembrete_ativo",
+    "boleto_cobranca_ativo",
+  ];
+  for (const nome of nomes) {
+    if (body[nome] === undefined) continue;
+    if (typeof body[nome] !== "boolean") {
+      return res.status(400).json({ error: `${nome} deve ser booleano` });
+    }
+    flags[nome] = body[nome];
+  }
+  if (!Object.keys(flags).length) {
+    return res.status(400).json({ error: "Nenhuma preferência para aplicar" });
+  }
+  const companyIds = Array.isArray(body.company_ids) ? body.company_ids : null;
+  if (companyIds && companyIds.some((id) => !validateUUID(id))) {
+    return res.status(400).json({ error: "company_ids contém id inválido" });
+  }
+  try {
+    res.json(await salvarPreferenciasLote(db, flags, companyIds));
+  } catch (err) {
+    console.error("[alertas] preferencias-lote:", err.message);
+    res.status(500).json({ error: "Erro ao aplicar as preferências em massa" });
   }
 });
 
@@ -233,7 +309,7 @@ router.get("/config", async (_req, res) => {
 });
 
 router.put("/config", async (req, res) => {
-  const { envio_automatico, hora, escritorio_cnpj, boleto_dias_antes, boleto_cobranca_dias } = req.body || {};
+  const { envio_automatico, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_cobranca_dias } = req.body || {};
   if (envio_automatico !== undefined && typeof envio_automatico !== "boolean") {
     return res.status(400).json({ error: "envio_automatico deve ser booleano" });
   }
@@ -243,6 +319,9 @@ router.put("/config", async (req, res) => {
   if (escritorio_cnpj !== undefined && escritorio_cnpj !== null) {
     const so = String(escritorio_cnpj).replace(/\D/g, "");
     if (so && so.length !== 14) return res.status(400).json({ error: "CNPJ deve ter 14 dígitos" });
+  }
+  if (escritorio_whatsapp !== undefined && escritorio_whatsapp !== null && !validateString(String(escritorio_whatsapp), 0, 20)) {
+    return res.status(400).json({ error: "escritorio_whatsapp inválido" });
   }
   if (boleto_dias_antes !== undefined && (!Number.isInteger(boleto_dias_antes) || boleto_dias_antes < 0 || boleto_dias_antes > 30)) {
     return res.status(400).json({ error: "boleto_dias_antes deve ser um inteiro de 0 a 30" });
@@ -254,7 +333,10 @@ router.put("/config", async (req, res) => {
     }
   }
   try {
-    res.json(await salvarConfig(db, { envio_automatico, hora, escritorio_cnpj, boleto_dias_antes, boleto_cobranca_dias }));
+    const r = await salvarConfig(db, { envio_automatico, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_cobranca_dias });
+    // Número do escritório recusado volta com o motivo, em vez de salvar torto.
+    if (r && r.erro) return res.status(400).json({ error: r.erro });
+    res.json(r);
   } catch (err) {
     console.error("[alertas] salvar config:", err.message);
     res.status(500).json({ error: "Erro ao salvar a configuração" });
@@ -268,6 +350,16 @@ router.get("/falhas", async (req, res) => {
   } catch (err) {
     console.error("[alertas] falhas:", err.message);
     res.status(500).json({ error: "Erro ao listar as falhas" });
+  }
+});
+
+/** Dashboard de falhas: resumo agregado + histórico. */
+router.get("/dashboard", async (req, res) => {
+  try {
+    res.json(await dashboardFalhas(db));
+  } catch (err) {
+    console.error("[alertas] dashboard:", err.message);
+    res.status(500).json({ error: "Erro ao carregar o dashboard" });
   }
 });
 
@@ -320,6 +412,20 @@ router.post("/enviar-teste", async (req, res) => {
   } catch (err) {
     console.error("[alertas] enviar-teste:", err.message);
     res.status(500).json({ error: "Erro ao enviar o teste" });
+  }
+});
+
+/**
+ * Projeção de férias: quais avisos sairiam nos próximos N dias (padrão: 7).
+ * Um record por funcionário por dia, útil para timeline e planejamento.
+ */
+router.get("/projecao-ferias", async (req, res) => {
+  const dias = Math.min(30, Math.max(1, Number(req.query.dias) || 7));
+  try {
+    res.json(await projecaoFerias(db, { dias }));
+  } catch (err) {
+    console.error("[alertas] projecao-ferias:", err.message);
+    res.status(500).json({ error: "Erro ao carregar a projeção de férias" });
   }
 });
 

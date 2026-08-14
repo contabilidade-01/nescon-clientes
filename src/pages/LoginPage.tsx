@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Building2, Lock, LogIn } from "lucide-react";
+import { Building2, Lock, LogIn, Wrench } from "lucide-react";
 import { maskCNPJ, maskCPF } from "@/lib/masks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,8 +16,17 @@ const LoginPage = () => {
   const [loginField, setLoginField] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [manutencao, setManutencao] = useState<{ ativo: boolean; mensagem: string } | null>(null);
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  // Avisa o cliente já na porta se o portal está em manutenção (o admin ainda entra).
+  useEffect(() => {
+    api.auth
+      .maintenance()
+      .then((r) => setManutencao(r.ativo ? r : null))
+      .catch(() => setManutencao(null));
+  }, []);
 
   const handleLoginField = (value: string) => {
     const digits = value.replace(/\D/g, "").slice(0, 14);
@@ -90,6 +99,12 @@ const LoginPage = () => {
           <CardTitle className="text-2xl">Portal do Cliente</CardTitle>
         </CardHeader>
         <CardContent>
+          {manutencao && (
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-700 dark:text-amber-400">
+              <Wrench className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{manutencao.mensagem}</span>
+            </div>
+          )}
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <Label htmlFor="login">Login</Label>
