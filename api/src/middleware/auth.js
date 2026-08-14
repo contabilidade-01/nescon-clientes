@@ -3,6 +3,7 @@ const db = require("../db");
 const { getToolAccessForCompany } = require("../toolAccessDb");
 const { mergeAreas } = require("../adminAreas");
 const { jwtSecret } = require("../jwtSecret");
+const { lerManutencao, MENSAGEM_PADRAO } = require("../maintenanceMode");
 
 /**
  * Perfil do administrador na base. Devolve null se não existe ou está desativado.
@@ -99,6 +100,16 @@ async function authMiddleware(req, res, next) {
       }
     } else {
       return res.status(401).json({ error: "Token inválido" });
+    }
+
+    // Modo manutenção: barra o CLIENTE (sessão ativa incluída), nunca o admin — é ele
+    // quem precisa entrar para desligar. Precede a troca de senha: em manutenção, o
+    // cliente não faz nada, nem troca senha.
+    if (req.company && !req.isAdmin) {
+      const man = await lerManutencao(db);
+      if (man.ativo) {
+        return res.status(503).json({ error: man.mensagem || MENSAGEM_PADRAO, code: "MAINTENANCE" });
+      }
     }
     // A checagem mora AQUI, e não como middleware solto no index: aplicada no app antes
     // das rotas ela rodaria antes desta função e leria `mustChangePassword` indefinido,

@@ -17,6 +17,7 @@ const { isSmtpConfigured, getPublicAppUrl, sendPasswordResetEmail } = require(".
 const { LGPD_CONSENT_VERSION, lgpdTermo } = require("../lgpd");
 const { mergeAreas } = require("../adminAreas");
 const { funcionarioRealSql, funcionarioFeriasSql } = require("../payrollRoles");
+const { lerManutencao, MENSAGEM_PADRAO } = require("../maintenanceMode");
 
 /**
  * Admin no login. Base antiga sem as colunas de permissão (42703) devolve o mínimo e
@@ -217,6 +218,20 @@ async function emitirLinkDeReset({ companyId, adminId, emailOnRecord, publicUrl 
   }
 }
 
+/**
+ * Estado do modo manutenção — PÚBLICO (sem token): a tela de login e a página de
+ * manutenção precisam saber se está ligado sem estar autenticadas. Devolve a mensagem já
+ * com o padrão aplicado, pronta para exibir.
+ */
+router.get("/maintenance", async (_req, res) => {
+  try {
+    const man = await lerManutencao(db);
+    res.json({ ativo: man.ativo, mensagem: man.mensagem || MENSAGEM_PADRAO });
+  } catch {
+    res.json({ ativo: false, mensagem: "" });
+  }
+});
+
 router.post("/login", loginIpLimiter, loginContaLimiter, async (req, res) => {
   try {
     const raw = (req.body.login || req.body.cnpj || "").toString();
@@ -265,6 +280,12 @@ router.post("/login", loginIpLimiter, loginContaLimiter, async (req, res) => {
       const rows = await getCompanyByCnpjForLogin(db, clean);
       if (!rows.length) return res.status(401).json({ error: "Acesso não encontrado" });
       const company = rows[0];
+      // Modo manutenção: o cliente não entra e recebe a mensagem. O admin usa o login de
+      // administrador (CPF), que passa pelo ramo acima antes de chegar aqui.
+      const man = await lerManutencao(db);
+      if (man.ativo) {
+        return res.status(503).json({ error: man.mensagem || MENSAGEM_PADRAO, code: "MAINTENANCE" });
+      }
       const valid = await bcryptMatches(company.password_hash, password);
       if (!valid) return res.status(401).json({ error: "Senha incorreta" });
       if (company.password_expires_at && new Date(company.password_expires_at) < new Date()) {

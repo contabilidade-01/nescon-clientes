@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -7,9 +8,14 @@ import {
   MessageCircle,
   ShieldCheck,
   UserPlus,
+  Wrench,
 } from "lucide-react";
+import { toast } from "sonner";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { canSeeArea } from "@/lib/adminAreas";
@@ -48,6 +54,76 @@ function esperaLabel(horas: number): string {
   if (horas < 24) return `${horas} h`;
   const dias = Math.floor(horas / 24);
   return dias === 1 ? "1 d" : `${dias} d`;
+}
+
+/**
+ * Interruptor do modo manutenção — só o dono. Ligado, o cliente não entra (login e sessão
+ * bloqueados) e vê a mensagem; o admin continua acessando normalmente.
+ */
+function ManutencaoCard() {
+  const queryClient = useQueryClient();
+  const [mensagem, setMensagem] = useState<string | null>(null);
+  const { data } = useQuery({
+    queryKey: ["admin-manutencao"],
+    queryFn: () => api.admin.getManutencao(),
+  });
+
+  const salvar = useMutation({
+    mutationFn: (v: { ativo?: boolean; mensagem?: string }) => api.admin.setManutencao(v),
+    onSuccess: (r) => {
+      queryClient.setQueryData(["admin-manutencao"], r);
+      setMensagem(null);
+      toast.success(r.ativo ? "Modo manutenção LIGADO — clientes bloqueados." : "Modo manutenção desligado.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const ativo = Boolean(data?.ativo);
+  const valorCampo = mensagem ?? data?.mensagem ?? "";
+
+  return (
+    <Card className={ativo ? "border-amber-500/60 bg-amber-500/5" : undefined}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Wrench className="h-4 w-4" /> Modo manutenção
+        </CardTitle>
+        <CardDescription>
+          Ligado, o cliente não entra no portal e vê a mensagem abaixo. Você (admin) continua
+          acessando para desligar quando terminar.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm font-medium">
+            {ativo ? "Portal fechado para clientes" : "Portal aberto normalmente"}
+          </span>
+          <Switch
+            checked={ativo}
+            disabled={salvar.isPending}
+            onCheckedChange={(v) => salvar.mutate({ ativo: v })}
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Mensagem exibida ao cliente</label>
+          <div className="flex gap-2">
+            <Input
+              value={valorCampo}
+              maxLength={500}
+              placeholder="Deixe em branco para usar a mensagem padrão"
+              onChange={(e) => setMensagem(e.target.value)}
+            />
+            <Button
+              variant="outline"
+              disabled={salvar.isPending || mensagem === null}
+              onClick={() => salvar.mutate({ mensagem: valorCampo })}
+            >
+              Salvar texto
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 const VisaoGeralPage = () => {
@@ -101,6 +177,9 @@ const VisaoGeralPage = () => {
       title="Visão geral"
       description="Resumo do escritório: cadastro, entregas, licenças e conformidade"
     >
+      {/* Interruptor global: só o dono. Fica no topo por ser a ação de maior impacto. */}
+      {admin?.isOwner && <ManutencaoCard />}
+
       {/* Faixa fixa: fica no topo até a decisão ser tomada. O aviso ao entrar pode ser
           fechado; esta não sai sozinha — é a única forma de saber que entrou cliente novo. */}
       {(pendencias?.total ?? 0) > 0 && (

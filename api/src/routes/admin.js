@@ -32,6 +32,7 @@ const { enviarTexto } = require("../uazapi");
 const dueDateSugestoes = require("../dueDateSugestoes");
 const { varrerVencimentos } = dueDateSugestoes;
 const { reaplicarRegraNucleo } = require("../reaplicarRegraNucleo");
+const { lerManutencao, salvarManutencao } = require("../maintenanceMode");
 const fs = require("fs");
 
 function adminOnly(req, res, next) {
@@ -43,6 +44,35 @@ function adminOnly(req, res, next) {
 
 router.use(authMiddleware);
 router.use(adminOnly);
+
+/**
+ * Modo manutenção. GET: qualquer admin vê o estado. PUT: só o dono liga/desliga — é um
+ * interruptor global que tranca todos os clientes de fora.
+ */
+router.get("/manutencao", async (_req, res) => {
+  try {
+    res.json(await lerManutencao(db, { force: true }));
+  } catch (err) {
+    console.error("[admin] manutencao ler:", err.message);
+    res.status(500).json({ error: "Erro ao ler o modo manutenção" });
+  }
+});
+
+router.put("/manutencao", requireOwner, async (req, res) => {
+  const { ativo, mensagem } = req.body || {};
+  if (ativo !== undefined && typeof ativo !== "boolean") {
+    return res.status(400).json({ error: "ativo deve ser booleano" });
+  }
+  if (mensagem !== undefined && mensagem !== null && !validateString(String(mensagem), 0, 500)) {
+    return res.status(400).json({ error: "mensagem inválida (máx. 500 caracteres)" });
+  }
+  try {
+    res.json(await salvarManutencao(db, { ativo, mensagem }));
+  } catch (err) {
+    console.error("[admin] manutencao salvar:", err.message);
+    res.status(500).json({ error: "Erro ao salvar o modo manutenção" });
+  }
+});
 
 router.get("/summary", async (_req, res) => {
   try {

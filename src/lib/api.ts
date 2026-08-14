@@ -98,6 +98,19 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error("Troque a senha inicial antes de usar o sistema.");
   }
 
+  // Modo manutenção: o servidor barra o cliente com 503 + code MAINTENANCE (o admin nunca
+  // recebe isto). Guarda a mensagem e leva para a tela de manutenção.
+  if (res.status === 503 && (data as { code?: string })?.code === "MAINTENANCE") {
+    const msg = (data as { error?: string })?.error || "Portal em manutenção.";
+    try {
+      localStorage.setItem("maintenance_message", msg);
+    } catch {
+      /* localStorage indisponível: a página de manutenção usa o texto padrão */
+    }
+    if (window.location.pathname !== "/manutencao") window.location.href = "/manutencao";
+    throw new Error(msg);
+  }
+
   if (!res.ok) {
     const err = data as { error?: string };
     throw new Error(err.error || `HTTP ${res.status}`);
@@ -777,6 +790,9 @@ export const api = {
       }),
     checkResetToken: (token: string) =>
       publicRequest<{ valid: boolean }>(`/auth/reset-token?token=${encodeURIComponent(token)}`),
+    /** Estado do modo manutenção — público, para a tela de login e a página de manutenção. */
+    maintenance: () =>
+      publicRequest<{ ativo: boolean; mensagem: string }>("/auth/maintenance"),
     resetPassword: (token: string, password: string) =>
       publicRequest<{ message: string }>("/auth/reset-password", {
         method: "POST",
@@ -1121,6 +1137,14 @@ export const api = {
   },
 
   admin: {
+    /** Modo manutenção: estado atual (qualquer admin) e liga/desliga (só o dono). */
+    getManutencao: () =>
+      request<{ ativo: boolean; mensagem: string }>("/admin/manutencao"),
+    setManutencao: (data: { ativo?: boolean; mensagem?: string }) =>
+      request<{ ativo: boolean; mensagem: string }>("/admin/manutencao", {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
     summary: () =>
       request<{
         companies: number;
