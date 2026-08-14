@@ -49,7 +49,7 @@ function montarCorpoTeste(tipo, empresaNome) {
     empresaNome,
     hoje,
     itens: [item],
-    portalUrl: portalUrl("/boletos"),
+    portalUrl: portalUrl("/"),
   });
 }
 
