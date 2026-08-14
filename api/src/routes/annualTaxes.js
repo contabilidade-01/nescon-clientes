@@ -41,6 +41,7 @@ router.get("/", async (req, res) => {
          FROM companies c
          LEFT JOIN annual_tax_receipts t ON t.company_id = c.id AND t.ano = $1
         WHERE c.established IS TRUE
+          AND c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
         ORDER BY c.name`,
       [ano]
     );

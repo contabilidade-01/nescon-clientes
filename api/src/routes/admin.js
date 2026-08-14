@@ -1189,7 +1189,9 @@ router.get("/companies/:id/extrato-employees", requireArea("funcionarios"), asyn
  */
 router.post("/extrato-employees/scan-all", requireArea("funcionarios"), async (_req, res) => {
   try {
-    const { rows: companies } = await db.query("SELECT id, name, cnpj FROM companies ORDER BY name");
+    const { rows: companies } = await db.query(
+      "SELECT id, name, cnpj FROM companies WHERE arquivada IS NOT TRUE AND excluida IS NOT TRUE ORDER BY name"
+    );
     const resultados = [];
     for (const c of companies) {
       const { extrato, funcionarios } = await funcionariosDoExtrato(c.id);
@@ -1230,7 +1232,9 @@ router.post("/extrato-employees/import", requireArea("funcionarios"), async (req
       if (!rows.length) return res.status(404).json({ error: "Empresa não encontrada" });
       companies = rows;
     } else {
-      const { rows } = await db.query("SELECT id, name, cnpj FROM companies ORDER BY name");
+      const { rows } = await db.query(
+        "SELECT id, name, cnpj FROM companies WHERE arquivada IS NOT TRUE AND excluida IS NOT TRUE ORDER BY name"
+      );
       companies = rows;
     }
 
@@ -1543,7 +1547,7 @@ router.get("/acessos", adminOnly, async (req, res) => {
           SELECT count(*)::int AS total,
                  count(*) FILTER (WHERE ultimo_login_em IS NOT NULL)::int AS acessaram,
                  count(*) FILTER (WHERE ultimo_login_em >= now() - interval '30 days')::int AS ativos_30d
-            FROM companies WHERE excluida IS NOT TRUE`),
+            FROM companies WHERE excluida IS NOT TRUE AND arquivada IS NOT TRUE`),
         db.query(`
           SELECT ferramenta, count(*)::int AS usos
             FROM portal_eventos
@@ -1557,7 +1561,7 @@ router.get("/acessos", adminOnly, async (req, res) => {
         db.query(`
           SELECT id, name, cnpj,
                  to_char(ultimo_login_em AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS') AS ultimo_acesso
-            FROM companies WHERE excluida IS NOT TRUE ORDER BY name`),
+            FROM companies WHERE excluida IS NOT TRUE AND arquivada IS NOT TRUE ORDER BY name`),
         db.query(`
           SELECT company_id, count(*)::int AS num_logins
             FROM portal_eventos WHERE tipo = 'login' ${janelaPortal}

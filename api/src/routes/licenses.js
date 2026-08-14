@@ -32,7 +32,9 @@ function baseQuery() {
   return `
     WITH tipos(tipo) AS (VALUES ${LICENSE_TYPES.map((t) => `('${t}')`).join(", ")}),
     alvo AS (
-      SELECT id, name, cnpj FROM companies WHERE established IS TRUE
+      SELECT id, name, cnpj FROM companies
+       WHERE established IS TRUE
+         AND arquivada IS NOT TRUE AND excluida IS NOT TRUE
     ),
     base AS (
       SELECT a.id AS company_id, a.name, a.cnpj, t.tipo,
@@ -63,7 +65,8 @@ router.get("/overview", async (_req, res) => {
       db.query(
         `SELECT COUNT(*) FILTER (WHERE established IS TRUE)::int AS estabelecidas,
                 COUNT(*) FILTER (WHERE established IS FALSE)::int AS nao_estabelecidas
-           FROM companies`
+           FROM companies
+          WHERE arquivada IS NOT TRUE AND excluida IS NOT TRUE`
       ),
     ]);
 
@@ -151,6 +154,7 @@ router.get("/empresas", async (_req, res) => {
               ) AS licencas
          FROM companies c
          LEFT JOIN company_licenses l ON l.company_id = c.id
+        WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
         GROUP BY c.id, c.name, c.cnpj, c.established
         ORDER BY c.name`
     );
