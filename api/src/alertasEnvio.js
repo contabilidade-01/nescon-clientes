@@ -33,7 +33,7 @@ const uazapi = require("./uazapi");
 const numeroWpp = require("./whatsappNumero");
 const { previsao, registrarEnvio, registrarFalha } = require("./alertas");
 const { trechoDeIncentivo } = require("./engagement");
-const { hojeSP } = require("./diasBancarios");
+const { hojeSP, minutosSP } = require("./diasBancarios");
 const { lerConfig } = require("./alertasConfig");
 
 function num(valor, padrao) {
@@ -286,6 +286,12 @@ async function enfileirarAlerta(db, m, { tentativas = 0 } = {}) {
  */
 async function drenarOutbox(db) {
   if (!uazapi.configurado()) return { enviados: 0, definitivas: 0, tentadas: 0 };
+
+  // Trava de horário comercial: não entrega mensagem de madrugada. O backoff exponencial
+  // pode agendar a próxima tentativa para as 02h, mas o cliente não pode receber WhatsApp
+  // a essa hora. Mesma janela do docNotify (08:00–18:59 SP).
+  const min = minutosSP();
+  if (min < 8 * 60 || min >= 19 * 60) return { enviados: 0, definitivas: 0, tentadas: 0 };
 
   // Aviso velho demais não deve mais ser entregue — vira falha definitiva.
   const { rows: expiradas } = await db.query(
