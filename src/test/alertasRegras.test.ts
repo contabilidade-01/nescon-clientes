@@ -148,7 +148,7 @@ describe("montarMensagemAlerta", () => {
         { codigo: "FGTS", nome: "FGTS", vencimento: "2026-08-20", observacao: null, temGuiaNoPortal: true },
       ],
     })!;
-    expect(texto.trim().endsWith("https://portal.exemplo.br/")).toBe(true);
+    expect(texto.trim().endsWith("https://portal.exemplo.br/guias")).toBe(true);
   });
 
   it("datas diferentes viram lista com a data em cada linha", () => {

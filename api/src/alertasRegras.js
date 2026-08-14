@@ -234,8 +234,9 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
   }
 
   if (obrigNormais.some((i) => i.temGuiaNoPortal) && portalUrl) {
+    const base = String(portalUrl).replace(/\/+$/, "");
     linhas.push("");
-    linhas.push(`As guias estão no portal: ${portalUrl}`);
+    linhas.push(`As guias estão no portal: ${base}/guias`);
   }
 
   // Aviso sem documento: o cliente entraria no portal, não acharia nada e concluiria

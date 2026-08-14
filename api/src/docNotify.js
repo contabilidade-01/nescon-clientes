@@ -89,7 +89,7 @@ function montarTexto(nomeEmpresa, documentos) {
     .slice(0, 8)
     .map((d) => `• ${d.title}${d.competencia ? ` (${d.competencia})` : ""}`);
   const resto = documentos.length > 8 ? [`… e mais ${documentos.length - 8} documento(s).`] : [];
-  const link = portalUrl("/entregas");
+  const link = portalUrl("/documentos");
 
   return [
     `Olá! Chegou${plural ? "ram" : ""} novo${plural ? "s" : ""} documento${plural ? "s" : ""} no portal, ${nomeEmpresa}:`,
