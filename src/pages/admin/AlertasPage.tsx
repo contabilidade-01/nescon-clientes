@@ -530,7 +530,8 @@ const AlertasPage = () => {
       api.alertas.preferenciasLote(v),
     onSuccess: (r) => {
       toast.success(`${r.atualizadas} empresa(s) atualizada(s).`);
-      queryClient.invalidateQueries({ queryKey: ["alertas", "panorama"] });
+      // Invalida a árvore inteira: panorama + detalhes individuais em cache.
+      queryClient.invalidateQueries({ queryKey: ["alertas"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -1402,7 +1403,13 @@ const AlertasPage = () => {
             <AlertDialogAction
               onClick={() => {
                 if (loteConfirm) {
-                  preferenciasLote.mutate({ [loteConfirm.campo]: loteConfirm.valor });
+                  // Desligar uma subchave → desliga a geral junto (senão o admin vê a
+                  // geral "ligada" e acha que não funcionou). Ligar uma subchave → liga a
+                  // geral junto (senão o alerta não sai mesmo com a sub ativa).
+                  preferenciasLote.mutate({
+                    [loteConfirm.campo]: loteConfirm.valor,
+                    alertas_ativos: loteConfirm.valor,
+                  });
                 }
                 setLoteConfirm(null);
               }}
