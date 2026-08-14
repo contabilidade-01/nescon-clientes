@@ -13,11 +13,15 @@
  * Mesma tabela e mesmo padrão da chave `ai_parsing` do fallback de IA.
  */
 const { getSetting, setSetting } = require("./appSettings");
+const numeroWpp = require("./whatsappNumero");
 
 const CHAVES = {
   automatico: "alertas_envio_automatico",
   hora: "alertas_hora",
   escritorioCnpj: "escritorio_cnpj",
+  // WhatsApp do escritório para AVISOS INTERNOS (ex.: "N mensagens não entregues").
+  // Diferente do CNPJ; é o número que recebe o alerta quando a fila esgota tentativas.
+  escritorioWhatsapp: "alertas_escritorio_whatsapp",
   // Cadência de cobrança do BOLETO (Cora). Antes só existia em variável de ambiente
   // (ALERTAS_BOLETO_*), o que cobrava redeploy e não aparecia na tela.
   boletoDiasAntes: "alertas_boleto_dias_antes",
@@ -61,10 +65,11 @@ function parseCobrancaDias(valor, padrao = []) {
 }
 
 async function lerConfig(db) {
-  const [auto, hora, cnpj, diasAntes, cobranca] = await Promise.all([
+  const [auto, hora, cnpj, whats, diasAntes, cobranca] = await Promise.all([
     getSetting(db, CHAVES.automatico),
     getSetting(db, CHAVES.hora),
     getSetting(db, CHAVES.escritorioCnpj),
+    getSetting(db, CHAVES.escritorioWhatsapp),
     getSetting(db, CHAVES.boletoDiasAntes),
     getSetting(db, CHAVES.boletoCobrancaDias),
   ]);
@@ -74,13 +79,15 @@ async function lerConfig(db) {
     // Fallback no ambiente só para não perder o que já estava configurado antes desta
     // tela existir. A tela é a fonte assim que alguém salvar.
     escritorio_cnpj: (cnpj || process.env.ESCRITORIO_CNPJ || "").replace(/\D/g, ""),
+    // Número já normalizado (com 55) ou vazio. Env como valor inicial.
+    escritorio_whatsapp: whats || process.env.ALERTAS_ESCRITORIO_WHATSAPP || "",
     boleto_dias_antes: diasAntes === null ? BOLETO_DIAS_ANTES_PADRAO : diasAntesValido(diasAntes, BOLETO_DIAS_ANTES_PADRAO),
     // null = nunca configurado → padrão; string (mesmo vazia) = escolha do admin.
     boleto_cobranca_dias: cobranca === null ? BOLETO_COBRANCA_PADRAO : parseCobrancaDias(cobranca),
   };
 }
 
-async function salvarConfig(db, { envio_automatico, hora, escritorio_cnpj, boleto_dias_antes, boleto_cobranca_dias }) {
+async function salvarConfig(db, { envio_automatico, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_cobranca_dias }) {
   if (envio_automatico !== undefined) {
     await setSetting(db, CHAVES.automatico, Boolean(envio_automatico));
   }
@@ -90,6 +97,17 @@ async function salvarConfig(db, { envio_automatico, hora, escritorio_cnpj, bolet
   if (escritorio_cnpj !== undefined) {
     const so = String(escritorio_cnpj || "").replace(/\D/g, "");
     await setSetting(db, CHAVES.escritorioCnpj, so || null);
+  }
+  if (escritorio_whatsapp !== undefined) {
+    // Grava normalizado (com 55). Vazio limpa. Número torto é rejeitado com o motivo.
+    const bruto = String(escritorio_whatsapp || "").trim();
+    if (!bruto) {
+      await setSetting(db, CHAVES.escritorioWhatsapp, null);
+    } else {
+      const v = numeroWpp.validar(bruto);
+      if (!v.ok) return { erro: v.motivo };
+      await setSetting(db, CHAVES.escritorioWhatsapp, v.numero);
+    }
   }
   if (boleto_dias_antes !== undefined) {
     await setSetting(db, CHAVES.boletoDiasAntes, diasAntesValido(boleto_dias_antes, BOLETO_DIAS_ANTES_PADRAO));

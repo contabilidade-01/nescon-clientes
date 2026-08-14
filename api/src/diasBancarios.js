@@ -204,6 +204,21 @@ function hojeSP(agora = new Date()) {
   }).format(agora);
 }
 
+/**
+ * Minutos desde a meia-noite no fuso de São Paulo (0..1439). O servidor roda em UTC;
+ * usar isto em vez de `getHours()` evita agendar no fuso errado. Ex.: 07:50 = 470.
+ */
+function minutosSP(agora = new Date()) {
+  const hhmm = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(agora);
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
 /** 'YYYY-MM-DD' -> 'DD/MM' para texto de mensagem. */
 function ddmm(data) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(data || ""));
@@ -223,5 +238,6 @@ module.exports = {
   diasNoMes,
   somarDias,
   hojeSP,
+  minutosSP,
   ddmm,
 };

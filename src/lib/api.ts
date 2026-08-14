@@ -430,6 +430,10 @@ export interface AlertCompanyRow {
   whatsapp_gclick: string | null;
   alertas_ativos: boolean;
   incentivo_ativo: boolean;
+  /** Subchaves abaixo da geral (`alertas_ativos`). Ver AlertCompanyDetail. */
+  avisos_gerais_ativos: boolean;
+  boleto_lembrete_ativo: boolean;
+  boleto_cobranca_ativo: boolean;
   /** Escolha DO CLIENTE. O painel mostra; quem desfaz é ele, no portal dele. */
   avisos_documentos_ativos: boolean;
   avisos_alterados_em: string | null;
@@ -469,6 +473,15 @@ export interface AlertCompanyDetail {
     whatsapp_gclick: string | null;
     alertas_ativos: boolean;
     incentivo_ativo: boolean;
+    /**
+     * Subchaves do envio, abaixo da chave geral (`alertas_ativos`, que corta tudo):
+     *  - avisos_gerais_ativos    → tributos, guias e férias
+     *  - boleto_lembrete_ativo   → boleto: aviso de VENCIMENTO (véspera)
+     *  - boleto_cobranca_ativo   → boleto: aviso de VENCIDO (marcos de cobrança)
+     */
+    avisos_gerais_ativos: boolean;
+    boleto_lembrete_ativo: boolean;
+    boleto_cobranca_ativo: boolean;
     avisos_documentos_ativos: boolean;
     avisos_alterados_em: string | null;
   };
@@ -507,7 +520,7 @@ export interface ClientNotificationPrefs {
   avisos_documentos_ativos: boolean;
   avisos_alterados_em: string | null;
   /** Avisos de férias já dispensados, por funcionário e limite. */
-  ferias_dispensadas: Array<{ funcionario: string; limite_gozo: string; criado_em: string }>;
+  ferias_dispensadas: Array<{ codigo: string | null; funcionario: string; limite_gozo: string; criado_em: string }>;
 }
 
 /** Uma competência no painel de folha. Valores vêm do Postgres como string. */
@@ -683,6 +696,8 @@ export interface AlertOpConfig {
   envio_automatico: boolean;
   hora: number;
   escritorio_cnpj: string;
+  /** WhatsApp do escritório para avisos internos (fila esgotou tentativas). Vazio = só no Dashboard. */
+  escritorio_whatsapp: string;
   /** Antecedência do lembrete do boleto Cora, em dias (0 = sem véspera). */
   boleto_dias_antes: number;
   /** Marcos de cobrança do boleto vencido, em dias após o vencimento (ex.: [3,10,30]; vazio = desligado). */
@@ -712,6 +727,39 @@ export interface AlertSendResult {
     motivo?: string;
     numero?: string;
     texto?: string;
+  }>;
+}
+
+export interface AlertDashboard {
+  periodo: string;
+  resumo: {
+    total_falhas: number;
+    por_tipo: Array<{ tipo: string; total: number }>;
+    empresas_afetadas: number;
+    envios_24h: number;
+  };
+  detalhe: Array<{
+    company_id: string | null;
+    empresa: string | null;
+    motivo: string;
+    tipo: string;
+    ultima_vez: string;
+    vezes: number;
+  }>;
+}
+
+export interface AlertProjecaoFerias {
+  periodos: number;
+  total: number;
+  avisos: Array<{
+    dia: string;
+    dia_formatado: string;
+    company_id: string;
+    empresa: string | null;
+    funcionario: string;
+    marco_dias: number | null;
+    limite_gozo: string;
+    dias_restantes: number | null;
   }>;
 }
 
@@ -888,16 +936,16 @@ export const api = {
         "/preferencias",
         { method: "PUT", body: JSON.stringify({ avisos_documentos_ativos: avisosDocumentosAtivos }) }
       ),
-    /** "Já recebi este aviso de férias" — vale só para este funcionário e limite. */
-    feriasVisto: (funcionario: string, limiteGozo: string) =>
+    /** "Já recebi este aviso de férias" — vale por CÓDIGO do funcionário e limite. */
+    feriasVisto: (codigo: string, limiteGozo: string, funcionario: string) =>
       request<{ dispensado: boolean }>("/preferencias/ferias-visto", {
         method: "POST",
-        body: JSON.stringify({ funcionario, limite_gozo: limiteGozo }),
+        body: JSON.stringify({ codigo, funcionario, limite_gozo: limiteGozo }),
       }),
-    desfazerFeriasVisto: (funcionario: string, limiteGozo: string) =>
+    desfazerFeriasVisto: (codigo: string, limiteGozo: string) =>
       request<{ dispensado: boolean }>("/preferencias/ferias-visto", {
         method: "DELETE",
-        body: JSON.stringify({ funcionario, limite_gozo: limiteGozo }),
+        body: JSON.stringify({ codigo, limite_gozo: limiteGozo }),
       }),
   },
 
@@ -963,14 +1011,49 @@ export const api = {
         `/alertas/empresas/${companyId}/obrigacoes`,
         { method: "PUT", body: JSON.stringify({ codigo, ativo }) }
       ),
+    limpar: (companyId: string, codigo: string) =>
+      request<{ deletado: boolean }>(
+        `/alertas/empresas/${companyId}/obrigacoes/${codigo}`,
+        { method: "DELETE" }
+      ),
     preferencias: (
       companyId: string,
-      data: { alertas_ativos?: boolean; incentivo_ativo?: boolean; whatsapp?: string | null }
+      data: {
+        alertas_ativos?: boolean;
+        incentivo_ativo?: boolean;
+        avisos_gerais_ativos?: boolean;
+        boleto_lembrete_ativo?: boolean;
+        boleto_cobranca_ativo?: boolean;
+        whatsapp?: string | null;
+      }
     ) =>
-      request<{ id: string; whatsapp: string | null; alertas_ativos: boolean; incentivo_ativo: boolean }>(
-        `/alertas/empresas/${companyId}/preferencias`,
-        { method: "PUT", body: JSON.stringify(data) }
-      ),
+      request<{
+        id: string;
+        whatsapp: string | null;
+        alertas_ativos: boolean;
+        incentivo_ativo: boolean;
+        avisos_gerais_ativos: boolean;
+        boleto_lembrete_ativo: boolean;
+        boleto_cobranca_ativo: boolean;
+      }>(`/alertas/empresas/${companyId}/preferencias`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    /** Aplica as mesmas subchaves a várias empresas. Sem company_ids = carteira toda. */
+    preferenciasLote: (
+      data: {
+        alertas_ativos?: boolean;
+        incentivo_ativo?: boolean;
+        avisos_gerais_ativos?: boolean;
+        boleto_lembrete_ativo?: boolean;
+        boleto_cobranca_ativo?: boolean;
+        company_ids?: string[];
+      }
+    ) =>
+      request<{ atualizadas: number }>("/alertas/preferencias-lote", {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
     aplicarAutomaticas: () =>
       request<{ empresas: number; marcacoes_criadas: number }>("/alertas/aplicar-automaticas", {
         method: "POST",
@@ -1012,6 +1095,12 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
+    /** Dashboard de falhas: resumo agregado (últimas 48h) + detalhes por empresa. */
+    dashboard: () =>
+      request<AlertDashboard>("/alertas/dashboard"),
+    /** Projeção de férias: próximos N dias com avisos previstos (padrão 7). */
+    projecaoFerias: (dias = 7) =>
+      request<AlertProjecaoFerias>(`/alertas/projecao-ferias?dias=${Math.min(30, Math.max(1, dias))}`),
   },
 
   /** Guias da taxa anual da prefeitura: controle por empresa e ano. Só admin. */

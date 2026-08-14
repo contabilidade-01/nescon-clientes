@@ -136,9 +136,15 @@ function hashToken(raw) {
   return crypto.createHash("sha256").update(raw, "utf8").digest("hex");
 }
 
-/** Senhas na BD são quase sempre só dígitos; o utilizador pode digitar com máscara (CPF/CNPJ). */
+/**
+ * Senhas na BD são quase sempre só dígitos; o utilizador pode digitar com máscara (CPF/CNPJ).
+ *
+ * O `trim` perdoa o espaço nas pontas que vem colado do WhatsApp — a causa mais comum de
+ * "colei a senha temporária e não entrou". Não afeta senha legítima: espaço na ponta
+ * nunca é parte da senha (o alfabeto da senha inicial não tem espaço; ver senhaInicial.js).
+ */
 function passwordVariants(password) {
-  const s = String(password);
+  const s = String(password).trim();
   const digits = s.replace(/\D/g, "");
   if (!digits) return [s];
   const set = new Set([s, digits]);

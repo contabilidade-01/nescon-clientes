@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import {
   OBRIGACOES,
+  OBRIGACOES_NUCLEO,
   obrigacao,
   calcularVencimento,
   competenciaDe,
@@ -99,5 +100,26 @@ describe("obrigacoesQueVencemEm", () => {
 
   it("data malformada não explode", () => {
     expect(obrigacoesQueVencemEm("20/08/2026", todas)).toEqual([]);
+  });
+});
+
+describe("OBRIGACOES_NUCLEO — fonte única dos tributos de regra fixa", () => {
+  it("contém exatamente FGTS, INSS_DCTFWEB e DAS (em qualquer ordem)", () => {
+    expect([...OBRIGACOES_NUCLEO].sort()).toEqual(["DAS", "FGTS", "INSS_DCTFWEB"]);
+  });
+
+  it("cada código do núcleo existe no catálogo OBRIGACOES", () => {
+    for (const codigo of OBRIGACOES_NUCLEO) {
+      expect(obrigacao(codigo), `código ${codigo} deve existir no catálogo`).not.toBeNull();
+    }
+  });
+
+  it("DOC_TYPE_PARA_OBRIGACAO cobre os três do núcleo (FGTS, DAS, DCTF_WEB)", async () => {
+    const { DOC_TYPE_PARA_OBRIGACAO } = await import("../../api/src/vencimentoRegra.js");
+    expect(Object.keys(DOC_TYPE_PARA_OBRIGACAO).sort()).toEqual(["DAS", "DCTF_WEB", "FGTS"]);
+    // Os valores batem com códigos do núcleo — sem acoplar com string literais soltas.
+    for (const codigo of Object.values(DOC_TYPE_PARA_OBRIGACAO)) {
+      expect(OBRIGACOES_NUCLEO).toContain(codigo);
+    }
   });
 });
