@@ -168,6 +168,28 @@ describe("montarMensagemAlerta", () => {
     expect(montarMensagemAlerta({ ...base, itens: [] })).toBeNull();
   });
 
+  it("boleto: a mensagem leva ao portal de boletos (link não pode faltar)", () => {
+    const texto = montarMensagemAlerta({
+      ...base,
+      itens: [
+        { isBoleto: true, nome: "Honorários 08/2026", vencimento: "2026-08-20", valorCentavos: 25000, diasEmAtraso: null },
+      ],
+    })!;
+    expect(texto).toContain("Boleto a pagar");
+    expect(texto).toContain("Acesse e pague no portal: https://portal.exemplo.br/boletos");
+  });
+
+  it("boleto vencido também leva ao portal", () => {
+    const texto = montarMensagemAlerta({
+      ...base,
+      itens: [
+        { isBoleto: true, nome: "Honorários 07/2026", vencimento: "2026-08-16", valorCentavos: 25000, diasEmAtraso: 3 },
+      ],
+    })!;
+    expect(texto).toContain("em atraso");
+    expect(texto).toContain("https://portal.exemplo.br/boletos");
+  });
+
   it("avisa quando a guia ainda não está no portal, em vez de mandar o cliente ao vazio", () => {
     const texto = montarMensagemAlerta({
       ...base,

@@ -197,6 +197,15 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
       linhas.push("");
       linhas.push("Se já pagou, desconsidere. Qualquer dúvida, fale com o escritório.");
     }
+
+    // Caminho de volta para a plataforma: o cliente vê e paga o boleto no portal. Sem
+    // isto, a mensagem só de boleto saía sem nenhum link — o cliente lia a cobrança e
+    // não tinha para onde ir.
+    if (portalUrl) {
+      const base = String(portalUrl).replace(/\/+$/, "");
+      linhas.push("");
+      linhas.push(`Acesse e pague no portal: ${base}/boletos`);
+    }
   }
 
   // Bloco de férias

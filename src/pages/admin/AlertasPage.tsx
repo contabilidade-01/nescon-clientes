@@ -530,7 +530,10 @@ const AlertasPage = () => {
       api.alertas.preferenciasLote(v),
     onSuccess: (r) => {
       toast.success(`${r.atualizadas} empresa(s) atualizada(s).`);
-      queryClient.invalidateQueries({ queryKey: ["alertas", "panorama"] });
+      // Invalida a árvore inteira de alertas: além do panorama, os detalhes já abertos/
+      // em cache de CADA empresa precisam reler — senão a tela individual continua
+      // mostrando o valor antigo mesmo com o banco já alterado.
+      queryClient.invalidateQueries({ queryKey: ["alertas"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
