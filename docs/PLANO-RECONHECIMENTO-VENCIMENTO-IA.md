@@ -118,7 +118,7 @@ padrão já usado pela sincronização com o G-Click (`sync.estaRodando()`).
 | Leitor determinístico de vencimento em PDF | ✅ Pronto, **mas só roda no upload manual** | `pdfDueDate.js` |
 | Tela de múltiplos provedores de IA (Claude/Gemini/ChatGPT) | ✅ Pronto e funcional — chave por provedor, teste de conexão real, toggle, limiar de confiança | `ConfigIaPage.tsx` + `api/src/routes/admin.js` (`/config/ia*`) |
 | Cascata regex → contexto → IA (para CNPJ) | ✅ Pronto, é o padrão a copiar | `pdfCnpjAi.js` |
-| Fallback de IA "legado" via gateway único (Lovable) | ✅ Existe, é o último recurso quando o de cima falha | `pdfIa.js` |
+| Fallback de IA "legado" via gateway único compatível com OpenAI | ✅ Existe, é o último recurso quando o de cima falha | `pdfIa.js` |
 | **Mesma cascata para VENCIMENTO** (não só CNPJ) | ❌ Não existe | — |
 | **Rotina que varre o banco a partir de uma competência** (não upload avulso) | ❌ Não existe | — |
 | **Fila de revisão do admin** (aceitar/aplicar no calendário) | ❌ Não existe | — |

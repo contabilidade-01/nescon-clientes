@@ -310,8 +310,8 @@ funciona a IA aqui" ou "preciso adicionar uma tarefa nova de IA".**
   3. IA (só se os dois de cima falharem **e** a opção estiver ligada **e**
      houver chave)
 - **Existe um SEGUNDO módulo de IA, mais antigo** (`api/src/pdfIa.js`):
-  fallback via gateway compatível com OpenAI (originalmente o gateway da
-  Lovable), com sua própria chave (`LOVABLE_API_KEY`/`IA_PDF_API_KEY`) e
+  fallback via gateway compatível com OpenAI, com sua própria chave
+  (`IA_PDF_API_KEY`) e URL (`IA_PDF_BASE_URL`) e
   toggle próprio (`ai_parsing` em `app_settings`). `documentUpload.js` chama
   os dois em cascata: `pdfCnpjAi` primeiro, `pdfIa.cnpjPorIa` como
   **"fallback legado"** por último. Funciona, mas são dois sistemas
@@ -441,7 +441,7 @@ api/src/
   ensureArquivamentoSchema.js  colunas de arquivamento E exclusão de empresa
   pdfCnpj.js                   regex de CNPJ
   pdfCnpjAi.js                 cascata regex → contexto → IA (CNPJ)
-  pdfIa.js                     fallback de IA legado (gateway Lovable)
+  pdfIa.js                     fallback de IA legado (gateway compatível com OpenAI)
   pdfDueDate.js                vencimento: regex determinístico + extrairVencimentoComIa()
   iaProvider.js                chamarIaConfigurada() — chamada genérica ao provedor de IA
                                 configurado, reusada por CNPJ e vencimento

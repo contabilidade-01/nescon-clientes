@@ -152,7 +152,7 @@ hoje **não existem** no portal.
 ## 9. Férias na palma da mão do cliente
 
 Planejado em **[PLANO-FERIAS.md](PLANO-FERIAS.md)**: previsão de férias, custo (férias +
-1/3 + FGTS) e limite de faltas, trazidos do app que estava no Lovable. Entra por upload da
+1/3 + FGTS) e limite de faltas, trazidos do app anterior. Entra por upload da
 Programação de Férias — o G-Click não expõe isso na API hoje. Sem tela nova de admin: o
 upload fica dentro de `/admin/empresas`.
 

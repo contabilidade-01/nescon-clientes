@@ -91,7 +91,7 @@ services:
       # instalação que já tinha a variável configurada antes da tela existir.
       ESCRITORIO_CNPJ: ${ESCRITORIO_CNPJ:-}
       # Fallback de IA na leitura do PDF. Sem chave, a opção nem pode ser ligada na tela.
-      LOVABLE_API_KEY: ${LOVABLE_API_KEY:-}
+      IA_PDF_API_KEY: ${IA_PDF_API_KEY:-}
       IA_PDF_BASE_URL: ${IA_PDF_BASE_URL:-}
       IA_PDF_MODELO: ${IA_PDF_MODELO:-}
       # Cifra em repouso da chave de IA (Claude/Gemini/ChatGPT) salva pela tela de

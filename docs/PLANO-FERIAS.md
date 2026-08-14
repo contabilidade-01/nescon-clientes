@@ -35,7 +35,7 @@ O **limite de gozo entra no calendário** do cliente, junto de guias e boletos.
    **só** as férias sem dar o quadro de pessoal inteiro, vira uma área própria — é uma
    chave em `api/src/adminAreas.js` + `src/lib/adminAreas.ts` e o gate. Não fazer agora.
 
-## 3. O que foi aproveitado do app do Lovable (e o que não)
+## 3. O que foi aproveitado do app anterior (e o que não)
 
 O app tem 6.663 linhas, 3.267 numa tela só, e roda em TanStack Start + Supabase (auth
 Supabase, RLS, server functions). O nosso é Express + Postgres + SPA com JWT. **Migrar

@@ -94,7 +94,7 @@ router.post("/analisar", uploadPdf.array("files", 20), async (req, res) => {
         candidatas = r.candidatas;
       }
 
-      // Fallback legado (pdfIa via Lovable gateway): só quando tudo acima falhou.
+      // Fallback legado (pdfIa via gateway de IA): só quando tudo acima falhou.
       if (!empresa && iaLigada) {
         const porIa = await pdfIa.cnpjPorIa({ pdfBuffer: buffer, fileName: file.originalname });
         if (porIa) {
@@ -224,7 +224,7 @@ router.put("/ia", async (req, res) => {
   }
   if (habilitada && !pdfIa.configurada()) {
     return res.status(400).json({
-      error: "Falta a chave da IA no ambiente (LOVABLE_API_KEY). Ligar agora não teria efeito.",
+      error: "Falta a chave/URL da IA no ambiente (IA_PDF_API_KEY e IA_PDF_BASE_URL). Ligar agora não teria efeito.",
     });
   }
   try {

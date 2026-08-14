@@ -1,7 +1,7 @@
 /**
  * Leitura de PDF por IA — **fallback**, nunca o caminho principal.
  *
- * Porte da estratégia do app do Lovable (`src/lib/payroll.functions.ts`), com a mesma
+ * Porte da estratégia do app anterior (`src/lib/payroll.functions.ts`), com a mesma
  * ordem, que é a parte que importa:
  *
  *   1. **Parser determinístico** sempre primeiro. Regex sobre o texto do PDF. Sem
@@ -15,24 +15,25 @@
  * certo que veio do rodapé errado. Num fluxo em que o erro aloca o documento de um
  * cliente para outro, previsível vale mais que esperto.
  *
- * A chave `ai_parsing` em `app_settings` é a mesma do outro app, de propósito: quem
+ * A chave `ai_parsing` em `app_settings` é a mesma do app anterior, de propósito: quem
  * conhece um sistema entende o outro.
  */
 const { getSetting, setSetting } = require("./appSettings");
 
 const CHAVE_IA = "ai_parsing";
 
-/** Gateway compatível com OpenAI (`/chat/completions`). O do Lovable é o padrão. */
-const BASE_URL = (process.env.IA_PDF_BASE_URL || "https://ai.gateway.lovable.dev/v1").replace(/\/+$/, "");
+/** Gateway compatível com OpenAI (`/chat/completions`). O endereço vem do ambiente. */
+const BASE_URL = (process.env.IA_PDF_BASE_URL || "").replace(/\/+$/, "");
 const MODELO = process.env.IA_PDF_MODELO || "google/gemini-3-flash-preview";
 const TIMEOUT_MS = Number(process.env.IA_PDF_TIMEOUT_MS || 45000);
 
 function chave() {
-  return (process.env.LOVABLE_API_KEY || process.env.IA_PDF_API_KEY || "").trim();
+  return (process.env.IA_PDF_API_KEY || "").trim();
 }
 
+/** Precisa da chave E do endereço do gateway: sem os dois, não há fallback de IA. */
 function configurada() {
-  return Boolean(chave());
+  return Boolean(chave() && BASE_URL);
 }
 
 /** Ligada na tela E com chave no ambiente. Sem os dois, não há fallback. */
@@ -73,7 +74,6 @@ async function extrairComIa({ pdfBuffer, fileName = "documento.pdf", instrucao, 
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Lovable-API-Key": chave(),
         Authorization: `Bearer ${chave()}`,
       },
       signal: controle.signal,

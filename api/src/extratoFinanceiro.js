@@ -20,7 +20,7 @@
  * espelhado — errado de um jeito que ninguém percebe olhando o gráfico. Por isso
  * `parDeColunas()` existe e tem teste próprio.
  *
- * É também o motivo do aviso de não copiar as regex do app do Lovable: lá o extrator é
+ * É também o motivo do aviso de não copiar as regex do app anterior: lá o extrator é
  * o `unpdf`, que remonta as linhas por coordenada e não sofre disso.
  */
 
