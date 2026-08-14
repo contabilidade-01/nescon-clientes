@@ -118,14 +118,30 @@ describe("montarMensagemAlerta", () => {
     expect(texto).toContain("dinheiro");
   });
 
-  it("sem guia no portal, não manda o cliente ao portal à toa", () => {
+  it("todo aviso aponta para a plataforma, mesmo sem guia no portal", () => {
+    // Regra do escritório: TODA mensagem tem de trazer o link do portal, para o cliente
+    // sempre ter para onde ir (entrar, refazer o acesso, acompanhar o resto). Mesmo o
+    // aviso de salário — que não tem guia — leva o link.
     const texto = montarMensagemAlerta({
       ...base,
       itens: [
         { codigo: "SALARIO", nome: "Salário", vencimento: "2026-08-19", observacao: null, temGuiaNoPortal: false },
       ],
     })!;
-    expect(texto).not.toContain("portal.exemplo");
+    expect(texto).toContain("portal.exemplo");
+    expect(texto).toContain("Acompanhe tudo no portal");
+  });
+
+  it("não duplica o link do portal quando já há o link das guias", () => {
+    const texto = montarMensagemAlerta({
+      ...base,
+      itens: [
+        { codigo: "FGTS", nome: "FGTS", vencimento: "2026-08-20", observacao: null, temGuiaNoPortal: true },
+      ],
+    })!;
+    // O bloco das guias já cita o endereço; o rodapé genérico não deve repeti-lo.
+    const ocorrencias = texto.split("portal.exemplo").length - 1;
+    expect(ocorrencias).toBe(1);
   });
 
   it("o incentivo entra por último, depois de tudo que interessa", () => {

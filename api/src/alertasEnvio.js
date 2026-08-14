@@ -35,6 +35,7 @@ const { previsao, registrarEnvio, registrarFalha } = require("./alertas");
 const { trechoDeIncentivo } = require("./engagement");
 const { hojeSP, minutosSP } = require("./diasBancarios");
 const { lerConfig } = require("./alertasConfig");
+const { dentroDaJanela, descricaoJanela } = require("./janelaEnvio");
 
 function num(valor, padrao) {
   const n = Number(valor);
@@ -107,6 +108,22 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, comp
       falhas: 0,
       ignorados: 0,
       erro: "uazapi não configurada (UAZAPI_SUBDOMAIN/UAZAPI_TOKEN).",
+      resultados: [],
+    };
+  }
+
+  // Trava de horário diurno: ninguém recebe mensagem de madrugada. Vale tanto para o
+  // disparo automático (o agendador poderia estar configurado para uma hora fora da
+  // janela) quanto para o botão "Enviar" do painel (alguém clicando de madrugada).
+  // `apenasSimular` sempre passa: a simulação é só a conferência da tela, não envia nada.
+  if (!apenasSimular && !dentroDaJanela(minutosSP())) {
+    return {
+      dia,
+      enviados: 0,
+      falhas: 0,
+      ignorados: 0,
+      foraDaJanela: true,
+      erro: `Fora da janela diurna de envio (${descricaoJanela()}). Nada foi enviado; tente durante o dia.`,
       resultados: [],
     };
   }
@@ -287,11 +304,10 @@ async function enfileirarAlerta(db, m, { tentativas = 0 } = {}) {
 async function drenarOutbox(db) {
   if (!uazapi.configurado()) return { enviados: 0, definitivas: 0, tentadas: 0 };
 
-  // Trava de horário comercial: não entrega mensagem de madrugada. O backoff exponencial
+  // Trava de horário diurno: não entrega mensagem de madrugada. O backoff exponencial
   // pode agendar a próxima tentativa para as 02h, mas o cliente não pode receber WhatsApp
-  // a essa hora. Mesma janela do docNotify (08:00–18:59 SP).
-  const min = minutosSP();
-  if (min < 8 * 60 || min >= 19 * 60) return { enviados: 0, definitivas: 0, tentadas: 0 };
+  // a essa hora. Mesma janela do resto do sistema (janelaEnvio.js).
+  if (!dentroDaJanela(minutosSP())) return { enviados: 0, definitivas: 0, tentadas: 0 };
 
   // Aviso velho demais não deve mais ser entregue — vira falha definitiva.
   const { rows: expiradas } = await db.query(
@@ -464,6 +480,10 @@ function iniciarAgendadorAlertas(db) {
       const dia = hojeSP();
       if (ultimoDiaExecutado === dia) return;
       if (horaSP() < cfg.hora) return;
+      // Só marca o dia como executado DENTRO da janela diurna. Se a hora configurada
+      // cair fora dela (ex.: alguém pôs 06h), espera o próximo ciclo já dentro da janela
+      // em vez de "queimar" o dia com um envio que a trava barraria mesmo assim.
+      if (!dentroDaJanela(minutosSP())) return;
       ultimoDiaExecutado = dia;
       const r = await enviarAlertasDoDia(db, { data: dia });
       console.log(

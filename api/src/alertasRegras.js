@@ -251,6 +251,21 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
     );
   }
 
+  // Todo aviso aponta para a plataforma. Os blocos acima já colocam links específicos
+  // (guias em /guias, o passo a passo das férias), mas a mensagem só de boleto — ou a
+  // só de tributo sem guia no portal — ficava sem NENHUM link, e o cliente não tinha
+  // para onde ir. Aqui garantimos um link do portal em toda mensagem, sem duplicar: se
+  // algum bloco já citou o endereço, não repetimos.
+  if (portalUrl) {
+    const base = String(portalUrl).replace(/\/+$/, "");
+    const jaTemLink = linhas.some((l) => l.includes(base));
+    if (!jaTemLink) {
+      const destino = boletos.length ? `${base}/boletos` : base;
+      linhas.push("");
+      linhas.push(`Acompanhe tudo no portal: ${destino}`);
+    }
+  }
+
   if (incentivo) {
     linhas.push("");
     linhas.push(incentivo);

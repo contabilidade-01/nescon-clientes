@@ -29,6 +29,9 @@ const coraClient = require("../cora");
 const { TIPOS: TIPOS_GCLICK } = require("../gclick/guides");
 const { gerarSenhaInicial } = require("../senhaInicial");
 const { enviarTexto } = require("../uazapi");
+const numeroWpp = require("../whatsappNumero");
+const { minutosSP } = require("../diasBancarios");
+const { dentroDaJanela, descricaoJanela } = require("../janelaEnvio");
 const dueDateSugestoes = require("../dueDateSugestoes");
 const { varrerVencimentos } = dueDateSugestoes;
 const { reaplicarRegraNucleo } = require("../reaplicarRegraNucleo");
@@ -1759,17 +1762,36 @@ router.post("/companies/enviar-acesso", requireArea("empresas"), async (req, res
     return res.status(400).json({ error: "Envie companyIds (array de UUIDs ou \"all\")" });
   }
 
+  // Não manda acesso de madrugada. Mesma janela diurna do resto do sistema (janelaEnvio.js):
+  // é mensagem que chega no WhatsApp do cliente, então respeita o mesmo horário.
+  if (!dentroDaJanela(minutosSP())) {
+    return res.json({
+      enviados: 0,
+      erros: [],
+      total: 0,
+      resultados: [],
+      foraDaJanela: true,
+      mensagem: `Fora da janela diurna de envio (${descricaoJanela()}). Nada foi enviado; tente durante o dia.`,
+    });
+  }
+
   try {
+    // Arquivada/excluída nunca recebe acesso: o contrato acabou e ela nem consegue mais
+    // entrar no portal (o login já barra). Sem este filtro, o "Enviar Todos" gerava senha
+    // e mandava WhatsApp para ex-clientes — inclusive as arquivadas que a lista da tela
+    // já escondia, porque o caminho "all" resolvia as empresas direto aqui no banco.
+    const BASE = "c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE";
+    const TEM_FONE = "COALESCE(c.phone, g.phone) IS NOT NULL AND COALESCE(c.phone, g.phone) <> ''";
     let filtro = "";
     const params = [];
     if (companyIds === "all") {
-      filtro = "WHERE COALESCE(c.phone, g.phone) IS NOT NULL AND COALESCE(c.phone, g.phone) <> ''";
+      filtro = `WHERE ${BASE} AND ${TEM_FONE}`;
     } else if (Array.isArray(companyIds) && companyIds.length > 0) {
       if (!companyIds.every(validateUUID)) {
         return res.status(400).json({ error: "IDs inválidos na lista" });
       }
       params.push(companyIds);
-      filtro = "WHERE c.id = ANY($1) AND COALESCE(c.phone, g.phone) IS NOT NULL AND COALESCE(c.phone, g.phone) <> ''";
+      filtro = `WHERE c.id = ANY($1) AND ${BASE} AND ${TEM_FONE}`;
     } else {
       return res.status(400).json({ error: "companyIds deve ser \"all\" ou array de UUIDs" });
     }
@@ -1788,11 +1810,24 @@ router.post("/companies/enviar-acesso", requireArea("empresas"), async (req, res
     }
 
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    // Endereço do portal vem do ambiente (PUBLIC_APP_URL), não fixo no código: assim o
+    // link certo sai em qualquer instalação sem editar a mensagem. Fallback no domínio
+    // de produção só para a instalação que ainda não configurou a variável.
+    const PORTAL_BASE = (process.env.PUBLIC_APP_URL || "https://clientes.nescon.com.br").replace(/\/+$/, "");
     const resultados = [];
     const erros = [];
 
     for (const emp of empresas) {
       try {
+        // Número validado/normalizado pelo mesmo caminho do envio de alertas: telefone
+        // fixo ou torto é recusado ANTES de gastar uma senha e uma chamada à uazapi (que
+        // aceitaria e a mensagem sumiria no vazio). O acesso só é gravado se o número presta.
+        const v = numeroWpp.validar(emp.phone);
+        if (!v.ok) {
+          erros.push({ id: emp.id, name: emp.name, erro: v.motivo || "WhatsApp inválido." });
+          continue;
+        }
+
         const senha = gerarSenhaInicial();
         const hash = await bcrypt.hash(senha, 10);
 
@@ -1809,34 +1844,37 @@ router.post("/companies/enviar-acesso", requireArea("empresas"), async (req, res
           ? emp.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")
           : emp.contact_email || "seu CNPJ";
 
-        const emailDisplay = emp.contact_email || "(não cadastrado)";
-
+        // O enredo tem de casar: mando o acesso → cliente entra com a senha temporária →
+        // troca por uma senha só dele → aceita os termos → está dentro. Os passos numerados
+        // deixam essa sequência explícita, para o cliente saber exatamente o que fazer.
         const texto = [
           `Oi! Jeandson da Nescon Contabilidade aqui.`,
           ``,
-          `A partir de agora, além dos envios por e-mail, faremos gestão pelo *Portal do Cliente*.`,
+          `A partir de agora, além dos envios por e-mail, você acompanha tudo pelo *Portal do Cliente*.`,
           ``,
           `📋 *Seus dados de acesso:*`,
-          `Login: ${loginDisplay}`,
-          `E-mail cadastrado: ${emailDisplay}`,
+          `Login (seu CNPJ): ${loginDisplay}`,
           `Senha temporária: *${senha}*`,
           ``,
-          `👉 Acesse: https://clientes.nescon.com.br`,
+          `✅ *Como entrar (leva 1 minuto):*`,
+          `1️⃣ Acesse: ${PORTAL_BASE}`,
+          `2️⃣ Entre com o login e a senha temporária acima`,
+          `3️⃣ No primeiro acesso, você *cria uma nova senha* — só você vai conhecê-la`,
+          `4️⃣ Aceite os termos (LGPD) e pronto, está dentro`,
           ``,
-          `No primeiro acesso você trocará a senha — só você terá a nova. A senha temporária expira em 30 dias.`,
+          `🔒 A senha temporária expira em *30 dias*. Depois que você trocar, a antiga deixa de valer.`,
           ``,
-          `No portal você terá:`,
+          `No portal você encontra:`,
           `• Folhas de pagamento`,
           `• Guias federais`,
           `• Consulta de férias`,
           `• Custo de folha`,
-          `• Gestão de guias`,
+          `• Boletos do escritório`,
           ``,
-          `📌 Este é um canal informativo. Sobre qualquer assunto, entre em contato pelo WhatsApp de atendimento da Nescon: +55 11 94862-6605`,
+          `📌 Este é um canal informativo. Para atendimento, fale com a Nescon no WhatsApp: +55 11 94862-6605`,
         ].join("\n");
 
-        const numero = emp.phone.startsWith("55") ? emp.phone : `55${emp.phone}`;
-        await enviarTexto({ numero, texto, delayMs: 2000 });
+        await enviarTexto({ numero: v.numero, texto, delayMs: 2000 });
 
         resultados.push({ id: emp.id, name: emp.name, status: "enviado" });
       } catch (err) {

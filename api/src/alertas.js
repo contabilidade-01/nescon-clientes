@@ -184,12 +184,16 @@ async function decidir(db, companyId, codigo, ativo, observacao = null) {
 /** Panorama do painel: uma linha por empresa, com busca por nome/CNPJ. */
 async function panorama(db, { busca = "" } = {}) {
   const params = [];
-  let filtro = "";
+  // Arquivada/excluída não aparece na lista de alertas: o contrato acabou, então não é
+  // mais candidata a receber nada — e a `previsao` (o envio real) já as ignora. Sem este
+  // filtro, a tela ainda as contava e mostrava, divergindo do que de fato é enviado.
+  const condicoes = ["c.arquivada IS NOT TRUE", "c.excluida IS NOT TRUE"];
   const termo = String(busca || "").trim();
   if (termo) {
     params.push(`%${termo.replace(/[^\w\s]/g, "")}%`);
-    filtro = `WHERE (c.name ILIKE $1 OR regexp_replace(c.cnpj, '\\D', '', 'g') ILIKE $1)`;
+    condicoes.push(`(c.name ILIKE $1 OR regexp_replace(c.cnpj, '\\D', '', 'g') ILIKE $1)`);
   }
+  const filtro = `WHERE ${condicoes.join(" AND ")}`;
   const { rows } = await db.query(
     `SELECT c.id, c.name, c.cnpj, c.alertas_ativos, c.incentivo_ativo,
             c.avisos_gerais_ativos, c.boleto_lembrete_ativo, c.boleto_cobranca_ativo,
