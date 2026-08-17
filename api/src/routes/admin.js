@@ -630,6 +630,66 @@ router.post("/cora/boletos/cancelar-atrasados", requireArea("sincronizacao"), as
   }
 });
 
+/**
+ * POST /admin/cora/boletos/:id/enviar-whatsapp — envia o PDF do boleto diretamente no
+ * WhatsApp da empresa. O admin escolhe qual boleto quer mandar; o sistema manda o
+ * arquivo (não link) porque muitos clientes têm bloqueio de links automáticos.
+ */
+router.post("/cora/boletos/:id/enviar-whatsapp", requireArea("sincronizacao"), async (req, res) => {
+  const { id } = req.params;
+  if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
+
+  try {
+    // Buscar boleto com dados da empresa
+    const { rows } = await db.query(
+      `SELECT d.id, d.pdf_url, d.title, d.due_date, d.valor_centavos,
+              c.name AS empresa_nome, c.whatsapp AS empresa_whatsapp
+         FROM deliverables d
+         JOIN companies c ON c.id = d.company_id
+        WHERE d.id = $1 AND d.source = 'cora'`,
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Boleto não encontrado" });
+
+    const boleto = rows[0];
+    if (!boleto.pdf_url) {
+      return res.status(400).json({ error: "Este boleto não tem PDF disponível (competência anterior a 07/2026)" });
+    }
+
+    const numero = numeroWpp.normalizar(boleto.empresa_whatsapp);
+    if (!numero) {
+      return res.status(400).json({ error: "Empresa não tem WhatsApp cadastrado" });
+    }
+
+    const { enviarDocumento } = require("../uazapi");
+    const venc = boleto.due_date ? boleto.due_date.split("-").reverse().join("/") : "";
+    const valor = boleto.valor_centavos
+      ? (boleto.valor_centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+      : "";
+    const docName = `Boleto_${boleto.empresa_nome.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 30)}_${venc.replace(/\//g, "-")}.pdf`;
+    const caption = `📄 *Boleto — ${boleto.empresa_nome}*\n\nVencimento: ${venc}\nValor: ${valor}\n\n_Nescon Contabilidade_`;
+
+    await enviarDocumento({
+      numero,
+      fileUrl: boleto.pdf_url,
+      docName,
+      caption,
+      delayMs: 2000,
+    });
+
+    res.json({ ok: true, enviado_para: numero });
+  } catch (err) {
+    if (err.constructor.name === "UazapiNaoConfigurado") {
+      return res.status(400).json({ error: "WhatsApp (uazapi) não configurado no servidor" });
+    }
+    if (err.constructor.name === "UazapiTokenInvalido") {
+      return res.status(400).json({ error: "WhatsApp desconectado — verifique o painel uazapi" });
+    }
+    console.error("[admin] enviar boleto whatsapp:", err.message);
+    res.status(500).json({ error: "Falha ao enviar o boleto por WhatsApp" });
+  }
+});
+
 /** Os tipos de documento que o G-Click entrega — para a tela montar a escolha. */
 router.get("/sync-gclick/tipos", requireArea("sincronizacao"), (_req, res) => {
   res.json(

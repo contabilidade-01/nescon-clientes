@@ -11,6 +11,7 @@ import {
   Clock,
   XCircle,
   AlertTriangle,
+  MessageCircle,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { dueTone, parseDue } from "@/lib/deliverableDisplay";
@@ -167,6 +168,15 @@ const BoletosCoraPage = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-cora-boletos"] });
       toast.success("Boleto cancelado (removido do portal)");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Enviar boleto por WhatsApp
+  const enviarWhatsapp = useMutation({
+    mutationFn: (id: string) => api.admin.coraEnviarWhatsapp(id),
+    onSuccess: (r) => {
+      toast.success(`Boleto enviado por WhatsApp para ${r.enviado_para}`);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -475,17 +485,31 @@ const BoletosCoraPage = () => {
                         {b.competencia || "—"}
                       </td>
                       <td className="px-3 py-2">
-                        {b.status !== "paid" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-destructive hover:text-destructive"
-                            onClick={() => cancelarBoleto.mutate(b.id)}
-                            disabled={cancelarBoleto.isPending}
-                          >
-                            <XCircle className="mr-1 h-3 w-3" /> Cancelar
-                          </Button>
-                        )}
+                        <div className="flex items-center gap-1">
+                          {b.pdf_url && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs text-emerald-700 hover:text-emerald-800"
+                              onClick={() => enviarWhatsapp.mutate(b.id)}
+                              disabled={enviarWhatsapp.isPending}
+                              title="Enviar PDF por WhatsApp"
+                            >
+                              <MessageCircle className="mr-1 h-3 w-3" /> WhatsApp
+                            </Button>
+                          )}
+                          {b.status !== "paid" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs text-destructive hover:text-destructive"
+                              onClick={() => cancelarBoleto.mutate(b.id)}
+                              disabled={cancelarBoleto.isPending}
+                            >
+                              <XCircle className="mr-1 h-3 w-3" /> Cancelar
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

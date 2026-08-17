@@ -1599,6 +1599,11 @@ export const api = {
     /** Cancelar (excluir) um boleto Cora do portal. */
     coraDeleteBoleto: (id: string) =>
       request<{ ok: boolean }>(`/admin/cora/boletos/${id}`, { method: "DELETE" }),
+    /** Enviar PDF do boleto por WhatsApp para o cliente. */
+    coraEnviarWhatsapp: (id: string) =>
+      request<{ ok: boolean; enviado_para: string }>(`/admin/cora/boletos/${id}/enviar-whatsapp`, {
+        method: "POST",
+      }),
     /** Empresas que ainda não trocaram a senha inicial — a fila de risco a zerar. */
     senhaPendente: () =>
       request<{ total: number; empresas: Array<{ id: string; name: string; cnpj: string }> }>(

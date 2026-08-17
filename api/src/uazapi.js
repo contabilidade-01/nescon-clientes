@@ -77,6 +77,19 @@ async function enviarTexto({ numero, texto, delayMs = 0 }) {
 }
 
 /**
+ * Envia um documento (PDF) via WhatsApp. `fileUrl` é a URL do PDF (ex: URL Cora).
+ * `docName` é o nome que aparece no WhatsApp (ex: "Boleto_202608.pdf").
+ * `caption` é o texto opcional que acompanha o documento.
+ * `delayMs` faz a uazapi exibir "digitando…" antes de entregar.
+ */
+async function enviarDocumento({ numero, fileUrl, docName, caption = null, delayMs = 0 }) {
+  const corpo = { number: numero, type: "document", file: fileUrl, docName };
+  if (caption) corpo.text = caption;
+  if (delayMs > 0) corpo.delay = Math.floor(delayMs);
+  return chamar("/send/media", { metodo: "POST", corpo, timeoutMs: 60000 });
+}
+
+/**
  * Diagnóstico da instância, em formato pronto para a tela. Nunca lança: um painel que
  * quebra quando o WhatsApp cai é pior que um painel dizendo que o WhatsApp caiu.
  */
@@ -123,6 +136,7 @@ async function owner() {
 module.exports = {
   configurado,
   enviarTexto,
+  enviarDocumento,
   statusInstancia,
   owner,
   UazapiNaoConfigurado,
