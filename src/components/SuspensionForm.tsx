@@ -161,7 +161,7 @@ export function SuspensionForm() {
     };
 
     try {
-      await api.documents.create({
+      const created = await api.documents.create({
         document_type: "suspension",
         employee_name: selectedEmployee.name,
         employee_cpf: selectedEmployee.cpf,
@@ -177,7 +177,9 @@ export function SuspensionForm() {
           : `Suspensão de ${suspensionDays} dia(s) por faltas injustificadas`,
       });
 
-      await downloadSuspensionDoc(data);
+      const { blob, fileName } = await downloadSuspensionDoc(data);
+      // Enviar por e-mail (best-effort)
+      api.documents.enviarEmail(created.id, blob, fileName).catch(() => {});
       toast.success("Documento gerado e salvo no histórico!");
     } catch {
       toast.error("Erro ao gerar documento");

@@ -236,9 +236,10 @@ export function generateWarningDoc(data: WarningData) {
   return doc;
 }
 
-export async function downloadWarningDoc(data: WarningData) {
+export async function downloadWarningDoc(data: WarningData): Promise<{ blob: Blob; fileName: string }> {
   const doc = generateWarningDoc(data);
   const blob = await Packer.toBlob(doc);
   const fileName = `advertencia_${data.employeeName.replace(/\s+/g, "_").toLowerCase()}_${formatDateBR(data.warningDate).replace(/\//g, "-")}.docx`;
   saveAs(blob, fileName);
+  return { blob, fileName };
 }

@@ -1699,6 +1699,21 @@ export const api = {
       request("/documents", { method: "POST", body: JSON.stringify(data) }),
     delete: (id: string) =>
       request(`/documents/${id}`, { method: "DELETE" }),
+    enviarEmail: async (id: string, file: Blob, filename: string) => {
+      const form = new FormData();
+      form.append("file", file, filename);
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/documents/${id}/enviar-email`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Erro ao enviar" }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      return res.json();
+    },
   },
 
   certificates: {

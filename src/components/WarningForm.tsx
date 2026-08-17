@@ -146,7 +146,7 @@ export function WarningForm() {
     };
 
     try {
-      await api.documents.create({
+      const created = await api.documents.create({
         document_type: "warning",
         employee_name: selectedEmployee.name,
         employee_cpf: selectedEmployee.cpf,
@@ -158,7 +158,9 @@ export function WarningForm() {
         description: reason.substring(0, 200),
       });
 
-      await downloadWarningDoc(data);
+      const { blob, fileName } = await downloadWarningDoc(data);
+      // Enviar por e-mail (best-effort)
+      api.documents.enviarEmail(created.id, blob, fileName).catch(() => {});
       toast.success("Advertência gerada e salva no histórico!");
     } catch {
       toast.error("Erro ao gerar documento");

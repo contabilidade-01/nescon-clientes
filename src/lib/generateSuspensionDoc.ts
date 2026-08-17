@@ -348,9 +348,10 @@ function extenso(n: number): string {
   return nomes[n] || n.toString();
 }
 
-export async function downloadSuspensionDoc(data: SuspensionData) {
+export async function downloadSuspensionDoc(data: SuspensionData): Promise<{ blob: Blob; fileName: string }> {
   const doc = generateSuspensionDoc(data);
   const blob = await Packer.toBlob(doc);
   const fileName = `suspensao_${data.employeeName.replace(/\s+/g, "_").toLowerCase()}_${formatDateBR(data.startDate).replace(/\//g, "-")}.docx`;
   saveAs(blob, fileName);
+  return { blob, fileName };
 }
