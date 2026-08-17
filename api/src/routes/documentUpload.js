@@ -173,7 +173,7 @@ router.post("/confirmar", async (req, res) => {
       const { rows } = await db.query(
         `INSERT INTO deliverables
            (company_id, category, doc_type, title, file_path, file_name, source, access_token, released_at)
-         VALUES ($1, 'avulso', $2, $3, $4, $5, 'upload_manual', $6, now())
+         VALUES ($1, 'outro', $2, $3, $4, $5, 'upload_manual', $6, now())
          RETURNING id, company_id, category, doc_type, title, file_name, created_at`,
         [
           company_id,

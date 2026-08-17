@@ -10,6 +10,10 @@ const DocumentosPage = () => {
         category="outro"
         emptyText="Nenhum documento disponível ainda. Contratos, relatórios e demais arquivos enviados pelo escritório aparecem aqui."
       />
+      <DeliverableList
+        category="avulso"
+        emptyText=""
+      />
     </PortalPage>
   );
 };
