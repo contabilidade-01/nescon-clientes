@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, FileText, AlertTriangle, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, FileText, AlertTriangle, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { downloadSuspensionDoc } from "@/lib/generateSuspensionDoc";
+import { downloadWarningDoc } from "@/lib/generateWarningDoc";
 
 const HistoryPage = () => {
   const navigate = useNavigate();
@@ -28,6 +30,40 @@ const HistoryPage = () => {
       toast.success("Documento removido");
     },
   });
+
+  const recuperar = async (doc: NonNullable<typeof documents>[number]) => {
+    try {
+      if (doc.document_type === "suspension") {
+        await downloadSuspensionDoc({
+          employeeName: doc.employee_name,
+          cpf: doc.employee_cpf,
+          companyName: doc.company_name,
+          cnpj: doc.company_cnpj,
+          startDate: doc.start_date ? new Date(doc.start_date + "T12:00:00") : new Date(doc.created_at),
+          suspensionDays: doc.suspension_days || 1,
+          previousWarnings: [],
+          previousSuspensions: [],
+          recentAbsenceDate: "",
+          unjustifiedAbsences: [],
+          reason: doc.description || "",
+        });
+      } else {
+        await downloadWarningDoc({
+          employeeName: doc.employee_name,
+          cpf: doc.employee_cpf,
+          companyName: doc.company_name,
+          cnpj: doc.company_cnpj,
+          warningDate: doc.start_date ? new Date(doc.start_date + "T12:00:00") : new Date(doc.created_at),
+          reason: doc.description || "Conduta inadequada",
+          previousWarnings: [],
+          unjustifiedAbsences: [],
+        });
+      }
+      toast.success("Documento regenerado e baixado");
+    } catch {
+      toast.error("Erro ao recuperar o documento");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -91,14 +127,25 @@ const HistoryPage = () => {
                       Emitido em {format(new Date(doc.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                     </p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteMutation.mutate(doc.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-primary hover:text-primary"
+                      title="Recuperar (baixar novamente)"
+                      onClick={() => recuperar(doc)}
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => deleteMutation.mutate(doc.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}

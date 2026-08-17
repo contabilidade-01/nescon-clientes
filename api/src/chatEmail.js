@@ -15,8 +15,10 @@
  *    um texto com `<` viraria HTML no cliente de e-mail.
  */
 const { isSmtpConfigured, getPublicAppUrl, createTransport } = require("./mailer");
+const { configurado: whatsappConfigurado, enviarTexto } = require("./uazapi");
 
 const JANELA_ANTIFLOOD_MIN = 15;
+const ADMIN_WHATSAPP = (process.env.ADMIN_WHATSAPP || "5511948626605").replace(/\D/g, "");
 
 function escaparHtml(s) {
   return String(s || "")
@@ -116,6 +118,19 @@ async function avisarAdminsNovaMensagem(db, conversationId) {
         `UPDATE conversations SET email_avisado_admin_at = now() WHERE id = $1::uuid`,
         [conversationId]
       );
+    }
+
+    // WhatsApp para o admin (mesmo anti-flood do e-mail)
+    if (whatsappConfigurado() && ADMIN_WHATSAPP) {
+      const texto = [
+        `📩 Nova mensagem no portal`,
+        `Empresa: ${conversa.empresa}`,
+        conversa.subject ? `Assunto: ${conversa.subject}` : null,
+        `"${trecho(conversa.ultima, 150)}"`,
+        ``,
+        `Abrir: ${getPublicAppUrl()}/admin/atendimentos`,
+      ].filter(Boolean).join("\n");
+      enviarTexto({ numero: ADMIN_WHATSAPP, texto, delayMs: 1000 }).catch(() => {});
     }
   } catch (err) {
     // Best-effort de propósito: o aviso é conforto, a mensagem já está salva.
