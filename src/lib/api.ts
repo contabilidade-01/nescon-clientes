@@ -1931,6 +1931,22 @@ export const api = {
       }),
     markRead: (id: string) =>
       request<{ ok: boolean; marcada: boolean }>(`/admin/atendimentos/${id}/read`, { method: "POST" }),
+    uploadFile: async (id: string, file: File, body?: string) => {
+      const form = new FormData();
+      form.append("file", file);
+      if (body) form.append("body", body);
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${import.meta.env.VITE_API_URL || ""}/api/admin/atendimentos/${id}/upload`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Erro ao enviar arquivo" }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      return res.json();
+    },
   },
 
   /** Configuração de IA (Claude/Gemini/ChatGPT) para CNPJ e vencimento em documentos. */

@@ -15,6 +15,7 @@
  */
 const router = require("express").Router();
 const db = require("../db");
+const { uploadPdf } = require("../uploads");
 const { authMiddleware } = require("../middleware/auth");
 const { requireArea } = require("../middleware/adminArea");
 const { validateUUID } = require("../middleware/validate");
@@ -168,7 +169,8 @@ router.get("/:id/messages", async (req, res) => {
     if (!conversa) return res.status(404).json({ error: "Atendimento não encontrado" });
 
     const { rows } = await db.query(
-      `SELECT m.id, m.sender_type, m.sender_name, m.body, m.created_at
+      `SELECT m.id, m.sender_type, m.sender_name, m.body, m.created_at,
+              m.attachment_path, m.attachment_name
          FROM chat_messages m
         WHERE m.conversation_id = $1::uuid
         ORDER BY m.created_at, m.id`,
@@ -221,6 +223,48 @@ router.post("/:id/messages", async (req, res) => {
   } catch (err) {
     console.error("[adminChat] responder:", err.message);
     res.status(500).json({ error: "Não foi possível enviar a resposta" });
+  }
+});
+
+/**
+ * POST /:id/upload — envia mensagem com documento anexo.
+ * O body da mensagem é opcional (pode mandar só o arquivo).
+ */
+router.post("/:id/upload", uploadPdf.single("file"), async (req, res) => {
+  if (!validateUUID(req.params.id)) return res.status(400).json({ error: "id inválido" });
+  if (!req.file) return res.status(400).json({ error: "Envie um arquivo" });
+
+  const a = ator(req);
+  const body = (req.body?.body || "").toString().trim() || `📎 ${req.file.originalname}`;
+
+  try {
+    const conversa = await chat.carregarConversa(db, req.params.id, a);
+    if (!conversa) return res.status(404).json({ error: "Atendimento não encontrado" });
+
+    if (!a.isOwner && conversa.assigned_to && conversa.assigned_to !== a.adminId) {
+      return res.status(403).json({ error: "Este atendimento é de outro colega." });
+    }
+    if (!conversa.assigned_to) await chat.assumir(db, conversa.id, a.adminId);
+
+    // Gravar mensagem com referência ao anexo
+    const { rows } = await db.query(
+      `INSERT INTO chat_messages
+         (conversation_id, sender_type, sender_id, sender_name, body, attachment_path, attachment_name)
+       VALUES ($1, 'admin', $2, $3, $4, $5, $6)
+       RETURNING id, sender_type, sender_name, body, attachment_path, attachment_name, created_at`,
+      [conversa.id, a.adminId, req.admin.nome || "Escritório", body, req.file.filename, req.file.originalname]
+    );
+
+    await db.query(
+      `UPDATE conversations SET last_message_at = now(), status = CASE WHEN status = 'aberto' THEN 'em_atendimento' ELSE status END WHERE id = $1`,
+      [conversa.id]
+    );
+
+    chatEmail.avisarClienteNovaResposta(db, conversa.id).catch(() => {});
+    res.status(201).json({ message: rows[0] });
+  } catch (err) {
+    console.error("[adminChat] upload:", err.message);
+    res.status(500).json({ error: "Não foi possível enviar o documento" });
   }
 });
 

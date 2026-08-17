@@ -95,6 +95,10 @@ async function ensureChatSchema(db) {
         ON conversations(company_id, last_message_at DESC)
     `);
 
+    // Mensagens podem ter anexo (PDF, imagem, etc.)
+    await db.query(`ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_path TEXT`);
+    await db.query(`ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_name TEXT`);
+
     console.log("[DB] chat: tabelas e índices verificados/criados.");
   } catch (err) {
     console.error("[DB] ensureChatSchema falhou:", err.message, err.code || "");

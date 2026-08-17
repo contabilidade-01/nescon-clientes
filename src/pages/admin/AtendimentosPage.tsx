@@ -10,6 +10,7 @@ import {
   Inbox,
   Loader2,
   MessageCircle,
+  Paperclip,
   RotateCcw,
   Send,
   UserCheck,
@@ -327,6 +328,19 @@ function ConversaView({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const enviarArquivo = useMutation({
+    mutationFn: (file: File) => api.atendimentos.uploadFile(id, file, resposta.trim() || undefined),
+    onSuccess: () => {
+      setResposta("");
+      queryClient.invalidateQueries({ queryKey: ["admin-atendimentos-messages", id] });
+      queryClient.invalidateQueries({ queryKey: ["admin-atendimentos-list"] });
+      toast.success("Documento enviado");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Para "transferir" precisamos da lista de atendentes - so vale a pena buscar quando
   // o operador clica em "Transferir", porque a lista nao muda o tempo todo e o select
   // precisa dela para renderizar.
@@ -515,6 +529,17 @@ function ConversaView({
                     }`}
                   >
                     <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                    {m.attachment_name && (
+                      <a
+                        href={`/api/uploads/${m.attachment_path}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-flex items-center gap-1 rounded bg-background/50 px-2 py-1 text-xs text-primary hover:underline"
+                      >
+                        <Paperclip className="h-3 w-3" />
+                        {m.attachment_name}
+                      </a>
+                    )}
                     <p className="mt-1 text-[10px] text-muted-foreground">
                       {m.sender_name ?? (ehAdmin ? "Atendente" : "Cliente")}
                       {" · "}
@@ -537,6 +562,28 @@ function ConversaView({
             enviar.mutate({ body, clientMsgId: crypto.randomUUID() });
           }}
         >
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) enviarArquivo.mutate(file);
+              e.target.value = "";
+            }}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            disabled={status === "resolvido" || enviarArquivo.isPending}
+            onClick={() => fileInputRef.current?.click()}
+            title="Enviar documento"
+          >
+            <Paperclip className="h-4 w-4" />
+          </Button>
           <Input
             placeholder={
               status === "resolvido"
