@@ -15,7 +15,8 @@
  */
 const router = require("express").Router();
 const db = require("../db");
-const { uploadPdf } = require("../uploads");
+const crypto = require("crypto");
+const { uploadAny } = require("../uploads");
 const { authMiddleware } = require("../middleware/auth");
 const { requireArea } = require("../middleware/adminArea");
 const { validateUUID } = require("../middleware/validate");
@@ -229,13 +230,15 @@ router.post("/:id/messages", async (req, res) => {
 /**
  * POST /:id/upload — envia mensagem com documento anexo.
  * O body da mensagem é opcional (pode mandar só o arquivo).
+ * Se `enviar_ao_portal` = "true", cria um deliverable para a empresa.
  */
-router.post("/:id/upload", uploadPdf.single("file"), async (req, res) => {
+router.post("/:id/upload", uploadAny.single("file"), async (req, res) => {
   if (!validateUUID(req.params.id)) return res.status(400).json({ error: "id inválido" });
   if (!req.file) return res.status(400).json({ error: "Envie um arquivo" });
 
   const a = ator(req);
   const body = (req.body?.body || "").toString().trim() || `📎 ${req.file.originalname}`;
+  const enviarAoPortal = req.body?.enviar_ao_portal === "true";
 
   try {
     const conversa = await chat.carregarConversa(db, req.params.id, a);
@@ -260,8 +263,24 @@ router.post("/:id/upload", uploadPdf.single("file"), async (req, res) => {
       [conversa.id]
     );
 
+    // Se o admin quer disponibilizar o documento no portal do cliente
+    if (enviarAoPortal) {
+      await db.query(
+        `INSERT INTO deliverables
+           (company_id, category, doc_type, title, file_path, file_name, source, access_token, released_at)
+         VALUES ($1, 'outro', NULL, $2, $3, $4, 'chat', $5, now())`,
+        [
+          conversa.company_id,
+          req.file.originalname,
+          req.file.filename,
+          req.file.originalname,
+          crypto.randomBytes(24).toString("hex"),
+        ]
+      );
+    }
+
     chatEmail.avisarClienteNovaResposta(db, conversa.id).catch(() => {});
-    res.status(201).json({ message: rows[0] });
+    res.status(201).json({ message: rows[0], deliverable_criado: enviarAoPortal });
   } catch (err) {
     console.error("[adminChat] upload:", err.message);
     res.status(500).json({ error: "Não foi possível enviar o documento" });

@@ -329,17 +329,20 @@ function ConversaView({
   });
 
   const enviarArquivo = useMutation({
-    mutationFn: (file: File) => api.atendimentos.uploadFile(id, file, resposta.trim() || undefined),
-    onSuccess: () => {
+    mutationFn: ({ file, enviarAoPortal }: { file: File; enviarAoPortal: boolean }) =>
+      api.atendimentos.uploadFile(id, file, resposta.trim() || undefined, enviarAoPortal),
+    onSuccess: (data) => {
       setResposta("");
       queryClient.invalidateQueries({ queryKey: ["admin-atendimentos-messages", id] });
       queryClient.invalidateQueries({ queryKey: ["admin-atendimentos-list"] });
-      toast.success("Documento enviado");
+      toast.success(data?.deliverable_criado ? "Documento enviado e disponibilizado no portal" : "Documento enviado");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [arrastando, setArrastando] = useState(false);
+  const [enviarAoPortal, setEnviarAoPortal] = useState(false);
 
   // Para "transferir" precisamos da lista de atendentes - so vale a pena buscar quando
   // o operador clica em "Transferir", porque a lista nao muda o tempo todo e o select
@@ -553,55 +556,81 @@ function ConversaView({
         </div>
 
         {/* Composer - so envia se a conversa nao estiver resolvida. */}
-        <form
-          className="flex items-center gap-2 border-t p-3"
-          onSubmit={(e) => {
+        <div
+          className={`border-t transition-colors ${arrastando ? "bg-primary/5 border-primary" : ""}`}
+          onDragOver={(e) => { e.preventDefault(); setArrastando(true); }}
+          onDragLeave={() => setArrastando(false)}
+          onDrop={(e) => {
             e.preventDefault();
-            const body = resposta.trim();
-            if (!body) return;
-            enviar.mutate({ body, clientMsgId: crypto.randomUUID() });
+            setArrastando(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) enviarArquivo.mutate({ file, enviarAoPortal });
           }}
         >
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) enviarArquivo.mutate(file);
-              e.target.value = "";
+          {arrastando && (
+            <p className="text-center text-xs text-primary py-2">Solte o arquivo aqui</p>
+          )}
+          <div className="flex items-center gap-1 px-3 pt-2">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={enviarAoPortal}
+                onChange={(e) => setEnviarAoPortal(e.target.checked)}
+                className="rounded border-muted-foreground/40"
+              />
+              Disponibilizar no portal do cliente
+            </label>
+          </div>
+          <form
+            className="flex items-center gap-2 p-3 pt-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const body = resposta.trim();
+              if (!body) return;
+              enviar.mutate({ body, clientMsgId: crypto.randomUUID() });
             }}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="shrink-0"
-            disabled={status === "resolvido" || enviarArquivo.isPending}
-            onClick={() => fileInputRef.current?.click()}
-            title="Enviar documento"
           >
-            <Paperclip className="h-4 w-4" />
-          </Button>
-          <Input
-            placeholder={
-              status === "resolvido"
-                ? "Conversa resolvida — reabra para responder."
-                : "Digite sua resposta…"
-            }
-            value={resposta}
-            onChange={(e) => setResposta(e.target.value)}
-            disabled={status === "resolvido" || enviar.isPending}
-          />
-          <Button
-            type="submit"
-            disabled={status === "resolvido" || enviar.isPending || !resposta.trim()}
-          >
-            <Send className="mr-2 h-4 w-4" />
-            Enviar
-          </Button>
-        </form>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.zip"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) enviarArquivo.mutate({ file, enviarAoPortal });
+                e.target.value = "";
+              }}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="shrink-0"
+              disabled={status === "resolvido" || enviarArquivo.isPending}
+              onClick={() => fileInputRef.current?.click()}
+              title="Enviar documento"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            <Input
+              placeholder={
+                status === "resolvido"
+                  ? "Conversa resolvida — reabra para responder."
+                  : "Digite sua resposta…"
+              }
+              value={resposta}
+              onChange={(e) => setResposta(e.target.value)}
+              disabled={status === "resolvido" || enviar.isPending}
+            />
+            <Button
+              type="submit"
+              disabled={status === "resolvido" || enviar.isPending || !resposta.trim()}
+            >
+              <Send className="mr-2 h-4 w-4" />
+              Enviar
+            </Button>
+          </form>
+        </div>
       </CardContent>
     </Card>
   );

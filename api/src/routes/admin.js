@@ -107,6 +107,55 @@ router.get("/summary", async (_req, res) => {
 });
 
 /**
+ * GET /admin/documentos — lista deliverables com filtros (para tela de gestão).
+ */
+router.get("/documentos", requireArea("entregas"), async (req, res) => {
+  try {
+    const { company_id, category, de, ate, busca } = req.query;
+    const params = [];
+    const filtros = ["d.cancelado IS NOT TRUE"];
+
+    if (company_id && validateUUID(company_id.toString())) {
+      params.push(company_id);
+      filtros.push(`d.company_id = $${params.length}`);
+    }
+    if (category && ["guia", "boleto", "folha", "outro", "avulso"].includes(category.toString())) {
+      params.push(category);
+      filtros.push(`d.category = $${params.length}`);
+    }
+    if (de) {
+      params.push(de);
+      filtros.push(`d.created_at >= $${params.length}::date`);
+    }
+    if (ate) {
+      params.push(ate);
+      filtros.push(`d.created_at < ($${params.length}::date + 1)`);
+    }
+    if (busca) {
+      params.push(`%${busca}%`);
+      filtros.push(`(d.title ILIKE $${params.length} OR d.file_name ILIKE $${params.length} OR c.name ILIKE $${params.length})`);
+    }
+
+    const where = filtros.length ? `WHERE ${filtros.join(" AND ")}` : "";
+    const { rows } = await db.query(
+      `SELECT d.id, d.title, d.file_name, d.category, d.doc_type, d.competencia,
+              d.source, d.created_at, d.due_date,
+              c.name AS empresa_nome, c.cnpj AS empresa_cnpj
+         FROM deliverables d
+         JOIN companies c ON c.id = d.company_id
+         ${where}
+        ORDER BY d.created_at DESC
+        LIMIT 500`,
+      params
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("[admin] documentos:", err.message);
+    res.status(500).json({ error: "Erro ao listar documentos" });
+  }
+});
+
+/**
  * Painel de entregas: quantas entregas (guias, boletos, folha, documentos) cada
  * empresa recebeu, separando liberadas (visíveis ao cliente) de retidas (à espera
  * de o escritório clicar "Enviar" no sistema de guias). Resolve a confusão do

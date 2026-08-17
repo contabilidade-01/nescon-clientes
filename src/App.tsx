@@ -33,6 +33,7 @@ import AtendimentosPage from "./pages/admin/AtendimentosPage.tsx";
 import MensagensPage from "./pages/MensagensPage.tsx";
 import UsuariosPage from "./pages/admin/UsuariosPage.tsx";
 import DocumentUploadPage from "./pages/admin/DocumentUploadPage.tsx";
+import DocumentosAdminPage from "./pages/admin/DocumentosAdminPage.tsx";
 import ConfigIaPage from "./pages/admin/ConfigIaPage.tsx";
 import VencimentosSugeridosPage from "./pages/admin/VencimentosSugeridosPage.tsx";
 import AcessosPage from "./pages/admin/AcessosPage.tsx";
@@ -167,6 +168,7 @@ const AppRoutes = () => (
     <Route path="/admin/atendimentos" element={<AdminAreaRoute area="atendimento"><AtendimentosPage /></AdminAreaRoute>} />
     <Route path="/admin/usuarios" element={<OwnerOnlyRoute><UsuariosPage /></OwnerOnlyRoute>} />
     <Route path="/admin/doc-upload" element={<AdminAreaRoute area="entregas"><DocumentUploadPage /></AdminAreaRoute>} />
+    <Route path="/admin/documentos" element={<AdminAreaRoute area="entregas"><DocumentosAdminPage /></AdminAreaRoute>} />
     <Route path="/admin/config-ia" element={<AdminAreaRoute area="entregas"><ConfigIaPage /></AdminAreaRoute>} />
     <Route path="/admin/vencimentos-sugeridos" element={<AdminAreaRoute area="entregas"><VencimentosSugeridosPage /></AdminAreaRoute>} />
     <Route path="/admin/acessos" element={<AdminAreaRoute area="acessos"><AcessosPage /></AdminAreaRoute>} />

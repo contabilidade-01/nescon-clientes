@@ -1931,12 +1931,13 @@ export const api = {
       }),
     markRead: (id: string) =>
       request<{ ok: boolean; marcada: boolean }>(`/admin/atendimentos/${id}/read`, { method: "POST" }),
-    uploadFile: async (id: string, file: File, body?: string) => {
+    uploadFile: async (id: string, file: File, body?: string, enviarAoPortal?: boolean) => {
       const form = new FormData();
       form.append("file", file);
       if (body) form.append("body", body);
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ""}/api/admin/atendimentos/${id}/upload`, {
+      if (enviarAoPortal) form.append("enviar_ao_portal", "true");
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/admin/atendimentos/${id}/upload`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
