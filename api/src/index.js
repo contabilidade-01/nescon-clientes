@@ -83,9 +83,7 @@ app.use(
 app.use(express.json({ limit: "1mb" }));
 
 // Servir arquivos de upload (anexos do chat, PDFs de entregas).
-// Os nomes são únicos (timestamp + nome sanitizado) e não há listagem de diretório.
 const { UPLOAD_DIR } = require("./uploads");
-const path = require("path");
 app.use("/api/uploads", express.static(path.resolve(UPLOAD_DIR)));
 
 // Nota de segurança: quem está com a senha inicial (= CNPJ, público) é barrado na API
