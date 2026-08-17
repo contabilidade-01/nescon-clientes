@@ -11,7 +11,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertCircle, Check, Sparkles, Upload, X } from "lucide-react";
+import { AlertCircle, Check, History, Sparkles, Upload, X } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -302,9 +302,72 @@ const DocumentUploadPage = () => {
             </p>
           </CardContent>
         </Card>
+
+        <HistoricoUploads />
       </div>
     </AdminLayout>
   );
 };
+
+/** Últimos documentos enviados manualmente — histórico. */
+function HistoricoUploads() {
+  const { data: historico, isLoading } = useQuery({
+    queryKey: ["doc-upload", "historico"],
+    queryFn: () => api.docUpload.historico(),
+  });
+
+  if (isLoading) return null;
+  if (!historico?.length) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <History className="h-4 w-4" /> Últimos uploads
+        </CardTitle>
+        <CardDescription>
+          Documentos enviados manualmente por esta tela.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-lg border overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b bg-muted/50">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium text-muted-foreground">Documento</th>
+                <th className="px-3 py-2 text-left font-medium text-muted-foreground">Empresa</th>
+                <th className="px-3 py-2 text-left font-medium text-muted-foreground">Enviado em</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historico.map((h) => (
+                <tr key={h.id} className="border-b last:border-0 hover:bg-muted/30">
+                  <td className="px-3 py-2">
+                    <p className="truncate font-medium max-w-[250px]">{h.title || h.file_name}</p>
+                    {h.competencia && (
+                      <span className="text-xs text-muted-foreground">{h.competencia}</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <p className="truncate max-w-[200px]">{h.empresa_nome}</p>
+                    <p className="text-xs text-muted-foreground font-mono">
+                      {h.empresa_cnpj?.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5")}
+                    </p>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
+                    {new Date(h.created_at).toLocaleDateString("pt-BR")}{" "}
+                    <span className="text-xs">
+                      {new Date(h.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default DocumentUploadPage;

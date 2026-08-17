@@ -1009,6 +1009,18 @@ export const api = {
         method: "PUT",
         body: JSON.stringify({ habilitada }),
       }),
+    historico: () =>
+      request<Array<{
+        id: string;
+        title: string;
+        file_name: string;
+        category: string;
+        doc_type: string | null;
+        competencia: string | null;
+        created_at: string;
+        empresa_nome: string;
+        empresa_cnpj: string;
+      }>>("/doc-upload/historico"),
   },
 
   /**

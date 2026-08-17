@@ -235,4 +235,24 @@ router.put("/ia", async (req, res) => {
   }
 });
 
+/** GET /historico — últimos documentos enviados manualmente (upload_manual). */
+router.get("/historico", async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT d.id, d.title, d.file_name, d.category, d.doc_type,
+              d.competencia, d.created_at,
+              c.name AS empresa_nome, c.cnpj AS empresa_cnpj
+         FROM deliverables d
+         JOIN companies c ON c.id = d.company_id
+        WHERE d.source = 'upload_manual'
+        ORDER BY d.created_at DESC
+        LIMIT 100`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("[doc-upload] historico:", err.message);
+    res.status(500).json({ error: "Erro ao listar histórico" });
+  }
+});
+
 module.exports = router;
