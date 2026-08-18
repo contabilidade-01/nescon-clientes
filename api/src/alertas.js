@@ -495,6 +495,10 @@ async function previsao(db, { data = null, simular = true, diaUtil = true } = {}
   // BOLETO_AVISAR_DIAS_ANTES). Resultado prático: o cliente era avisado do imposto do
   // governo e não do boleto do próprio escritório, que é justamente o que o escritório
   // precisa receber.
+  //
+  // IMPORTANTE: A trava de 48h é APENAS para boletos Cora (não-honorários), porque
+  // podem estar pagos e a Cora demora para sincronizar. Para HONORÁRIOS, NÃO há trava
+  // (ou é mínima — 5min) para respeitar os marcos de cobrança (1, 3, 5, 10, 15, 30 dias).
   const { rows: boletosTodos } = await db.query(
     `SELECT id, company_id, title, valor_centavos, is_honorario,
             to_char(due_date, 'YYYY-MM-DD') AS due_date
@@ -509,11 +513,14 @@ async function previsao(db, { data = null, simular = true, diaUtil = true } = {}
         -- Para honorários, usa o marco mais longo; para boletos comuns, o outro.
         AND due_date >= ($1::date - $2::int)
         AND historico IS NOT TRUE
-        -- Trava de 48h: se já mandei mensagem deste boleto nas últimas 48h, não
-        -- remando. Resolve o atraso entre o pagamento na Cora e a sincronização
-        -- do status (que pode levar horas); o webhook real-time fica para depois.
-        -- Boleto nunca avisado (NULL) entra normalmente — é o caso do primeiro envio.
-        AND (alert_sent_at IS NULL OR alert_sent_at < now() - interval '48 hours')
+        -- Trava diferenciada por tipo:
+        -- - Boletos comuns Cora: 48h (para não reenviar pagos de novo)
+        -- - Honorários: 5min (para respeitar marcos 1, 3, 5, 10, 15, 30 dias)
+        AND (
+          (is_honorario IS NOT TRUE AND (alert_sent_at IS NULL OR alert_sent_at < now() - interval '48 hours'))
+          OR
+          (is_honorario = true AND (alert_sent_at IS NULL OR alert_sent_at < now() - interval '5 minutes'))
+        )
       ORDER BY due_date`,
     [hoje, Math.max(0, ...HONORARIOS_COBRANCA_DIAS_DEPOIS, ...BOLETO_COBRANCA_DIAS_DEPOIS, 0)]
   );
