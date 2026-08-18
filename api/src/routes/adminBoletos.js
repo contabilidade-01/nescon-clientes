@@ -218,8 +218,10 @@ router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req
           AND d.released_at IS NOT NULL
           AND d.due_date IS NOT NULL
           AND d.due_date < CURRENT_DATE
-          -- Respeitar a subchave por empresa
+          -- Respeitar a subchave por empresa + cliente inativo não é cobrado nem no manual
           AND c.honorario_cobranca_ativo IS NOT FALSE
+          AND c.arquivada IS NOT TRUE
+          AND c.excluida IS NOT TRUE
           ${trava48h}
           ${filtro}
         ORDER BY d.due_date ASC`,

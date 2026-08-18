@@ -491,10 +491,12 @@ export interface AlertCompanyDetail {
      *  - avisos_gerais_ativos    → tributos, guias e férias
      *  - boleto_lembrete_ativo   → boleto: aviso de VENCIMENTO (véspera)
      *  - boleto_cobranca_ativo   → boleto: aviso de VENCIDO (marcos de cobrança)
+     *  - honorario_cobranca_ativo → honorário: régua própria de cobrança (2 fases)
      */
     avisos_gerais_ativos: boolean;
     boleto_lembrete_ativo: boolean;
     boleto_cobranca_ativo: boolean;
+    honorario_cobranca_ativo: boolean;
     avisos_documentos_ativos: boolean;
     avisos_alterados_em: string | null;
   };
@@ -1052,6 +1054,7 @@ export const api = {
         avisos_gerais_ativos?: boolean;
         boleto_lembrete_ativo?: boolean;
         boleto_cobranca_ativo?: boolean;
+        honorario_cobranca_ativo?: boolean;
         whatsapp?: string | null;
       }
     ) =>
@@ -1063,6 +1066,7 @@ export const api = {
         avisos_gerais_ativos: boolean;
         boleto_lembrete_ativo: boolean;
         boleto_cobranca_ativo: boolean;
+        honorario_cobranca_ativo: boolean;
       }>(`/alertas/empresas/${companyId}/preferencias`, {
         method: "PUT",
         body: JSON.stringify(data),
@@ -1075,6 +1079,7 @@ export const api = {
         avisos_gerais_ativos?: boolean;
         boleto_lembrete_ativo?: boolean;
         boleto_cobranca_ativo?: boolean;
+        honorario_cobranca_ativo?: boolean;
         company_ids?: string[];
       }
     ) =>

@@ -116,6 +116,7 @@ async function detalheDaEmpresa(db, companyId) {
   const { rows: empresa } = await db.query(
     `SELECT c.id, c.name, c.cnpj, c.alertas_ativos, c.incentivo_ativo,
             c.avisos_gerais_ativos, c.boleto_lembrete_ativo, c.boleto_cobranca_ativo,
+            c.honorario_cobranca_ativo,
             c.whatsapp AS whatsapp_manual,
             ${whatsappSql("c")} AS whatsapp,
             g.phone AS whatsapp_gclick,

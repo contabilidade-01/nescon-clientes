@@ -195,6 +195,14 @@ async function cobrarHonorarios({ simular = false, agora = new Date() } = {}) {
         -- Travão 2: só competência >= set/2026. Quando setembro chegar, não varre agosto.
         AND d.competencia IS NOT NULL
         AND d.competencia >= $2
+        -- HIERARQUIA DE CHAVES POR EMPRESA (a mesma do motor geral). Clicar em qualquer
+        -- uma bloqueia a cobrança deste cliente:
+        --   • alertas_ativos = false      → chave-mestra: corta TUDO do cliente.
+        --   • honorario_cobranca_ativo=false → só a cobrança de honorário.
+        --   • arquivada/excluida          → cliente inativo não recebe mais nada.
+        AND c.alertas_ativos IS TRUE
+        AND c.arquivada IS NOT TRUE
+        AND c.excluida IS NOT TRUE
         AND c.honorario_cobranca_ativo IS NOT FALSE
       ORDER BY d.due_date ASC`,
     [hoje, COMPETENCIA_MIN]

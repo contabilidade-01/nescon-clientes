@@ -77,6 +77,7 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
       avisos_gerais_ativos?: boolean;
       boleto_lembrete_ativo?: boolean;
       boleto_cobranca_ativo?: boolean;
+      honorario_cobranca_ativo?: boolean;
       whatsapp?: string;
     }) => api.alertas.preferencias(companyId, v),
     onSuccess: invalidar,
@@ -163,6 +164,21 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
                 disabled={!empresa.alertas_ativos}
                 checked={empresa.boleto_cobranca_ativo}
                 onCheckedChange={(v) => preferencias.mutate({ boleto_cobranca_ativo: v })}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="honorario-cobranca" className="font-normal">
+                Honorários — cobrança
+                <span className="block text-xs text-muted-foreground">
+                  régua própria em 2 fases (a partir de set/2026)
+                </span>
+              </Label>
+              <Switch
+                id="honorario-cobranca"
+                disabled={!empresa.alertas_ativos}
+                checked={empresa.honorario_cobranca_ativo}
+                onCheckedChange={(v) => preferencias.mutate({ honorario_cobranca_ativo: v })}
               />
             </div>
           </div>
@@ -539,6 +555,7 @@ const AlertasPage = () => {
     { campo: "avisos_gerais_ativos", label: "Avisos gerais (tributos, guias, férias)" },
     { campo: "boleto_lembrete_ativo", label: "Boleto — aviso de vencimento" },
     { campo: "boleto_cobranca_ativo", label: "Boleto — aviso de vencido" },
+    { campo: "honorario_cobranca_ativo", label: "Honorários — cobrança (2 fases)" },
   ];
 
   const termo = busca.trim().toLowerCase();
