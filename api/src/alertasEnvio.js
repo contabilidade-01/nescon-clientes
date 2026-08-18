@@ -35,7 +35,7 @@ const { previsao, registrarEnvio, registrarFalha } = require("./alertas");
 const { trechoDeIncentivo } = require("./engagement");
 const { hojeSP, minutosSP } = require("./diasBancarios");
 const { lerConfig } = require("./alertasConfig");
-const { dentroDaJanela, descricaoJanela } = require("./janelaEnvio");
+const { dentroDaJanela, ehDiaUtil, descricaoJanela } = require("./janelaEnvio");
 
 function num(valor, padrao) {
   const n = Number(valor);
@@ -128,9 +128,15 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, comp
     };
   }
 
+  // Cobrança de honorários só de segunda a sexta. Alertas de tributos e guias saem
+  // qualquer dia (porque o vencimento não espera), mas mensagem de cobrança de dívida
+  // no sábado/domingo incomoda sem utilidade — o cliente não tem como pagar no fim de
+  // semana mesmo.
+  const diaUtilHoje = ehDiaUtil();
+
   // `simular: true` sempre: o texto é montado sem consumir o rodízio de mensagens de
   // incentivo. O consumo só acontece depois que a mensagem realmente sai.
-  const { mensagens: todas } = await previsao(db, { data: dia, simular: true });
+  const { mensagens: todas } = await previsao(db, { data: dia, simular: true, diaUtil: diaUtilHoje });
   const mensagens = selecionadas ? todas.filter((m) => selecionadas.has(m.company_id)) : todas;
 
   const meuNumero = apenasSimular ? null : await uazapi.owner();

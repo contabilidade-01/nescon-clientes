@@ -419,7 +419,7 @@ function itensBoletoDoDia(boletos, { hoje, diasAntes, cobrancaDias, honorariosCo
  * `jaEnviados` evita repetir. Com `simular = true` nada é gravado e o incentivo não
  * é consumido — é o modo da tela de pré-visualização.
  */
-async function previsao(db, { data = null, simular = true } = {}) {
+async function previsao(db, { data = null, simular = true, diaUtil = true } = {}) {
   const hoje = data || hojeSP();
   const permitidos = [];
 
@@ -433,6 +433,7 @@ async function previsao(db, { data = null, simular = true } = {}) {
   const { rows: empresas } = await db.query(
     `SELECT c.id, c.name, c.cnpj, ${whatsappSql("c")} AS whatsapp, c.incentivo_ativo,
             c.avisos_gerais_ativos, c.boleto_lembrete_ativo, c.boleto_cobranca_ativo,
+            c.honorario_cobranca_ativo,
             array_remove(array_agg(o.obrigacao) FILTER (WHERE o.ativo IS TRUE), NULL) AS obrigacoes
        FROM companies c
        -- LEFT JOIN, não INNER: uma empresa pode não ter NENHUMA obrigação marcada e
@@ -537,16 +538,22 @@ async function previsao(db, { data = null, simular = true } = {}) {
     const geraisOn = e.avisos_gerais_ativos !== false;
     const lembreteOn = e.boleto_lembrete_ativo !== false;
     const cobrancaOn = e.boleto_cobranca_ativo !== false;
+    const honorarioCobrancaOn = e.honorario_cobranca_ativo !== false;
 
     // Avisos gerais desligados = zera tributos/guias/férias desta empresa (mas o boleto,
     // que é canal à parte, pode continuar saindo).
     const codigos = geraisOn ? e.obrigacoes || [] : [];
     const temFeriasAlerta = codigos.includes("FERIAS_LIMITE");
     // Só busca boletos se ao menos um dos dois canais está ligado.
-    const boletosDaEmpresa = lembreteOn || cobrancaOn ? boletosPorEmpresa.get(e.id) || [] : [];
+    const boletosDaEmpresa = lembreteOn || cobrancaOn || honorarioCobrancaOn ? boletosPorEmpresa.get(e.id) || [] : [];
+    // Filtrar: se a empresa desligou cobrança de honorários, não inclui is_honorario na lista
+    const boletosParaAlerta = boletosDaEmpresa.filter((b) => {
+      if (b.is_honorario) return honorarioCobrancaOn;
+      return true;
+    });
     // Sem obrigação marcada a empresa ainda pode ter boleto a vencer — e boleto é
     // dívida com o escritório, o último aviso que se pode deixar de mandar.
-    if (!codigos.length && !boletosDaEmpresa.length) continue;
+    if (!codigos.length && !boletosParaAlerta.length) continue;
     // Uma mensagem por cliente por dia: quem já recebeu hoje sai fora antes de qualquer
     // outra conta.
     if (avisadosHoje.has(e.id)) continue;
@@ -628,7 +635,12 @@ async function previsao(db, { data = null, simular = true } = {}) {
       return i.codigo;
     }).sort();
 
-    const itensFinal = itens;
+    // No fim de semana, remover itens de HONORÁRIO (cobrança de dívida não sai no sábado
+    // nem domingo — tributos continuam porque o vencimento não espera). Isso garante que
+    // a mensagem de honorários só é composta de segunda a sexta.
+    const itensFinal = diaUtil
+      ? itens
+      : itens.filter((i) => !i.isHonorario);
 
     const incentivo = e.incentivo_ativo
       ? await trechoDeIncentivo(db, { companyId: e.id, portalUrl: portalUrl("/"), simular })
@@ -821,6 +833,7 @@ async function salvarPreferencias(
     avisosGeraisAtivos,
     boletoLembreteAtivo,
     boletoCobrancaAtivo,
+    honorarioCobrancaAtivo,
     whatsapp,
   }
 ) {
@@ -836,6 +849,7 @@ async function salvarPreferencias(
   flag(avisosGeraisAtivos, "avisos_gerais_ativos");
   flag(boletoLembreteAtivo, "boleto_lembrete_ativo");
   flag(boletoCobrancaAtivo, "boleto_cobranca_ativo");
+  flag(honorarioCobrancaAtivo, "honorario_cobranca_ativo");
   if (whatsapp !== undefined) {
     // Grava já normalizado (com o 55). Assim o número no banco é o número que a uazapi
     // recebe — sem conversão espalhada por quem for enviar.
@@ -853,7 +867,8 @@ async function salvarPreferencias(
   const { rows } = await db.query(
     `UPDATE companies SET ${campos.join(", ")} WHERE id = $1
      RETURNING id, whatsapp, alertas_ativos, incentivo_ativo,
-               avisos_gerais_ativos, boleto_lembrete_ativo, boleto_cobranca_ativo`,
+               avisos_gerais_ativos, boleto_lembrete_ativo, boleto_cobranca_ativo,
+               honorario_cobranca_ativo`,
     params
   );
   return rows[0] ?? null;
@@ -879,6 +894,7 @@ async function salvarPreferenciasLote(db, campos = {}, companyIds = null) {
   flag(campos.avisos_gerais_ativos, "avisos_gerais_ativos");
   flag(campos.boleto_lembrete_ativo, "boleto_lembrete_ativo");
   flag(campos.boleto_cobranca_ativo, "boleto_cobranca_ativo");
+  flag(campos.honorario_cobranca_ativo, "honorario_cobranca_ativo");
   if (!sets.length) return { atualizadas: 0 };
 
   const ids = Array.isArray(companyIds) ? companyIds.filter(Boolean) : null;

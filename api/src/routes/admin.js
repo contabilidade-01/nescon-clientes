@@ -700,12 +700,27 @@ router.post("/cora/boletos/:id/enviar-whatsapp", requireArea("sincronizacao"), a
  * Diferente do alerta automático (que dispara só nos marcos 1, 3, 5, 10, 15, 30), aqui
  * o disparo é manual: o admin decide quando cobrar, sem esperar o marco.
  *
+ * Proteções:
+ * - Trava de 48h: não envia se já cobrou o mesmo boleto nas últimas 48h (anti-duplicação)
+ * - Dia da semana: só segunda a sexta (recusa no fim de semana)
+ * - is_honorario: NUNCA cobra guia fiscal — só boletos explicitamente marcados
+ * - Subchave honorario_cobranca_ativo por empresa: respeita
+ *
  * Aceita filtros opcionais:
  * - `company_id`: cobrar só uma empresa
  * - `boleto_id`: cobrar só um boleto específico
+ * - `ignorar_48h`: true para forçar mesmo que já tenha sido cobrado recentemente
  */
 router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req, res) => {
-  const { company_id, boleto_id } = req.body || {};
+  const { company_id, boleto_id, ignorar_48h } = req.body || {};
+
+  // Horário: só segunda a sexta. 0=dom, 6=sáb.
+  const diaSemana = new Date().getDay();
+  if (diaSemana === 0 || diaSemana === 6) {
+    return res.status(400).json({
+      error: "Cobrança de honorários só é enviada de segunda a sexta. Tente novamente no próximo dia útil.",
+    });
+  }
 
   try {
     const params = [];
@@ -713,17 +728,23 @@ router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req
     if (boleto_id) {
       if (!validateUUID(boleto_id)) return res.status(400).json({ error: "boleto_id inválido" });
       params.push(boleto_id);
-      filtro = ` AND d.id = $${params.length}`;
+      filtro += ` AND d.id = $${params.length}`;
     } else if (company_id) {
       if (!validateUUID(company_id)) return res.status(400).json({ error: "company_id inválido" });
       params.push(company_id);
-      filtro = ` AND d.company_id = $${params.length}`;
+      filtro += ` AND d.company_id = $${params.length}`;
     }
+
+    // Trava anti-duplicação: não cobra de novo se já mandou nas últimas 48h
+    const trava48h = ignorar_48h
+      ? ""
+      : " AND (d.alert_sent_at IS NULL OR d.alert_sent_at < now() - interval '48 hours')";
 
     const { rows: boletos } = await db.query(
       `SELECT d.id, d.title, d.pdf_url, d.valor_centavos, d.is_honorario,
               to_char(d.due_date, 'YYYY-MM-DD') AS due_date,
               c.id AS empresa_id, c.name AS empresa_nome,
+              c.honorario_cobranca_ativo,
               COALESCE(NULLIF(c.whatsapp, ''), g.phone) AS whatsapp
          FROM deliverables d
          JOIN companies c ON c.id = d.company_id
@@ -735,18 +756,23 @@ router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req
           AND d.released_at IS NOT NULL
           AND d.due_date IS NOT NULL
           AND d.due_date < CURRENT_DATE
+          -- Respeitar a subchave por empresa
+          AND c.honorario_cobranca_ativo IS NOT FALSE
+          ${trava48h}
           ${filtro}
         ORDER BY d.due_date ASC`,
       params
     );
 
     if (!boletos.length) {
-      return res.json({ enviados: 0, erros: [], mensagem: "Nenhum honorário em atraso encontrado." });
+      return res.json({ enviados: 0, erros: [], mensagem: "Nenhum honorário em atraso para cobrar (todos já cobrados ou pagos)." });
     }
 
-    const { enviarDocumento } = require("../uazapi");
     const enviados = [];
     const erros = [];
+
+    // URL do portal para download direto do boleto
+    const portalBase = (process.env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
 
     for (const b of boletos) {
       const v = numeroWpp.validar(b.whatsapp);
@@ -770,7 +796,10 @@ router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req
 
       const docName = `Honorarios_${b.empresa_nome.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 30)}_${venc.replace(/\//g, "-")}.pdf`;
 
-      // Texto do WhatsApp com aviso amigável
+      // Link do portal para o cliente baixar (caso o PDF expire depois)
+      const linkBoleto = portalBase ? `${portalBase}/boletos` : "";
+
+      // Texto do WhatsApp com aviso amigável mas firme
       const caption = [
         `📌 *Cobrança de Honorários — ${b.empresa_nome}*`,
         "",
@@ -779,6 +808,8 @@ router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req
         diasAtraso > 0 ? `Dias em atraso: ${diasAtraso}` : null,
         "",
         "⚠️ Caro cliente, honorários com mais de 5 dias de atraso podem levar ao bloqueio dos serviços de entregas de declarações. Essas declarações têm multas que, na maioria das vezes, ultrapassam o valor dos honorários.",
+        "",
+        linkBoleto ? `📎 Baixe o boleto atualizado no portal: ${linkBoleto}` : null,
         "",
         "Se já pagou, desconsidere. Qualquer dúvida, entre em contato com o escritório. 🙏",
         "",
@@ -794,7 +825,7 @@ router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req
           delayMs: 2000,
         });
 
-        // Atualizar alert_sent_at para não reenviar automaticamente nas próximas horas
+        // Atualizar alert_sent_at para não reenviar nas próximas 48h (anti-duplicação)
         await db.query("UPDATE deliverables SET alert_sent_at = now() WHERE id = $1", [b.id]);
         enviados.push({ empresa: b.empresa_nome, boleto_id: b.id, enviado_para: v.numero });
       } catch (err) {

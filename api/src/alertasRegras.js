@@ -219,6 +219,12 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
         "dos serviços de entregas de declarações. Essas declarações têm multas que, na maioria " +
         "das vezes, ultrapassam o valor dos honorários."
       );
+      // Link para baixar o boleto no portal
+      if (portalUrl) {
+        const base = String(portalUrl).replace(/\/+$/, "");
+        linhas.push("");
+        linhas.push(`📎 Baixe o boleto atualizado: ${base}/boletos`);
+      }
       linhas.push("");
       linhas.push("Qualquer dúvida, entre em contato com o escritório. 🙏");
     }

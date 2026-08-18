@@ -23,10 +23,18 @@ function dentroDaJanela(minutos) {
   return minutos >= JANELA_INICIO_MIN && minutos < JANELA_FIM_MIN;
 }
 
+/** É dia útil? Segunda(1) a sexta(5). Sábado(6) e domingo(0) são fim de semana. */
+function ehDiaUtil() {
+  // Usa Date no fuso de São Paulo para não errar em servidor UTC.
+  const agora = new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" });
+  const dia = new Date(agora).getDay();
+  return dia >= 1 && dia <= 5;
+}
+
 /** Texto curto da janela para mensagens de erro/diagnóstico ("08:00–19:00"). */
 function descricaoJanela() {
   const hh = (min) => String(Math.floor(min / 60)).padStart(2, "0") + ":" + String(min % 60).padStart(2, "0");
   return `${hh(JANELA_INICIO_MIN)}–${hh(JANELA_FIM_MIN)}`;
 }
 
-module.exports = { JANELA_INICIO_MIN, JANELA_FIM_MIN, dentroDaJanela, descricaoJanela };
+module.exports = { JANELA_INICIO_MIN, JANELA_FIM_MIN, dentroDaJanela, ehDiaUtil, descricaoJanela };

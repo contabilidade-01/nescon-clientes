@@ -57,6 +57,10 @@ async function ensureAlertasSchema(db) {
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS avisos_gerais_ativos  BOOLEAN NOT NULL DEFAULT true;`);
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS boleto_lembrete_ativo BOOLEAN NOT NULL DEFAULT true;`);
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS boleto_cobranca_ativo BOOLEAN NOT NULL DEFAULT true;`);
+    // Subchave específica para HONORÁRIOS: liga/desliga a cobrança automática de
+    // boletos marcados como is_honorario. Default true (cobrar quem atrasa é o padrão).
+    // O admin desliga para clientes que preferem não receber, sem tirar os outros alertas.
+    await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS honorario_cobranca_ativo BOOLEAN NOT NULL DEFAULT true;`);
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS company_obligations (

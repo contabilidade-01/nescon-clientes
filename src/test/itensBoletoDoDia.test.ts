@@ -16,6 +16,7 @@ const opts = (over = {}) => ({
   hoje: HOJE,
   diasAntes: 1,
   cobrancaDias: [3, 10, 30],
+  honorariosCobrancaDias: [1, 3, 5, 10, 15, 30],
   lembreteOn: true,
   cobrancaOn: true,
   ...over,
