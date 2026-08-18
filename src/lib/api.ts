@@ -1652,6 +1652,12 @@ export const api = {
         `/admin/companies/${companyId}/senha-inicial`,
         { method: "POST" }
       ),
+    /** Admin define uma senha específica para o cliente. */
+    alterarSenhaCliente: (companyId: string, novaSenha: string, obrigarTroca = true) =>
+      request<{ id: string; name: string; cnpj: string; must_change_password: boolean; message: string }>(
+        `/admin/companies/${companyId}/alterar-senha`,
+        { method: "PUT", body: JSON.stringify({ nova_senha: novaSenha, obrigar_troca: obrigarTroca }) }
+      ),
     /** Envia acesso (senha provisória) por WhatsApp para empresas selecionadas ou todas. */
     enviarAcesso: (companyIds: string[] | "all") =>
       request<{

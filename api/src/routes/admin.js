@@ -1025,6 +1025,43 @@ router.post("/companies/:id/senha-inicial", requireArea("empresas"), async (req,
 });
 
 /**
+ * PUT /admin/companies/:id/alterar-senha — admin define uma senha específica para o cliente.
+ *
+ * Diferente da senha-inicial (aleatória, obriga troca), aqui o admin escolhe a senha
+ * e decide se o cliente precisa trocar no próximo login ou não.
+ */
+router.put("/companies/:id/alterar-senha", requireArea("empresas"), async (req, res) => {
+  const { id } = req.params;
+  const { nova_senha, obrigar_troca } = req.body || {};
+  if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
+  if (!validateString(nova_senha, 4, 128)) {
+    return res.status(400).json({ error: "Senha precisa ter pelo menos 4 caracteres" });
+  }
+  try {
+    const hash = await bcrypt.hash(String(nova_senha).trim(), 10);
+    const mustChange = obrigar_troca !== false; // default: obriga trocar
+    const { rows } = await db.query(
+      `UPDATE companies
+          SET password_hash = $1, must_change_password = $2, password_expires_at = NULL
+        WHERE id = $3
+        RETURNING id, name, cnpj`,
+      [hash, mustChange, id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Empresa não encontrada" });
+    res.json({
+      ...rows[0],
+      must_change_password: mustChange,
+      message: mustChange
+        ? "Senha alterada. O cliente terá de trocá-la no próximo acesso."
+        : "Senha alterada com sucesso.",
+    });
+  } catch (err) {
+    console.error("[admin] alterar senha:", err.message);
+    res.status(500).json({ error: "Erro ao alterar a senha" });
+  }
+});
+
+/**
  * Quantas empresas ainda estão com a senha inicial por trocar.
  *
  * `must_change_password` marca exatamente isso. Nas empresas antigas essa senha é o
