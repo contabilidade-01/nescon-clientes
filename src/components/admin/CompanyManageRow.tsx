@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { api } from "@/lib/api";
 import {
   COMPANY_TOOL_KEYS,
@@ -39,7 +38,6 @@ export function CompanyManageRow({
   const [phone, setPhone] = useState(company.phone ?? "");
   const [tools, setTools] = useState<CompanyToolAccess>(() => mergeClientToolAccess(company.tool_access));
   const [novaSenha, setNovaSenha] = useState("");
-  const [obrigarTroca, setObrigarTroca] = useState(true);
 
   useEffect(() => {
     setName(company.name);
@@ -76,7 +74,7 @@ export function CompanyManageRow({
   });
 
   const alterarSenha = useMutation({
-    mutationFn: () => api.admin.alterarSenhaCliente(company.id, novaSenha.trim(), obrigarTroca),
+    mutationFn: () => api.admin.alterarSenhaCliente(company.id, novaSenha.trim(), false),
     onSuccess: (r) => {
       toast.success(r.message);
       setNovaSenha("");
@@ -135,7 +133,7 @@ export function CompanyManageRow({
       <div className="border-t pt-4 mt-4 space-y-2">
         <p className="text-xs font-semibold text-foreground">Alterar senha de acesso</p>
         <p className="text-xs text-muted-foreground">
-          Defina uma nova senha para esta empresa. O cliente usará esta senha no próximo login.
+          Defina uma nova senha para esta empresa. O cliente usará esta senha direto, sem precisar trocar.
         </p>
         <div className="flex flex-wrap items-end gap-2">
           <div className="space-y-1 flex-1 min-w-[180px]">
@@ -157,16 +155,6 @@ export function CompanyManageRow({
           >
             Alterar senha
           </Button>
-        </div>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id={`obrigar-${company.id}`}
-            checked={obrigarTroca}
-            onCheckedChange={(c) => setObrigarTroca(Boolean(c))}
-          />
-          <Label htmlFor={`obrigar-${company.id}`} className="text-xs text-muted-foreground cursor-pointer">
-            Obrigar cliente a trocar no próximo login
-          </Label>
         </div>
       </div>
 
