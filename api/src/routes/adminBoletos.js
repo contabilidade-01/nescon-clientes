@@ -11,6 +11,7 @@ const { requireArea } = require("../middleware/adminArea");
 const { validateUUID } = require("../middleware/validate");
 const numeroWpp = require("../whatsappNumero");
 const { enviarDocumento } = require("../uazapi");
+const cora = require("../cora");
 
 module.exports = function registerBoletosRoutes(router) {
 /** Lista boletos Cora importados (com nome da empresa). */
@@ -202,7 +203,7 @@ router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req
       : " AND (d.alert_sent_at IS NULL OR d.alert_sent_at < now() - interval '48 hours')";
 
     const { rows: boletos } = await db.query(
-      `SELECT d.id, d.title, d.pdf_url, d.valor_centavos, d.is_honorario,
+      `SELECT d.id, d.title, d.pdf_url, d.valor_centavos, d.is_honorario, d.external_ref,
               to_char(d.due_date, 'YYYY-MM-DD') AS due_date,
               c.id AS empresa_id, c.name AS empresa_nome,
               c.honorario_cobranca_ativo,
@@ -236,6 +237,23 @@ router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req
     const portalBase = (process.env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
 
     for (const b of boletos) {
+      // Checagem fresca na Cora: não cobrar o que já consta pago/compensado lá, mesmo que
+      // o banco local ainda diga pendente (sync de 6h pode estar defasado). Best-effort —
+      // se a Cora não responder, segue com o status do banco.
+      try {
+        const invoiceId = String(b.external_ref || "").replace(/^cora_/, "");
+        if (invoiceId) {
+          const detalhe = await cora.getInvoiceDetail(invoiceId);
+          if (detalhe && detalhe.status && cora.mapCoraStatusToPortal(detalhe.status) === "paid") {
+            await db.query("UPDATE deliverables SET status='paid', paid_at=now() WHERE id=$1", [b.id]);
+            erros.push({ empresa: b.empresa_nome, motivo: "Já consta pago na Cora — não cobrado" });
+            continue;
+          }
+        }
+      } catch (e) {
+        console.error("[admin] cobrar honorarios: checagem Cora", b.id, e.message);
+      }
+
       const v = numeroWpp.validar(b.whatsapp);
       if (!v.ok) {
         erros.push({ empresa: b.empresa_nome, motivo: v.motivo });

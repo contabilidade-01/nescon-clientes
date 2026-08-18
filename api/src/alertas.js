@@ -16,7 +16,7 @@ const {
   textoDaEvidencia,
   montarMensagemAlerta,
 } = require("./alertasRegras");
-const { hojeSP, somarDias } = require("./diasBancarios");
+const { hojeSP, somarDias, ehDiaBancario, proximoDiaBancario } = require("./diasBancarios");
 const { lerConfig } = require("./alertasConfig");
 const { trechoDeIncentivo } = require("./engagement");
 const numeroWpp = require("./whatsappNumero");
@@ -382,15 +382,58 @@ async function projecaoFerias(db, { dias = 7 } = {}) {
  * Cada boleto pode ter seus próprios marcos: honorários usam [1, 3, 5, 10, 15, 30],
  * boletos comuns usam [3, 10, 30]. O boleto sabe qual é aplicável (is_honorario).
  */
-function itensBoletoDoDia(boletos, { hoje, diasAntes, cobrancaDias, honorariosCobrancaDias, lembreteOn, cobrancaOn }) {
+
+// Carência de compensação para HONORÁRIO. Boleto pago só aparece como pago depois de
+// COMPENSAR (D+1 útil), e boleto que vence em fim de semana/feriado só é pagável no
+// próximo dia útil. Cobrar antes disso cobra quem já pagou — foi o caso do venc. sábado,
+// pago segunda, cobrado terça de manhã e compensado terça à tarde. Aqui a cobrança de
+// honorário só começa depois de N dias ÚTEIS contados a partir do vencimento efetivo.
+const CARENCIA_HONORARIO_DIAS_UTEIS = Math.max(
+  0,
+  Number(process.env.ALERTAS_HONORARIOS_CARENCIA_DIAS_UTEIS) || 2
+);
+
+/**
+ * Dias ÚTEIS (bancários) decorridos desde o vencimento. Se o vencimento cai em fim de
+ * semana/feriado, conta a partir do próximo dia útil (o 1º dia em que dava para pagar).
+ * Função pura: testável sem banco.
+ */
+function diasUteisAposVencimento(dueDate, hoje) {
+  if (!dueDate || !hoje) return 0;
+  const vencEfetivo = ehDiaBancario(dueDate) ? dueDate : proximoDiaBancario(dueDate);
+  if (!vencEfetivo || hoje <= vencEfetivo) return 0;
+  let count = 0;
+  let d = somarDias(vencEfetivo, 1);
+  let guarda = 0;
+  while (d && d <= hoje && guarda < 400) {
+    if (ehDiaBancario(d)) count += 1;
+    d = somarDias(d, 1);
+    guarda += 1;
+  }
+  return count;
+}
+
+function itensBoletoDoDia(
+  boletos,
+  { hoje, diasAntes, cobrancaDias, honorariosCobrancaDias, lembreteOn, cobrancaOn, carenciaHonorarioDiasUteis = CARENCIA_HONORARIO_DIAS_UTEIS }
+) {
   const itens = [];
   for (const b of boletos || []) {
     const eLembrete = lembreteOn && b.due_date === somarDias(hoje, diasAntes);
     // Escolher marcos: honorários ou boletos comuns
     const marcos = b.is_honorario ? (honorariosCobrancaDias || []) : (cobrancaDias || []);
-    const diasEmAtraso = cobrancaOn
+    let diasEmAtraso = cobrancaOn
       ? marcos.find((d) => b.due_date === somarDias(hoje, -d))
       : undefined;
+    // Carência de compensação: só honorário, e só na COBRANÇA (o lembrete é antes do
+    // vencimento, não tem o que compensar). Boleto comum mantém a régua atual.
+    if (
+      diasEmAtraso !== undefined &&
+      b.is_honorario &&
+      diasUteisAposVencimento(b.due_date, hoje) < carenciaHonorarioDiasUteis
+    ) {
+      diasEmAtraso = undefined; // ainda pode ter pago e não compensado: não cobra ainda
+    }
     if (!eLembrete && diasEmAtraso === undefined) continue;
 
     itens.push({
@@ -935,6 +978,7 @@ module.exports = {
   panorama,
   previsao,
   itensBoletoDoDia,
+  diasUteisAposVencimento,
   registrarEnvio,
   salvarPreferencias,
   salvarPreferenciasLote,

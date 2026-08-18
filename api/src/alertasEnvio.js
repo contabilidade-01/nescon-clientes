@@ -506,6 +506,22 @@ function iniciarAgendadorAlertas(db) {
       // em vez de "queimar" o dia com um envio que a trava barraria mesmo assim.
       if (!dentroDaJanela(minutosSP())) return;
       ultimoDiaExecutado = dia;
+
+      // Sync fresco da Cora ANTES de cobrar: fecha a janela de defasagem do agendador de
+      // 6h. Sem isto, um boleto pago e já compensado, mas ainda não sincronizado, seria
+      // cobrado. Best-effort — se a Cora estiver fora, cobra com o que há no banco. (A
+      // carência de compensação em itensBoletoDoDia cobre o caso em que o pagamento ainda
+      // nem compensou.)
+      try {
+        const coraSync = require("./coraSync");
+        const rs = await coraSync.sincronizar();
+        if (rs && rs.ok) {
+          console.log(`[alertas] sync Cora pré-cobrança: ${rs.atualizados ?? 0} atualizado(s).`);
+        }
+      } catch (err) {
+        console.error("[alertas] sync Cora pré-cobrança:", err.message);
+      }
+
       const r = await enviarAlertasDoDia(db, { data: dia });
       console.log(
         `[alertas] ${dia}: ${r.enviados} enviado(s), ${r.falhas} falha(s), ${r.ignorados} ignorado(s).`
