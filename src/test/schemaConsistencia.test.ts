@@ -37,7 +37,11 @@ function lerSchema(): Map<string, Set<string>> {
   for (const f of fontes) {
     const txt = fs.readFileSync(f, "utf8");
 
-    for (const m of txt.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)\s*\(([\s\S]*?)\n\s*\);/g)) {
+    // O bloco fecha de dois jeitos: `);` no init.sql (SQL solto) e `)` seguido da crase
+    // de fechamento do template literal nos ensure*.js (ex.: `      )\n    `);`). O regex
+    // antigo só casava o primeiro — por isso tabelas definidas só nos ensure*.js (chat,
+    // alertas, engagement…) entravam vazias e davam falso "coluna inexistente".
+    for (const m of txt.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)\s*\(([\s\S]*?)\n\s*\)\s*(?:;|`)/g)) {
       const tabela = m[1];
       const cols = schema.get(tabela) ?? new Set<string>();
       for (const linha of m[2].split("\n")) {
