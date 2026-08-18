@@ -57,6 +57,11 @@ function loadCertificates() {
 /**
  * Faz requisição HTTPS com certificados SSL mTLS.
  */
+// Teto por requisição. Sem isto, uma conexão pendurada da Cora nunca resolvia a Promise
+// e prendia um worker do mapLimit no coraSync para sempre. `unref` não se aplica a
+// sockets aqui; o destroy() abaixo é o que libera.
+const CORA_TIMEOUT_MS = Number(process.env.CORA_TIMEOUT_MS) || 30000;
+
 function makeHTTPSRequest(options, postData = null) {
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
@@ -85,6 +90,11 @@ function makeHTTPSRequest(options, postData = null) {
           reject(error);
         }
       });
+    });
+    // Timeout de conexão/resposta: dispara `destroy`, que emite 'error' e rejeita a
+    // Promise em vez de deixá-la pendurada indefinidamente.
+    req.setTimeout(CORA_TIMEOUT_MS, () => {
+      req.destroy(new Error(`Timeout Cora após ${CORA_TIMEOUT_MS}ms`));
     });
     req.on("error", reject);
     if (postData) {
@@ -234,10 +244,13 @@ function mapCoraStatusToPortal(coraStatus) {
   // Pago
   if (status === "PAID" || status === "PAGO") return "paid";
 
-  // Cancelado NÃO vira "pago" aqui — ver `ehCancelado`. Continua devolvendo 'paid'
-  // apenas para o caso de alguém chamar esta função sem consultar `ehCancelado`, mas o
-  // caminho correto é marcar a coluna `cancelado` e sumir da tela.
-  if (ehCancelado(status)) return "paid";
+  // Cancelado NÃO é pago. Antes esta função devolvia 'paid' aqui como fallback, o que
+  // era uma armadilha: cancelado não é dívida, mas ninguém quitou. Quem trata cancelado
+  // é `coraSync` via `ehCancelado` (grava a coluna `cancelado` e o boleto some da tela),
+  // então este caminho é morto na prática. Devolvemos 'pending' — o valor conservador e
+  // honesto — para que, se alguém um dia chamar esta função sem consultar `ehCancelado`,
+  // o boleto NÃO apareça falsamente como pago.
+  if (ehCancelado(status)) return "pending";
 
   // Aberto/Atrasado conta como pendente
   if (["OPEN", "PENDING", "ABERTO", "PENDENTE", "LATE", "OVERDUE", "VENCIDO", "DRAFT", "RECURRENCE_DRAFT"].includes(status)) {
