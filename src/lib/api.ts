@@ -1604,6 +1604,43 @@ export const api = {
       request<{ ok: boolean; enviado_para: string }>(`/admin/cora/boletos/${id}/enviar-whatsapp`, {
         method: "POST",
       }),
+    /** Lista todos os honorários com status de cobrança. */
+    listarHonorarios: () =>
+      request<Array<{
+        id: string;
+        title: string;
+        pdf_url: string | null;
+        valor_centavos: number | null;
+        status: string;
+        due_date: string | null;
+        empresa_nome: string;
+        empresa_cnpj: string;
+        whatsapp: string | null;
+        alert_sent_at: string | null;
+        created_at: string;
+      }>>("/admin/honorarios"),
+    /** Disparo manual de cobrança de honorários (envia PDF por WhatsApp). */
+    cobrancaHonorarioAgora: (companyId?: string, boletoId?: string) =>
+      request<{
+        enviados: number;
+        total: number;
+        erros: Array<{ empresa?: string; motivo: string }>;
+        resultados: Array<{ empresa: string; enviado_para: string }>;
+      }>("/admin/honorarios/cobrar-agora", {
+        method: "POST",
+        body: JSON.stringify({ company_id: companyId, boleto_id: boletoId }),
+      }),
+    /** Marca/desmarca um boleto como honorário. */
+    marcarHonorario: (id: string, isHonorario: boolean) =>
+      request<{ ok: boolean }>(`/admin/honorarios/${id}/marcar`, {
+        method: "PUT",
+        body: JSON.stringify({ is_honorario: isHonorario }),
+      }),
+    /** Marca TODOS os boletos Cora como honorários (atalho). */
+    marcarTodosHonorarios: () =>
+      request<{ ok: boolean; marcados: number }>("/admin/honorarios/marcar-todos", {
+        method: "POST",
+      }),
     /** Empresas que ainda não trocaram a senha inicial — a fila de risco a zerar. */
     senhaPendente: () =>
       request<{ total: number; empresas: Array<{ id: string; name: string; cnpj: string }> }>(

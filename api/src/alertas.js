@@ -378,13 +378,18 @@ async function projecaoFerias(db, { dias = 7 } = {}) {
  * Um boleto pode gerar no máximo um item por dia. Canal desligado simplesmente não
  * produz aquele item — é assim que "recebe vencido mas não vencimento" (ou o inverso)
  * se resolve, sem tratar o boleto como obrigação de catálogo.
+ *
+ * Cada boleto pode ter seus próprios marcos: honorários usam [1, 3, 5, 10, 15, 30],
+ * boletos comuns usam [3, 10, 30]. O boleto sabe qual é aplicável (is_honorario).
  */
-function itensBoletoDoDia(boletos, { hoje, diasAntes, cobrancaDias, lembreteOn, cobrancaOn }) {
+function itensBoletoDoDia(boletos, { hoje, diasAntes, cobrancaDias, honorariosCobrancaDias, lembreteOn, cobrancaOn }) {
   const itens = [];
   for (const b of boletos || []) {
     const eLembrete = lembreteOn && b.due_date === somarDias(hoje, diasAntes);
+    // Escolher marcos: honorários ou boletos comuns
+    const marcos = b.is_honorario ? (honorariosCobrancaDias || []) : (cobrancaDias || []);
     const diasEmAtraso = cobrancaOn
-      ? (cobrancaDias || []).find((d) => b.due_date === somarDias(hoje, -d))
+      ? marcos.find((d) => b.due_date === somarDias(hoje, -d))
       : undefined;
     if (!eLembrete && diasEmAtraso === undefined) continue;
 
@@ -397,6 +402,7 @@ function itensBoletoDoDia(boletos, { hoje, diasAntes, cobrancaDias, lembreteOn, 
       vencimento: b.due_date,
       valorCentavos: b.valor_centavos,
       isBoleto: true,
+      isHonorario: b.is_honorario,
       diasEmAtraso: diasEmAtraso ?? null,
     });
   }
@@ -418,8 +424,11 @@ async function previsao(db, { data = null, simular = true } = {}) {
   const permitidos = [];
 
   // Cadência do boleto vem da tela (alertasConfig), não mais de constante de ambiente.
-  const { boleto_dias_antes: BOLETO_AVISAR_DIAS_ANTES, boleto_cobranca_dias: BOLETO_COBRANCA_DIAS_DEPOIS } =
-    await lerConfig(db);
+  const {
+    boleto_dias_antes: BOLETO_AVISAR_DIAS_ANTES,
+    boleto_cobranca_dias: BOLETO_COBRANCA_DIAS_DEPOIS,
+    honorarios_cobranca_dias: HONORARIOS_COBRANCA_DIAS_DEPOIS
+  } = await lerConfig(db);
 
   const { rows: empresas } = await db.query(
     `SELECT c.id, c.name, c.cnpj, ${whatsappSql("c")} AS whatsapp, c.incentivo_ativo,
@@ -486,7 +495,7 @@ async function previsao(db, { data = null, simular = true } = {}) {
   // governo e não do boleto do próprio escritório, que é justamente o que o escritório
   // precisa receber.
   const { rows: boletosTodos } = await db.query(
-    `SELECT id, company_id, title, valor_centavos,
+    `SELECT id, company_id, title, valor_centavos, is_honorario,
             to_char(due_date, 'YYYY-MM-DD') AS due_date
        FROM deliverables
       WHERE category = 'boleto'
@@ -496,6 +505,7 @@ async function previsao(db, { data = null, simular = true } = {}) {
         AND due_date IS NOT NULL
         -- Janela para trás limitada pelo ÚLTIMO marco de cobrança: sem ela, um boleto
         -- esquecido de 2024 entraria na conta todo dia sem nunca casar com um marco.
+        -- Para honorários, usa o marco mais longo; para boletos comuns, o outro.
         AND due_date >= ($1::date - $2::int)
         AND historico IS NOT TRUE
         -- Trava de 48h: se já mandei mensagem deste boleto nas últimas 48h, não
@@ -504,7 +514,7 @@ async function previsao(db, { data = null, simular = true } = {}) {
         -- Boleto nunca avisado (NULL) entra normalmente — é o caso do primeiro envio.
         AND (alert_sent_at IS NULL OR alert_sent_at < now() - interval '48 hours')
       ORDER BY due_date`,
-    [hoje, Math.max(0, ...BOLETO_COBRANCA_DIAS_DEPOIS, 0)]
+    [hoje, Math.max(0, ...HONORARIOS_COBRANCA_DIAS_DEPOIS, ...BOLETO_COBRANCA_DIAS_DEPOIS, 0)]
   );
   const boletosPorEmpresa = new Map();
   for (const b of boletosTodos) {
@@ -567,6 +577,7 @@ async function previsao(db, { data = null, simular = true } = {}) {
         hoje,
         diasAntes: BOLETO_AVISAR_DIAS_ANTES,
         cobrancaDias: BOLETO_COBRANCA_DIAS_DEPOIS,
+        honorariosCobrancaDias: HONORARIOS_COBRANCA_DIAS_DEPOIS,
         lembreteOn,
         cobrancaOn,
       })

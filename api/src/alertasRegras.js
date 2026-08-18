@@ -173,6 +173,10 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
     const emAtraso = boletos.filter((b) => b.diasEmAtraso);
     const aVencer = boletos.filter((b) => !b.diasEmAtraso);
 
+    // Separar honorários em atraso dos demais
+    const honorariosAtrasados = emAtraso.filter((b) => b.isHonorario);
+    const boletosAtrasados = emAtraso.filter((b) => !b.isHonorario);
+
     if (aVencer.length) {
       if (obrigNormais.length) linhas.push("");
       linhas.push(aVencer.length > 1 ? "*Boletos a pagar:*" : "*Boleto a pagar:*");
@@ -182,13 +186,11 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
       }
     }
 
-    if (emAtraso.length) {
+    if (boletosAtrasados.length) {
       if (obrigNormais.length || aVencer.length) linhas.push("");
-      linhas.push(emAtraso.length > 1 ? "*⚠️ Boletos em atraso:*" : "*⚠️ Boleto em atraso:*");
-      for (const b of emAtraso) {
+      linhas.push(boletosAtrasados.length > 1 ? "*⚠️ Boletos em atraso:*" : "*⚠️ Boleto em atraso:*");
+      for (const b of boletosAtrasados) {
         const valor = valorBR(b.valorCentavos);
-        // Dizer há quantos dias é o que transforma a data em urgência — "venceu 08/08"
-        // não move ninguém; "há 3 dias" move.
         const ha = b.diasEmAtraso === 1 ? "há 1 dia" : `há ${b.diasEmAtraso} dias`;
         linhas.push(
           `• ${b.nome}${valor ? ` — ${valor}` : ""} — venceu ${ddmm(b.vencimento)} (${ha})`
@@ -196,6 +198,29 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
       }
       linhas.push("");
       linhas.push("Se já pagou, desconsidere. Qualquer dúvida, fale com o escritório.");
+    }
+
+    // Honorários em atraso: mensagem separada com aviso sobre multa e nome da empresa
+    if (honorariosAtrasados.length) {
+      if (obrigNormais.length || aVencer.length || boletosAtrasados.length) linhas.push("");
+      linhas.push(`*📌 Honorários em atraso — ${empresaNome}:*`);
+      for (const b of honorariosAtrasados) {
+        const valor = valorBR(b.valorCentavos);
+        const ha = b.diasEmAtraso === 1 ? "há 1 dia" : `há ${b.diasEmAtraso} dias`;
+        linhas.push(
+          `• ${b.nome}${valor ? ` — ${valor}` : ""} — venceu ${ddmm(b.vencimento)} (${ha})`
+        );
+      }
+      linhas.push("");
+      linhas.push("Se já pagou, desconsidere.");
+      linhas.push("");
+      linhas.push(
+        "⚠️ Caro cliente, honorários com mais de 5 dias de atraso podem levar ao bloqueio " +
+        "dos serviços de entregas de declarações. Essas declarações têm multas que, na maioria " +
+        "das vezes, ultrapassam o valor dos honorários."
+      );
+      linhas.push("");
+      linhas.push("Qualquer dúvida, entre em contato com o escritório. 🙏");
     }
   }
 

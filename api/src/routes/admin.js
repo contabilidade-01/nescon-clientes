@@ -28,7 +28,7 @@ const coraSync = require("../coraSync");
 const coraClient = require("../cora");
 const { TIPOS: TIPOS_GCLICK } = require("../gclick/guides");
 const { gerarSenhaInicial } = require("../senhaInicial");
-const { enviarTexto } = require("../uazapi");
+const { enviarTexto, enviarDocumento } = require("../uazapi");
 const numeroWpp = require("../whatsappNumero");
 const { minutosSP } = require("../diasBancarios");
 const { dentroDaJanela, descricaoJanela } = require("../janelaEnvio");
@@ -687,6 +687,206 @@ router.post("/cora/boletos/:id/enviar-whatsapp", requireArea("sincronizacao"), a
     }
     console.error("[admin] enviar boleto whatsapp:", err.message);
     res.status(500).json({ error: "Falha ao enviar o boleto por WhatsApp" });
+  }
+});
+
+/**
+ * POST /admin/honorarios/cobrar-agora — disparo manual de cobrança de honorários.
+ *
+ * O admin aperta o botão, o sistema pega TODOS os boletos marcados como `is_honorario`
+ * que estão pendentes (qualquer status que não seja 'paid'), e envia cada um por WhatsApp
+ * DIRETO com o PDF. Cita o nome da empresa porque um mesmo telefone pode ter várias.
+ *
+ * Diferente do alerta automático (que dispara só nos marcos 1, 3, 5, 10, 15, 30), aqui
+ * o disparo é manual: o admin decide quando cobrar, sem esperar o marco.
+ *
+ * Aceita filtros opcionais:
+ * - `company_id`: cobrar só uma empresa
+ * - `boleto_id`: cobrar só um boleto específico
+ */
+router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req, res) => {
+  const { company_id, boleto_id } = req.body || {};
+
+  try {
+    const params = [];
+    let filtro = "";
+    if (boleto_id) {
+      if (!validateUUID(boleto_id)) return res.status(400).json({ error: "boleto_id inválido" });
+      params.push(boleto_id);
+      filtro = ` AND d.id = $${params.length}`;
+    } else if (company_id) {
+      if (!validateUUID(company_id)) return res.status(400).json({ error: "company_id inválido" });
+      params.push(company_id);
+      filtro = ` AND d.company_id = $${params.length}`;
+    }
+
+    const { rows: boletos } = await db.query(
+      `SELECT d.id, d.title, d.pdf_url, d.valor_centavos, d.is_honorario,
+              to_char(d.due_date, 'YYYY-MM-DD') AS due_date,
+              c.id AS empresa_id, c.name AS empresa_nome,
+              COALESCE(NULLIF(c.whatsapp, ''), g.phone) AS whatsapp
+         FROM deliverables d
+         JOIN companies c ON c.id = d.company_id
+         LEFT JOIN gclick_clients g ON g.company_id = c.id
+        WHERE d.category = 'boleto'
+          AND d.is_honorario = true
+          AND d.status IS DISTINCT FROM 'paid'
+          AND d.cancelado IS NOT TRUE
+          AND d.released_at IS NOT NULL
+          AND d.due_date IS NOT NULL
+          AND d.due_date < CURRENT_DATE
+          ${filtro}
+        ORDER BY d.due_date ASC`,
+      params
+    );
+
+    if (!boletos.length) {
+      return res.json({ enviados: 0, erros: [], mensagem: "Nenhum honorário em atraso encontrado." });
+    }
+
+    const { enviarDocumento } = require("../uazapi");
+    const enviados = [];
+    const erros = [];
+
+    for (const b of boletos) {
+      const v = numeroWpp.validar(b.whatsapp);
+      if (!v.ok) {
+        erros.push({ empresa: b.empresa_nome, motivo: v.motivo });
+        continue;
+      }
+
+      if (!b.pdf_url) {
+        erros.push({ empresa: b.empresa_nome, motivo: "Sem PDF disponível" });
+        continue;
+      }
+
+      const venc = b.due_date ? b.due_date.split("-").reverse().join("/") : "";
+      const valor = b.valor_centavos
+        ? (b.valor_centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+        : "";
+      const diasAtraso = b.due_date
+        ? Math.floor((Date.now() - new Date(b.due_date).getTime()) / 86400000)
+        : 0;
+
+      const docName = `Honorarios_${b.empresa_nome.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 30)}_${venc.replace(/\//g, "-")}.pdf`;
+
+      // Texto do WhatsApp com aviso amigável
+      const caption = [
+        `📌 *Cobrança de Honorários — ${b.empresa_nome}*`,
+        "",
+        `Vencimento: ${venc}`,
+        valor ? `Valor: ${valor}` : null,
+        diasAtraso > 0 ? `Dias em atraso: ${diasAtraso}` : null,
+        "",
+        "⚠️ Caro cliente, honorários com mais de 5 dias de atraso podem levar ao bloqueio dos serviços de entregas de declarações. Essas declarações têm multas que, na maioria das vezes, ultrapassam o valor dos honorários.",
+        "",
+        "Se já pagou, desconsidere. Qualquer dúvida, entre em contato com o escritório. 🙏",
+        "",
+        "_Nescon Contabilidade_",
+      ].filter(Boolean).join("\n");
+
+      try {
+        await enviarDocumento({
+          numero: v.numero,
+          fileUrl: b.pdf_url,
+          docName,
+          caption,
+          delayMs: 2000,
+        });
+
+        // Atualizar alert_sent_at para não reenviar automaticamente nas próximas horas
+        await db.query("UPDATE deliverables SET alert_sent_at = now() WHERE id = $1", [b.id]);
+        enviados.push({ empresa: b.empresa_nome, boleto_id: b.id, enviado_para: v.numero });
+      } catch (err) {
+        erros.push({ empresa: b.empresa_nome, motivo: err.message });
+        // Se token inválido, para tudo — não adianta continuar
+        if (err.constructor.name === "UazapiTokenInvalido") {
+          erros.push({ empresa: "GERAL", motivo: "WhatsApp desconectado — cobrança interrompida" });
+          break;
+        }
+      }
+
+      // Pausa entre envios para não parecer spam
+      if (boletos.indexOf(b) < boletos.length - 1) {
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    }
+
+    res.json({
+      enviados: enviados.length,
+      erros,
+      total: boletos.length,
+      resultados: enviados,
+    });
+  } catch (err) {
+    console.error("[admin] cobrar honorarios:", err.message);
+    res.status(500).json({ error: "Falha ao processar cobrança de honorários" });
+  }
+});
+
+/**
+ * GET /admin/honorarios — lista honorários com status de cobrança.
+ */
+router.get("/honorarios", requireArea("sincronizacao"), async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT d.id, d.title, d.pdf_url, d.valor_centavos, d.status,
+              to_char(d.due_date, 'YYYY-MM-DD') AS due_date, d.competencia,
+              d.alert_sent_at, d.created_at,
+              c.name AS empresa_nome, c.cnpj AS empresa_cnpj,
+              COALESCE(NULLIF(c.whatsapp, ''), g.phone) AS whatsapp
+         FROM deliverables d
+         JOIN companies c ON c.id = d.company_id
+         LEFT JOIN gclick_clients g ON g.company_id = c.id
+        WHERE d.category = 'boleto'
+          AND d.is_honorario = true
+          AND d.cancelado IS NOT TRUE
+        ORDER BY d.due_date DESC NULLS LAST
+        LIMIT 200`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("[admin] listar honorarios:", err.message);
+    res.status(500).json({ error: "Erro ao listar honorários" });
+  }
+});
+
+/**
+ * PUT /admin/honorarios/:id/marcar — marca/desmarca boleto como honorário.
+ * O admin pode marcar qualquer boleto Cora como honorário para mudar os marcos de cobrança.
+ */
+router.put("/honorarios/:id/marcar", requireArea("sincronizacao"), async (req, res) => {
+  const { id } = req.params;
+  const { is_honorario } = req.body || {};
+  if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
+  if (typeof is_honorario !== "boolean") return res.status(400).json({ error: "is_honorario deve ser booleano" });
+
+  try {
+    const { rowCount } = await db.query(
+      "UPDATE deliverables SET is_honorario = $1 WHERE id = $2 AND source = 'cora'",
+      [is_honorario, id]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Boleto não encontrado" });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[admin] marcar honorario:", err.message);
+    res.status(500).json({ error: "Erro ao marcar honorário" });
+  }
+});
+
+/**
+ * POST /admin/honorarios/marcar-todos — marca TODOS os boletos Cora como honorários.
+ * Atalho para quem só emite boleto de honorário pela Cora (caso da Nescon).
+ */
+router.post("/honorarios/marcar-todos", requireArea("sincronizacao"), async (_req, res) => {
+  try {
+    const { rowCount } = await db.query(
+      "UPDATE deliverables SET is_honorario = true WHERE source = 'cora' AND category = 'boleto' AND is_honorario IS NOT TRUE"
+    );
+    res.json({ ok: true, marcados: rowCount });
+  } catch (err) {
+    console.error("[admin] marcar todos honorarios:", err.message);
+    res.status(500).json({ error: "Erro ao marcar todos como honorários" });
   }
 });
 

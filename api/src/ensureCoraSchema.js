@@ -41,6 +41,20 @@ async function ensureCoraSchema(db) {
         ON deliverables(cancelado) WHERE cancelado IS TRUE
     `);
 
+    /*
+     * Marca boletos que são honorários mensais do escritório.
+     *
+     * Qualquer boleto Cora pode ser honorário — basta o escritório marcar na tela (ou
+     * o título casar com "honorário/mensalidade"). A diferenciação importa porque:
+     * - Marcos de cobrança são diferentes (1, 3, 5, 10, 15, 30 vs 3, 10, 30)
+     * - Mensagem inclui aviso sobre multa de não envio de declarações
+     * - Disparo manual envia PDF direto no WhatsApp
+     */
+    await db.query(`
+      ALTER TABLE deliverables
+      ADD COLUMN IF NOT EXISTS is_honorario BOOLEAN NOT NULL DEFAULT false
+    `);
+
     console.log("[DB] cora: colunas verificadas/criadas.");
   } catch (err) {
     console.error("[DB] ensureCoraSchema falhou:", err.message, err.code || "");
