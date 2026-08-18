@@ -291,11 +291,39 @@ router.post("/login", loginIpLimiter, loginContaLimiter, async (req, res) => {
       if (company.password_expires_at && new Date(company.password_expires_at) < new Date()) {
         return res.status(401).json({ error: "Senha temporária expirada. Solicite novo acesso ao escritório." });
       }
+      // Descobre a matriz do grupo (se for filial) e carrega todas do grupo.
+      // Empresa sem matriz_id → é ela mesma a matriz (ou está sozinha).
+      // Empresa com matriz_id → é filial; a matriz é quem manda.
+      const matrizId = company.matriz_id || null;
+      const isMatriz = !matrizId;
+
       const token = generateToken({
         company_id: company.id,
         company_name: company.name,
         company_cnpj: company.cnpj,
+        matriz_id: matrizId,
       });
+
+      // Carrega lista do grupo para devolver no payload (front popula o switcher).
+      // Só faz sentido buscar se for matriz (senão a lista viria vazia para a filial).
+      let empresasGrupo = [];
+      if (isMatriz) {
+        const { rows: grupo } = await db.query(
+          `SELECT id, name, cnpj, matriz_id
+             FROM companies
+            WHERE id = $1 OR matriz_id = $1
+              AND arquivada IS NOT TRUE AND excluida IS NOT TRUE
+            ORDER BY (matriz_id IS NULL) DESC, name`,
+          [company.id]
+        );
+        empresasGrupo = grupo.map((g) => ({
+          id: g.id,
+          name: g.name,
+          cnpj: g.cnpj,
+          is_matriz: !g.matriz_id,
+        }));
+      }
+
       // Carimba o acesso: é o que tira a empresa da lista de "nunca entrou" e,
       // com isso, das mensagens de incentivo. Falhar aqui não pode barrar o login.
       db.query("UPDATE companies SET ultimo_login_em = now() WHERE id = $1", [company.id]).catch(
@@ -314,6 +342,8 @@ router.post("/login", loginIpLimiter, loginContaLimiter, async (req, res) => {
           // Ainda com a senha inicial (= CNPJ): o front leva direto para a troca.
           must_change_password: Boolean(company.must_change_password),
         },
+        is_matriz: isMatriz,
+        empresas_grupo: empresasGrupo,
       });
     }
 
@@ -481,6 +511,78 @@ router.post("/reset-password", resetPasswordLimiter, async (req, res) => {
  * Trocar a senha estando logado (senha atual + nova). Não depende de e-mail/SMTP —
  * é o caminho para quem não tem e-mail cadastrado.
  */
+
+/**
+ * POST /auth/trocar-empresa — troca a empresa ativa dentro do grupo (matriz/filial).
+ *
+ * Só funciona se o destino pertence ao MESMO GRUPO da empresa logada:
+ * - Se logou na matriz, pode trocar para qualquer filial dela
+ * - Se logou numa filial, pode trocar para a matriz ou outra filial da mesma matriz
+ * - Empresa FORA do grupo: 403
+ *
+ * Gera novo JWT com company_id = destino e matriz_id preservado. Devolve o token
+ * novo + dados da empresa para o front atualizar localStorage.
+ */
+router.post("/trocar-empresa", authMiddleware, async (req, res) => {
+  try {
+    if (req.isAdmin || !req.company?.id) {
+      return res.status(403).json({ error: "Recurso exclusivo para login de empresa" });
+    }
+    const { company_id: destinoId } = req.body || {};
+    if (!validateString(destinoId, 32, 64)) {
+      return res.status(400).json({ error: "company_id inválido" });
+    }
+
+    // Validar que destino está no mesmo grupo da empresa atual.
+    const { rows: destinos } = await db.query(
+      `SELECT id, name, cnpj, matriz_id, tool_access, must_change_password
+         FROM companies
+        WHERE id = $1
+          AND (arquivada IS NOT TRUE AND excluida IS NOT TRUE)
+          AND (
+            id = $2                                    -- trocar para si mesmo
+            OR matriz_id = $2                          -- destino é minha filial
+            OR (matriz_id IS NOT NULL AND matriz_id = (-- destino é minha irmã (mesma matriz)
+                SELECT matriz_id FROM companies WHERE id = $2
+               ))
+          )`,
+      [destinoId, req.company.id]
+    );
+    if (!destinos.length) {
+      return res.status(403).json({ error: "Esta empresa não pertence ao seu grupo." });
+    }
+    const destino = destinos[0];
+    const matrizId = destino.matriz_id || req.company.matrizId || null;
+
+    const token = generateToken({
+      company_id: destino.id,
+      company_name: destino.name,
+      company_cnpj: destino.cnpj,
+      matriz_id: matrizId,
+    });
+
+    // Atualiza o timestamp do último acesso da empresa destino.
+    db.query("UPDATE companies SET ultimo_login_em = now() WHERE id = $1", [destino.id]).catch(
+      (e) => console.error("ultimo_login_em:", e.message)
+    );
+
+    return res.json({
+      token,
+      company: {
+        id: destino.id,
+        name: destino.name,
+        cnpj: destino.cnpj,
+        tool_access: mergeToolAccess(destino.tool_access),
+        must_change_password: Boolean(destino.must_change_password),
+      },
+      is_matriz: !matrizId,
+    });
+  } catch (err) {
+    console.error("trocar-empresa:", err.message);
+    res.status(500).json({ error: "Erro ao trocar empresa" });
+  }
+});
+
 router.post("/change-password", authMiddleware, changePasswordLimiter, async (req, res) => {
   try {
     const current = req.body.current_password;

@@ -2,6 +2,13 @@ import { useState, useCallback } from "react";
 import { mergeClientToolAccess, type CompanyToolAccess } from "@/lib/companyTools";
 import { mergeAdminAreas, type AdminAreaAccess } from "@/lib/adminAreas";
 
+export type EmpresaGrupo = {
+  id: string;
+  name: string;
+  cnpj: string;
+  is_matriz: boolean;
+};
+
 export type CompanySession = {
   role: "company";
   id: string;
@@ -13,6 +20,10 @@ export type CompanySession = {
   mustChangePassword?: boolean;
   /** Tem funcionário celetista (não só pró-labore). Decide se "Férias" aparece. */
   temFuncionarios?: boolean;
+  /** É a empresa-matriz do grupo (pode trocar para filiais). */
+  isMatriz?: boolean;
+  /** Lista de todas as empresas do grupo (a própria + filiais). Vem no login. */
+  empresasGrupo?: EmpresaGrupo[];
 };
 
 export type AdminSession = {
@@ -69,6 +80,8 @@ function parseStored(): AuthSession | null {
         mustChangePassword: Boolean(o.mustChangePassword ?? o.must_change_password),
         // Ausente em sessões antigas: assume que tem, para não esconder à toa.
         temFuncionarios: o.temFuncionarios === undefined ? true : Boolean(o.temFuncionarios),
+        isMatriz: Boolean(o.isMatriz ?? o.is_matriz),
+        empresasGrupo: Array.isArray(o.empresasGrupo) ? o.empresasGrupo as EmpresaGrupo[] : [],
       };
     }
 
@@ -108,12 +121,59 @@ export function useAuth() {
     setSession(null);
   }, []);
 
+  /**
+   * Troca a empresa ativa dentro do grupo (matriz/filial).
+   * Chama a API, recebe novo token, atualiza localStorage e recarrega.
+   */
+  const trocarEmpresa = useCallback(async (companyId: string) => {
+    if (!session || session.role !== "company") return;
+    const empresasGrupo = session.empresasGrupo || [];
+
+    try {
+      const res = await fetch(
+        `${(import.meta.env.VITE_API_URL as string || "/api").replace(/\/+$/, "")}/auth/trocar-empresa`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`,
+          },
+          body: JSON.stringify({ company_id: companyId }),
+        }
+      );
+      if (!res.ok) throw new Error("Falha ao trocar empresa");
+      const data = await res.json();
+
+      const novaSession: CompanySession = {
+        role: "company",
+        id: data.company.id,
+        name: data.company.name,
+        cnpj: data.company.cnpj,
+        token: data.token,
+        toolAccess: mergeClientToolAccess(data.company.tool_access),
+        mustChangePassword: Boolean(data.company.must_change_password),
+        isMatriz: Boolean(data.is_matriz),
+        empresasGrupo, // mantém a lista original (não muda ao trocar)
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(novaSession));
+      setSession(novaSession);
+      // Reload para atualizar todos os dados que dependem de company_id
+      window.location.reload();
+    } catch (err) {
+      console.error("trocarEmpresa:", err);
+    }
+  }, [session]);
+
+  const companySession = session?.role === "company" ? session : null;
+
   return {
     session,
-    company: session?.role === "company" ? session : null,
+    company: companySession,
     admin: session?.role === "admin" ? session : null,
     isAdmin: session?.role === "admin",
     isLoggedIn: !!session,
+    empresasGrupo: companySession?.empresasGrupo || [],
+    trocarEmpresa,
     login,
     logout,
   };

@@ -1,6 +1,6 @@
 const jwt = require("jsonwebtoken");
 const db = require("../db");
-const { getToolAccessForCompany } = require("../toolAccessDb");
+const { getToolAccessForCompany, getToolAccessForGroup } = require("../toolAccessDb");
 const { mergeAreas } = require("../adminAreas");
 const { jwtSecret } = require("../jwtSecret");
 const { lerManutencao, MENSAGEM_PADRAO } = require("../maintenanceMode");
@@ -85,8 +85,29 @@ async function authMiddleware(req, res, next) {
         id: decoded.company_id,
         name: decoded.company_name,
         cnpj: decoded.company_cnpj,
+        matrizId: decoded.matriz_id || null,
+        isMatriz: !decoded.matriz_id, // se não tem matriz_id, é a própria matriz (ou empresa sem grupo)
       };
-      req.companyToolAccess = await getToolAccessForCompany(db, decoded.company_id);
+      // Lista de IDs do grupo (matriz + filiais). Lida do banco em cada request:
+      // token cresce rápido se guardar, e revogação (ex: desvincular filial) não
+      // depende do JWT expirar.
+      try {
+        const { rows: grupo } = await db.query(
+          `SELECT id FROM companies
+            WHERE id = $1
+               OR matriz_id = $1
+               OR (matriz_id IS NOT NULL AND matriz_id = (
+                    SELECT matriz_id FROM companies WHERE id = $1
+                   ))`,
+          [decoded.company_id]
+        );
+        req.empresas_grupo_ids = grupo.map((r) => r.id);
+      } catch {
+        req.empresas_grupo_ids = [decoded.company_id];
+      }
+      // Tool access AGREGADO do grupo (OR entre empresas). Para empresas isoladas
+      // (sem grupo), é igual ao tool_access da própria empresa.
+      req.companyToolAccess = await getToolAccessForGroup(db, req.empresas_grupo_ids);
       // Lido da BASE, não do token: quem trocou a senha noutra aba deixa de ser barrado
       // na requisição seguinte, sem esperar o JWT expirar.
       try {

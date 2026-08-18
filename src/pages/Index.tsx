@@ -39,6 +39,7 @@ import {
 } from "@/lib/companyTools";
 import { competenciaLabel, formatDueLong } from "@/lib/deliverableDisplay";
 import { LgpdConsentDialog } from "@/components/LgpdConsentDialog";
+import { CompanySwitcher } from "@/components/CompanySwitcher";
 
 type MenuItem = {
   key: string;
@@ -199,6 +200,7 @@ const Index = () => {
               {company?.name ?? "Portal do Cliente"}
             </h1>
           </div>
+          <CompanySwitcher />
           <Button
             variant="ghost"
             size="icon"

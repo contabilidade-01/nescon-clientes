@@ -27,6 +27,7 @@ const { ensureDueDateSugestoesSchema } = require("./ensureDueDateSugestoesSchema
 const { ensureChatSchema } = require("./ensureChatSchema");
 const { ensureArquivamentoSchema } = require("./ensureArquivamentoSchema");
 const { ensureAcessosSchema } = require("./ensureAcessosSchema");
+const { ensureCompanyMatriz } = require("./ensureCompanyMatriz");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -163,6 +164,7 @@ async function start() {
     await ensureArquivamentoSchema(db);
     await ensureDueDateSugestoesSchema(db);
     await ensureAcessosSchema(db);
+    await ensureCompanyMatriz(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).
     // Roda em background para não travar o arranque.
     setTimeout(async () => {

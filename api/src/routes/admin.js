@@ -535,6 +535,64 @@ router.get("/cora/empresas", requireArea("sincronizacao"), async (_req, res) => 
 });
 
 /** Toggle importação de boletos para uma empresa. */
+/**
+ * PUT /admin/companies/:id/matriz — vincula ou desvincula a empresa de uma matriz.
+ *
+ * `matriz_id = null` → empresa fica independente (sem grupo).
+ * `matriz_id = UUID` → empresa vira filial daquela matriz.
+ *
+ * Validações:
+ * - Não pode ser matriz de si mesma
+ * - A "matriz" destino não pode ser filial de alguém (só 1 nível de hierarquia)
+ * - A empresa não pode ter filiais apontando para ela (se tem, é matriz — desvincule elas antes)
+ */
+router.put("/companies/:id/matriz", requireArea("empresas"), async (req, res) => {
+  const { id } = req.params;
+  const { matriz_id } = req.body || {};
+  if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
+
+  // Desvincular (null)
+  if (matriz_id === null || matriz_id === "") {
+    try {
+      await db.query("UPDATE companies SET matriz_id = NULL WHERE id = $1", [id]);
+      return res.json({ ok: true, matriz_id: null });
+    } catch (err) {
+      console.error("[admin] desvincular matriz:", err.message);
+      return res.status(500).json({ error: "Erro ao desvincular" });
+    }
+  }
+
+  if (!validateUUID(matriz_id)) return res.status(400).json({ error: "matriz_id inválido" });
+  if (matriz_id === id) return res.status(400).json({ error: "Empresa não pode ser matriz de si mesma" });
+
+  try {
+    // A matriz destino não pode ser filial de outra (só 1 nível)
+    const { rows: matrizInfo } = await db.query(
+      "SELECT id, matriz_id FROM companies WHERE id = $1",
+      [matriz_id]
+    );
+    if (!matrizInfo.length) return res.status(404).json({ error: "Matriz não encontrada" });
+    if (matrizInfo[0].matriz_id) {
+      return res.status(400).json({ error: "A empresa selecionada já é filial de outra. Só matrizes (sem vínculo acima) podem ter filiais." });
+    }
+
+    // A empresa não pode ter filiais apontando para ela (senão vira cadeia)
+    const { rows: filiais } = await db.query(
+      "SELECT id FROM companies WHERE matriz_id = $1 LIMIT 1",
+      [id]
+    );
+    if (filiais.length) {
+      return res.status(400).json({ error: "Esta empresa já é matriz de outras. Desvincule as filiais antes." });
+    }
+
+    await db.query("UPDATE companies SET matriz_id = $1 WHERE id = $2", [matriz_id, id]);
+    res.json({ ok: true, matriz_id });
+  } catch (err) {
+    console.error("[admin] vincular matriz:", err.message);
+    res.status(500).json({ error: "Erro ao vincular empresa" });
+  }
+});
+
 router.patch("/cora/empresas/:id", requireArea("sincronizacao"), async (req, res) => {
   try {
     const { id } = req.params;

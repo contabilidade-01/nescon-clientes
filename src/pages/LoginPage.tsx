@@ -73,6 +73,8 @@ const LoginPage = () => {
         token: data.token,
         toolAccess: mergeClientToolAccess(data.company.tool_access),
         mustChangePassword: precisaTrocarSenha,
+        isMatriz: Boolean(data.is_matriz),
+        empresasGrupo: Array.isArray(data.empresas_grupo) ? data.empresas_grupo : [],
       });
       if (precisaTrocarSenha) {
         // Senha ainda é a inicial (= CNPJ): nada é liberado antes da troca.
