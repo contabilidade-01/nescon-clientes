@@ -11,12 +11,35 @@
 const crypto = require("crypto");
 const db = require("./db");
 const cora = require("./cora");
+const { getSetting, setSetting } = require("./appSettings");
 
 const MESES_PADRAO = Number(process.env.CORA_SYNC_MESES || 6);
 const CONCORRENCIA = 4;
 
 let emExecucao = false;
 let ultimoResultado = null;
+
+/**
+ * Backfill ÚNICO: marca como honorário todos os boletos Cora já sincronizados.
+ *
+ * Todo boleto da Cora é honorário (ver o INSERT em gravarBoleto). Os que entraram ANTES
+ * dessa regra ficaram com is_honorario=false e, sem isto, cairiam na cobrança comum em vez
+ * da régua de honorário. Roda UMA vez (guardado por flag em app_settings) para não brigar
+ * com uma eventual desmarcação manual futura na tela.
+ */
+async function backfillHonorarioCora() {
+  const CHAVE = "cora_honorario_backfill_v1";
+  try {
+    if ((await getSetting(db, CHAVE)) === "true") return;
+    const { rowCount } = await db.query(
+      "UPDATE deliverables SET is_honorario = true WHERE source = 'cora' AND is_honorario IS NOT TRUE"
+    );
+    await setSetting(db, CHAVE, "true");
+    if (rowCount) console.log(`[cora] backfill honorário: ${rowCount} boleto(s) Cora marcado(s).`);
+  } catch (err) {
+    console.error("[cora] backfill honorário falhou:", err.message);
+  }
+}
 
 function estaRodando() {
   return emExecucao;
@@ -153,13 +176,16 @@ async function gravarBoleto(boleto, companyId) {
     : "Boleto Cora";
 
   await db.query(
+    // is_honorario = true SEMPRE: todo boleto que vem da Cora é honorário do escritório.
+    // É a única fonte de boleto hoje, e a cobrança dele usa a régua de honorário (2 fases).
+    // (Se um dia houver boleto Cora que NÃO seja honorário, some com a marcação na tela.)
     `INSERT INTO deliverables
        (company_id, category, doc_type, title, competencia, due_date,
         file_path, file_name, source, external_ref, access_token,
-        released_at, status, paid_at, pdf_url, valor_centavos, cancelado)
+        released_at, status, paid_at, pdf_url, valor_centavos, cancelado, is_honorario)
      VALUES ($1, 'boleto', 'BOLETO_CORA', $2, $3, $4,
              '', '', 'cora', $5, $6,
-             now(), $7, ${paidAt}, $8, $9, $10)`,
+             now(), $7, ${paidAt}, $8, $9, $10, true)`,
     [
       companyId,
       title,
@@ -277,6 +303,12 @@ async function sincronizar({ cnpjFiltro = null, de = null, ate = null } = {}) {
  * Agendamento periódico (CORA_SYNC_INTERVAL_H; 0 = desligado) + 1ª carga no arranque.
  */
 function iniciarAgendador() {
+  // Backfill de honorário roda mesmo sem a Cora configurada: é só um UPDATE nos boletos
+  // que já estão no banco. Fire-and-forget para não atrasar o arranque.
+  setTimeout(() => {
+    backfillHonorarioCora().catch((err) => console.error("[cora] backfill honorário:", err.message));
+  }, 8000).unref();
+
   if (!cora.isConfigured()) {
     console.log("[cora] certificados não encontrados — sync desligada.");
     return;
@@ -312,4 +344,4 @@ function iniciarAgendador() {
   }
 }
 
-module.exports = { sincronizar, iniciarAgendador, estaRodando, ultimaExecucao };
+module.exports = { sincronizar, iniciarAgendador, estaRodando, ultimaExecucao, backfillHonorarioCora };

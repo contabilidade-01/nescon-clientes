@@ -44,11 +44,16 @@ async function ensureCoraSchema(db) {
     /*
      * Marca boletos que são honorários mensais do escritório.
      *
-     * Qualquer boleto Cora pode ser honorário — basta o escritório marcar na tela (ou
-     * o título casar com "honorário/mensalidade"). A diferenciação importa porque:
-     * - Marcos de cobrança são diferentes (1, 3, 5, 10, 15, 30 vs 3, 10, 30)
-     * - Mensagem inclui aviso sobre multa de não envio de declarações
-     * - Disparo manual envia PDF direto no WhatsApp
+     * REGRA ATUAL: TODO boleto que vem da Cora é honorário — é a única fonte de boleto do
+     * escritório hoje. Por isso o `coraSync` grava is_honorario=true ao criar, e há um
+     * backfill único que marca os antigos (ver coraSync.js). O DEFAULT da coluna segue
+     * `false` de propósito: vale para boletos de OUTRAS fontes (a ajustar depois); Cora
+     * força true na inserção. A diferenciação honorário × comum importa porque:
+     * - A cobrança de honorário usa régua própria em 2 fases (ver honorariosCobranca.js);
+     *   o boleto comum usaria os marcos [3, 10, 30] do motor geral.
+     * - Mensagem de honorário é mais firme (aviso de bloqueio das entregas / multas).
+     * Desmarcar um boleto Cora (torná-lo comum) continua possível pela tela, caso um dia
+     * exista um boleto Cora que não seja honorário.
      */
     await db.query(`
       ALTER TABLE deliverables
