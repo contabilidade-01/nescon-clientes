@@ -55,6 +55,19 @@ async function ensureCoraSchema(db) {
       ADD COLUMN IF NOT EXISTS is_honorario BOOLEAN NOT NULL DEFAULT false
     `);
 
+    /*
+     * Quantas cobranças de honorário já saíram para este boleto.
+     *
+     * É o que decide a FASE da mensagem (ver honorariosCobranca.js): as 2 primeiras são
+     * firmes (aviso de bloqueio); da 3ª em diante, empáticas (estrutura de custos/juros).
+     * Contagem, e não data, porque "após 2 mensagens" precisa valer mesmo que um envio
+     * tenha escorregado num fim de semana.
+     */
+    await db.query(`
+      ALTER TABLE deliverables
+      ADD COLUMN IF NOT EXISTS honorario_cobrancas_enviadas INTEGER NOT NULL DEFAULT 0
+    `);
+
     console.log("[DB] cora: colunas verificadas/criadas.");
   } catch (err) {
     console.error("[DB] ensureCoraSchema falhou:", err.message, err.code || "");

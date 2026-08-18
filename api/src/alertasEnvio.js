@@ -523,6 +523,22 @@ function iniciarAgendadorAlertas(db) {
       }
 
       const r = await enviarAlertasDoDia(db, { data: dia });
+
+      // Cobrança de HONORÁRIO — motor próprio, mensagem em 2 fases. Roda 1x/dia junto do
+      // alerta geral, mas é independente: só vale a partir de set/2026 (trava no módulo),
+      // só dias úteis, respeita carência de compensação e checa a Cora antes de cobrar.
+      try {
+        const { cobrarHonorarios } = require("./honorariosCobranca");
+        const rh = await cobrarHonorarios({ agora: new Date() });
+        if (rh.enviados || rh.erros?.length) {
+          console.log(`[honorarios] ${dia}: ${rh.enviados} cobrado(s), ${rh.pulados} pulado(s), ${rh.erros.length} erro(s).`);
+        } else if (rh.motivo) {
+          console.log(`[honorarios] ${dia}: nada a cobrar (${rh.motivo}).`);
+        }
+      } catch (err) {
+        console.error("[honorarios] cobrança do dia:", err.message);
+      }
+
       console.log(
         `[alertas] ${dia}: ${r.enviados} enviado(s), ${r.falhas} falha(s), ${r.ignorados} ignorado(s).`
       );

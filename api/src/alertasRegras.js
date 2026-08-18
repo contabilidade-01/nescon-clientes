@@ -173,9 +173,9 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
     const emAtraso = boletos.filter((b) => b.diasEmAtraso);
     const aVencer = boletos.filter((b) => !b.diasEmAtraso);
 
-    // Separar honorários em atraso dos demais
-    const honorariosAtrasados = emAtraso.filter((b) => b.isHonorario);
-    const boletosAtrasados = emAtraso.filter((b) => !b.isHonorario);
+    // Cobrança de HONORÁRIO em atraso saiu daqui: virou mensagem própria em 2 fases
+    // (honorariosCobranca.js). Nesta mensagem geral, "em atraso" é só boleto comum.
+    const boletosAtrasados = emAtraso;
 
     if (aVencer.length) {
       if (obrigNormais.length) linhas.push("");
@@ -199,35 +199,8 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
       linhas.push("");
       linhas.push("Se já pagou, desconsidere. Qualquer dúvida, fale com o escritório.");
     }
-
-    // Honorários em atraso: mensagem separada com aviso sobre multa e nome da empresa
-    if (honorariosAtrasados.length) {
-      if (obrigNormais.length || aVencer.length || boletosAtrasados.length) linhas.push("");
-      linhas.push(`*📌 Honorários em atraso — ${empresaNome}:*`);
-      for (const b of honorariosAtrasados) {
-        const valor = valorBR(b.valorCentavos);
-        const ha = b.diasEmAtraso === 1 ? "há 1 dia" : `há ${b.diasEmAtraso} dias`;
-        linhas.push(
-          `• ${b.nome}${valor ? ` — ${valor}` : ""} — venceu ${ddmm(b.vencimento)} (${ha})`
-        );
-      }
-      linhas.push("");
-      linhas.push("Se já pagou, desconsidere.");
-      linhas.push("");
-      linhas.push(
-        "⚠️ Caro cliente, honorários com mais de 5 dias de atraso podem levar ao bloqueio " +
-        "dos serviços de entregas de declarações. Essas declarações têm multas que, na maioria " +
-        "das vezes, ultrapassam o valor dos honorários."
-      );
-      // Link para baixar o boleto no portal
-      if (portalUrl) {
-        const base = String(portalUrl).replace(/\/+$/, "");
-        linhas.push("");
-        linhas.push(`📎 Baixe o boleto atualizado: ${base}/boletos`);
-      }
-      linhas.push("");
-      linhas.push("Qualquer dúvida, entre em contato com o escritório. 🙏");
-    }
+    // A cobrança de HONORÁRIO em atraso NÃO entra mais nesta mensagem: agora tem motor e
+    // mensagem próprios, em 2 fases (ver honorariosCobranca.js).
   }
 
   // Bloco de férias
