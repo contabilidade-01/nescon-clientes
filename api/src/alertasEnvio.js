@@ -31,6 +31,7 @@
  */
 const uazapi = require("./uazapi");
 const numeroWpp = require("./whatsappNumero");
+const { enviarBoletosPdf } = require("./boletoPdf");
 const { previsao, registrarEnvio, registrarFalha } = require("./alertas");
 const { trechoDeIncentivo } = require("./engagement");
 const { hojeSP, minutosSP } = require("./diasBancarios");
@@ -214,7 +215,14 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, comp
         await trechoDeIncentivo(db, { companyId: m.company_id, portalUrl: portalUrl("/"), simular: false });
       }
 
-      resultados.push({ empresa: m.empresa, company_id: m.company_id, status: "enviado", numero: v.numero });
+      // Anexa o(s) PDF(s) do(s) boleto(s) desta mensagem, logo após o texto. Best-effort:
+      // o texto (com link do portal) já saiu, então uma falha aqui não desfaz o envio.
+      const pdf = await enviarBoletosPdf(db, {
+        companyId: m.company_id, obrigacoes: m.obrigacoes, numero: v.numero, marcar: marcarEnviado,
+      });
+      if (pdf.enviados) console.log(`[alertas] ${m.empresa}: ${pdf.enviados} boleto(s) PDF anexado(s).`);
+
+      resultados.push({ empresa: m.empresa, company_id: m.company_id, status: "enviado", numero: v.numero, boletosPdf: pdf.enviados });
     } catch (err) {
       falhas += 1;
       const tokenRuim = err instanceof uazapi.UazapiTokenInvalido;
@@ -380,6 +388,13 @@ async function drenarOutbox(db) {
       if (o.incentivo_message_id) {
         await trechoDeIncentivo(db, { companyId: o.company_id, portalUrl: portalUrl("/"), simular: false });
       }
+      // Anexa o(s) PDF(s) do(s) boleto(s) também no reenvio pela fila. Os ids vêm do
+      // `obrigacoes` salvo na outbox (CSV com `BOLETO:<uuid>`). Best-effort, igual ao
+      // envio direto.
+      const pdfFila = await enviarBoletosPdf(db, {
+        companyId: o.company_id, obrigacoes: o.obrigacoes, numero: v.numero, marcar: marcarEnviado,
+      });
+      if (pdfFila.enviados) console.log(`[alertas] fila: ${pdfFila.enviados} boleto(s) PDF anexado(s).`);
       await db.query(`UPDATE alert_outbox SET status='enviado', atualizado_em=now() WHERE id=$1`, [o.id]);
     } catch (err) {
       const tentativas = (o.tentativas || 0) + 1;
