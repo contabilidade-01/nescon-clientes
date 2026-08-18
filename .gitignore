@@ -25,3 +25,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Sessões de agente (worktrees, estado local) — nunca versionar
+.claude/
+
+# Certificados mTLS da Cora — NUNCA versionar (chave privada de produção).
+# Em produção usar CORA_CERT_BASE64/CORA_KEY_BASE64 na env; local usa arquivos
+# ignorados aqui. Ver api/src/cora.js (loadCertificates).
+api/certificates/
+*.pem
+*.key
