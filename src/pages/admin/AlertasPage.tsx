@@ -836,10 +836,12 @@ const AlertasPage = () => {
                 />
               </div>
 
-              {/* Cadência de cobrança do BOLETO (Cora). Antes só existia em variável de
-                  ambiente — agora é ajustável aqui. */}
+              {/* Vencimento do honorário (Cora). O "vai vencer" na véspera. A COBRANÇA do
+                  vencido não fica aqui: segue a régua fixa de honorário em 2 fases
+                  (honorariosCobranca.js). O antigo campo "Cobrar o vencido em X dias" era
+                  do boleto comum (inexistente hoje) e foi removido para não confundir. */}
               <div className="border-t pt-4 space-y-3">
-                <p className="text-sm font-medium">Cobrança de boleto (Cora)</p>
+                <p className="text-sm font-medium">Aviso de vencimento do honorário</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <Label htmlFor="boleto-dias-antes" className="font-normal text-sm">
                     Lembrete
@@ -860,32 +862,10 @@ const AlertasPage = () => {
                   />
                   <span className="text-sm text-muted-foreground">dia(s) antes do vencimento (0 = sem lembrete)</span>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Label htmlFor="boleto-cobranca-dias" className="font-normal text-sm">
-                    Cobrar o vencido em
-                  </Label>
-                  <Input
-                    id="boleto-cobranca-dias"
-                    className="h-9 w-40"
-                    placeholder="3, 10, 30"
-                    defaultValue={(config.data?.boleto_cobranca_dias ?? []).join(", ")}
-                    onBlur={(e) => {
-                      const dias = Array.from(
-                        new Set(
-                          e.target.value
-                            .split(",")
-                            .map((s) => parseInt(s.trim(), 10))
-                            .filter((n) => Number.isInteger(n) && n >= 1 && n <= 90)
-                        )
-                      ).sort((a, b) => a - b);
-                      const atual = config.data?.boleto_cobranca_dias ?? [];
-                      if (dias.join(",") !== atual.join(",")) {
-                        salvarConfig.mutate({ boleto_cobranca_dias: dias });
-                      }
-                    }}
-                  />
-                  <span className="text-sm text-muted-foreground">dia(s) após o vencimento (vazio = não cobrar)</span>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  A <strong>cobrança do vencido</strong> segue a régua de honorário em 2 fases (a partir do 2º dia útil
+                  após o vencimento, depois +3 dias e, em seguida, a cada 10 dias até o pagamento) — não é ajustada aqui.
+                </p>
               </div>
             </CardContent>
           </Card>
