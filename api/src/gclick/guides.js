@@ -16,7 +16,11 @@ const TIPOS = [
   {
     codigo: "RECIBO_PAGTO",
     nome: "Recibos da Folha",
-    matchers: "Anexar recibo de pagamento|Recibo de Pagamento|Recibo de Adiantamento",
+    // Inclui o adiantamento nomeado sem a palavra "Recibo" (ex.: a atividade do G-Click
+    // "Recibo de Adiantamento" já casa; "Adiantamento Salarial"/"de Salário" são a rede de
+    // segurança para meses em que vier só assim, para o cliente ser avisado do mesmo jeito).
+    matchers:
+      "Anexar recibo de pagamento|Recibo de Pagamento|Recibo de Adiantamento|Adiantamento Salarial|Adiantamento de Salário|Adiantamento de Salario",
     ordem: 100,
     temVencimento: false,
   },

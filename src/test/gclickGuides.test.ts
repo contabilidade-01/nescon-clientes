@@ -52,6 +52,16 @@ describe("classificação de tipos", () => {
     expect(classificar("Anexar Folha de Pagamento (Extrato)")?.codigo).toBe("EXTRATO_FOLHA");
   });
 
+  it("adiantamento salarial é RECIBO_PAGTO (avisa o cliente), com ou sem 'Recibo'", () => {
+    // A atividade do G-Click chega como "Recibo de Adiantamento" — e há a rede de
+    // segurança para quando vier só como "Adiantamento Salarial/de Salário".
+    expect(classificar("Recibo de Adiantamento")?.codigo).toBe("RECIBO_PAGTO");
+    expect(classificar("Adiantamento Salarial")?.codigo).toBe("RECIBO_PAGTO");
+    expect(classificar("Adiantamento de Salário")?.codigo).toBe("RECIBO_PAGTO");
+    expect(classificar("Adiantamento de Salario")?.codigo).toBe("RECIBO_PAGTO");
+    expect(classificar("ADIANTAMENTO SALARIAL")?.codigo).toBe("RECIBO_PAGTO"); // case-insensitive
+  });
+
   it("o nome mais específico ganha do genérico", () => {
     // Obrigação "FGTS, DCTF Web" não pode fazer a atividade DCTF virar FGTS.
     expect(classificar("DCTF Web", "FGTS, DCTF Web")?.codigo).toBe("DCTF_WEB");
