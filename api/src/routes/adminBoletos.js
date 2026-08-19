@@ -12,6 +12,13 @@ const { validateUUID } = require("../middleware/validate");
 const numeroWpp = require("../whatsappNumero");
 const { enviarDocumento } = require("../uazapi");
 const cora = require("../cora");
+const { hojeSP } = require("../diasBancarios");
+const { urlPdfFresca } = require("../boletoPdf");
+const {
+  montarMensagemHonorario,
+  montarMensagemVencimento,
+  faseDe,
+} = require("../honorariosCobranca");
 
 module.exports = function registerBoletosRoutes(router) {
 /** Lista boletos Cora importados (com nome da empresa). */
@@ -102,44 +109,68 @@ router.post("/cora/boletos/:id/enviar-whatsapp", requireArea("sincronizacao"), a
   if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
 
   try {
-    // Buscar boleto com dados da empresa
+    // Buscar boleto com dados da empresa. WhatsApp com o MESMO fallback do automático:
+    // coluna manual `c.whatsapp` OU, na falta, o número do espelho G-Click (`g.phone`).
+    // Sem esse fallback, o envio individual dava "sem WhatsApp" para a maioria (que tem
+    // o número vindo do G-Click, não da coluna manual).
     const { rows } = await db.query(
-      `SELECT d.id, d.pdf_url, d.title, d.due_date, d.valor_centavos,
-              c.name AS empresa_nome, c.whatsapp AS empresa_whatsapp
+      `SELECT d.id, d.pdf_url, d.external_ref, d.title, d.valor_centavos, d.is_honorario,
+              d.honorario_cobrancas_enviadas AS count, d.competencia,
+              to_char(d.due_date, 'YYYY-MM-DD') AS due_date,
+              c.name AS empresa_nome,
+              COALESCE(NULLIF(c.whatsapp, ''), g.phone) AS empresa_whatsapp
          FROM deliverables d
          JOIN companies c ON c.id = d.company_id
+         LEFT JOIN gclick_clients g ON g.company_id = c.id
         WHERE d.id = $1 AND d.source = 'cora'`,
       [id]
     );
     if (!rows.length) return res.status(404).json({ error: "Boleto não encontrado" });
 
     const boleto = rows[0];
-    if (!boleto.pdf_url) {
-      return res.status(400).json({ error: "Este boleto não tem PDF disponível (competência anterior a 07/2026)" });
+    const v = numeroWpp.validar(boleto.empresa_whatsapp);
+    if (!v.ok) {
+      return res.status(400).json({ error: v.motivo || "Empresa não tem WhatsApp cadastrado" });
     }
+    const numero = v.numero;
 
-    const numero = numeroWpp.normalizar(boleto.empresa_whatsapp);
-    if (!numero) {
-      return res.status(400).json({ error: "Empresa não tem WhatsApp cadastrado" });
-    }
-
-    const { enviarDocumento } = require("../uazapi");
+    const { enviarDocumento, enviarTexto } = require("../uazapi");
+    const hoje = hojeSP();
     const venc = boleto.due_date ? boleto.due_date.split("-").reverse().join("/") : "";
     const valor = boleto.valor_centavos
       ? (boleto.valor_centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
       : "";
+    const portal = (process.env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
+
+    // A mensagem do MANUAL acompanha o AUTOMÁTICO: se o boleto está vencido, usa a régua
+    // de honorário (a fase vem da contagem de cobranças já enviadas, igual ao automático);
+    // se ainda vai vencer, manda o lembrete de vencimento.
+    const vencido = boleto.due_date && boleto.due_date < hoje;
+    let texto;
+    if (vencido) {
+      const diasAtraso = Math.floor((Date.now() - new Date(boleto.due_date).getTime()) / 86400000);
+      texto = montarMensagemHonorario({
+        empresa: boleto.empresa_nome, competencia: boleto.competencia, valor, venc,
+        diasAtraso, fase: faseDe(Number(boleto.count) || 0), portal,
+      });
+    } else {
+      texto = montarMensagemVencimento({
+        empresa: boleto.empresa_nome, competencia: boleto.competencia, valor, venc, portal,
+      });
+    }
+
+    // PDF buscado FRESCO na Cora (evita link expirado; dispensa o corte de competência).
+    const fileUrl = await urlPdfFresca(boleto.external_ref, boleto.pdf_url);
     const docName = `Boleto_${boleto.empresa_nome.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 30)}_${venc.replace(/\//g, "-")}.pdf`;
-    const caption = `📄 *Boleto — ${boleto.empresa_nome}*\n\nVencimento: ${venc}\nValor: ${valor}\n\n_Nescon Contabilidade_`;
 
-    await enviarDocumento({
-      numero,
-      fileUrl: boleto.pdf_url,
-      docName,
-      caption,
-      delayMs: 2000,
-    });
+    if (fileUrl) {
+      await enviarDocumento({ numero, fileUrl, docName, caption: texto, delayMs: 2000 });
+    } else {
+      // Sem PDF: manda ao menos o texto (com o link do portal como plano B).
+      await enviarTexto({ numero, texto, delayMs: 1200 });
+    }
 
-    res.json({ ok: true, enviado_para: numero });
+    res.json({ ok: true, enviado_para: numero, tipo: vencido ? "cobranca" : "vencimento" });
   } catch (err) {
     if (err.constructor.name === "UazapiNaoConfigurado") {
       return res.status(400).json({ error: "WhatsApp (uazapi) não configurado no servidor" });

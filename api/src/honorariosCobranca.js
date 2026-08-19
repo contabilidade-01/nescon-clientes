@@ -149,6 +149,28 @@ function montarMensagemHonorario({ empresa, competencia, valor, venc, diasAtraso
   ].filter((l) => l !== null).join("\n");
 }
 
+/**
+ * Mensagem de VENCIMENTO ("vai vencer" / em dia). Usada no envio manual quando o boleto
+ * ainda NÃO venceu — tom leve, só um lembrete. Pura.
+ */
+function montarMensagemVencimento({ empresa, competencia, valor, venc, portal }) {
+  const comp = competenciaBR(competencia);
+  const linkBoleto = portal ? `📎 Boleto no portal: ${portal}/boletos` : "";
+  return [
+    `Olá, *${empresa}*! 👋`,
+    "",
+    `Passando para lembrar do vencimento dos seus honorários${comp ? ` de *${comp}*` : ""}:`,
+    `• Honorários${comp ? ` ${comp}` : ""}${valor ? ` — *${valor}*` : ""} — vence *${venc}*`,
+    "",
+    "Segue o boleto para pagamento. Se já pagou, é só desconsiderar. 🙏",
+    "",
+    linkBoleto,
+    "",
+    "Qualquer dúvida, é só chamar. Estamos à disposição. 🤝",
+    "_Nescon Contabilidade_",
+  ].filter((l) => l !== null).join("\n");
+}
+
 /** Nº de dias corridos entre um timestamp e agora (Infinity se null). */
 function diasDesde(ts, agora = Date.now()) {
   if (!ts) return Infinity;
@@ -312,6 +334,7 @@ module.exports = {
   cobrarHonorarios,
   decidirCobranca,
   montarMensagemHonorario,
+  montarMensagemVencimento,
   faseDe,
   competenciaBR,
   diasDesde,

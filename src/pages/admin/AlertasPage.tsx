@@ -143,8 +143,8 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
 
             <div className="flex items-center justify-between gap-4">
               <Label htmlFor="boleto-lembrete" className="font-normal">
-                Boleto — aviso de vencimento
-                <span className="block text-xs text-muted-foreground">lembrete na véspera</span>
+                Honorários — aviso de vencimento
+                <span className="block text-xs text-muted-foreground">lembrete "vai vencer" na véspera</span>
               </Label>
               <Switch
                 id="boleto-lembrete"
@@ -154,22 +154,13 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
               />
             </div>
 
-            <div className="flex items-center justify-between gap-4">
-              <Label htmlFor="boleto-cobranca" className="font-normal">
-                Boleto — aviso de vencido
-                <span className="block text-xs text-muted-foreground">cobrança nos marcos</span>
-              </Label>
-              <Switch
-                id="boleto-cobranca"
-                disabled={!empresa.alertas_ativos}
-                checked={empresa.boleto_cobranca_ativo}
-                onCheckedChange={(v) => preferencias.mutate({ boleto_cobranca_ativo: v })}
-              />
-            </div>
-
+            {/* O antigo "Boleto — aviso de vencido" (boleto_cobranca_ativo) saiu daqui: todo
+                boleto da Cora é honorário, então a cobrança dele é a régua de honorário
+                abaixo. Aquele toggle só valeria para boletos NÃO-honorário (outras fontes,
+                a tratar depois) — mostrá-lo agora só confundia. */}
             <div className="flex items-center justify-between gap-4">
               <Label htmlFor="honorario-cobranca" className="font-normal">
-                Honorários — cobrança
+                Honorários — cobrança (vencido)
                 <span className="block text-xs text-muted-foreground">
                   régua própria em 2 fases (a partir de set/2026)
                 </span>
@@ -553,8 +544,7 @@ const AlertasPage = () => {
   });
   const CATEGORIAS_LOTE: Array<{ campo: string; label: string }> = [
     { campo: "avisos_gerais_ativos", label: "Avisos gerais (tributos, guias, férias)" },
-    { campo: "boleto_lembrete_ativo", label: "Boleto — aviso de vencimento" },
-    { campo: "boleto_cobranca_ativo", label: "Boleto — aviso de vencido" },
+    { campo: "boleto_lembrete_ativo", label: "Honorários — aviso de vencimento" },
     { campo: "honorario_cobranca_ativo", label: "Honorários — cobrança (2 fases)" },
   ];
 

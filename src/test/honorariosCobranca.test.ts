@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import {
   decidirCobranca,
   montarMensagemHonorario,
+  montarMensagemVencimento,
   faseDe,
   competenciaBR,
   diasDesde,
@@ -71,6 +72,14 @@ describe("montarMensagemHonorario — texto por fase", () => {
     expect(t.toLowerCase()).toContain("estrutura de custos");
     expect(t.toLowerCase()).toContain("juros");
     expect(t.toLowerCase()).toContain("retomamos");
+  });
+
+  it("vencimento (vai vencer): leve, diz 'vence' e não ameaça bloqueio", () => {
+    const t = montarMensagemVencimento({ empresa: "ACME", competencia: "2026-09", valor: "R$ 500,00", venc: "20/09/2026", portal: "https://portal" });
+    expect(t).toContain("ACME");
+    expect(t).toContain("vence");
+    expect(t).toContain("09/2026");
+    expect(t.toLowerCase()).not.toContain("suspensão");
   });
 });
 
