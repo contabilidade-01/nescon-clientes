@@ -823,9 +823,9 @@ const AlertasPage = () => {
                 </Label>
                 <Input
                   id="escritorio-whatsapp"
-                  className="h-9 w-48"
+                  className="h-9 w-64"
                   inputMode="numeric"
-                  placeholder="avisos de falha (opcional)"
+                  placeholder="ex: 11999998888 — aparece nas mensagens ao cliente"
                   defaultValue={config.data?.escritorio_whatsapp ?? ""}
                   onBlur={(e) => {
                     const v = e.target.value.trim();
