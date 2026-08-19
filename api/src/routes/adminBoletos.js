@@ -14,9 +14,11 @@ const { enviarDocumento } = require("../uazapi");
 const cora = require("../cora");
 const { hojeSP } = require("../diasBancarios");
 const { urlPdfFresca } = require("../boletoPdf");
+const { lerConfig } = require("../alertasConfig");
 const {
   montarMensagemHonorario,
   montarMensagemVencimento,
+  rodapeAutomatico,
   faseDe,
 } = require("../honorariosCobranca");
 
@@ -141,6 +143,9 @@ router.post("/cora/boletos/:id/enviar-whatsapp", requireArea("sincronizacao"), a
       ? (boleto.valor_centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
       : "";
     const portal = (process.env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
+    // Número do escritório para o rodapé "mensagem automática".
+    const cfg = await lerConfig(db).catch(() => ({}));
+    const contato = numeroWpp.formatar(cfg.escritorio_whatsapp || "");
 
     // A mensagem do MANUAL acompanha o AUTOMÁTICO: se o boleto está vencido, usa a régua
     // de honorário (a fase vem da contagem de cobranças já enviadas, igual ao automático);
@@ -151,11 +156,11 @@ router.post("/cora/boletos/:id/enviar-whatsapp", requireArea("sincronizacao"), a
       const diasAtraso = Math.floor((Date.now() - new Date(boleto.due_date).getTime()) / 86400000);
       texto = montarMensagemHonorario({
         empresa: boleto.empresa_nome, competencia: boleto.competencia, valor, venc,
-        diasAtraso, fase: faseDe(Number(boleto.count) || 0), portal,
+        diasAtraso, fase: faseDe(Number(boleto.count) || 0), portal, contato,
       });
     } else {
       texto = montarMensagemVencimento({
-        empresa: boleto.empresa_nome, competencia: boleto.competencia, valor, venc, portal,
+        empresa: boleto.empresa_nome, competencia: boleto.competencia, valor, venc, portal, contato,
       });
     }
 
@@ -268,6 +273,9 @@ router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req
 
     // URL do portal para download direto do boleto
     const portalBase = (process.env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
+    // Número do escritório para o rodapé "mensagem automática".
+    const cfgCobranca = await lerConfig(db).catch(() => ({}));
+    const contatoCobranca = numeroWpp.formatar(cfgCobranca.escritorio_whatsapp || "");
 
     for (const b of boletos) {
       // Checagem fresca na Cora: não cobrar o que já consta pago/compensado lá, mesmo que
@@ -326,6 +334,7 @@ router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req
         "Se já pagou, desconsidere. Qualquer dúvida, entre em contato com o escritório. 🙏",
         "",
         "_Nescon Contabilidade_",
+        rodapeAutomatico(contatoCobranca),
       ].filter(Boolean).join("\n");
 
       try {

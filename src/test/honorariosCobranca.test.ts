@@ -81,6 +81,21 @@ describe("montarMensagemHonorario — texto por fase", () => {
     expect(t).toContain("09/2026");
     expect(t.toLowerCase()).not.toContain("suspensão");
   });
+
+  it("rodapé: toda mensagem avisa que é automática e traz o número do escritório", () => {
+    const contato = "(11) 99999-8888";
+    const f1 = montarMensagemHonorario({ ...base, fase: 1, contato });
+    const f2 = montarMensagemHonorario({ ...base, fase: 2, contato });
+    const venc = montarMensagemVencimento({ empresa: "ACME", competencia: "2026-09", valor: "", venc: "20/09/2026", portal: "", contato });
+    for (const t of [f1, f2, venc]) {
+      expect(t.toLowerCase()).toContain("mensagem automática");
+      expect(t).toContain(contato);
+    }
+    // Sem número configurado: mantém o aviso de automática, sem linha de contato.
+    const semContato = montarMensagemHonorario({ ...base, fase: 1, contato: "" });
+    expect(semContato.toLowerCase()).toContain("mensagem automática");
+    expect(semContato).not.toContain("falar com o escritório");
+  });
 });
 
 describe("helpers", () => {

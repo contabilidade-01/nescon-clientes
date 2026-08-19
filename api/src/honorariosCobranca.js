@@ -31,6 +31,7 @@ const { urlPdfFresca } = require("./boletoPdf");
 const { diasUteisAposVencimento } = require("./alertas");
 const { hojeSP, minutosSP } = require("./diasBancarios");
 const { ehDiaUtil, dentroDaJanela } = require("./janelaEnvio");
+const { lerConfig } = require("./alertasConfig");
 
 function num(v, padrao) {
   const n = Number(v);
@@ -104,9 +105,19 @@ function valorBR(centavos) {
 }
 
 /**
+ * Rodapé fixo de toda mensagem: avisa que o envio é automático e, se houver, dá o número
+ * do escritório para contato. `contato` já vem formatado para exibição (ex.: "(11) 99999-8888").
+ */
+function rodapeAutomatico(contato) {
+  return contato
+    ? `_Mensagem automática. Se precisar falar com o escritório: ${contato}_`
+    : "_Mensagem automática._";
+}
+
+/**
  * Monta o texto da cobrança conforme a fase. Função pura.
  */
-function montarMensagemHonorario({ empresa, competencia, valor, venc, diasAtraso, fase, portal }) {
+function montarMensagemHonorario({ empresa, competencia, valor, venc, diasAtraso, fase, portal, contato }) {
   const comp = competenciaBR(competencia);
   const linhaComp = comp ? ` de *${comp}*` : "";
   const ha = diasAtraso === 1 ? "há 1 dia" : `há ${diasAtraso} dias`;
@@ -128,6 +139,7 @@ function montarMensagemHonorario({ empresa, competencia, valor, venc, diasAtraso
       "",
       "Qualquer dúvida, é só chamar — estamos à disposição. 🤝",
       "_Nescon Contabilidade_",
+      rodapeAutomatico(contato),
     ].filter((l) => l !== null).join("\n");
   }
 
@@ -146,6 +158,7 @@ function montarMensagemHonorario({ empresa, competencia, valor, venc, diasAtraso
     "",
     "Se já efetuou o pagamento, desconsidere. Seguimos à disposição para conversar. 🙏",
     "_Nescon Contabilidade_",
+    rodapeAutomatico(contato),
   ].filter((l) => l !== null).join("\n");
 }
 
@@ -153,7 +166,7 @@ function montarMensagemHonorario({ empresa, competencia, valor, venc, diasAtraso
  * Mensagem de VENCIMENTO ("vai vencer" / em dia). Usada no envio manual quando o boleto
  * ainda NÃO venceu — tom leve, só um lembrete. Pura.
  */
-function montarMensagemVencimento({ empresa, competencia, valor, venc, portal }) {
+function montarMensagemVencimento({ empresa, competencia, valor, venc, portal, contato }) {
   const comp = competenciaBR(competencia);
   const linkBoleto = portal ? `📎 Boleto no portal: ${portal}/boletos` : "";
   return [
@@ -168,6 +181,7 @@ function montarMensagemVencimento({ empresa, competencia, valor, venc, portal })
     "",
     "Qualquer dúvida, é só chamar. Estamos à disposição. 🤝",
     "_Nescon Contabilidade_",
+    rodapeAutomatico(contato),
   ].filter((l) => l !== null).join("\n");
 }
 
@@ -235,6 +249,9 @@ async function cobrarHonorarios({ simular = false, agora = new Date() } = {}) {
   let pulados = 0;
   const erros = [];
   const meuNumero = simular ? null : await uazapi.owner().catch(() => null);
+  // Número do escritório para o rodapé "mensagem automática" (formatado p/ exibição).
+  const cfg = await lerConfig(db).catch(() => ({}));
+  const contato = numeroWpp.formatar(cfg.escritorio_whatsapp || "");
 
   for (const b of boletos) {
     const count = Number(b.count) || 0;
@@ -286,6 +303,7 @@ async function cobrarHonorarios({ simular = false, agora = new Date() } = {}) {
       diasAtraso,
       fase: decisao.fase,
       portal: portalBase(),
+      contato,
     });
 
     if (simular) {
@@ -335,6 +353,7 @@ module.exports = {
   decidirCobranca,
   montarMensagemHonorario,
   montarMensagemVencimento,
+  rodapeAutomatico,
   faseDe,
   competenciaBR,
   diasDesde,
