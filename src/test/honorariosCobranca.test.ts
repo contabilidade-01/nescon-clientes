@@ -7,6 +7,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  cobrarHonorarios,
   decidirCobranca,
   montarMensagemHonorario,
   montarMensagemVencimento,
@@ -112,6 +113,13 @@ describe("início da metodologia (set/2026)", () => {
   it("a constante de início está travada em setembro/2026", () => {
     expect(cadencia.INICIO_ISO).toBe("2026-09-01");
     expect(cadencia.COMPETENCIA_MIN).toBe("2026-09");
+  });
+
+  it("cobrança automática NÃO roda antes de set/2026 (sem tocar no banco)", async () => {
+    // Data em agosto: o motor retorna pela guarda ANTES de qualquer consulta ao banco.
+    const r = await cobrarHonorarios({ agora: new Date("2026-08-20T12:00:00Z") });
+    expect(r.enviados).toBe(0);
+    expect(String(r.motivo)).toContain("2026-09-01");
   });
 });
 
