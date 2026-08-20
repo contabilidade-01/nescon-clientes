@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
+  AlertTriangle,
   BellRing,
   Bot,
   Building2,
@@ -95,6 +96,7 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
       { to: "/admin/funcionarios", label: "Funcionários", icon: Users, area: "funcionarios" },
       { to: "/admin/folha", label: "Painel de folha", icon: CircleDollarSign, area: "funcionarios" },
       { to: "/admin/ferias-lote", label: "Upload de férias (lote)", icon: FileUp, area: "funcionarios" },
+      { to: "/admin/ferias-urgencia", label: "Férias — Urgência", icon: AlertTriangle, area: "funcionarios" },
     ],
   },
   {

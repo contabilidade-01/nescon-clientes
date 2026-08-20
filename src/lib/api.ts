@@ -1204,6 +1204,31 @@ export const api = {
           empresas: Array<{ id: string; name: string; cnpj: string }>;
         };
       }>("/admin/cobertura"),
+    /** Férias urgentes: funcionários de TODAS as empresas prestes a perder dias. */
+    feriasUrgencia: () =>
+      request<{
+        total_empresas: number;
+        total_funcionarios: number;
+        total_vencidos: number;
+        empresas: Array<{
+          company_id: string;
+          empresa_nome: string;
+          empresa_cnpj: string;
+          funcionarios: Array<{
+            id: string;
+            nome: string;
+            codigo: string | null;
+            admissao: string | null;
+            limite_gozo: string | null;
+            dias_direito: number;
+            dias_gozados: number;
+            dias_restantes: number;
+            dias_para_vencer: number | null;
+            vencido: boolean;
+            faltas: number | null;
+          }>;
+        }>;
+      }>("/admin/ferias-urgencia"),
     /** Auditoria LGPD: quem concordou, quando e em que versão do termo. */
     lgpdConsents: () =>
       request<{

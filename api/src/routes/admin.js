@@ -896,6 +896,93 @@ router.put("/configuracoes/sync", requireArea("sincronizacao"), async (req, res)
 
 
 /**
+ * GET /admin/ferias-urgencia — funcionários de TODAS as empresas prestes a perder férias.
+ *
+ * Consolida a mesma informação que o cliente vê na FériasPage, mas de toda a carteira:
+ * o admin quer saber "quem está para vencer?" SEM abrir empresa por empresa.
+ *
+ * Retorna agrupado por empresa, ordenado por urgência (quem vence antes vem primeiro).
+ * Só períodos com situacao "no_prazo" ou "vencidas" que ainda não foram tiradas.
+ */
+router.get("/ferias-urgencia", async (_req, res) => {
+  try {
+    // Busca todos os períodos do último upload de cada empresa (não os antigos),
+    // que ainda não foram totalmente gozados e que vencem nos próximos 120 dias ou já venceram.
+    const { rows } = await db.query(
+      `WITH ultimo_upload AS (
+        SELECT DISTINCT ON (company_id) id, company_id
+          FROM vacation_uploads
+         ORDER BY company_id, criado_em DESC
+      )
+      SELECT vp.id, vp.nome, vp.codigo, vp.admissao,
+             vp.inicio_aquisitivo, vp.fim_aquisitivo,
+             vp.limite_gozo, vp.dias_direito, vp.dias_gozados,
+             vp.dias_acumulados, vp.faltas,
+             c.id AS company_id, c.name AS empresa_nome, c.cnpj AS empresa_cnpj
+        FROM vacation_periods vp
+        JOIN ultimo_upload u ON u.id = vp.upload_id
+        JOIN companies c ON c.id = vp.company_id
+       WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
+         AND vp.limite_gozo IS NOT NULL
+         AND vp.limite_gozo <= (CURRENT_DATE + interval '120 days')
+         AND (vp.dias_gozados IS NULL OR vp.dias_gozados < vp.dias_direito)
+       ORDER BY vp.limite_gozo ASC, c.name, vp.nome`
+    );
+
+    // Agrupar por empresa
+    const porEmpresa = new Map();
+    for (const r of rows) {
+      if (!porEmpresa.has(r.company_id)) {
+        porEmpresa.set(r.company_id, {
+          company_id: r.company_id,
+          empresa_nome: r.empresa_nome,
+          empresa_cnpj: r.empresa_cnpj,
+          funcionarios: [],
+        });
+      }
+      const diasDireito = Number(r.dias_direito) || 0;
+      const diasGozados = Number(r.dias_gozados) || 0;
+      const diasRestantes = Math.max(0, diasDireito - diasGozados);
+      const limiteGozo = r.limite_gozo ? new Date(r.limite_gozo) : null;
+      const hoje = new Date();
+      const diasParaVencer = limiteGozo ? Math.ceil((limiteGozo - hoje) / 86400000) : null;
+      const vencido = diasParaVencer !== null && diasParaVencer < 0;
+
+      porEmpresa.get(r.company_id).funcionarios.push({
+        id: r.id,
+        nome: r.nome,
+        codigo: r.codigo,
+        admissao: r.admissao,
+        limite_gozo: r.limite_gozo ? r.limite_gozo.toISOString().slice(0, 10) : null,
+        dias_direito: diasDireito,
+        dias_gozados: diasGozados,
+        dias_restantes: diasRestantes,
+        dias_para_vencer: diasParaVencer,
+        vencido,
+        faltas: r.faltas,
+      });
+    }
+
+    const empresas = [...porEmpresa.values()];
+    const totalFuncionarios = rows.length;
+    const totalVencidos = rows.filter((r) => {
+      const lim = r.limite_gozo ? new Date(r.limite_gozo) : null;
+      return lim && lim < new Date();
+    }).length;
+
+    res.json({
+      total_empresas: empresas.length,
+      total_funcionarios: totalFuncionarios,
+      total_vencidos: totalVencidos,
+      empresas,
+    });
+  } catch (err) {
+    console.error("[admin] ferias-urgencia:", err.message);
+    res.status(500).json({ error: "Erro ao buscar férias" });
+  }
+});
+
+/**
  * Cobertura operacional: onde o escritório está em dia e onde falta.
  *
  * Nasceu de uma pergunta que antes só se respondia abrindo empresa por empresa:
