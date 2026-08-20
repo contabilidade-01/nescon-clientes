@@ -45,8 +45,14 @@ const AlterarSenhaPage = () => {
 
   const curta = nova.length > 0 && nova.length < 8;
   const divergem = confirma.length > 0 && nova !== confirma;
+  // No 1º acesso (obrigatório) não se pede a senha atual: a inicial pode ser aleatória
+  // (empresa vinda da sincronização) e o cliente não a tem — o backend dispensa a atual
+  // quando o cadastro está em reset forçado.
   const podeTrocar =
-    atual.length > 0 && nova.length >= 8 && nova === confirma && !trocar.isPending;
+    (obrigatorio || atual.length > 0) &&
+    nova.length >= 8 &&
+    nova === confirma &&
+    !trocar.isPending;
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -78,8 +84,8 @@ const AlterarSenhaPage = () => {
             <div className="text-sm">
               <p className="font-semibold text-foreground">Defina uma senha antes de continuar</p>
               <p className="mt-1 text-muted-foreground">
-                Sua senha ainda é a inicial (o CNPJ da empresa), que é informação pública.
-                Escolha uma senha só sua para proteger seus documentos.
+                Sua conta ainda está com a senha inicial. Escolha uma senha só sua para
+                proteger seus documentos.
               </p>
             </div>
           </div>
@@ -87,17 +93,22 @@ const AlterarSenhaPage = () => {
 
         <Card>
           <CardContent className="space-y-4 p-5">
-            <div className="space-y-1">
-              <Label htmlFor="atual">Senha atual</Label>
-              <Input
-                id="atual"
-                type="password"
-                autoComplete="current-password"
-                value={atual}
-                onChange={(e) => setAtual(e.target.value)}
-                placeholder={obrigatorio ? "É o CNPJ da empresa" : "Sua senha de hoje"}
-              />
-            </div>
+            {/* No 1º acesso não se pede a senha atual: pode ser aleatória (empresa vinda
+                da sincronização) e o cliente não a tem. O backend dispensa a atual em
+                reset forçado. */}
+            {!obrigatorio && (
+              <div className="space-y-1">
+                <Label htmlFor="atual">Senha atual</Label>
+                <Input
+                  id="atual"
+                  type="password"
+                  autoComplete="current-password"
+                  value={atual}
+                  onChange={(e) => setAtual(e.target.value)}
+                  placeholder="Sua senha de hoje"
+                />
+              </div>
+            )}
 
             <div className="space-y-1">
               <Label htmlFor="nova">Nova senha</Label>

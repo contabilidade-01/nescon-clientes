@@ -589,9 +589,6 @@ router.post("/change-password", authMiddleware, changePasswordLimiter, async (re
   try {
     const current = req.body.current_password;
     const next = req.body.new_password;
-    if (!current || typeof current !== "string") {
-      return res.status(400).json({ error: "Informe a senha atual" });
-    }
     if (!validateString(next, 8, 128)) {
       return res.status(400).json({ error: "A nova senha precisa de pelo menos 8 caracteres" });
     }
@@ -600,15 +597,33 @@ router.post("/change-password", authMiddleware, changePasswordLimiter, async (re
     const id = req.isAdmin ? req.admin?.id : req.company?.id;
     if (!id) return res.status(401).json({ error: "Sessão inválida" });
 
-    const { rows } = await db.query(`SELECT password_hash FROM ${tabela} WHERE id = $1`, [id]);
+    const { rows } = await db.query(
+      `SELECT password_hash, must_change_password FROM ${tabela} WHERE id = $1`,
+      [id]
+    );
     if (!rows.length) return res.status(404).json({ error: "Cadastro não encontrado" });
 
-    if (!(await bcryptMatches(rows[0].password_hash, current))) {
-      return res.status(401).json({ error: "Senha atual incorreta" });
-    }
-    // Bloqueia "trocar" pela mesma senha — senão a marca de 1º acesso cairia à toa.
-    if (await bcryptMatches(rows[0].password_hash, next)) {
-      return res.status(400).json({ error: "A nova senha precisa ser diferente da atual" });
+    // Reset FORÇADO (1º acesso): não exige a senha atual. Numa empresa criada pela
+    // sincronização do G-Click a senha inicial é ALEATÓRIA (senhaInicial.js) — o cliente
+    // não a possui, e no grupo ele chega à filial pelo switcher sem nunca tê-la digitado.
+    // Exigir a "senha atual" aqui tornava a troca IMPOSSÍVEL: o cliente escolhia a nova
+    // senha, o bcrypt da atual falhava, nada era gravado e o login seguinte dava "senha
+    // incorreta". O JWT válido já prova que a pessoa autenticou no grupo — é prova
+    // suficiente para o reset. Troca VOLUNTÁRIA (must_change=false) continua exigindo a
+    // senha atual, como deve.
+    const forcarReset = Boolean(rows[0].must_change_password);
+
+    if (!forcarReset) {
+      if (!current || typeof current !== "string") {
+        return res.status(400).json({ error: "Informe a senha atual" });
+      }
+      if (!(await bcryptMatches(rows[0].password_hash, current))) {
+        return res.status(401).json({ error: "Senha atual incorreta" });
+      }
+      // Bloqueia "trocar" pela mesma senha — senão a marca de 1º acesso cairia à toa.
+      if (await bcryptMatches(rows[0].password_hash, next)) {
+        return res.status(400).json({ error: "A nova senha precisa ser diferente da atual" });
+      }
     }
 
     const hash = await bcrypt.hash(next, 10);
