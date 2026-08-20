@@ -46,6 +46,13 @@ function buildFaltaReason(dates: Date[]): string {
   return `Falta${plural ? "s" : ""} injustificada${plural ? "s" : ""} ao serviço ${when}, sem apresentação de justificativa válida, em descumprimento às obrigações contratuais e ao dever de assiduidade.`;
 }
 
+/** Monta o texto de má conduta a partir da descrição do ocorrido. */
+function buildCondutaReason(descricao: string): string {
+  const desc = descricao.trim();
+  if (!desc) return "Conduta inadequada no ambiente de trabalho, em desacordo com as normas internas da empresa, caracterizando ato de indisciplina.";
+  return `Conduta inadequada no ambiente de trabalho: ${desc}${/[.!?]$/.test(desc) ? "" : "."} Tal comportamento contraria as normas internas da empresa, caracterizando ato de indisciplina e desrespeito ao dever de urbanidade.`;
+}
+
 export function WarningForm() {
   const { company } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -55,8 +62,9 @@ export function WarningForm() {
   // A advertência quase sempre é emitida no dia — já vem preenchida com hoje.
   const [warningDate, setWarningDate] = useState<Date | undefined>(() => startOfToday());
   const [reason, setReason] = useState("");
-  const [reasonType, setReasonType] = useState<"falta" | "outro" | "">("");
+  const [reasonType, setReasonType] = useState<"falta" | "ma_conduta" | "outro" | "">("");
   const [faltaDates, setFaltaDates] = useState<Date[]>([]);
+  const [condutaDescricao, setCondutaDescricao] = useState("");
 
   const [previousWarnings, setPreviousWarnings] = useState<string[]>([]);
   const [absenceDates, setAbsenceDates] = useState<Date[]>([]);
@@ -123,6 +131,7 @@ export function WarningForm() {
     if (!warningDate) missing.push("a data da advertência");
     if (!reasonType) missing.push("o motivo");
     else if (reasonType === "falta" && faltaDates.length === 0) missing.push("a(s) data(s) da falta");
+    else if (reasonType === "ma_conduta" && !condutaDescricao.trim()) missing.push("a descrição do ocorrido");
     else if (reasonType === "outro" && !reason.trim()) missing.push("a descrição do motivo");
     if (missing.length > 0) {
       toast.error(`Falta preencher: ${missing.join(", ")}`);
@@ -240,11 +249,22 @@ export function WarningForm() {
               </Button>
               <Button
                 type="button"
+                variant={reasonType === "ma_conduta" ? "default" : "outline"}
+                className="w-full justify-start text-left h-auto py-3 whitespace-normal"
+                onClick={() => {
+                  setReasonType("ma_conduta");
+                  setReason(buildCondutaReason(condutaDescricao));
+                }}
+              >
+                Má conduta / indisciplina
+              </Button>
+              <Button
+                type="button"
                 variant={reasonType === "outro" ? "default" : "outline"}
                 className="w-full justify-start text-left h-auto py-3 whitespace-normal"
                 onClick={() => { setReasonType("outro"); setReason(""); }}
               >
-                Outro motivo (má conduta, atrasos, briga...)
+                Outro motivo (atrasos, briga, insubordinação...)
               </Button>
             </div>
             {reasonType === "falta" && (
@@ -262,6 +282,26 @@ export function WarningForm() {
                 />
                 {reason && (
                   <div className="mt-2 rounded-lg bg-muted p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Texto que entrará no documento:</p>
+                    <p className="text-sm">{reason}</p>
+                  </div>
+                )}
+              </div>
+            )}
+            {reasonType === "ma_conduta" && (
+              <div className="mt-3 space-y-2">
+                <Label>Descreva brevemente o que aconteceu *</Label>
+                <Textarea
+                  placeholder="Ex: funcionário discutiu com colega durante o expediente, usando palavras ofensivas na presença de clientes..."
+                  value={condutaDescricao}
+                  onChange={(e) => {
+                    setCondutaDescricao(e.target.value);
+                    setReason(buildCondutaReason(e.target.value));
+                  }}
+                  className="min-h-[80px]"
+                />
+                {reason && (
+                  <div className="rounded-lg bg-muted p-3">
                     <p className="text-xs text-muted-foreground mb-1">Texto que entrará no documento:</p>
                     <p className="text-sm">{reason}</p>
                   </div>
