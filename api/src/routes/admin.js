@@ -906,8 +906,11 @@ router.put("/configuracoes/sync", requireArea("sincronizacao"), async (req, res)
  */
 router.get("/ferias-urgencia", async (_req, res) => {
   try {
-    // Busca todos os períodos do último upload de cada empresa (não os antigos),
-    // que ainda não foram totalmente gozados e que vencem nos próximos 120 dias ou já venceram.
+    const { enriquecer, normalizar: normNome } = require("../routes/vacations");
+    const { mediaSalarialDaEmpresa } = require("../folhaKpi");
+    const { faltasParaProximaPerda } = require("../vacationRules");
+
+    // Busca todos os períodos do último upload de cada empresa, incluindo salários
     const { rows } = await db.query(
       `WITH ultimo_upload AS (
         SELECT DISTINCT ON (company_id) id, company_id
@@ -929,7 +932,7 @@ router.get("/ferias-urgencia", async (_req, res) => {
        ORDER BY vp.limite_gozo ASC, c.name, vp.nome`
     );
 
-    // Agrupar por empresa
+    // Agrupar por empresa e enriquecer com custos e alertas (igual à FériasPage do cliente)
     const porEmpresa = new Map();
     for (const r of rows) {
       if (!porEmpresa.has(r.company_id)) {
@@ -937,43 +940,85 @@ router.get("/ferias-urgencia", async (_req, res) => {
           company_id: r.company_id,
           empresa_nome: r.empresa_nome,
           empresa_cnpj: r.empresa_cnpj,
-          funcionarios: [],
+          periodos_raw: [],
         });
       }
-      const diasDireito = Number(r.dias_direito) || 0;
-      const diasGozados = Number(r.dias_gozados) || 0;
-      const diasRestantes = Math.max(0, diasDireito - diasGozados);
-      const limiteGozo = r.limite_gozo ? new Date(r.limite_gozo) : null;
-      const hoje = new Date();
-      const diasParaVencer = limiteGozo ? Math.ceil((limiteGozo - hoje) / 86400000) : null;
-      const vencido = diasParaVencer !== null && diasParaVencer < 0;
+      porEmpresa.get(r.company_id).periodos_raw.push(r);
+    }
 
-      porEmpresa.get(r.company_id).funcionarios.push({
-        id: r.id,
-        nome: r.nome,
-        codigo: r.codigo,
-        admissao: r.admissao,
-        limite_gozo: r.limite_gozo ? r.limite_gozo.toISOString().slice(0, 10) : null,
-        dias_direito: diasDireito,
-        dias_gozados: diasGozados,
-        dias_restantes: diasRestantes,
-        dias_para_vencer: diasParaVencer,
-        vencido,
-        faltas: r.faltas,
+    // Para cada empresa, carregar salários e calcular custos (mesma lógica do FériasPage)
+    const empresas = [];
+    for (const [companyId, emp] of porEmpresa) {
+      // Salários da empresa
+      const { rows: empRows } = await db.query(
+        `SELECT codigo, name, salario_base, salario_competencia, vinculo
+           FROM employees WHERE company_id = $1`,
+        [companyId]
+      );
+      const porCodigo = new Map();
+      const porNome = new Map();
+      for (const e of empRows) {
+        const salario = e.salario_base === null ? null : Number(e.salario_base);
+        if (salario === null || salario <= 0) continue;
+        const dado = { salario, competencia: e.salario_competencia, vinculo: e.vinculo };
+        if (e.codigo) porCodigo.set(String(e.codigo).replace(/^0+/, ""), dado);
+        const chave = normNome(e.name);
+        if (chave && !porNome.has(chave)) porNome.set(chave, dado);
+      }
+
+      let mediaFolha = null;
+      try {
+        mediaFolha = await mediaSalarialDaEmpresa(db, companyId);
+      } catch { /* sem folha */ }
+
+      const periodos = enriquecer(emp.periodos_raw, { porCodigo, porNome }, mediaFolha);
+
+      // Calcular custo total da empresa
+      let custoTotal = 0;
+      for (const p of periodos) {
+        if (p.custo?.total) custoTotal += p.custo.total;
+      }
+
+      empresas.push({
+        company_id: emp.company_id,
+        empresa_nome: emp.empresa_nome,
+        empresa_cnpj: emp.empresa_cnpj,
+        custo_total: custoTotal,
+        funcionarios: periodos.map((p) => ({
+          id: p.id,
+          nome: p.nome,
+          codigo: p.codigo,
+          admissao: p.admissao,
+          inicio_aquisitivo: p.inicio_aquisitivo,
+          fim_aquisitivo: p.fim_aquisitivo,
+          limite_gozo: p.limite_gozo,
+          situacao: p.situacao,
+          dias_direito: p.dias_direito,
+          dias_gozados: p.dias_gozados,
+          dias_a_pagar: p.dias_a_pagar,
+          faltas: p.faltas,
+          alerta_faltas: p.alerta_faltas,
+          custo: p.custo,
+          origem_salario: p.origem_salario,
+        })),
       });
     }
 
-    const empresas = [...porEmpresa.values()];
-    const totalFuncionarios = rows.length;
-    const totalVencidos = rows.filter((r) => {
-      const lim = r.limite_gozo ? new Date(r.limite_gozo) : null;
-      return lim && lim < new Date();
-    }).length;
+    const totalFuncionarios = empresas.reduce((s, e) => s + e.funcionarios.length, 0);
+    const totalVencidos = empresas.reduce(
+      (s, e) => s + e.funcionarios.filter((f) => f.situacao === "vencida").length, 0
+    );
+    const totalEmRiscoFaltas = empresas.reduce(
+      (s, e) => s + e.funcionarios.filter((f) => f.alerta_faltas && f.alerta_faltas.faltasRestantes <= 3).length, 0
+    );
+    const custoCarteira = empresas.reduce((s, e) => s + e.custo_total, 0);
 
     res.json({
       total_empresas: empresas.length,
       total_funcionarios: totalFuncionarios,
       total_vencidos: totalVencidos,
+      total_em_risco_faltas: totalEmRiscoFaltas,
+      custo_carteira: custoCarteira,
       empresas,
     });
   } catch (err) {

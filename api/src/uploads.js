@@ -13,9 +13,37 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
+/**
+ * Recupera o nome de arquivo quebrado pela decodificação do multer/busboy.
+ *
+ * O parâmetro `filename` de um multipart é lido como latin1 (ISO-8859-1) por padrão. Um
+ * nome enviado em UTF-8 ("Programação de Férias.pdf") chega então como mojibake
+ * ("ProgramaÃ§Ã£o de FÃ©rias.pdf"). Reinterpretar os MESMOS bytes como UTF-8 recupera o
+ * original.
+ *
+ * A troca só acontece se o resultado for UTF-8 válido (sem o caractere de substituição
+ * U+FFFD): assim, nome puro ASCII fica igual, e o caso raro de um nome que já chegou
+ * correto não é corrompido — um nome já-UTF-8 reinterpretado como latin1 produz U+FFFD e
+ * mantém-se o original.
+ */
+function corrigirNomeUtf8(nome) {
+  if (!nome || typeof nome !== "string") return nome;
+  try {
+    const recuperado = Buffer.from(nome, "latin1").toString("utf8");
+    if (recuperado && !recuperado.includes("�")) return recuperado;
+  } catch {
+    /* mantém o original */
+  }
+  return nome;
+}
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
   filename: (_req, file, cb) => {
+    // Corrige o nome na fronteira: `file.originalname` é o mesmo objeto que vira
+    // `req.file.originalname`, então todo consumidor a jusante (título da entrega, nome
+    // exibido, classificação) recebe o nome já certo.
+    file.originalname = corrigirNomeUtf8(file.originalname);
     const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
     cb(null, `${Date.now()}-${safeName}`);
   },
