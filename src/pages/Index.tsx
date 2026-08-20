@@ -184,10 +184,33 @@ const Index = () => {
 
   const abertas = upcoming?.length ?? 0;
   const primeiroNome = (company?.name || "").replace(/\s+(LTDA|ME|EPP|S\/?A|EIRELI)\.?$/i, "");
+  const estaPersonificando = Boolean(localStorage.getItem("admin_session_backup"));
+
+  const voltarAoAdmin = () => {
+    const backup = localStorage.getItem("admin_session_backup");
+    if (backup) {
+      localStorage.setItem("company_session", backup);
+      localStorage.removeItem("admin_session_backup");
+      window.location.href = "/admin";
+    }
+  };
 
   return (
     <div className="min-h-screen">
       <LgpdConsentDialog aberto={mostrarLgpd} onResolvido={() => setMostrarLgpd(false)} />
+
+      {/* Banner de personificação — admin está vendo como cliente */}
+      {estaPersonificando && (
+        <div className="sticky top-0 z-50 flex items-center justify-between gap-2 bg-amber-600 px-4 py-2 text-white text-sm">
+          <span>👁️ Você está vendo o portal como <strong>{company?.name}</strong></span>
+          <button
+            onClick={voltarAoAdmin}
+            className="rounded bg-white/20 px-3 py-1 text-xs font-medium hover:bg-white/30 transition-colors"
+          >
+            ← Voltar ao admin
+          </button>
+        </div>
+      )}
 
       <header className="border-b border-border/60 bg-card/40 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4">

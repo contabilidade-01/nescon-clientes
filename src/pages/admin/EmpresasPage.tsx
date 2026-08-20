@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Archive, Building2, KeyRound, Plus, RotateCcw, ShieldAlert, Trash2 } from "lucide-react";
+import { Archive, Building2, Eye, KeyRound, Plus, RotateCcw, ShieldAlert, Trash2 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { CompanyFilter } from "@/components/admin/CompanyFilter";
 import { useAdminCompanies } from "@/hooks/useAdminCompanies";
@@ -13,10 +13,11 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { maskCNPJ } from "@/lib/masks";
 import { useAuth } from "@/hooks/useAuth";
+import { mergeClientToolAccess } from "@/lib/companyTools";
 
 const EmpresasPage = () => {
   const queryClient = useQueryClient();
-  const { admin } = useAuth();
+  const { admin, login } = useAuth();
   const { data: companies } = useAdminCompanies();
   const [companyId, setCompanyId] = useState("");
   const [motivoArquivar, setMotivoArquivar] = useState("");
@@ -33,6 +34,32 @@ const EmpresasPage = () => {
   const [newCoCnpj, setNewCoCnpj] = useState("");
   const [newCoEmail, setNewCoEmail] = useState("");
   const [newCoPhone, setNewCoPhone] = useState("");
+
+  /** Personificar: admin entra no portal como se fosse a empresa. */
+  const handlePersonificar = async (companyId: string, companyName: string) => {
+    try {
+      const data = await api.admin.personificar(companyId);
+      // Salva a sessão admin atual para poder voltar
+      const adminSession = localStorage.getItem("company_session");
+      if (adminSession) localStorage.setItem("admin_session_backup", adminSession);
+
+      // Entra como empresa
+      login({
+        role: "company",
+        id: data.company.id,
+        name: data.company.name,
+        cnpj: data.company.cnpj,
+        token: data.token,
+        toolAccess: mergeClientToolAccess(data.company.tool_access),
+        isMatriz: data.is_matriz,
+        empresasGrupo: data.empresas_grupo || [],
+      });
+      toast.success(`Entrando como ${companyName}...`);
+      window.location.href = "/";
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao personificar");
+    }
+  };
 
   const createCompany = useMutation({
     mutationFn: () =>
@@ -317,19 +344,29 @@ const EmpresasPage = () => {
                     <p className="truncate text-sm font-medium">{c.name}</p>
                     <p className="text-xs text-muted-foreground">{maskCNPJ(c.cnpj)}</p>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10"
-                    onClick={() => {
-                      if (confirm(`Arquivar "${c.name}"?\n\nA empresa perde acesso ao portal e para de receber documentos, boletos e alertas.`)) {
-                        arquivar2.mutate(c.id);
-                      }
-                    }}
-                    disabled={arquivar2.isPending}
-                  >
-                    <Archive className="mr-1 h-3.5 w-3.5" /> Arquivar
-                  </Button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-primary border-primary/40 hover:bg-primary/10"
+                      onClick={() => handlePersonificar(c.id, c.name)}
+                    >
+                      <Eye className="mr-1 h-3.5 w-3.5" /> Entrar como
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        if (confirm(`Arquivar "${c.name}"?\n\nA empresa perde acesso ao portal e para de receber documentos, boletos e alertas.`)) {
+                          arquivar2.mutate(c.id);
+                        }
+                      }}
+                      disabled={arquivar2.isPending}
+                    >
+                      <Archive className="mr-1 h-3.5 w-3.5" /> Arquivar
+                    </Button>
+                  </div>
                 </div>
               ))
             )}

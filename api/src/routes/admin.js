@@ -2233,4 +2233,146 @@ router.get("/companies/excluidas", requireOwner, async (_req, res) => {
   }
 });
 
+/**
+ * POST /admin/documento-ia — gera campos de advertência/suspensão a partir de texto livre.
+ *
+ * O admin escreve ou fala (transcrição no front) algo como:
+ * "Advertência para Maria, empresa Queijeiro, falta dia 15/08 e 16/08"
+ *
+ * A IA extrai os campos e devolve estruturado para o front preencher o formulário.
+ * O documento final é gerado pelo mesmo código do formulário manual (mesma lib).
+ */
+router.post("/documento-ia", async (req, res) => {
+  const { texto } = req.body || {};
+  if (!texto || typeof texto !== "string" || texto.trim().length < 10) {
+    return res.status(400).json({ error: "Texto muito curto. Descreva o funcionário, empresa, tipo e motivo." });
+  }
+
+  try {
+    const { extrairCamposDocumento } = require("../documentoIa");
+    const campos = await extrairCamposDocumento(texto.trim());
+    if (!campos) {
+      return res.status(503).json({
+        error: "IA não configurada (OPENAI_API_KEY ou IA_PDF_API_KEY). Preencha manualmente.",
+      });
+    }
+
+    // Tentar casar com empresa e funcionário no banco
+    let company_id = null;
+    let employee_id = null;
+    let employee_cpf = null;
+
+    if (campos.empresa_nome) {
+      const { rows } = await db.query(
+        `SELECT id, name, cnpj FROM companies
+          WHERE LOWER(name) LIKE $1
+            AND arquivada IS NOT TRUE AND excluida IS NOT TRUE
+          ORDER BY name LIMIT 5`,
+        [`%${campos.empresa_nome.toLowerCase()}%`]
+      );
+      if (rows.length === 1) {
+        company_id = rows[0].id;
+        campos.empresa_id = rows[0].id;
+        campos.empresa_nome_completo = rows[0].name;
+        campos.empresa_cnpj = rows[0].cnpj;
+      } else if (rows.length > 1) {
+        campos.empresas_candidatas = rows.map((r) => ({ id: r.id, name: r.name, cnpj: r.cnpj }));
+      }
+    }
+
+    if (company_id && campos.funcionario_nome) {
+      const { rows } = await db.query(
+        `SELECT id, name, cpf FROM employees
+          WHERE company_id = $1
+            AND LOWER(name) LIKE $2
+            AND active IS TRUE
+          LIMIT 5`,
+        [company_id, `%${campos.funcionario_nome.toLowerCase()}%`]
+      );
+      if (rows.length === 1) {
+        employee_id = rows[0].id;
+        employee_cpf = rows[0].cpf;
+        campos.funcionario_id = rows[0].id;
+        campos.funcionario_nome_completo = rows[0].name;
+        campos.funcionario_cpf = rows[0].cpf;
+      } else if (rows.length > 1) {
+        campos.funcionarios_candidatos = rows.map((r) => ({ id: r.id, name: r.name, cpf: r.cpf }));
+      }
+    }
+
+    res.json(campos);
+  } catch (err) {
+    console.error("[admin] documento-ia:", err.message);
+    res.status(500).json({ error: `Erro ao processar com IA: ${err.message}` });
+  }
+});
+
+/**
+ * POST /admin/personificar/:id — admin gera token temporário de empresa para ver o portal
+ * como se fosse o cliente. Útil para:
+ * - Emitir advertência/suspensão em nome da empresa
+ * - Conferir o que o cliente vê
+ * - Diagnosticar problemas de visualização
+ *
+ * NÃO altera nenhum dado da empresa. Gera um JWT normal de empresa com validade curta (1h).
+ * O admin pode sair a qualquer momento voltando ao painel.
+ */
+router.post("/personificar/:id", requireArea("empresas"), async (req, res) => {
+  const { id } = req.params;
+  if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
+
+  try {
+    const { rows } = await db.query(
+      `SELECT id, name, cnpj, tool_access, matriz_id
+         FROM companies
+        WHERE id = $1 AND arquivada IS NOT TRUE AND excluida IS NOT TRUE`,
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Empresa não encontrada" });
+    const company = rows[0];
+
+    const { generateToken } = require("../middleware/auth");
+    const { mergeToolAccess } = require("../companyTools");
+
+    const token = generateToken({
+      company_id: company.id,
+      company_name: company.name,
+      company_cnpj: company.cnpj,
+      matriz_id: company.matriz_id || null,
+      personificado_por: req.admin?.id,
+    });
+
+    // Carrega grupo se for matriz
+    let empresasGrupo = [];
+    if (!company.matriz_id) {
+      const { rows: grupo } = await db.query(
+        `SELECT id, name, cnpj, matriz_id FROM companies
+          WHERE (id = $1 OR matriz_id = $1) AND arquivada IS NOT TRUE AND excluida IS NOT TRUE
+          ORDER BY (matriz_id IS NULL) DESC, name`,
+        [company.id]
+      );
+      empresasGrupo = grupo.map((g) => ({
+        id: g.id, name: g.name, cnpj: g.cnpj, is_matriz: !g.matriz_id,
+      }));
+    }
+
+    res.json({
+      token,
+      company: {
+        id: company.id,
+        name: company.name,
+        cnpj: company.cnpj,
+        tool_access: mergeToolAccess(company.tool_access),
+      },
+      is_matriz: !company.matriz_id,
+      empresas_grupo: empresasGrupo,
+      personificando: true,
+      admin_nome: req.admin?.nome || req.admin?.cpf || "Admin",
+    });
+  } catch (err) {
+    console.error("[admin] personificar:", err.message);
+    res.status(500).json({ error: "Erro ao personificar" });
+  }
+});
+
 module.exports = router;

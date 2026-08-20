@@ -1700,6 +1700,37 @@ export const api = {
         `/admin/companies/${companyId}/alterar-senha`,
         { method: "PUT", body: JSON.stringify({ nova_senha: novaSenha, obrigar_troca: obrigarTroca }) }
       ),
+    /** Admin personifica empresa — gera token para ver portal como cliente. */
+    personificar: (companyId: string) =>
+      request<{
+        token: string;
+        company: { id: string; name: string; cnpj: string; tool_access: Record<string, boolean> };
+        is_matriz: boolean;
+        empresas_grupo: Array<{ id: string; name: string; cnpj: string; is_matriz: boolean }>;
+        personificando: boolean;
+        admin_nome: string;
+      }>(`/admin/personificar/${companyId}`, { method: "POST" }),
+    /** Gera campos de advertência/suspensão via IA a partir de texto livre. */
+    documentoIa: (texto: string) =>
+      request<{
+        tipo: "warning" | "suspension";
+        funcionario_nome: string;
+        funcionario_nome_completo?: string;
+        funcionario_id?: string;
+        funcionario_cpf?: string;
+        funcionarios_candidatos?: Array<{ id: string; name: string; cpf: string }>;
+        empresa_nome: string | null;
+        empresa_nome_completo?: string;
+        empresa_id?: string;
+        empresa_cnpj?: string;
+        empresas_candidatas?: Array<{ id: string; name: string; cnpj: string }>;
+        data_documento: string;
+        motivo_tipo: "falta" | "ma_conduta" | "outro";
+        motivo_descricao: string;
+        datas_falta?: string[];
+        dias_suspensao?: number;
+        confianca: "alta" | "media" | "baixa";
+      }>("/admin/documento-ia", { method: "POST", body: JSON.stringify({ texto }) }),
     /** Envia acesso (senha provisória) por WhatsApp para empresas selecionadas ou todas. */
     enviarAcesso: (companyIds: string[] | "all") =>
       request<{
