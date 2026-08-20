@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
   LogOut,
   MessageCircle,
+  Network,
   Receipt,
   RefreshCw,
   Send,
@@ -77,6 +78,7 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
     label: "Cadastro",
     items: [
       { to: "/admin/empresas", label: "Empresas", icon: Building2, area: "empresas" },
+      { to: "/admin/grupos", label: "Grupos de empresas", icon: Network, area: "empresas" },
       {
         to: "/admin/enviar-acesso",
         label: "Enviar acesso (WhatsApp)",

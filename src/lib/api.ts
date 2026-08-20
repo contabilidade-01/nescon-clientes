@@ -1274,8 +1274,20 @@ export const api = {
           acesso_enviado_em: string | null;
           /** Último login do cliente no portal (null = nunca entrou). */
           ultimo_login_em: string | null;
+          /** Grupo: se preenchido, esta empresa é filial da empresa-âncora daquele id. */
+          matriz_id: string | null;
         }>
       >("/admin/companies"),
+    /**
+     * Vincula/desvincula a empresa a um grupo. `matriz_id` = id da empresa-âncora do
+     * grupo, ou null para deixar independente. Entrar em qualquer empresa do grupo passa
+     * a dar navegação livre por todas.
+     */
+    setCompanyMatriz: (id: string, matriz_id: string | null) =>
+      request<{ ok: boolean; matriz_id: string | null }>(
+        `/admin/companies/${id}/matriz`,
+        { method: "PUT", body: JSON.stringify({ matriz_id }) }
+      ),
     /** Tira a empresa do ar: some dos paineis, para de receber e perde o portal. */
     arquivarEmpresa: (id: string, motivo?: string) =>
       request<{ ok: boolean; ja_estava_arquivada: boolean }>(

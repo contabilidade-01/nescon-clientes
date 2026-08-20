@@ -291,11 +291,13 @@ router.post("/login", loginIpLimiter, loginContaLimiter, async (req, res) => {
       if (company.password_expires_at && new Date(company.password_expires_at) < new Date()) {
         return res.status(401).json({ error: "Senha temporária expirada. Solicite novo acesso ao escritório." });
       }
-      // Descobre a matriz do grupo (se for filial) e carrega todas do grupo.
-      // Empresa sem matriz_id → é ela mesma a matriz (ou está sozinha).
-      // Empresa com matriz_id → é filial; a matriz é quem manda.
+      // Grupo do login. A ÂNCORA do grupo é a matriz: se a empresa é filial, é o
+      // matriz_id dela; se não tem matriz_id, ela mesma é a âncora. A navegação é livre
+      // entre TODOS os membros — entrar por qualquer empresa do grupo abre o grupo todo
+      // (não só entrando pela matriz, como era antes).
       const matrizId = company.matriz_id || null;
       const isMatriz = !matrizId;
+      const anchorId = matrizId || company.id;
 
       const token = generateToken({
         company_id: company.id,
@@ -304,18 +306,20 @@ router.post("/login", loginIpLimiter, loginContaLimiter, async (req, res) => {
         matriz_id: matrizId,
       });
 
-      // Carrega lista do grupo para devolver no payload (front popula o switcher).
-      // Só faz sentido buscar se for matriz (senão a lista viria vazia para a filial).
+      // Carrega o grupo a partir da ÂNCORA (qualquer membro chega ao grupo inteiro).
+      // Parênteses no OR de propósito: sem eles, o `AND arquivada/excluida` só valeria
+      // para as filiais e a âncora entraria mesmo arquivada.
       let empresasGrupo = [];
-      if (isMatriz) {
-        const { rows: grupo } = await db.query(
-          `SELECT id, name, cnpj, matriz_id
-             FROM companies
-            WHERE id = $1 OR matriz_id = $1
-              AND arquivada IS NOT TRUE AND excluida IS NOT TRUE
-            ORDER BY (matriz_id IS NULL) DESC, name`,
-          [company.id]
-        );
+      const { rows: grupo } = await db.query(
+        `SELECT id, name, cnpj, matriz_id
+           FROM companies
+          WHERE (id = $1 OR matriz_id = $1)
+            AND arquivada IS NOT TRUE AND excluida IS NOT TRUE
+          ORDER BY (matriz_id IS NULL) DESC, name`,
+        [anchorId]
+      );
+      // Só popula o switcher quando há mais de uma empresa — senão não há para onde ir.
+      if (grupo.length > 1) {
         empresasGrupo = grupo.map((g) => ({
           id: g.id,
           name: g.name,
@@ -533,20 +537,18 @@ router.post("/trocar-empresa", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "company_id inválido" });
     }
 
-    // Validar que destino está no mesmo grupo da empresa atual.
+    // Validar que destino está no mesmo grupo. A ÂNCORA da empresa atual é a matriz dela
+    // (matriz_id) ou ela mesma. Destino é válido se for a própria âncora (matriz) ou uma
+    // filial da âncora — isso cobre matriz↔filial e filial↔filial (irmãs), nos dois
+    // sentidos. Antes, filial→matriz era bloqueado.
+    const anchorId = req.company.matrizId || req.company.id;
     const { rows: destinos } = await db.query(
       `SELECT id, name, cnpj, matriz_id, tool_access, must_change_password
          FROM companies
         WHERE id = $1
-          AND (arquivada IS NOT TRUE AND excluida IS NOT TRUE)
-          AND (
-            id = $2                                    -- trocar para si mesmo
-            OR matriz_id = $2                          -- destino é minha filial
-            OR (matriz_id IS NOT NULL AND matriz_id = (-- destino é minha irmã (mesma matriz)
-                SELECT matriz_id FROM companies WHERE id = $2
-               ))
-          )`,
-      [destinoId, req.company.id]
+          AND arquivada IS NOT TRUE AND excluida IS NOT TRUE
+          AND (id = $2 OR matriz_id = $2)`,
+      [destinoId, anchorId]
     );
     if (!destinos.length) {
       return res.status(403).json({ error: "Esta empresa não pertence ao seu grupo." });
