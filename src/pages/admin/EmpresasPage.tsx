@@ -346,12 +346,12 @@ const EmpresasPage = () => {
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Button
-                      variant="outline"
+                      variant="default"
                       size="sm"
-                      className="text-primary border-primary/40 hover:bg-primary/10"
+                      className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm font-semibold"
                       onClick={() => handlePersonificar(c.id, c.name)}
                     >
-                      <Eye className="mr-1 h-3.5 w-3.5" /> Entrar como
+                      <Eye className="mr-1.5 h-3.5 w-3.5" /> Entrar como
                     </Button>
                     <Button
                       variant="outline"
