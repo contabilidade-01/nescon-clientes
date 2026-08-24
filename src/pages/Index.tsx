@@ -21,6 +21,8 @@ import {
   ArrowUpRight,
   KeyRound,
   Sparkles,
+  FileWarning,
+  FileX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -282,6 +284,45 @@ const Index = () => {
             </div>
           </div>
         </section>
+
+        {/* Ações Rápidas de RH — Prioridade no Topo */}
+        {(isToolAllowed(company?.toolAccess, "warning") || isToolAllowed(company?.toolAccess, "suspension")) && (
+          <section className="grid gap-4 sm:grid-cols-2">
+            {isToolAllowed(company?.toolAccess, "warning") && (
+              <button
+                type="button"
+                onClick={() => abrirFerramenta("warning", "/advertencia")}
+                className="group flex items-center gap-4 rounded-2xl border-2 border-primary/20 bg-primary/5 p-5 text-left transition-all hover:border-primary/40 hover:bg-primary/10"
+              >
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+                  <AlertTriangle className="h-6 w-6" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-bold">Gerar Advertência</h3>
+                  <p className="text-sm text-muted-foreground">Emitir advertência formal ao funcionário</p>
+                </div>
+                <ArrowUpRight className="h-5 w-5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
+              </button>
+            )}
+
+            {isToolAllowed(company?.toolAccess, "suspension") && (
+              <button
+                type="button"
+                onClick={() => abrirFerramenta("suspension", "/suspensao")}
+                className="group flex items-center gap-4 rounded-2xl border-2 border-destructive/20 bg-destructive/5 p-5 text-left transition-all hover:border-destructive/40 hover:bg-destructive/10"
+              >
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-destructive text-destructive-foreground shadow-sm">
+                  <FileX className="h-6 w-6" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-bold">Gerar Suspensão</h3>
+                  <p className="text-sm text-muted-foreground">Emitir suspensão formal ao funcionário</p>
+                </div>
+                <ArrowUpRight className="h-5 w-5 shrink-0 text-muted-foreground transition-colors group-hover:text-destructive" />
+              </button>
+            )}
+          </section>
+        )}
 
         {/* Próximos pagamentos */}
         {canSeePayments && (
