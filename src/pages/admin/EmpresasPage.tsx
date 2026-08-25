@@ -53,6 +53,7 @@ const EmpresasPage = () => {
         toolAccess: mergeClientToolAccess(data.company.tool_access),
         isMatriz: data.is_matriz,
         empresasGrupo: data.empresas_grupo || [],
+        isAdminPersonified: true, // Marca que é uma sessão de personificação
       });
       toast.success(`Entrando como ${companyName}...`);
       window.location.href = "/";
@@ -219,23 +220,21 @@ const EmpresasPage = () => {
         </Card>
       )}
 
-      {/* Fila de risco: enquanto a senha inicial não for trocada, o acesso vale para
-          quem a tiver. Nas empresas antigas essa senha era o CNPJ, que é público. */}
+      {/* Fila de risco: enquanto a senha inicial não for trocada (em lista suspensa) */}
       {(senhaPendente.data?.total ?? 0) > 0 && (
-        <Card className="border-amber-500/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ShieldAlert className="h-4 w-4 text-amber-600" />
-              {senhaPendente.data?.total} empresa(s) ainda com a senha inicial
-            </CardTitle>
-            <CardDescription>
-              Enquanto o cliente não troca, o acesso vale para quem tiver a senha. Nas
-              empresas cadastradas antes desta mudança, a senha inicial era o próprio
-              CNPJ — que é público. Gerar uma senha nova fecha esse acesso na hora.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            {senhaPendente.data?.empresas.slice(0, 30).map((c) => (
+        <details className="group rounded-xl border border-amber-500/50 bg-card p-4">
+          <summary className="flex cursor-pointer items-center justify-between font-medium text-amber-600">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4" />
+              <span>{senhaPendente.data?.total} empresa(s) ainda com a senha inicial (Clique para ver/gerar)</span>
+            </div>
+            <span className="text-xs text-muted-foreground group-open:rotate-180 transition-transform">▼</span>
+          </summary>
+          <div className="mt-3 space-y-1 pt-3 border-t">
+            <p className="text-xs text-muted-foreground mb-2">
+              Enquanto o cliente não troca, o acesso vale para quem tiver a senha (o próprio CNPJ nas antigas). Gerar uma senha nova fecha esse acesso na hora.
+            </p>
+            {senhaPendente.data?.empresas.map((c) => (
               <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-1.5 last:border-0">
                 <span className="min-w-0 truncate text-sm">
                   {c.name} <span className="text-xs text-muted-foreground">{maskCNPJ(c.cnpj)}</span>
@@ -250,81 +249,18 @@ const EmpresasPage = () => {
                 </Button>
               </div>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </details>
       )}
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Plus className="h-4 w-4" /> Nova empresa (CNPJ)
-          </CardTitle>
-          <p className="text-xs text-muted-foreground font-normal">
-            Cada CNPJ recebe <strong>acesso exclusivo</strong> à mesma aplicação: após login, vê só
-            funcionários, documentos e atestados da própria empresa (isolamento na base de dados por{" "}
-            <code className="text-xs">company_id</code>). Senha inicial ={" "}
-            <strong>14 dígitos do CNPJ</strong>.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1 sm:col-span-2">
-              <Label className="text-xs">Razão social</Label>
-              <Input
-                value={newCoName}
-                onChange={(e) => setNewCoName(e.target.value)}
-                placeholder="Ex.: EMPRESA EXEMPLO LTDA (como no cartão CNPJ)"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">CNPJ</Label>
-              <Input
-                value={newCoCnpj}
-                onChange={(e) => setNewCoCnpj(maskCNPJ(e.target.value.replace(/\D/g, "").slice(0, 14)))}
-                placeholder="00.000.000/0000-00"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Telefone (opcional)</Label>
-              <Input
-                value={newCoPhone}
-                onChange={(e) => setNewCoPhone(e.target.value)}
-                placeholder="DDD + número"
-              />
-            </div>
-            <div className="space-y-1 sm:col-span-2">
-              <Label className="text-xs">E-mail (recuperação de senha, opcional)</Label>
-              <Input
-                type="email"
-                value={newCoEmail}
-                onChange={(e) => setNewCoEmail(e.target.value)}
-                placeholder="contato@empresa.com"
-              />
-            </div>
-          </div>
-          <Button
-            type="button"
-            onClick={() => createCompany.mutate()}
-            disabled={
-              createCompany.isPending ||
-              !newCoName.trim() ||
-              newCoCnpj.replace(/\D/g, "").length !== 14
-            }
-          >
-            Cadastrar empresa
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Lista completa de empresas com ação rápida de arquivar */}
+      {/* Lista completa de empresas ativas (PRIMEIRO ITEM) */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
             <Building2 className="h-4 w-4" /> Empresas ativas ({companies?.length || 0})
           </CardTitle>
           <CardDescription>
-            Clique em "Arquivar" para tirar a empresa do sistema. Ela perde acesso ao portal e
-            para de receber tudo. Só o dono pode reativar depois.
+            Clique em "Entrar como" para personificar a empresa ou em "Arquivar" para desativá-la.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -377,7 +313,7 @@ const EmpresasPage = () => {
       <CompanyFilter
         value={companyId}
         onChange={setCompanyId}
-        description="Escolha o CNPJ para editar razão social, contactos e permissões. Com &quot;Todas&quot;, não mostramos o formulário — evita alterar a empresa errada."
+        description="Escolha o CNPJ para editar razão social, contactos e permissões. Com 'Todas', não mostramos o formulário — evita alterar a empresa errada."
       />
 
       <Card>
@@ -396,7 +332,7 @@ const EmpresasPage = () => {
             <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-muted-foreground">
               <p className="font-medium text-foreground">Selecione uma empresa no filtro</p>
               <p className="mt-1 text-xs leading-relaxed">
-                Com &quot;Todas as empresas&quot;, não mostramos o formulário de edição para não correr
+                Com "Todas as empresas", não mostramos o formulário de edição para não correr
                 o risco de mudar dados da empresa errada.
               </p>
             </div>

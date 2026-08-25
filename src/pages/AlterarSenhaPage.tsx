@@ -14,6 +14,13 @@ import { toast } from "sonner";
 const AlterarSenhaPage = () => {
   const navigate = useNavigate();
   const { company, admin, login, logout } = useAuth();
+
+  // Se for um admin personificando a empresa, ignoramos a obrigatoriedade de troca de senha
+  // e redirecionamos para o portal da empresa normalmente.
+  if (company?.isAdminPersonified) {
+    navigate("/");
+    return null;
+  }
   // Vale para os dois: empresa com senha = CNPJ, e usuário do painel com senha
   // definida pelo dono.
   const obrigatorio = Boolean(company?.mustChangePassword || admin?.mustChangePassword);

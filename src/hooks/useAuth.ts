@@ -24,6 +24,8 @@ export type CompanySession = {
   isMatriz?: boolean;
   /** Lista de todas as empresas do grupo (a própria + filiais). Vem no login. */
   empresasGrupo?: EmpresaGrupo[];
+  /** Marca que é uma sessão de personificação do admin */
+  isAdminPersonified?: boolean;
 };
 
 export type AdminSession = {
