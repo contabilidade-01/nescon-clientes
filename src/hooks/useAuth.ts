@@ -84,6 +84,8 @@ function parseStored(): AuthSession | null {
         temFuncionarios: o.temFuncionarios === undefined ? true : Boolean(o.temFuncionarios),
         isMatriz: Boolean(o.isMatriz ?? o.is_matriz),
         empresasGrupo: Array.isArray(o.empresasGrupo) ? o.empresasGrupo as EmpresaGrupo[] : [],
+        // Sobrevive ao F5: sem isto, recarregar a página perdia a marca de personificação.
+        isAdminPersonified: Boolean(o.isAdminPersonified),
       };
     }
 

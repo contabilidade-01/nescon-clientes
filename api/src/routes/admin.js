@@ -2334,13 +2334,17 @@ router.post("/personificar/:id", requireArea("empresas"), async (req, res) => {
     const { generateToken } = require("../middleware/auth");
     const { mergeToolAccess } = require("../companyTools");
 
-    const token = generateToken({
-      company_id: company.id,
-      company_name: company.name,
-      company_cnpj: company.cnpj,
-      matriz_id: company.matriz_id || null,
-      personificado_por: req.admin?.id,
-    });
+    // Validade curta: é acesso privilegiado do admin ao ambiente do cliente.
+    const token = generateToken(
+      {
+        company_id: company.id,
+        company_name: company.name,
+        company_cnpj: company.cnpj,
+        matriz_id: company.matriz_id || null,
+        personificado_por: req.admin?.id,
+      },
+      "1h"
+    );
 
     // Carrega grupo se for matriz
     let empresasGrupo = [];

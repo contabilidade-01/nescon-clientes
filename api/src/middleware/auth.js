@@ -39,9 +39,9 @@ async function getAdminProfile(dbConn, adminId) {
  */
 const JWT_EXPIRES = "8h";
 
-/** JWT de empresa (CNPJ) */
-function generateToken(payload) {
-  return jwt.sign(payload, jwtSecret(), { expiresIn: JWT_EXPIRES });
+/** JWT de empresa (CNPJ). `expiresIn` opcional — a personificação usa validade curta. */
+function generateToken(payload, expiresIn = JWT_EXPIRES) {
+  return jwt.sign(payload, jwtSecret(), { expiresIn });
 }
 
 /** JWT de administrador (CPF na tabela platform_admins) */
@@ -81,12 +81,16 @@ async function authMiddleware(req, res, next) {
     } else if (decoded.company_id) {
       req.isAdmin = false;
       req.admin = null;
+      // Token de PERSONIFICAÇÃO: um admin (personificado_por) vê o portal como o cliente.
+      // Guardamos quem personifica para as regras abaixo — nunca altera dado do cliente.
+      req.personificadoPor = decoded.personificado_por || null;
       req.company = {
         id: decoded.company_id,
         name: decoded.company_name,
         cnpj: decoded.company_cnpj,
         matrizId: decoded.matriz_id || null,
         isMatriz: !decoded.matriz_id, // se não tem matriz_id, é a própria matriz (ou empresa sem grupo)
+        personificadoPor: decoded.personificado_por || null,
       };
       // Lista de IDs do grupo (matriz + filiais). Lida do banco em cada request:
       // token cresce rápido se guardar, e revogação (ex: desvincular filial) não
@@ -108,16 +112,24 @@ async function authMiddleware(req, res, next) {
       // Tool access AGREGADO do grupo (OR entre empresas). Para empresas isoladas
       // (sem grupo), é igual ao tool_access da própria empresa.
       req.companyToolAccess = await getToolAccessForGroup(db, req.empresas_grupo_ids);
-      // Lido da BASE, não do token: quem trocou a senha noutra aba deixa de ser barrado
-      // na requisição seguinte, sem esperar o JWT expirar.
-      try {
-        const { rows } = await db.query(
-          "SELECT must_change_password FROM companies WHERE id = $1",
-          [decoded.company_id]
-        );
-        req.mustChangePassword = Boolean(rows[0]?.must_change_password);
-      } catch {
+      // Personificação: o ADMIN nunca cai na troca de senha do cliente — isso é
+      // responsabilidade do próprio cliente no 1º acesso. Ignoramos a trava só para
+      // ESTA sessão; o must_change_password do cliente no banco fica INTACTO, então
+      // quando o cliente entrar pela primeira vez ainda será obrigado a trocar.
+      if (req.personificadoPor) {
         req.mustChangePassword = false;
+      } else {
+        // Lido da BASE, não do token: quem trocou a senha noutra aba deixa de ser barrado
+        // na requisição seguinte, sem esperar o JWT expirar.
+        try {
+          const { rows } = await db.query(
+            "SELECT must_change_password FROM companies WHERE id = $1",
+            [decoded.company_id]
+          );
+          req.mustChangePassword = Boolean(rows[0]?.must_change_password);
+        } catch {
+          req.mustChangePassword = false;
+        }
       }
     } else {
       return res.status(401).json({ error: "Token inválido" });

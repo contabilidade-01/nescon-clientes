@@ -104,13 +104,15 @@ const Index = () => {
 
   useEffect(() => {
     if (!company?.id || !company.token) return;
-    const { id, token, mustChangePassword } = company;
+    const { id, token, mustChangePassword, isAdminPersonified, isMatriz, empresasGrupo } = company;
     let cancelled = false;
     (async () => {
       try {
         const data = await api.auth.companySession();
         if (cancelled) return;
-        setMostrarLgpd(!data.lgpd?.consent_at && !data.lgpd?.prompt_seen_at);
+        // Personificação: não mostrar o aviso de LGPD — o aceite é do cliente, não do
+        // admin que está só conferindo o ambiente.
+        setMostrarLgpd(!isAdminPersonified && !data.lgpd?.consent_at && !data.lgpd?.prompt_seen_at);
         login({
           role: "company",
           id,
@@ -121,6 +123,10 @@ const Index = () => {
           // Preserva a marca: este refresh é só de nome/permissões.
           mustChangePassword,
           temFuncionarios: data.tem_funcionarios !== false,
+          // Preserva o estado da sessão (senão o refresh apagava a personificação e o grupo).
+          isAdminPersonified,
+          isMatriz,
+          empresasGrupo,
         });
       } catch {
         /* sessão inválida ou rede: mantém estado local */
