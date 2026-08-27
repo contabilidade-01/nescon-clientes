@@ -28,6 +28,7 @@ const { ensureChatSchema } = require("./ensureChatSchema");
 const { ensureArquivamentoSchema } = require("./ensureArquivamentoSchema");
 const { ensureAcessosSchema } = require("./ensureAcessosSchema");
 const { ensureCompanyMatriz } = require("./ensureCompanyMatriz");
+const { ensureAdmissionSchema } = require("./ensureAdmissionSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -95,9 +96,12 @@ app.use("/api/auth", require("./routes/auth"));
 // Gestão de usuários do painel (só o dono). Antes de /api/admin: rota mais específica.
 app.use("/api/admin/usuarios", require("./routes/adminUsers"));
 app.use("/api/admin/atendimentos", require("./routes/adminChat"));
+const admissionsRoutes = require("./routes/admissions");
+app.use("/api/admin/admissoes", admissionsRoutes.adminRouter);
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/chat", require("./routes/chat"));
 app.use("/api/employees", require("./routes/employees"));
+app.use("/api/admissoes", admissionsRoutes.router);
 app.use("/api/documents", require("./routes/documents"));
 app.use("/api/certificates", require("./routes/certificates"));
 app.use("/api/deliverables", require("./routes/deliverables"));
@@ -165,6 +169,7 @@ async function start() {
     await ensureDueDateSugestoesSchema(db);
     await ensureAcessosSchema(db);
     await ensureCompanyMatriz(db);
+    await ensureAdmissionSchema(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).
     // Roda em background para não travar o arranque.
     setTimeout(async () => {

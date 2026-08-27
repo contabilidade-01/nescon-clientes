@@ -330,6 +330,23 @@ const Index = () => {
           </section>
         )}
 
+        <section>
+          <button
+            type="button"
+            onClick={() => navigate("/admissao")}
+            className="group flex w-full items-center gap-4 rounded-2xl border-2 border-primary/20 bg-primary/5 p-5 text-left transition-all hover:border-primary/40 hover:bg-primary/10"
+          >
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+              <ClipboardList className="h-6 w-6" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-bold">Ficha de admissão</h3>
+              <p className="text-sm text-muted-foreground">Cadastrar funcionário novo e gerar o PDF da ficha</p>
+            </div>
+            <ArrowUpRight className="h-5 w-5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
+          </button>
+        </section>
+
         {/* Próximos pagamentos */}
         {canSeePayments && (
           <section>

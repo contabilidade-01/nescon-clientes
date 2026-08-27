@@ -1157,6 +1157,27 @@ export const api = {
     /** Modo manutenção: estado atual (qualquer admin) e liga/desliga (só o dono). */
     getManutencao: () =>
       request<{ ativo: boolean; mensagem: string }>("/admin/manutencao"),
+    admissoes: {
+      list: (opts?: { origem?: string; status?: string; q?: string }) => {
+        const p = new URLSearchParams();
+        if (opts?.origem) p.set("origem", opts.origem);
+        if (opts?.status) p.set("status", opts.status);
+        if (opts?.q) p.set("q", opts.q);
+        const q = p.toString();
+        return request<import("@/lib/admissionFicha").AdmissionListItem[]>(
+          `/admin/admissoes${q ? `?${q}` : ""}`,
+        );
+      },
+      get: (id: string) =>
+        request<import("@/lib/admissionFicha").AdmissionDetail>(`/admin/admissoes/${id}`),
+      setStatus: (id: string, status: import("@/lib/admissionFicha").AdmissionStatus) =>
+        request<import("@/lib/admissionFicha").AdmissionDetail>(`/admin/admissoes/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status }),
+        }),
+      anexoUrl: (formId: string, anexoId: string) =>
+        `${API_BASE}/admin/admissoes/${formId}/anexos/${anexoId}/file`,
+    },
     setManutencao: (data: { ativo?: boolean; mensagem?: string }) =>
       request<{ ativo: boolean; mensagem: string }>("/admin/manutencao", {
         method: "PUT",
@@ -2192,5 +2213,59 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ ferramenta }),
       }).catch(() => undefined),
+  },
+
+  admissoes: {
+    lookup: (cnpj: string) =>
+      publicRequest<{ encontrada: boolean; nome?: string }>(
+        `/admissoes/lookup?cnpj=${encodeURIComponent(cnpj.replace(/\D/g, ""))}`,
+      ),
+    publicGet: (id: string, token: string) =>
+      publicRequest<import("@/lib/admissionFicha").AdmissionDetail>(
+        `/admissoes/public/${id}?token=${encodeURIComponent(token)}`,
+      ),
+    publicCreate: (body: Record<string, unknown>) =>
+      publicRequest<import("@/lib/admissionFicha").AdmissionDetail>("/admissoes/public", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    publicUpdate: (id: string, body: Record<string, unknown>) =>
+      publicRequest<import("@/lib/admissionFicha").AdmissionDetail>(`/admissoes/public/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    publicUpload: async (id: string, token: string, files: File[]) => {
+      const form = new FormData();
+      form.append("edit_token", token);
+      for (const f of files) form.append("files", f);
+      const res = await fetch(`${API_BASE}/admissoes/public/${id}/anexos`, { method: "POST", body: form });
+      const data = await parseResponseJson<{ anexos: import("@/lib/admissionFicha").AdmissionAnexo[] }>(res);
+      if (!res.ok) throw new Error((data as { error?: string }).error || "Falha no anexo");
+      return data;
+    },
+    list: () => request<import("@/lib/admissionFicha").AdmissionListItem[]>("/admissoes"),
+    get: (id: string) => request<import("@/lib/admissionFicha").AdmissionDetail>(`/admissoes/${id}`),
+    create: (body: Record<string, unknown>) =>
+      request<import("@/lib/admissionFicha").AdmissionDetail>("/admissoes", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    update: (id: string, body: Record<string, unknown>) =>
+      request<import("@/lib/admissionFicha").AdmissionDetail>(`/admissoes/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    upload: async (id: string, files: File[]) => {
+      const form = new FormData();
+      for (const f of files) form.append("files", f);
+      const token = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`${API_BASE}/admissoes/${id}/anexos`, { method: "POST", body: form, headers });
+      const data = await parseResponseJson<{ anexos: import("@/lib/admissionFicha").AdmissionAnexo[]; error?: string }>(res);
+      if (!res.ok) throw new Error(data.error || "Falha no anexo");
+      return data;
+    },
+    anexoUrl: (id: string, anexoId: string) => `${API_BASE}/admissoes/${id}/anexos/${anexoId}/file`,
   },
 };

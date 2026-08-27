@@ -219,6 +219,11 @@ const CalculadoraCustoPage = () => {
         <CardContent className="border-t border-border bg-muted/20 py-4 text-[11px] leading-relaxed text-muted-foreground">
           <b className="text-foreground">Observação.</b> {r.t.nota} Não inclui outros benefícios de convenção
           coletiva, adicionais, horas extras ou rescisão. Valores estimados para fins gerenciais.
+          <div className="mt-3">
+            <a href="/admissao" className="font-medium text-primary underline">
+              Solicitar admissão / ficha de registro
+            </a>
+          </div>
         </CardContent>
         <div className="py-3 text-center text-[11px] text-muted-foreground">
           Nescon Contabilidade • CNPJ 35.736.034/0001-23

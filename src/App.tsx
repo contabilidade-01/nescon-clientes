@@ -52,6 +52,8 @@ import FeriasPage from "./pages/FeriasPage.tsx";
 import ProximosPagamentosPage from "./pages/ProximosPagamentosPage.tsx";
 import EntregaPublicaPage from "./pages/EntregaPublicaPage.tsx";
 import CalculadoraCustoPage from "./pages/CalculadoraCustoPage.tsx";
+import AdmissaoPage from "./pages/AdmissaoPage.tsx";
+import AdmissoesAdminPage from "./pages/admin/AdmissoesPage.tsx";
 import AlterarSenhaPage from "./pages/AlterarSenhaPage.tsx";
 import ManutencaoPage from "./pages/ManutencaoPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
@@ -157,12 +159,15 @@ const AppRoutes = () => (
     <Route path="/entrega/:token" element={<EntregaPublicaPage />} />
     {/* Calculadora pública de custo de contratação — sem login */}
     <Route path="/calculadora-custo" element={<CalculadoraCustoPage />} />
+    {/* Ficha de admissão — pública; se houver sessão de empresa, pré-preenche */}
+    <Route path="/admissao" element={<AdmissaoPage />} />
     {/* Painel do escritório: uma página por área, com menu lateral retrátil (AdminLayout) */}
     <Route path="/admin" element={<AdminOnlyRoute><VisaoGeralPage /></AdminOnlyRoute>} />
     <Route path="/admin/empresas" element={<AdminAreaRoute area="empresas"><EmpresasPage /></AdminAreaRoute>} />
     <Route path="/admin/grupos" element={<AdminAreaRoute area="empresas"><GruposPage /></AdminAreaRoute>} />
     <Route path="/admin/clientes-gclick" element={<OwnerOnlyRoute><ClientesGclickPage /></OwnerOnlyRoute>} />
     <Route path="/admin/funcionarios" element={<AdminAreaRoute area="funcionarios"><FuncionariosAdminPage /></AdminAreaRoute>} />
+    <Route path="/admin/admissoes" element={<AdminAreaRoute area="funcionarios"><AdmissoesAdminPage /></AdminAreaRoute>} />
     <Route path="/admin/entregas" element={<AdminAreaRoute area="entregas"><EntregasPage /></AdminAreaRoute>} />
     <Route path="/admin/licencas" element={<AdminAreaRoute area="licencas"><LicencasPage /></AdminAreaRoute>} />
     <Route path="/admin/taxas-anuais" element={<AdminAreaRoute area="taxas_anuais"><TaxasAnuaisPage /></AdminAreaRoute>} />
