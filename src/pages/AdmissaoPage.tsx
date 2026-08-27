@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import {
   emptyAdmissionDados,
   mergeAdmissionDados,
+  admissionSaveErrors,
   type AdmissionDados,
   type AdmissionDetail,
   type AdmissionListItem,
@@ -143,6 +144,11 @@ const AdmissaoPage = () => {
   const salvar = async () => {
     if (dados.nome.trim().length < 2) {
       toast.error("Informe o nome do funcionário.");
+      return;
+    }
+    const dadosErr = admissionSaveErrors(dados);
+    if (dadosErr) {
+      toast.error(dadosErr);
       return;
     }
     if (empresaCnpj.replace(/\D/g, "").length !== 14) {

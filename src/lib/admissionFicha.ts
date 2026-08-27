@@ -7,7 +7,14 @@ export type AdmissionDados = {
   docAso: boolean;
   docFoto: boolean;
   docCopias: boolean;
+  docCpf: boolean;
+  docRg: boolean;
+  docComprovante: boolean;
+  docTitulo: boolean;
+  docCertidaoCivil: boolean;
+  docReservistaCopia: boolean;
   docPis: boolean;
+  sexo: string;
   temFilhos: boolean;
   filhoDeficiente: boolean;
   filhoCertidao: boolean;
@@ -21,6 +28,7 @@ export type AdmissionDados = {
   nascimento: string;
   identidade: string;
   identidadeOrgao: string;
+  /** Local de atendimento (mesmo campo gravado na ficha). */
   identidadeLocal: string;
   identidadeEmissao: string;
   telefone: string;
@@ -101,7 +109,14 @@ export function emptyAdmissionDados(): AdmissionDados {
     docAso: false,
     docFoto: false,
     docCopias: false,
+    docCpf: false,
+    docRg: false,
+    docComprovante: false,
+    docTitulo: false,
+    docCertidaoCivil: false,
+    docReservistaCopia: false,
     docPis: false,
+    sexo: "",
     temFilhos: false,
     filhoDeficiente: false,
     filhoCertidao: false,
@@ -156,6 +171,47 @@ export function emptyAdmissionDados(): AdmissionDados {
   };
 }
 
+export const UFS = [
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+  "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+] as const;
+
+export const OPCOES = {
+  nacionalidade: ["Brasileira", "Brasileira naturalizada", "Estrangeira"],
+  sexo: ["Masculino", "Feminino", "Não informado"],
+  identidadeOrgao: ["SSP", "DETRAN", "IFP", "Polícia Federal", "Cartório", "Outros"],
+  estadoCivil: ["Solteiro(a)", "Casado(a)", "União estável", "Divorciado(a)", "Separado(a)", "Viúvo(a)"],
+  corRaca: ["Branca", "Preta", "Parda", "Amarela", "Indígena", "Não informado"],
+  grauInstrucao: [
+    "Analfabeto",
+    "Até o 5º ano incompleto",
+    "5º ano completo do ensino fundamental",
+    "Do 6º ao 9º ano do fundamental incompleto",
+    "Ensino fundamental completo",
+    "Ensino médio incompleto",
+    "Ensino médio completo",
+    "Educação superior incompleta",
+    "Educação superior completa",
+    "Pós-graduação / mestrado / doutorado",
+  ],
+  contratoExperiencia: ["30 dias", "45 dias", "90 dias", "Sem contrato de experiência"],
+  diaFolga: [
+    "Domingo",
+    "Sábado",
+    "Sábado e domingo",
+    "Segunda-feira",
+    "Terça-feira",
+    "Quarta-feira",
+    "Quinta-feira",
+    "Sexta-feira",
+    "1 dia na semana (escala)",
+    "Conforme escala 12x36",
+    "Folga variável",
+  ],
+  intervalo: ["15 minutos", "1 hora", "2 horas", "Sem intervalo"],
+  reservistaCategoria: ["1ª categoria", "2ª categoria", "3ª categoria", "Dispensado"],
+} as const;
+
 export type JornadaPresetId = "comercial44" | "6x1" | "12x36" | "40h" | "personalizado";
 
 export const JORNADA_PRESETS: Array<{
@@ -173,7 +229,7 @@ export const JORNADA_PRESETS: Array<{
       diaFolga: "Domingo",
       horarioEntrada: "08:00",
       horarioSaida: "18:00",
-      intervalo: "1h",
+      intervalo: "1 hora",
       jornadaObs: "Segunda a sexta 8h + sábado 4h (44h semanais).",
     },
   },
@@ -187,7 +243,7 @@ export const JORNADA_PRESETS: Array<{
       diaFolga: "1 dia na semana (escala)",
       horarioEntrada: "08:00",
       horarioSaida: "17:20",
-      intervalo: "1h",
+      intervalo: "1 hora",
       jornadaObs: "Escala 6x1 — 44 horas semanais.",
     },
   },
@@ -201,7 +257,7 @@ export const JORNADA_PRESETS: Array<{
       diaFolga: "Conforme escala 12x36",
       horarioEntrada: "07:00",
       horarioSaida: "19:00",
-      intervalo: "1h",
+      intervalo: "1 hora",
       jornadaObs: "Jornada 12x36 (12h de trabalho / 36h de descanso).",
     },
   },
@@ -215,7 +271,7 @@ export const JORNADA_PRESETS: Array<{
       diaFolga: "Sábado e domingo",
       horarioEntrada: "08:00",
       horarioSaida: "17:00",
-      intervalo: "1h",
+      intervalo: "1 hora",
       jornadaObs: "Segunda a sexta, 8h/dia (40h semanais).",
     },
   },
@@ -246,6 +302,129 @@ export const STATUS_LABEL: Record<AdmissionStatus, string> = {
   em_andamento: "Em andamento",
   concluido: "Concluído",
 };
+
+/** Rótulos da ficha — o campo `identidadeLocal` é o local de atendimento. */
+export const DADOS_FIELD_LABELS: Record<keyof AdmissionDados, string> = {
+  docLivro: "Livro / ficha de registro",
+  docCtps: "CTPS",
+  docAso: "ASO admissional",
+  docFoto: "Foto 3x4",
+  docCopias: "CTPS foto e verso (cópia)",
+  docCpf: "Cópia do CPF",
+  docRg: "Cópia da identidade (RG/CNH)",
+  docComprovante: "Comprovante de residência com CEP",
+  docTitulo: "Cópia do título de eleitor",
+  docCertidaoCivil: "Certidão de casamento ou nascimento",
+  docReservistaCopia: "Cópia da carteira de reservista",
+  docPis: "Cadastro PIS",
+  sexo: "Sexo",
+  temFilhos: "Filhos < 14 ou deficiência",
+  filhoDeficiente: "Filho com deficiência",
+  filhoCertidao: "Certidão de nascimento (filhos)",
+  filhoVacina: "Cartão de vacina",
+  filhoEscolaridade: "Regularidade escolar",
+  nome: "Nome",
+  endereco: "Endereço",
+  cidade: "Cidade",
+  cep: "CEP",
+  nacionalidade: "Nacionalidade",
+  nascimento: "Data de nascimento",
+  identidade: "Identidade",
+  identidadeOrgao: "Órgão emissor",
+  identidadeLocal: "Local de atendimento",
+  identidadeEmissao: "Data de emissão (identidade)",
+  telefone: "Telefone",
+  cpf: "CPF",
+  titulo: "Título de eleitor",
+  tituloZona: "Zona",
+  tituloSecao: "Seção",
+  tituloUf: "UF título",
+  reservista: "Carteira de reservista",
+  reservistaCategoria: "Categoria reservista",
+  reservistaUf: "UF reservista",
+  ctpsNumero: "CTPS digital — número",
+  ctpsSerie: "Série CTPS",
+  ctpsUf: "UF CTPS",
+  ctpsEmissao: "Data emissão CTPS",
+  pis: "PIS/PASEP",
+  pai: "Filiação — pai",
+  mae: "Filiação — mãe",
+  estadoCivil: "Estado civil",
+  conjuge: "Cônjuge",
+  grauInstrucao: "Grau de instrução",
+  grauCompleto: "Completo / incompleto",
+  corRaca: "Cor/raça",
+  primeiroEmprego: "1º emprego",
+  dataAdmissao: "Data de admissão",
+  salario: "Salário",
+  funcao: "Função",
+  cargaMensal: "Carga horária mensal",
+  cargaSemanal: "Carga horária semanal",
+  diaFolga: "Dia de folga",
+  contratoExperiencia: "Contrato de experiência",
+  valeTransporte: "Vale-transporte",
+  horarioEntrada: "Horário de entrada",
+  horarioSaida: "Horário de saída",
+  intervalo: "Intervalo",
+  jornadaObs: "Observação da jornada",
+  jornadaPreset: "Modelo de jornada",
+  asoData: "Data do ASO",
+};
+
+export function formatAdmissionField(key: keyof AdmissionDados, dados: AdmissionDados): string {
+  const v = dados[key];
+  if (typeof v === "boolean") return v ? "Sim" : "Não";
+  if (key === "primeiroEmprego") {
+    if (v === "primeiro") return "É 1º emprego";
+    if (v === "outro") return "Já teve outro emprego";
+  }
+  if (key === "valeTransporte") {
+    if (v === "sim") return "SIM — 6% do salário base (CLT)";
+    if (v === "nao") return "NÃO";
+  }
+  if (key === "grauCompleto") {
+    if (v === "completo") return "Completo";
+    if (v === "incompleto") return "Incompleto / cursando";
+  }
+  const s = String(v || "").trim();
+  return s || "—";
+}
+
+/** Documentos da nossa listagem que a admissão CLT/eSocial/NR-7 realmente exige. */
+export const DOCS_OBRIGATORIOS: Array<{ key: keyof AdmissionDados; label: string }> = [
+  { key: "docLivro", label: "Livro ou ficha de registro" },
+  { key: "docCtps", label: "CTPS digital" },
+  { key: "docAso", label: "ASO admissional" },
+  { key: "docCpf", label: "Cópia do CPF" },
+  { key: "docRg", label: "Cópia da identidade" },
+  { key: "docComprovante", label: "Comprovante de residência com CEP" },
+  { key: "docPis", label: "Cadastro do PIS" },
+];
+
+export function admissionSaveErrors(dados: AdmissionDados): string | null {
+  if (dados.nome.trim().length < 2) return "Informe o nome do funcionário.";
+  if (dados.cpf.replace(/\D/g, "").length !== 11) return "CPF do funcionário é obrigatório.";
+  if (!dados.nascimento) return "Data de nascimento é obrigatória.";
+  if (!dados.identidade.trim()) return "Número da identidade é obrigatório.";
+  if (!dados.endereco.trim() || !dados.cidade.trim() || dados.cep.replace(/\D/g, "").length !== 8) {
+    return "Endereço, cidade e CEP são obrigatórios.";
+  }
+  if (!dados.nacionalidade.trim()) return "Nacionalidade é obrigatória.";
+  if (!dados.estadoCivil.trim()) return "Estado civil é obrigatório.";
+  if (!dados.grauInstrucao.trim()) return "Grau de instrução é obrigatório.";
+  if (!dados.corRaca.trim()) return "Declaração de cor/raça é obrigatória (eSocial).";
+  if (!dados.dataAdmissao) return "Data de admissão é obrigatória.";
+  if (!dados.salario.trim() || !dados.funcao.trim()) return "Salário e função são obrigatórios.";
+  if (!dados.asoData) return "Data do ASO (exame admissional) é obrigatória.";
+  if (!dados.primeiroEmprego) return "Informe se é o 1º emprego.";
+  if (!dados.valeTransporte) return "Informe se haverá desconto de vale-transporte.";
+  const faltaDoc = DOCS_OBRIGATORIOS.find((d) => dados[d.key] !== true);
+  if (faltaDoc) return `Marque o documento obrigatório: ${faltaDoc.label}.`;
+  if (dados.temFilhos && !dados.filhoCertidao) {
+    return "Com filhos menores ou com deficiência, a certidão de nascimento é obrigatória.";
+  }
+  return null;
+}
 
 export function mergeAdmissionDados(raw: unknown): AdmissionDados {
   const base = emptyAdmissionDados();

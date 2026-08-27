@@ -9,9 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import {
+  DADOS_FIELD_LABELS,
   ORIGEM_LABEL,
   STATUS_LABEL,
+  formatAdmissionField,
   mergeAdmissionDados,
+  type AdmissionDados,
   type AdmissionDetail,
   type AdmissionOrigem,
   type AdmissionStatus,
@@ -206,15 +209,13 @@ const AdmissoesPage = () => {
                     ))}
                   </ul>
                 )}
-                <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <dt>Admissão</dt>
-                  <dd>{mergeAdmissionDados(aberta.dados).dataAdmissao || "—"}</dd>
-                  <dt>Função</dt>
-                  <dd>{mergeAdmissionDados(aberta.dados).funcao || "—"}</dd>
-                  <dt>Salário</dt>
-                  <dd>{mergeAdmissionDados(aberta.dados).salario || "—"}</dd>
-                  <dt>CPF</dt>
-                  <dd>{mergeAdmissionDados(aberta.dados).cpf || "—"}</dd>
+                <dl className="grid max-h-80 grid-cols-2 gap-x-3 gap-y-1 overflow-y-auto text-xs text-muted-foreground">
+                  {(Object.keys(DADOS_FIELD_LABELS) as (keyof AdmissionDados)[]).map((key) => (
+                    <div key={key} className="contents">
+                      <dt>{DADOS_FIELD_LABELS[key]}</dt>
+                      <dd className="text-foreground">{formatAdmissionField(key, mergeAdmissionDados(aberta.dados))}</dd>
+                    </div>
+                  ))}
                 </dl>
               </>
             )}

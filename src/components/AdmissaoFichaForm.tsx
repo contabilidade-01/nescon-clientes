@@ -4,8 +4,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { maskCNPJ, maskCPF } from "@/lib/masks";
+import { cn } from "@/lib/utils";
 import {
   JORNADA_PRESETS,
+  OPCOES,
+  UFS,
   type AdmissionDados,
   type AdmissionAnexo,
 } from "@/lib/admissionFicha";
@@ -51,6 +54,62 @@ const Field = ({
     {children}
   </div>
 );
+
+function NativeSelect({
+  value,
+  onChange,
+  options,
+  placeholder = "Selecione",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: readonly string[];
+  placeholder?: string;
+}) {
+  const opts = value && !(options as readonly string[]).includes(value) ? [value, ...options] : [...options];
+  return (
+    <select
+      className={cn(
+        "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">{placeholder}</option>
+      {opts.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function DocItem({
+  checked,
+  onChange,
+  children,
+  obrigatorio,
+  aplicavel,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  children: React.ReactNode;
+  obrigatorio?: boolean;
+  aplicavel?: boolean;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2 text-sm">
+      <Checkbox checked={checked} onCheckedChange={(c) => onChange(c === true)} />
+      <span>
+        {children}
+        {obrigatorio && <span className="ml-1 text-xs font-semibold text-destructive">Obrigatório</span>}
+        {aplicavel && <span className="ml-1 text-xs text-muted-foreground">quando aplicável</span>}
+      </span>
+    </label>
+  );
+}
 
 export function AdmissaoFichaForm({
   dados,
@@ -132,25 +191,53 @@ export function AdmissaoFichaForm({
       <section className="space-y-3">
         <h2 className="text-sm font-bold uppercase tracking-wide">Documentos para envio</h2>
         <p className="text-xs text-muted-foreground">
-          Para efetivar a contratação, a empresa deverá enviar os documentos abaixo. Marque o que já
-          tem — o salvamento não exige checklist completo.
+          Base CLT, eSocial (S-2200) e NR-7. Marque o que já está em mãos. Os itens obrigatórios
+          precisam estar marcados para salvar.
         </p>
+        <p className="text-xs font-medium">Obrigatórios</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          {(
-            [
-              ["docLivro", "Livro de Registro ou Ficha de Registro"],
-              ["docCtps", "CTPS (carteira de trabalho)"],
-              ["docAso", "Atestado médico admissional (ASO)"],
-              ["docFoto", "Uma foto 3x4"],
-              ["docCopias", "Cópias: CPF, RG, título, certidão, reservista, comprovante com CEP, CTPS foto/verso"],
-              ["docPis", "Cadastro do PIS (cartão ou extrato ativo da Caixa)"],
-            ] as const
-          ).map(([key, label]) => (
-            <label key={key} className="flex cursor-pointer items-start gap-2 text-sm">
-              <Checkbox checked={dados[key]} onCheckedChange={(c) => set({ [key]: c === true } as Partial<AdmissionDados>)} />
-              <span>{label}</span>
-            </label>
-          ))}
+          <DocItem obrigatorio checked={dados.docLivro} onChange={(v) => set({ docLivro: v })}>
+            Livro de Registro ou Ficha de Registro
+          </DocItem>
+          <DocItem obrigatorio checked={dados.docCtps} onChange={(v) => set({ docCtps: v })}>
+            CTPS digital
+          </DocItem>
+          <DocItem obrigatorio checked={dados.docAso} onChange={(v) => set({ docAso: v })}>
+            Atestado médico admissional (ASO)
+          </DocItem>
+          <DocItem obrigatorio checked={dados.docCpf} onChange={(v) => set({ docCpf: v })}>
+            Cópia do CPF
+          </DocItem>
+          <DocItem obrigatorio checked={dados.docRg} onChange={(v) => set({ docRg: v })}>
+            Cópia da identidade (RG ou CNH)
+          </DocItem>
+          <DocItem obrigatorio checked={dados.docComprovante} onChange={(v) => set({ docComprovante: v })}>
+            Comprovante de residência com CEP
+          </DocItem>
+          <DocItem obrigatorio checked={dados.docPis} onChange={(v) => set({ docPis: v })}>
+            Cadastro do PIS (cartão ou extrato ativo da Caixa)
+          </DocItem>
+        </div>
+        <p className="text-xs font-medium">Quando aplicável</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <DocItem aplicavel checked={dados.docTitulo} onChange={(v) => set({ docTitulo: v })}>
+            Título de eleitor
+          </DocItem>
+          <DocItem aplicavel checked={dados.docReservistaCopia} onChange={(v) => set({ docReservistaCopia: v })}>
+            Carteira de reservista (homem)
+          </DocItem>
+          <DocItem aplicavel checked={dados.docCertidaoCivil} onChange={(v) => set({ docCertidaoCivil: v })}>
+            Certidão de casamento ou nascimento (solteiro)
+          </DocItem>
+        </div>
+        <p className="text-xs font-medium">Opcional</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <DocItem checked={dados.docFoto} onChange={(v) => set({ docFoto: v })}>
+            Foto 3x4
+          </DocItem>
+          <DocItem checked={dados.docCopias} onChange={(v) => set({ docCopias: v })}>
+            CTPS parte da foto e verso
+          </DocItem>
         </div>
         <label className="flex cursor-pointer items-start gap-2 text-sm">
           <Checkbox checked={dados.temFilhos} onCheckedChange={(c) => set({ temFilhos: c === true })} />
@@ -190,28 +277,31 @@ export function AdmissaoFichaForm({
           <Field label="1. Nome *" className="space-y-1.5 sm:col-span-2">
             <Input value={dados.nome} onChange={(e) => set({ nome: e.target.value })} />
           </Field>
-          <Field label="2. Endereço" className="space-y-1.5 sm:col-span-2">
+          <Field label="2. Endereço *" className="space-y-1.5 sm:col-span-2">
             <Input value={dados.endereco} onChange={(e) => set({ endereco: e.target.value })} />
           </Field>
-          <Field label="3. Cidade">
+          <Field label="3. Cidade *">
             <Input value={dados.cidade} onChange={(e) => set({ cidade: e.target.value })} />
           </Field>
-          <Field label="CEP">
+          <Field label="CEP *">
             <Input value={maskCepLocal(dados.cep)} onChange={(e) => set({ cep: e.target.value.replace(/\D/g, "").slice(0, 8) })} />
           </Field>
-          <Field label="4. Nacionalidade">
-            <Input value={dados.nacionalidade} onChange={(e) => set({ nacionalidade: e.target.value })} />
+          <Field label="4. Nacionalidade *">
+            <NativeSelect value={dados.nacionalidade} onChange={(v) => set({ nacionalidade: v })} options={OPCOES.nacionalidade} />
           </Field>
-          <Field label="5. Data de nascimento">
+          <Field label="Sexo">
+            <NativeSelect value={dados.sexo} onChange={(v) => set({ sexo: v })} options={OPCOES.sexo} />
+          </Field>
+          <Field label="5. Data de nascimento *">
             <Input type="date" value={dados.nascimento} onChange={(e) => set({ nascimento: e.target.value })} />
           </Field>
-          <Field label="6. Identidade">
+          <Field label="6. Identidade *">
             <Input value={dados.identidade} onChange={(e) => set({ identidade: e.target.value })} />
           </Field>
           <Field label="Órgão emissor">
-            <Input value={dados.identidadeOrgao} onChange={(e) => set({ identidadeOrgao: e.target.value })} />
+            <NativeSelect value={dados.identidadeOrgao} onChange={(v) => set({ identidadeOrgao: v })} options={OPCOES.identidadeOrgao} />
           </Field>
-          <Field label="Local">
+          <Field label="Local de atendimento">
             <Input value={dados.identidadeLocal} onChange={(e) => set({ identidadeLocal: e.target.value })} />
           </Field>
           <Field label="Data de emissão">
@@ -220,7 +310,7 @@ export function AdmissaoFichaForm({
           <Field label="Tel.">
             <Input value={dados.telefone} onChange={(e) => set({ telefone: e.target.value })} />
           </Field>
-          <Field label="7. CPF">
+          <Field label="7. CPF *">
             <Input value={maskCPF(dados.cpf)} onChange={(e) => set({ cpf: e.target.value.replace(/\D/g, "").slice(0, 11) })} />
           </Field>
           <Field label="8. Título de eleitor">
@@ -233,16 +323,16 @@ export function AdmissaoFichaForm({
             <Input value={dados.tituloSecao} onChange={(e) => set({ tituloSecao: e.target.value })} />
           </Field>
           <Field label="UF">
-            <Input maxLength={2} value={dados.tituloUf} onChange={(e) => set({ tituloUf: e.target.value.toUpperCase() })} />
+            <NativeSelect value={dados.tituloUf} onChange={(v) => set({ tituloUf: v })} options={UFS} placeholder="UF" />
           </Field>
           <Field label="9. Carteira de reservista">
             <Input value={dados.reservista} onChange={(e) => set({ reservista: e.target.value })} />
           </Field>
           <Field label="Categoria">
-            <Input value={dados.reservistaCategoria} onChange={(e) => set({ reservistaCategoria: e.target.value })} />
+            <NativeSelect value={dados.reservistaCategoria} onChange={(v) => set({ reservistaCategoria: v })} options={OPCOES.reservistaCategoria} />
           </Field>
           <Field label="UF reservista">
-            <Input maxLength={2} value={dados.reservistaUf} onChange={(e) => set({ reservistaUf: e.target.value.toUpperCase() })} />
+            <NativeSelect value={dados.reservistaUf} onChange={(v) => set({ reservistaUf: v })} options={UFS} placeholder="UF" />
           </Field>
           <Field label="10. CTPS digital — número">
             <Input value={dados.ctpsNumero} onChange={(e) => set({ ctpsNumero: e.target.value })} />
@@ -251,7 +341,7 @@ export function AdmissaoFichaForm({
             <Input value={dados.ctpsSerie} onChange={(e) => set({ ctpsSerie: e.target.value })} />
           </Field>
           <Field label="UF CTPS">
-            <Input maxLength={2} value={dados.ctpsUf} onChange={(e) => set({ ctpsUf: e.target.value.toUpperCase() })} />
+            <NativeSelect value={dados.ctpsUf} onChange={(v) => set({ ctpsUf: v })} options={UFS} placeholder="UF" />
           </Field>
           <Field label="Data emissão CTPS">
             <Input type="date" value={dados.ctpsEmissao} onChange={(e) => set({ ctpsEmissao: e.target.value })} />
@@ -265,27 +355,28 @@ export function AdmissaoFichaForm({
           <Field label="Mãe">
             <Input value={dados.mae} onChange={(e) => set({ mae: e.target.value })} />
           </Field>
-          <Field label="13. Estado civil">
-            <Input value={dados.estadoCivil} onChange={(e) => set({ estadoCivil: e.target.value })} />
+          <Field label="13. Estado civil *">
+            <NativeSelect value={dados.estadoCivil} onChange={(v) => set({ estadoCivil: v })} options={OPCOES.estadoCivil} />
           </Field>
           <Field label="Cônjuge">
             <Input value={dados.conjuge} onChange={(e) => set({ conjuge: e.target.value })} />
           </Field>
-          <Field label="14. Grau de instrução">
-            <Input value={dados.grauInstrucao} onChange={(e) => set({ grauInstrucao: e.target.value })} />
+          <Field label="14. Grau de instrução *">
+            <NativeSelect value={dados.grauInstrucao} onChange={(v) => set({ grauInstrucao: v })} options={OPCOES.grauInstrucao} />
           </Field>
           <Field label="Completo / incompleto">
-            <div className="flex gap-2">
-              <Button type="button" size="sm" variant={dados.grauCompleto === "completo" ? "default" : "outline"} onClick={() => set({ grauCompleto: "completo" })}>
-                Completo
-              </Button>
-              <Button type="button" size="sm" variant={dados.grauCompleto === "incompleto" ? "default" : "outline"} onClick={() => set({ grauCompleto: "incompleto" })}>
-                Incompleto / cursando
-              </Button>
-            </div>
+            <NativeSelect
+              value={dados.grauCompleto === "completo" ? "Completo" : dados.grauCompleto === "incompleto" ? "Incompleto / cursando" : ""}
+              onChange={(v) =>
+                set({
+                  grauCompleto: v.startsWith("Completo") ? "completo" : v ? "incompleto" : "",
+                })
+              }
+              options={["Completo", "Incompleto / cursando"]}
+            />
           </Field>
-          <Field label="15. Declaração de cor/raça">
-            <Input value={dados.corRaca} onChange={(e) => set({ corRaca: e.target.value })} />
+          <Field label="15. Declaração de cor/raça *">
+            <NativeSelect value={dados.corRaca} onChange={(v) => set({ corRaca: v })} options={OPCOES.corRaca} />
           </Field>
         </div>
       </section>
@@ -293,28 +384,29 @@ export function AdmissaoFichaForm({
       <section className="space-y-3">
         <h2 className="text-sm font-bold uppercase tracking-wide">Informações do empregador para a admissão</h2>
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">1. Emprego</Label>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" variant={dados.primeiroEmprego === "primeiro" ? "default" : "outline"} onClick={() => set({ primeiroEmprego: "primeiro" })}>
-              É 1º emprego
-            </Button>
-            <Button type="button" size="sm" variant={dados.primeiroEmprego === "outro" ? "default" : "outline"} onClick={() => set({ primeiroEmprego: "outro" })}>
-              Já teve outro emprego
-            </Button>
-          </div>
+          <Label className="text-xs text-muted-foreground">1. Emprego *</Label>
+          <NativeSelect
+            value={dados.primeiroEmprego === "primeiro" ? "É 1º emprego" : dados.primeiroEmprego === "outro" ? "Já teve outro emprego" : ""}
+            onChange={(v) =>
+              set({
+                primeiroEmprego: v.startsWith("É 1º") ? "primeiro" : v ? "outro" : "",
+              })
+            }
+            options={["É 1º emprego", "Já teve outro emprego"]}
+          />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="2. Data de admissão">
+          <Field label="2. Data de admissão *">
             <Input type="date" value={dados.dataAdmissao} onChange={(e) => set({ dataAdmissao: e.target.value })} />
           </Field>
-          <Field label="3. Salário">
+          <Field label="3. Salário *">
             <Input value={dados.salario} onChange={(e) => set({ salario: e.target.value })} />
           </Field>
-          <Field label="Função">
+          <Field label="Função *">
             <Input value={dados.funcao} onChange={(e) => set({ funcao: e.target.value })} />
           </Field>
           <Field label="5. Contrato de experiência">
-            <Input value={dados.contratoExperiencia} onChange={(e) => set({ contratoExperiencia: e.target.value })} />
+            <NativeSelect value={dados.contratoExperiencia} onChange={(v) => set({ contratoExperiencia: v })} options={OPCOES.contratoExperiencia} />
           </Field>
         </div>
 
@@ -341,10 +433,18 @@ export function AdmissaoFichaForm({
               <Input value={dados.cargaSemanal} onChange={(e) => set({ cargaSemanal: e.target.value, jornadaPreset: "personalizado" })} />
             </Field>
             <Field label="Dia de folga">
-              <Input value={dados.diaFolga} onChange={(e) => set({ diaFolga: e.target.value, jornadaPreset: "personalizado" })} />
+              <NativeSelect
+                value={dados.diaFolga}
+                onChange={(v) => set({ diaFolga: v, jornadaPreset: "personalizado" })}
+                options={OPCOES.diaFolga}
+              />
             </Field>
             <Field label="Intervalo">
-              <Input value={dados.intervalo} onChange={(e) => set({ intervalo: e.target.value, jornadaPreset: "personalizado" })} />
+              <NativeSelect
+                value={dados.intervalo}
+                onChange={(v) => set({ intervalo: v, jornadaPreset: "personalizado" })}
+                options={OPCOES.intervalo}
+              />
             </Field>
             <Field label="7. Horário de entrada">
               <Input type="time" value={dados.horarioEntrada} onChange={(e) => set({ horarioEntrada: e.target.value, jornadaPreset: "personalizado" })} />
@@ -364,18 +464,15 @@ export function AdmissaoFichaForm({
 
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">
-            6. Desconto de vale-transporte — 6% do salário base, conforme CLT
+            6. Desconto de vale-transporte * — 6% do salário base, conforme CLT
           </Label>
-          <div className="flex gap-2">
-            <Button type="button" size="sm" variant={dados.valeTransporte === "sim" ? "default" : "outline"} onClick={() => set({ valeTransporte: "sim" })}>
-              SIM
-            </Button>
-            <Button type="button" size="sm" variant={dados.valeTransporte === "nao" ? "default" : "outline"} onClick={() => set({ valeTransporte: "nao" })}>
-              NÃO
-            </Button>
-          </div>
+          <NativeSelect
+            value={dados.valeTransporte === "sim" ? "SIM" : dados.valeTransporte === "nao" ? "NÃO" : ""}
+            onChange={(v) => set({ valeTransporte: v === "SIM" ? "sim" : v === "NÃO" ? "nao" : "" })}
+            options={["SIM", "NÃO"]}
+          />
         </div>
-        <Field label="8. Data do documento ASO (exame admissional)">
+        <Field label="8. Data do documento ASO (exame admissional) *">
           <Input type="date" value={dados.asoData} onChange={(e) => set({ asoData: e.target.value })} />
         </Field>
       </section>
