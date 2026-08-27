@@ -413,13 +413,15 @@ export function admissionSaveErrors(dados: AdmissionDados): string | null {
   if (dados.nome.trim().length < 2) return "Informe o nome do funcionário.";
   if (dados.cpf.replace(/\D/g, "").length !== 11) return "CPF do funcionário é obrigatório.";
   if (!dados.nascimento) return "Data de nascimento é obrigatória.";
-  if (!dados.localNascimento.trim()) return "Local de nascimento é obrigatório.";
+  if (dados.localNascimento.trim().length < 2) return "Local de nascimento é obrigatório.";
   if (!dados.identidade.trim()) return "Número da identidade é obrigatório.";
   if (!dados.endereco.trim() || !dados.cidade.trim() || dados.cep.replace(/\D/g, "").length !== 8) {
     return "Endereço, cidade e CEP são obrigatórios.";
   }
   if (!dados.nacionalidade.trim()) return "Nacionalidade é obrigatória.";
-  if (!dados.pai.trim() || !dados.mae.trim()) return "Filiação (pai e mãe) é obrigatória.";
+  if (dados.pai.trim().length < 2 || dados.mae.trim().length < 2) {
+    return "Filiação (pai e mãe) é obrigatória.";
+  }
   if (!dados.estadoCivil.trim()) return "Estado civil é obrigatório.";
   if (!dados.grauInstrucao.trim()) return "Grau de instrução é obrigatório.";
   if (!dados.corRaca.trim()) return "Declaração de cor/raça é obrigatória (eSocial).";

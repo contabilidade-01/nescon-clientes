@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Calculator, ClipboardList, Download, Save } from "lucide-react";
 import { toast } from "sonner";
@@ -19,6 +19,16 @@ import {
 } from "@/lib/admissionFicha";
 import { downloadAdmissionPdf } from "@/lib/generateAdmissionPdf";
 import { maskCNPJ } from "@/lib/masks";
+import {
+  clearAdmissionDraft,
+  clearDraftFiles,
+  draftScope,
+  fileStoreKey,
+  readAdmissionDraft,
+  readDraftFiles,
+  writeAdmissionDraft,
+  writeDraftFiles,
+} from "@/lib/admissionDraft";
 
 const LS_KEY = "nescon_admission_edit";
 
@@ -51,6 +61,8 @@ const AdmissaoPage = () => {
   const [lista, setLista] = useState<AdmissionListItem[]>([]);
   const [pendingByKind, setPendingByKind] = useState<Partial<Record<AnexoKind, File>>>({});
   const [saving, setSaving] = useState(false);
+  const hydrating = useRef(true);
+  const scope = draftScope(asCompany, company?.id);
 
   const aplicarDetalhe = useCallback((d: AdmissionDetail) => {
     setSaved(d);
@@ -75,32 +87,133 @@ const AdmissaoPage = () => {
   }, []);
 
   useEffect(() => {
-    if (asCompany && company) {
-      setEmpresaCnpj(company.cnpj.replace(/\D/g, ""));
-      setEmpresaNome(company.name);
-      setClienteEncontrado(true);
-      api.admissoes
-        .list()
-        .then(setLista)
-        .catch(() => {});
-    }
-  }, [asCompany, company]);
+    if (!asCompany || !company) return;
+    let cancelled = false;
+    hydrating.current = true;
+    setEmpresaCnpj(company.cnpj.replace(/\D/g, ""));
+    setEmpresaNome(company.name);
+    setClienteEncontrado(true);
+    const sc = draftScope(true, company.id);
+    (async () => {
+      try {
+        const l = await api.admissoes.list();
+        if (cancelled) return;
+        setLista(l);
+        const draft = readAdmissionDraft(sc);
+        const lastId = draft?.savedId || l[0]?.id;
+        if (lastId) {
+          try {
+            const d = await api.admissoes.get(lastId);
+            if (cancelled) return;
+            aplicarDetalhe(d);
+            if (draft && draft.savedId === d.id && draft.ts > Date.parse(d.updated_at)) {
+              setDados(draft.dados);
+              setContatoEmail(draft.contatoEmail);
+              setContatoTelefone(draft.contatoTelefone);
+            }
+          } catch {
+            if (!cancelled && draft) {
+              setDados(draft.dados);
+              setContatoEmail(draft.contatoEmail);
+              setContatoTelefone(draft.contatoTelefone);
+            }
+          }
+        } else if (draft) {
+          setDados(draft.dados);
+          setContatoEmail(draft.contatoEmail);
+          setContatoTelefone(draft.contatoTelefone);
+        }
+        const files = await readDraftFiles(fileStoreKey(sc, lastId || null));
+        if (!cancelled && Object.keys(files).length) setPendingByKind(files);
+      } catch {
+        /* lista/rascunho opcionais */
+      } finally {
+        if (!cancelled) hydrating.current = false;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [asCompany, company, aplicarDetalhe]);
 
   useEffect(() => {
     if (asCompany) return;
+    let cancelled = false;
+    hydrating.current = true;
+    const sc = draftScope(false);
     const stored = readStored();
-    if (!stored) return;
-    api.admissoes
-      .publicGet(stored.id, stored.token)
-      .then(aplicarDetalhe)
-      .catch(() => {
-        try {
-          localStorage.removeItem(LS_KEY);
-        } catch {
-          /* ignore */
+    const draft = readAdmissionDraft(sc);
+    (async () => {
+      try {
+        if (stored) {
+          try {
+            const d = await api.admissoes.publicGet(stored.id, stored.token);
+            if (cancelled) return;
+            aplicarDetalhe(d);
+            if (draft && draft.savedId === d.id && draft.ts > Date.parse(d.updated_at)) {
+              setDados(draft.dados);
+              setEmpresaCnpj(draft.empresaCnpj);
+              setEmpresaNome(draft.empresaNome);
+              setContatoEmail(draft.contatoEmail);
+              setContatoTelefone(draft.contatoTelefone);
+            }
+          } catch {
+            try {
+              localStorage.removeItem(LS_KEY);
+            } catch {
+              /* ignore */
+            }
+            if (!cancelled && draft) {
+              setDados(draft.dados);
+              setEmpresaCnpj(draft.empresaCnpj);
+              setEmpresaNome(draft.empresaNome);
+              setContatoEmail(draft.contatoEmail);
+              setContatoTelefone(draft.contatoTelefone);
+            }
+          }
+        } else if (draft) {
+          setDados(draft.dados);
+          setEmpresaCnpj(draft.empresaCnpj);
+          setEmpresaNome(draft.empresaNome);
+          setContatoEmail(draft.contatoEmail);
+          setContatoTelefone(draft.contatoTelefone);
         }
-      });
+        const files = await readDraftFiles(fileStoreKey(sc, stored?.id || draft?.savedId || null));
+        if (!cancelled && Object.keys(files).length) setPendingByKind(files);
+      } finally {
+        if (!cancelled) hydrating.current = false;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [asCompany, aplicarDetalhe]);
+
+  useEffect(() => {
+    if (hydrating.current) return;
+    const t = window.setTimeout(() => {
+      writeAdmissionDraft(scope, {
+        savedId: saved?.id || null,
+        dados,
+        empresaCnpj,
+        empresaNome,
+        contatoEmail,
+        contatoTelefone,
+        ts: Date.now(),
+      });
+      writeDraftFiles(fileStoreKey(scope, saved?.id), pendingByKind).catch(() => {});
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [
+    scope,
+    saved?.id,
+    dados,
+    empresaCnpj,
+    empresaNome,
+    contatoEmail,
+    contatoTelefone,
+    pendingByKind,
+  ]);
 
   const onCnpjBlur = async () => {
     if (asCompany) return;
@@ -196,6 +309,7 @@ const AdmissaoPage = () => {
         det = await api.admissoes.publicCreate(body());
       }
       await enviarAnexos(det.id, det.edit_token);
+      void clearDraftFiles(fileStoreKey(scope, null));
       const fresh = asCompany
         ? await api.admissoes.get(det.id)
         : det.edit_token
@@ -215,9 +329,14 @@ const AdmissaoPage = () => {
   };
 
   const novaFicha = () => {
+    hydrating.current = true;
     setSaved(null);
     setDados(emptyAdmissionDados());
     setPendingByKind({});
+    setContatoEmail("");
+    setContatoTelefone("");
+    clearAdmissionDraft(scope);
+    void clearDraftFiles(fileStoreKey(scope, null));
     if (asCompany && company) {
       setEmpresaCnpj(company.cnpj.replace(/\D/g, ""));
       setEmpresaNome(company.name);
@@ -227,15 +346,23 @@ const AdmissaoPage = () => {
     } catch {
       /* ignore */
     }
+    window.setTimeout(() => {
+      hydrating.current = false;
+    }, 0);
   };
 
   const abrirLista = async (id: string) => {
+    hydrating.current = true;
     try {
       const d = await api.admissoes.get(id);
       aplicarDetalhe(d);
+      const files = await readDraftFiles(fileStoreKey(scope, d.id));
+      setPendingByKind(files);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não abriu a ficha");
+    } finally {
+      hydrating.current = false;
     }
   };
 
@@ -251,7 +378,9 @@ const AdmissaoPage = () => {
               <p className="text-xs uppercase tracking-wide opacity-85">Nescon Contabilidade</p>
               <h1 className="text-xl font-bold leading-tight">Ficha de registro de funcionários</h1>
               <p className="text-sm opacity-90">
-                Preencha, salve e baixe o PDF. O escritório é avisado automaticamente.
+                Preencha, salve e baixe o PDF. O escritório é avisado automaticamente. Foto e
+                dados ficam neste navegador mesmo se a página recarregar; o envio ao escritório
+                acontece ao salvar.
               </p>
             </div>
           </div>
