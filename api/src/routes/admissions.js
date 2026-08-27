@@ -13,7 +13,7 @@ const {
 } = require("../middleware/validate");
 const { getPublicAppUrl } = require("../mailer");
 const { configurado: whatsappConfigurado, enviarTexto } = require("../uazapi");
-const { uploadAny, resolveUploadPath, removeUploadFile } = require("../uploads");
+const { uploadAny, resolveUploadPath, removeUploadFile, UPLOAD_DIR } = require("../uploads");
 const { sanitizeDados, funcionarioNome } = require("../admissionSanitize");
 
 const ADMIN_WHATSAPP = (process.env.ADMIN_WHATSAPP || "5511948626605").replace(/\D/g, "");
@@ -120,6 +120,7 @@ function detailPayload(row, anexos, { includeToken = false } = {}) {
       id: a.id,
       file_name: a.file_name,
       created_at: a.created_at,
+      kind: a.kind || null,
     })),
     ...(includeToken ? { edit_token: row.edit_token } : {}),
   };
@@ -127,11 +128,27 @@ function detailPayload(row, anexos, { includeToken = false } = {}) {
 
 async function anexosOf(formId) {
   const { rows } = await db.query(
-    "SELECT id, file_name, created_at FROM admission_anexos WHERE form_id = $1 ORDER BY created_at",
+    "SELECT id, file_name, kind, created_at FROM admission_anexos WHERE form_id = $1 ORDER BY created_at",
     [formId]
   );
   return rows;
 }
+
+const KINDS_OK = new Set([
+  "docCtps",
+  "docAso",
+  "docCpf",
+  "docRg",
+  "docComprovante",
+  "docPis",
+  "docFoto",
+  "docCopias",
+  "docReservistaCopia",
+  "docCertidaoCivil",
+  "filhoCertidao",
+  "filhoVacina",
+  "filhoEscolaridade",
+]);
 
 function anexoMimeOk(file) {
   const mt = (file.mimetype || "").toLowerCase();
@@ -141,17 +158,52 @@ function anexoMimeOk(file) {
   return false;
 }
 
-async function gravarAnexos(formId, files) {
+function pastaRelativa(form) {
+  const emp = form.company_id
+    ? `empresas/${form.company_id}`
+    : `externo/${digits(form.empresa_cnpj) || "sem-cnpj"}`;
+  return `admissao/${emp}/${form.id}`;
+}
+
+async function gravarAnexos(form, files) {
   const saved = [];
+  const dirRel = pastaRelativa(form);
+  const dirAbs = path.join(UPLOAD_DIR, dirRel);
+  fs.mkdirSync(dirAbs, { recursive: true });
+
   for (const file of files || []) {
-    if (!anexoMimeOk(file)) {
+    const kind = String(file.fieldname || "").trim();
+    if (!KINDS_OK.has(kind) || !anexoMimeOk(file)) {
       removeUploadFile(file.filename);
-      continue;
+      const err = new Error("Anexo inválido. Envie PDF ou imagem no item correspondente.");
+      err.status = 400;
+      throw err;
     }
+    const destName = `${kind}-${path.basename(file.filename)}`;
+    const rel = `${dirRel}/${destName}`.replace(/\\/g, "/");
+    const destAbs = path.join(UPLOAD_DIR, rel);
+    try {
+      fs.renameSync(path.join(UPLOAD_DIR, file.filename), destAbs);
+    } catch {
+      removeUploadFile(file.filename);
+      const err = new Error("Não foi possível gravar o arquivo na pasta da empresa.");
+      err.status = 400;
+      throw err;
+    }
+
+    const antigos = await db.query(
+      "SELECT id, file_path FROM admission_anexos WHERE form_id = $1 AND kind = $2",
+      [form.id, kind]
+    );
+    for (const a of antigos.rows) {
+      removeUploadFile(a.file_path);
+      await db.query("DELETE FROM admission_anexos WHERE id = $1", [a.id]);
+    }
+
     const { rows } = await db.query(
-      `INSERT INTO admission_anexos (form_id, file_path, file_name)
-       VALUES ($1, $2, $3) RETURNING id, file_name, created_at`,
-      [formId, file.filename, file.originalname || file.filename]
+      `INSERT INTO admission_anexos (form_id, file_path, file_name, kind)
+       VALUES ($1, $2, $3, $4) RETURNING id, file_name, kind, created_at`,
+      [form.id, rel, file.originalname || destName, kind]
     );
     saved.push(rows[0]);
   }
@@ -208,9 +260,15 @@ function clipPhone(val) {
   return String(val || "").trim().slice(0, 30);
 }
 
-function requireNome(dados) {
+function requireCampos(dados) {
   if (!validateString(dados.nome, 2, 200)) {
     return "Nome do funcionário é obrigatório";
+  }
+  if (!validateString(dados.localNascimento, 2, 200)) {
+    return "Local de nascimento é obrigatório";
+  }
+  if (!validateString(dados.pai, 2, 200) || !validateString(dados.mae, 2, 200)) {
+    return "Filiação (pai e mãe) é obrigatória";
   }
   return null;
 }
@@ -238,7 +296,7 @@ router.post("/public", rateLimitPublic, async (req, res) => {
     if (parsed.error) return res.status(400).json({ error: parsed.error });
 
     const dados = sanitizeDados(req.body.dados);
-    const nomeErr = requireNome(dados);
+    const nomeErr = requireCampos(dados);
     if (nomeErr) return res.status(400).json({ error: nomeErr });
 
     const origem = parsed.company ? "publico_cliente" : "publico_externo";
@@ -299,7 +357,7 @@ router.patch("/public/:id", rateLimitPublic, async (req, res) => {
     const parsed = await parseBodyEmpresa(req.body, { requireContactIfExternal: !rows[0].company_id });
     if (parsed.error) return res.status(400).json({ error: parsed.error });
     const dados = sanitizeDados(req.body.dados);
-    const nomeErr = requireNome(dados);
+    const nomeErr = requireCampos(dados);
     if (nomeErr) return res.status(400).json({ error: nomeErr });
 
     const companyId = parsed.company ? parsed.company.id : rows[0].company_id;
@@ -333,7 +391,7 @@ router.patch("/public/:id", rateLimitPublic, async (req, res) => {
   }
 });
 
-router.post("/public/:id/anexos", rateLimitPublic, uploadAny.array("files", 8), async (req, res) => {
+router.post("/public/:id/anexos", rateLimitPublic, uploadAny.any(), async (req, res) => {
   try {
     if (!validateUUID(req.params.id)) return res.status(400).json({ error: "ID inválido" });
     const token = req.body.edit_token || req.query.token;
@@ -342,9 +400,10 @@ router.post("/public/:id/anexos", rateLimitPublic, uploadAny.array("files", 8), 
       (req.files || []).forEach((f) => removeUploadFile(f.filename));
       return res.status(404).json({ error: "Ficha não encontrada" });
     }
-    const saved = await gravarAnexos(rows[0].id, req.files);
+    const saved = await gravarAnexos(rows[0], req.files);
     res.status(201).json({ anexos: saved });
   } catch (err) {
+    if (err.status === 400) return res.status(400).json({ error: err.message });
     console.error(err);
     res.status(500).json({ error: "Erro interno" });
   }
@@ -387,7 +446,7 @@ router.get("/", authMiddleware, requireCompanyUser, async (req, res) => {
 router.post("/", authMiddleware, requireCompanyUser, async (req, res) => {
   try {
     const dados = sanitizeDados(req.body.dados);
-    const nomeErr = requireNome(dados);
+    const nomeErr = requireCampos(dados);
     if (nomeErr) return res.status(400).json({ error: nomeErr });
     const cnpj = digits(req.body.empresa_cnpj) || digits(req.company.cnpj);
     const nome = validateString(req.body.empresa_nome, 2, 200)
@@ -448,7 +507,7 @@ router.patch("/:id", authMiddleware, requireCompanyUser, async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: "Ficha não encontrada" });
     const dados = sanitizeDados(req.body.dados);
-    const nomeErr = requireNome(dados);
+    const nomeErr = requireCampos(dados);
     if (nomeErr) return res.status(400).json({ error: nomeErr });
     const cnpj = digits(req.body.empresa_cnpj) || digits(req.company.cnpj);
     const nome = validateString(req.body.empresa_nome, 2, 200)
@@ -476,20 +535,21 @@ router.patch("/:id", authMiddleware, requireCompanyUser, async (req, res) => {
   }
 });
 
-router.post("/:id/anexos", authMiddleware, requireCompanyUser, uploadAny.array("files", 8), async (req, res) => {
+router.post("/:id/anexos", authMiddleware, requireCompanyUser, uploadAny.any(), async (req, res) => {
   try {
     if (!validateUUID(req.params.id)) return res.status(400).json({ error: "ID inválido" });
     const { rows } = await db.query(
-      "SELECT id FROM admission_forms WHERE id = $1 AND company_id = $2",
+      "SELECT * FROM admission_forms WHERE id = $1 AND company_id = $2",
       [req.params.id, req.company.id]
     );
     if (!rows.length) {
       (req.files || []).forEach((f) => removeUploadFile(f.filename));
       return res.status(404).json({ error: "Ficha não encontrada" });
     }
-    const saved = await gravarAnexos(rows[0].id, req.files);
+    const saved = await gravarAnexos(rows[0], req.files);
     res.status(201).json({ anexos: saved });
   } catch (err) {
+    if (err.status === 400) return res.status(400).json({ error: err.message });
     console.error(err);
     res.status(500).json({ error: "Erro interno" });
   }

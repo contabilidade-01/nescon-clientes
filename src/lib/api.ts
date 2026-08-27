@@ -2234,14 +2234,17 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
-    publicUpload: async (id: string, token: string, files: File[]) => {
-      const form = new FormData();
-      form.append("edit_token", token);
-      for (const f of files) form.append("files", f);
-      const res = await fetch(`${API_BASE}/admissoes/public/${id}/anexos`, { method: "POST", body: form });
-      const data = await parseResponseJson<{ anexos: import("@/lib/admissionFicha").AdmissionAnexo[] }>(res);
-      if (!res.ok) throw new Error((data as { error?: string }).error || "Falha no anexo");
-      return data;
+    publicUpload: async (id: string, token: string, filesByKind: Partial<Record<string, File>>) => {
+      const entries = Object.entries(filesByKind).filter(([, f]) => f);
+      for (const [kind, file] of entries) {
+        const form = new FormData();
+        form.append("edit_token", token);
+        form.append(kind, file as File);
+        const res = await fetch(`${API_BASE}/admissoes/public/${id}/anexos`, { method: "POST", body: form });
+        const data = await parseResponseJson<{ anexos: import("@/lib/admissionFicha").AdmissionAnexo[]; error?: string }>(res);
+        if (!res.ok) throw new Error(data.error || "Falha no anexo");
+      }
+      return { ok: true as const };
     },
     list: () => request<import("@/lib/admissionFicha").AdmissionListItem[]>("/admissoes"),
     get: (id: string) => request<import("@/lib/admissionFicha").AdmissionDetail>(`/admissoes/${id}`),
@@ -2255,16 +2258,19 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
-    upload: async (id: string, files: File[]) => {
-      const form = new FormData();
-      for (const f of files) form.append("files", f);
+    upload: async (id: string, filesByKind: Partial<Record<string, File>>) => {
       const token = getToken();
       const headers: Record<string, string> = {};
       if (token) headers.Authorization = `Bearer ${token}`;
-      const res = await fetch(`${API_BASE}/admissoes/${id}/anexos`, { method: "POST", body: form, headers });
-      const data = await parseResponseJson<{ anexos: import("@/lib/admissionFicha").AdmissionAnexo[]; error?: string }>(res);
-      if (!res.ok) throw new Error(data.error || "Falha no anexo");
-      return data;
+      const entries = Object.entries(filesByKind).filter(([, f]) => f);
+      for (const [kind, file] of entries) {
+        const form = new FormData();
+        form.append(kind, file as File);
+        const res = await fetch(`${API_BASE}/admissoes/${id}/anexos`, { method: "POST", body: form, headers });
+        const data = await parseResponseJson<{ anexos: import("@/lib/admissionFicha").AdmissionAnexo[]; error?: string }>(res);
+        if (!res.ok) throw new Error(data.error || "Falha no anexo");
+      }
+      return { ok: true as const };
     },
     anexoUrl: (id: string, anexoId: string) => `${API_BASE}/admissoes/${id}/anexos/${anexoId}/file`,
   },

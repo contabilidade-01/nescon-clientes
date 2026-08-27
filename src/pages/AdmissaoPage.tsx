@@ -11,9 +11,11 @@ import {
   emptyAdmissionDados,
   mergeAdmissionDados,
   admissionSaveErrors,
+  admissionAnexoErrors,
   type AdmissionDados,
   type AdmissionDetail,
   type AdmissionListItem,
+  type AnexoKind,
 } from "@/lib/admissionFicha";
 import { downloadAdmissionPdf } from "@/lib/generateAdmissionPdf";
 import { maskCNPJ } from "@/lib/masks";
@@ -47,7 +49,7 @@ const AdmissaoPage = () => {
   const [lookupHint, setLookupHint] = useState<string | null>(null);
   const [saved, setSaved] = useState<AdmissionDetail | null>(null);
   const [lista, setLista] = useState<AdmissionListItem[]>([]);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingByKind, setPendingByKind] = useState<Partial<Record<AnexoKind, File>>>({});
   const [saving, setSaving] = useState(false);
 
   const aplicarDetalhe = useCallback((d: AdmissionDetail) => {
@@ -58,6 +60,7 @@ const AdmissaoPage = () => {
     setContatoEmail(d.contato_email || "");
     setContatoTelefone(d.contato_telefone || "");
     setClienteEncontrado(Boolean(d.company_id));
+    setPendingByKind({});
     if (d.edit_token) {
       try {
         localStorage.setItem(LS_KEY, JSON.stringify({ id: d.id, token: d.edit_token }));
@@ -135,10 +138,12 @@ const AdmissaoPage = () => {
   });
 
   const enviarAnexos = async (id: string, token?: string) => {
-    if (!pendingFiles.length) return;
-    if (asCompany) await api.admissoes.upload(id, pendingFiles);
-    else if (token) await api.admissoes.publicUpload(id, token, pendingFiles);
-    setPendingFiles([]);
+    const entries = Object.entries(pendingByKind).filter(([, f]) => f) as Array<[AnexoKind, File]>;
+    if (!entries.length) return;
+    const map = Object.fromEntries(entries) as Partial<Record<AnexoKind, File>>;
+    if (asCompany) await api.admissoes.upload(id, map);
+    else if (token) await api.admissoes.publicUpload(id, token, map);
+    setPendingByKind({});
   };
 
   const salvar = async () => {
@@ -149,6 +154,17 @@ const AdmissaoPage = () => {
     const dadosErr = admissionSaveErrors(dados);
     if (dadosErr) {
       toast.error(dadosErr);
+      return;
+    }
+    const kinds = new Set<string>([
+      ...(saved?.anexos || []).map((a) => a.kind).filter(Boolean) as string[],
+      ...Object.entries(pendingByKind)
+        .filter(([, f]) => f)
+        .map(([k]) => k),
+    ]);
+    const anexoErr = admissionAnexoErrors(dados, kinds);
+    if (anexoErr) {
+      toast.error(anexoErr);
       return;
     }
     if (empresaCnpj.replace(/\D/g, "").length !== 14) {
@@ -201,7 +217,7 @@ const AdmissaoPage = () => {
   const novaFicha = () => {
     setSaved(null);
     setDados(emptyAdmissionDados());
-    setPendingFiles([]);
+    setPendingByKind({});
     if (asCompany && company) {
       setEmpresaCnpj(company.cnpj.replace(/\D/g, ""));
       setEmpresaNome(company.name);
@@ -292,8 +308,8 @@ const AdmissaoPage = () => {
             lookupHint={lookupHint}
             onCnpjBlur={onCnpjBlur}
             anexos={saved?.anexos}
-            pendingFiles={pendingFiles}
-            onPendingFiles={setPendingFiles}
+            pendingByKind={pendingByKind}
+            onPendingByKind={setPendingByKind}
           />
 
           <div className="flex flex-wrap gap-2 border-t border-border pt-4">

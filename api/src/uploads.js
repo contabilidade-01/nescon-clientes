@@ -67,9 +67,10 @@ const uploadPdf = multer({
 
 /** Caminho absoluto dentro de UPLOAD_DIR, ou null se escapar do diretório (path traversal). */
 function resolveUploadPath(fileName) {
-  const base = path.basename(fileName || "");
-  if (!base) return null;
-  const full = path.resolve(UPLOAD_DIR, base);
+  const raw = String(fileName || "").replace(/\\/g, "/");
+  if (!raw || raw.includes("..")) return null;
+  const rel = raw.replace(/^\/+/, "");
+  const full = path.resolve(UPLOAD_DIR, rel);
   if (!full.startsWith(path.resolve(UPLOAD_DIR))) return null;
   return full;
 }

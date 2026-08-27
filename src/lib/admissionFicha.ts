@@ -2,7 +2,6 @@ export type AdmissionStatus = "novo" | "em_andamento" | "concluido";
 export type AdmissionOrigem = "portal" | "publico_cliente" | "publico_externo";
 
 export type AdmissionDados = {
-  docLivro: boolean;
   docCtps: boolean;
   docAso: boolean;
   docFoto: boolean;
@@ -10,7 +9,6 @@ export type AdmissionDados = {
   docCpf: boolean;
   docRg: boolean;
   docComprovante: boolean;
-  docTitulo: boolean;
   docCertidaoCivil: boolean;
   docReservistaCopia: boolean;
   docPis: boolean;
@@ -28,15 +26,10 @@ export type AdmissionDados = {
   nascimento: string;
   identidade: string;
   identidadeOrgao: string;
-  /** Local de atendimento (mesmo campo gravado na ficha). */
-  identidadeLocal: string;
+  localNascimento: string;
   identidadeEmissao: string;
   telefone: string;
   cpf: string;
-  titulo: string;
-  tituloZona: string;
-  tituloSecao: string;
-  tituloUf: string;
   reservista: string;
   reservistaCategoria: string;
   reservistaUf: string;
@@ -48,7 +41,6 @@ export type AdmissionDados = {
   pai: string;
   mae: string;
   estadoCivil: string;
-  conjuge: string;
   grauInstrucao: string;
   grauCompleto: string;
   corRaca: string;
@@ -69,7 +61,7 @@ export type AdmissionDados = {
   asoData: string;
 };
 
-export type AdmissionAnexo = { id: string; file_name: string; created_at: string };
+export type AdmissionAnexo = { id: string; file_name: string; created_at: string; kind?: string | null };
 
 export type AdmissionDetail = {
   id: string;
@@ -104,7 +96,6 @@ export type AdmissionListItem = {
 
 export function emptyAdmissionDados(): AdmissionDados {
   return {
-    docLivro: false,
     docCtps: false,
     docAso: false,
     docFoto: false,
@@ -112,7 +103,6 @@ export function emptyAdmissionDados(): AdmissionDados {
     docCpf: false,
     docRg: false,
     docComprovante: false,
-    docTitulo: false,
     docCertidaoCivil: false,
     docReservistaCopia: false,
     docPis: false,
@@ -130,14 +120,10 @@ export function emptyAdmissionDados(): AdmissionDados {
     nascimento: "",
     identidade: "",
     identidadeOrgao: "",
-    identidadeLocal: "",
+    localNascimento: "",
     identidadeEmissao: "",
     telefone: "",
     cpf: "",
-    titulo: "",
-    tituloZona: "",
-    tituloSecao: "",
-    tituloUf: "",
     reservista: "",
     reservistaCategoria: "",
     reservistaUf: "",
@@ -149,7 +135,6 @@ export function emptyAdmissionDados(): AdmissionDados {
     pai: "",
     mae: "",
     estadoCivil: "",
-    conjuge: "",
     grauInstrucao: "",
     grauCompleto: "",
     corRaca: "",
@@ -303,17 +288,15 @@ export const STATUS_LABEL: Record<AdmissionStatus, string> = {
   concluido: "Concluído",
 };
 
-/** Rótulos da ficha — o campo `identidadeLocal` é o local de atendimento. */
+/** Rótulos da ficha (campos de dados). */
 export const DADOS_FIELD_LABELS: Record<keyof AdmissionDados, string> = {
-  docLivro: "Livro / ficha de registro",
-  docCtps: "CTPS",
+  docCtps: "CTPS digital",
   docAso: "ASO admissional",
   docFoto: "Foto 3x4",
   docCopias: "CTPS foto e verso (cópia)",
   docCpf: "Cópia do CPF",
   docRg: "Cópia da identidade (RG/CNH)",
   docComprovante: "Comprovante de residência com CEP",
-  docTitulo: "Cópia do título de eleitor",
   docCertidaoCivil: "Certidão de casamento ou nascimento",
   docReservistaCopia: "Cópia da carteira de reservista",
   docPis: "Cadastro PIS",
@@ -331,14 +314,10 @@ export const DADOS_FIELD_LABELS: Record<keyof AdmissionDados, string> = {
   nascimento: "Data de nascimento",
   identidade: "Identidade",
   identidadeOrgao: "Órgão emissor",
-  identidadeLocal: "Local de atendimento",
+  localNascimento: "Local de nascimento",
   identidadeEmissao: "Data de emissão (identidade)",
   telefone: "Telefone",
   cpf: "CPF",
-  titulo: "Título de eleitor",
-  tituloZona: "Zona",
-  tituloSecao: "Seção",
-  tituloUf: "UF título",
   reservista: "Carteira de reservista",
   reservistaCategoria: "Categoria reservista",
   reservistaUf: "UF reservista",
@@ -350,7 +329,6 @@ export const DADOS_FIELD_LABELS: Record<keyof AdmissionDados, string> = {
   pai: "Filiação — pai",
   mae: "Filiação — mãe",
   estadoCivil: "Estado civil",
-  conjuge: "Cônjuge",
   grauInstrucao: "Grau de instrução",
   grauCompleto: "Completo / incompleto",
   corRaca: "Cor/raça",
@@ -391,8 +369,7 @@ export function formatAdmissionField(key: keyof AdmissionDados, dados: Admission
 }
 
 /** Documentos da nossa listagem que a admissão CLT/eSocial/NR-7 realmente exige. */
-export const DOCS_OBRIGATORIOS: Array<{ key: keyof AdmissionDados; label: string }> = [
-  { key: "docLivro", label: "Livro ou ficha de registro" },
+export const DOCS_OBRIGATORIOS: Array<{ key: AnexoKind; label: string }> = [
   { key: "docCtps", label: "CTPS digital" },
   { key: "docAso", label: "ASO admissional" },
   { key: "docCpf", label: "Cópia do CPF" },
@@ -401,15 +378,48 @@ export const DOCS_OBRIGATORIOS: Array<{ key: keyof AdmissionDados; label: string
   { key: "docPis", label: "Cadastro do PIS" },
 ];
 
+export type AnexoKind =
+  | "docCtps"
+  | "docAso"
+  | "docCpf"
+  | "docRg"
+  | "docComprovante"
+  | "docPis"
+  | "docFoto"
+  | "docCopias"
+  | "docReservistaCopia"
+  | "docCertidaoCivil"
+  | "filhoCertidao"
+  | "filhoVacina"
+  | "filhoEscolaridade";
+
+export const ANEXO_KIND_LABELS: Record<AnexoKind, string> = {
+  docCtps: "CTPS digital",
+  docAso: "ASO admissional",
+  docCpf: "Cópia do CPF",
+  docRg: "Cópia da identidade",
+  docComprovante: "Comprovante de residência",
+  docPis: "Cadastro PIS",
+  docFoto: "Foto 3x4",
+  docCopias: "CTPS foto e verso",
+  docReservistaCopia: "Carteira de reservista",
+  docCertidaoCivil: "Certidão civil",
+  filhoCertidao: "Certidão de nascimento (filhos)",
+  filhoVacina: "Cartão de vacina",
+  filhoEscolaridade: "Regularidade escolar",
+};
+
 export function admissionSaveErrors(dados: AdmissionDados): string | null {
   if (dados.nome.trim().length < 2) return "Informe o nome do funcionário.";
   if (dados.cpf.replace(/\D/g, "").length !== 11) return "CPF do funcionário é obrigatório.";
   if (!dados.nascimento) return "Data de nascimento é obrigatória.";
+  if (!dados.localNascimento.trim()) return "Local de nascimento é obrigatório.";
   if (!dados.identidade.trim()) return "Número da identidade é obrigatório.";
   if (!dados.endereco.trim() || !dados.cidade.trim() || dados.cep.replace(/\D/g, "").length !== 8) {
     return "Endereço, cidade e CEP são obrigatórios.";
   }
   if (!dados.nacionalidade.trim()) return "Nacionalidade é obrigatória.";
+  if (!dados.pai.trim() || !dados.mae.trim()) return "Filiação (pai e mãe) é obrigatória.";
   if (!dados.estadoCivil.trim()) return "Estado civil é obrigatório.";
   if (!dados.grauInstrucao.trim()) return "Grau de instrução é obrigatório.";
   if (!dados.corRaca.trim()) return "Declaração de cor/raça é obrigatória (eSocial).";
@@ -418,10 +428,20 @@ export function admissionSaveErrors(dados: AdmissionDados): string | null {
   if (!dados.asoData) return "Data do ASO (exame admissional) é obrigatória.";
   if (!dados.primeiroEmprego) return "Informe se é o 1º emprego.";
   if (!dados.valeTransporte) return "Informe se haverá desconto de vale-transporte.";
-  const faltaDoc = DOCS_OBRIGATORIOS.find((d) => dados[d.key] !== true);
-  if (faltaDoc) return `Marque o documento obrigatório: ${faltaDoc.label}.`;
-  if (dados.temFilhos && !dados.filhoCertidao) {
-    return "Com filhos menores ou com deficiência, a certidão de nascimento é obrigatória.";
+  return null;
+}
+
+export function admissionAnexoErrors(
+  dados: AdmissionDados,
+  kindsPresent: Iterable<string>,
+): string | null {
+  const tem = new Set(kindsPresent);
+  const falta = DOCS_OBRIGATORIOS.filter((d) => !tem.has(d.key));
+  if (falta.length) {
+    return `Anexe (foto ou arquivo) o(s) documento(s) obrigatório(s): ${falta.map((f) => f.label).join(", ")}.`;
+  }
+  if (dados.temFilhos && !tem.has("filhoCertidao")) {
+    return "Anexe a certidão de nascimento dos filhos.";
   }
   return null;
 }
@@ -436,6 +456,9 @@ export function mergeAdmissionDados(raw: unknown): AdmissionDados {
     } else if (typeof o[key] === "string") {
       (base as unknown as Record<string, unknown>)[key] = o[key];
     }
+  }
+  if (!base.localNascimento && typeof o.identidadeLocal === "string") {
+    base.localNascimento = o.identidadeLocal;
   }
   return base;
 }

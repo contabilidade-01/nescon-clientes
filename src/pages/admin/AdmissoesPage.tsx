@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import {
   DADOS_FIELD_LABELS,
+  ANEXO_KIND_LABELS,
   ORIGEM_LABEL,
   STATUS_LABEL,
   formatAdmissionField,
@@ -203,6 +204,8 @@ const AdmissoesPage = () => {
                           className="text-primary underline"
                           onClick={() => baixarAnexo(aberta.id, a.id, a.file_name)}
                         >
+                          {(a.kind && ANEXO_KIND_LABELS[a.kind as keyof typeof ANEXO_KIND_LABELS]) || "Anexo"}
+                          {" — "}
                           {a.file_name}
                         </button>
                       </li>

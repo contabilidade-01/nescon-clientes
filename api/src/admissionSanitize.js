@@ -4,7 +4,6 @@ const STR = (max) => ({ t: "str", max });
 const BOOL = { t: "bool" };
 
 const FIELDS = {
-  docLivro: BOOL,
   docCtps: BOOL,
   docAso: BOOL,
   docFoto: BOOL,
@@ -12,7 +11,6 @@ const FIELDS = {
   docCpf: BOOL,
   docRg: BOOL,
   docComprovante: BOOL,
-  docTitulo: BOOL,
   docCertidaoCivil: BOOL,
   docReservistaCopia: BOOL,
   docPis: BOOL,
@@ -30,14 +28,10 @@ const FIELDS = {
   nascimento: STR(10),
   identidade: STR(40),
   identidadeOrgao: STR(40),
-  identidadeLocal: STR(200),
+  localNascimento: STR(200),
   identidadeEmissao: STR(10),
   telefone: STR(30),
   cpf: STR(18),
-  titulo: STR(40),
-  tituloZona: STR(10),
-  tituloSecao: STR(10),
-  tituloUf: STR(2),
   reservista: STR(40),
   reservistaCategoria: STR(20),
   reservistaUf: STR(2),
@@ -49,7 +43,6 @@ const FIELDS = {
   pai: STR(200),
   mae: STR(200),
   estadoCivil: STR(40),
-  conjuge: STR(200),
   grauInstrucao: STR(120),
   grauCompleto: STR(20),
   corRaca: STR(40),
@@ -85,6 +78,7 @@ function sanitizeDados(raw) {
       out[key] = clip(src[key], spec.max);
     }
   }
+  if (!out.localNascimento) out.localNascimento = clip(src.identidadeLocal, 200);
   return out;
 }
 

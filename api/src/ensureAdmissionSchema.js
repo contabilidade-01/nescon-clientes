@@ -42,6 +42,7 @@ async function ensureAdmissionSchema(db) {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
     `);
+    await db.query(`ALTER TABLE admission_anexos ADD COLUMN IF NOT EXISTS kind TEXT`);
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_admission_anexos_form
         ON admission_anexos(form_id);

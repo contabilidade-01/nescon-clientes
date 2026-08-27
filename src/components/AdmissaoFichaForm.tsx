@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button";
 import { maskCNPJ, maskCPF } from "@/lib/masks";
 import { cn } from "@/lib/utils";
 import {
+  DOCS_OBRIGATORIOS,
   JORNADA_PRESETS,
   OPCOES,
   UFS,
-  type AdmissionDados,
   type AdmissionAnexo,
+  type AdmissionDados,
+  type AnexoKind,
 } from "@/lib/admissionFicha";
 
 function maskCepLocal(v: string) {
@@ -36,8 +38,8 @@ type Props = {
   lookupHint?: string | null;
   onCnpjBlur?: () => void;
   anexos?: AdmissionAnexo[];
-  pendingFiles: File[];
-  onPendingFiles: (files: File[]) => void;
+  pendingByKind: Partial<Record<AnexoKind, File>>;
+  onPendingByKind: (next: Partial<Record<AnexoKind, File>>) => void;
 };
 
 const Field = ({
@@ -86,28 +88,54 @@ function NativeSelect({
   );
 }
 
-function DocItem({
-  checked,
-  onChange,
-  children,
+function DocAttach({
+  kind,
+  label,
   obrigatorio,
   aplicavel,
+  file,
+  savedName,
+  onFile,
 }: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  children: React.ReactNode;
+  kind: AnexoKind;
+  label: string;
   obrigatorio?: boolean;
   aplicavel?: boolean;
+  file?: File;
+  savedName?: string;
+  onFile: (kind: AnexoKind, file: File | undefined) => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-start gap-2 text-sm">
-      <Checkbox checked={checked} onCheckedChange={(c) => onChange(c === true)} />
-      <span>
-        {children}
-        {obrigatorio && <span className="ml-1 text-xs font-semibold text-destructive">Obrigatório</span>}
+    <div className="space-y-2 rounded-lg border p-3">
+      <p className="text-sm font-medium">
+        {label}
+        {obrigatorio && <span className="ml-1 text-xs font-semibold text-destructive">Obrigatório — anexe</span>}
         {aplicavel && <span className="ml-1 text-xs text-muted-foreground">quando aplicável</span>}
-      </span>
-    </label>
+      </p>
+      {savedName && !file && <p className="text-xs text-emerald-600">Arquivo na pasta da empresa: {savedName}</p>}
+      {file && <p className="text-xs text-foreground">Novo: {file.name}</p>}
+      <div className="flex flex-wrap gap-2">
+        <label className="inline-flex cursor-pointer items-center rounded-md border px-2 py-1 text-xs">
+          Tirar foto
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => onFile(kind, e.target.files?.[0])}
+          />
+        </label>
+        <label className="inline-flex cursor-pointer items-center rounded-md border px-2 py-1 text-xs">
+          Anexar arquivo
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            className="hidden"
+            onChange={(e) => onFile(kind, e.target.files?.[0])}
+          />
+        </label>
+      </div>
+    </div>
   );
 }
 
@@ -124,10 +152,22 @@ export function AdmissaoFichaForm({
   lookupHint,
   onCnpjBlur,
   anexos = [],
-  pendingFiles,
-  onPendingFiles,
+  pendingByKind,
+  onPendingByKind,
 }: Props) {
   const set = (patch: Partial<AdmissionDados>) => onDados({ ...dados, ...patch });
+  const savedByKind = Object.fromEntries(
+    anexos.filter((a) => a.kind).map((a) => [a.kind as string, a.file_name]),
+  );
+  const setFile = (kind: AnexoKind, file: File | undefined) => {
+    const next = { ...pendingByKind };
+    if (file) next[kind] = file;
+    else delete next[kind];
+    onPendingByKind(next);
+    if (kind in dados && typeof dados[kind as keyof AdmissionDados] === "boolean") {
+      set({ [kind]: Boolean(file || savedByKind[kind]) } as Partial<AdmissionDados>);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -191,53 +231,58 @@ export function AdmissaoFichaForm({
       <section className="space-y-3">
         <h2 className="text-sm font-bold uppercase tracking-wide">Documentos para envio</h2>
         <p className="text-xs text-muted-foreground">
-          Base CLT, eSocial (S-2200) e NR-7. Marque o que já está em mãos. Os itens obrigatórios
-          precisam estar marcados para salvar.
+          Cada item obrigatório precisa de foto ou arquivo. Os arquivos vão para a pasta de admissão
+          da empresa; o escritório acessa pelo painel.
         </p>
         <p className="text-xs font-medium">Obrigatórios</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          <DocItem obrigatorio checked={dados.docLivro} onChange={(v) => set({ docLivro: v })}>
-            Livro de Registro ou Ficha de Registro
-          </DocItem>
-          <DocItem obrigatorio checked={dados.docCtps} onChange={(v) => set({ docCtps: v })}>
-            CTPS digital
-          </DocItem>
-          <DocItem obrigatorio checked={dados.docAso} onChange={(v) => set({ docAso: v })}>
-            Atestado médico admissional (ASO)
-          </DocItem>
-          <DocItem obrigatorio checked={dados.docCpf} onChange={(v) => set({ docCpf: v })}>
-            Cópia do CPF
-          </DocItem>
-          <DocItem obrigatorio checked={dados.docRg} onChange={(v) => set({ docRg: v })}>
-            Cópia da identidade (RG ou CNH)
-          </DocItem>
-          <DocItem obrigatorio checked={dados.docComprovante} onChange={(v) => set({ docComprovante: v })}>
-            Comprovante de residência com CEP
-          </DocItem>
-          <DocItem obrigatorio checked={dados.docPis} onChange={(v) => set({ docPis: v })}>
-            Cadastro do PIS (cartão ou extrato ativo da Caixa)
-          </DocItem>
+          {DOCS_OBRIGATORIOS.map((d) => (
+            <DocAttach
+              key={d.key}
+              kind={d.key}
+              label={d.label}
+              obrigatorio
+              file={pendingByKind[d.key]}
+              savedName={savedByKind[d.key]}
+              onFile={setFile}
+            />
+          ))}
         </div>
         <p className="text-xs font-medium">Quando aplicável</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          <DocItem aplicavel checked={dados.docTitulo} onChange={(v) => set({ docTitulo: v })}>
-            Título de eleitor
-          </DocItem>
-          <DocItem aplicavel checked={dados.docReservistaCopia} onChange={(v) => set({ docReservistaCopia: v })}>
-            Carteira de reservista (homem)
-          </DocItem>
-          <DocItem aplicavel checked={dados.docCertidaoCivil} onChange={(v) => set({ docCertidaoCivil: v })}>
-            Certidão de casamento ou nascimento (solteiro)
-          </DocItem>
+          <DocAttach
+            kind="docReservistaCopia"
+            label="Carteira de reservista (homem)"
+            aplicavel
+            file={pendingByKind.docReservistaCopia}
+            savedName={savedByKind.docReservistaCopia}
+            onFile={setFile}
+          />
+          <DocAttach
+            kind="docCertidaoCivil"
+            label="Certidão de casamento ou nascimento (solteiro)"
+            aplicavel
+            file={pendingByKind.docCertidaoCivil}
+            savedName={savedByKind.docCertidaoCivil}
+            onFile={setFile}
+          />
         </div>
         <p className="text-xs font-medium">Opcional</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          <DocItem checked={dados.docFoto} onChange={(v) => set({ docFoto: v })}>
-            Foto 3x4
-          </DocItem>
-          <DocItem checked={dados.docCopias} onChange={(v) => set({ docCopias: v })}>
-            CTPS parte da foto e verso
-          </DocItem>
+          <DocAttach
+            kind="docFoto"
+            label="Foto 3x4"
+            file={pendingByKind.docFoto}
+            savedName={savedByKind.docFoto}
+            onFile={setFile}
+          />
+          <DocAttach
+            kind="docCopias"
+            label="CTPS parte da foto e verso"
+            file={pendingByKind.docCopias}
+            savedName={savedByKind.docCopias}
+            onFile={setFile}
+          />
         </div>
         <label className="flex cursor-pointer items-start gap-2 text-sm">
           <Checkbox checked={dados.temFilhos} onCheckedChange={(c) => set({ temFilhos: c === true })} />
@@ -248,25 +293,36 @@ export function AdmissaoFichaForm({
         </label>
         {dados.temFilhos && (
           <div className="ml-6 grid gap-2 sm:grid-cols-2">
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm sm:col-span-2">
               <Checkbox checked={dados.filhoDeficiente} onCheckedChange={(c) => set({ filhoDeficiente: c === true })} />
               Filho com deficiência
             </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={dados.filhoCertidao} onCheckedChange={(c) => set({ filhoCertidao: c === true })} />
-              Certidão de nascimento
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={dados.filhoVacina} onCheckedChange={(c) => set({ filhoVacina: c === true })} />
-              Cartão de vacina (&lt; 5 anos)
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={dados.filhoEscolaridade}
-                onCheckedChange={(c) => set({ filhoEscolaridade: c === true })}
+            <div className="sm:col-span-2">
+              <DocAttach
+                kind="filhoCertidao"
+                label="Anexar certidão de nascimento dos filhos"
+                obrigatorio
+                file={pendingByKind.filhoCertidao}
+                savedName={savedByKind.filhoCertidao}
+                onFile={setFile}
               />
-              Regularidade escolar (&gt; 7 anos)
-            </label>
+            </div>
+            <DocAttach
+              kind="filhoVacina"
+              label="Cartão de vacina (< 5 anos)"
+              aplicavel
+              file={pendingByKind.filhoVacina}
+              savedName={savedByKind.filhoVacina}
+              onFile={setFile}
+            />
+            <DocAttach
+              kind="filhoEscolaridade"
+              label="Regularidade escolar (> 7 anos)"
+              aplicavel
+              file={pendingByKind.filhoEscolaridade}
+              savedName={savedByKind.filhoEscolaridade}
+              onFile={setFile}
+            />
           </div>
         )}
       </section>
@@ -301,8 +357,8 @@ export function AdmissaoFichaForm({
           <Field label="Órgão emissor">
             <NativeSelect value={dados.identidadeOrgao} onChange={(v) => set({ identidadeOrgao: v })} options={OPCOES.identidadeOrgao} />
           </Field>
-          <Field label="Local de atendimento">
-            <Input value={dados.identidadeLocal} onChange={(e) => set({ identidadeLocal: e.target.value })} />
+          <Field label="Local de nascimento *">
+            <Input value={dados.localNascimento} onChange={(e) => set({ localNascimento: e.target.value })} />
           </Field>
           <Field label="Data de emissão">
             <Input type="date" value={dados.identidadeEmissao} onChange={(e) => set({ identidadeEmissao: e.target.value })} />
@@ -312,18 +368,6 @@ export function AdmissaoFichaForm({
           </Field>
           <Field label="7. CPF *">
             <Input value={maskCPF(dados.cpf)} onChange={(e) => set({ cpf: e.target.value.replace(/\D/g, "").slice(0, 11) })} />
-          </Field>
-          <Field label="8. Título de eleitor">
-            <Input value={dados.titulo} onChange={(e) => set({ titulo: e.target.value })} />
-          </Field>
-          <Field label="Zona">
-            <Input value={dados.tituloZona} onChange={(e) => set({ tituloZona: e.target.value })} />
-          </Field>
-          <Field label="Seção">
-            <Input value={dados.tituloSecao} onChange={(e) => set({ tituloSecao: e.target.value })} />
-          </Field>
-          <Field label="UF">
-            <NativeSelect value={dados.tituloUf} onChange={(v) => set({ tituloUf: v })} options={UFS} placeholder="UF" />
           </Field>
           <Field label="9. Carteira de reservista">
             <Input value={dados.reservista} onChange={(e) => set({ reservista: e.target.value })} />
@@ -349,17 +393,14 @@ export function AdmissaoFichaForm({
           <Field label="11. PIS/PASEP">
             <Input value={dados.pis} onChange={(e) => set({ pis: e.target.value })} />
           </Field>
-          <Field label="12. Filiação — pai">
+          <Field label="12. Filiação — pai *">
             <Input value={dados.pai} onChange={(e) => set({ pai: e.target.value })} />
           </Field>
-          <Field label="Mãe">
+          <Field label="Mãe *">
             <Input value={dados.mae} onChange={(e) => set({ mae: e.target.value })} />
           </Field>
           <Field label="13. Estado civil *">
             <NativeSelect value={dados.estadoCivil} onChange={(v) => set({ estadoCivil: v })} options={OPCOES.estadoCivil} />
-          </Field>
-          <Field label="Cônjuge">
-            <Input value={dados.conjuge} onChange={(e) => set({ conjuge: e.target.value })} />
           </Field>
           <Field label="14. Grau de instrução *">
             <NativeSelect value={dados.grauInstrucao} onChange={(v) => set({ grauInstrucao: v })} options={OPCOES.grauInstrucao} />
@@ -475,40 +516,6 @@ export function AdmissaoFichaForm({
         <Field label="8. Data do documento ASO (exame admissional) *">
           <Input type="date" value={dados.asoData} onChange={(e) => set({ asoData: e.target.value })} />
         </Field>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-bold uppercase tracking-wide">Anexos (opcional)</h2>
-        <p className="text-xs text-muted-foreground">PDF ou imagem, até 10 MB cada. Enviados ao salvar.</p>
-        <Input
-          type="file"
-          multiple
-          accept="application/pdf,image/*"
-          onChange={(e) => {
-            const extra = Array.from(e.target.files || []);
-            onPendingFiles([...pendingFiles, ...extra]);
-            e.target.value = "";
-          }}
-        />
-        {pendingFiles.length > 0 && (
-          <ul className="text-xs text-muted-foreground">
-            {pendingFiles.map((f, i) => (
-              <li key={`${f.name}-${i}`}>
-                Novo: {f.name}{" "}
-                <button type="button" className="text-destructive underline" onClick={() => onPendingFiles(pendingFiles.filter((_, j) => j !== i))}>
-                  remover
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {anexos.length > 0 && (
-          <ul className="text-xs">
-            {anexos.map((a) => (
-              <li key={a.id}>{a.file_name}</li>
-            ))}
-          </ul>
-        )}
       </section>
     </div>
   );
