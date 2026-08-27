@@ -1,8 +1,10 @@
+import { useEffect, useRef, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { maskCNPJ, maskCPF } from "@/lib/masks";
 import { cn } from "@/lib/utils";
 import {
@@ -88,6 +90,113 @@ function NativeSelect({
   );
 }
 
+function CameraCaptureDialog({
+  open,
+  title,
+  onClose,
+  onCapture,
+  onUnavailable,
+}: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  onCapture: (file: File) => void;
+  onUnavailable: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const parar = () => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+  };
+
+  const onUnavailableRef = useRef(onUnavailable);
+  onUnavailableRef.current = onUnavailable;
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelado = false;
+    setErro(null);
+    (async () => {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        onUnavailableRef.current();
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
+        });
+        if (cancelado) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        const video = videoRef.current;
+        if (video) {
+          video.srcObject = stream;
+          await video.play();
+        }
+      } catch {
+        if (!cancelado) {
+          setErro("Não foi possível abrir a câmera. Permitindo escolher um arquivo de imagem.");
+          parar();
+          onUnavailableRef.current();
+        }
+      }
+    })();
+    return () => {
+      cancelado = true;
+      parar();
+    };
+  }, [open]);
+
+  const capturar = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d")?.drawImage(video, 0, 0);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        onCapture(new File([blob], `foto-${Date.now()}.jpg`, { type: "image/jpeg" }));
+        parar();
+        onClose();
+      },
+      "image/jpeg",
+      0.88,
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Tirar foto — {title}</DialogTitle>
+        </DialogHeader>
+        {erro ? (
+          <p className="text-sm text-destructive">{erro}</p>
+        ) : (
+          <video ref={videoRef} className="max-h-80 w-full rounded-md bg-black" playsInline muted autoPlay />
+        )}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="button" onClick={capturar} disabled={Boolean(erro)}>
+            Capturar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function DocAttach({
   kind,
   label,
@@ -96,6 +205,8 @@ function DocAttach({
   file,
   savedName,
   onFile,
+  onTirarFoto,
+  fallbackInputRef,
 }: {
   kind: AnexoKind;
   label: string;
@@ -104,6 +215,8 @@ function DocAttach({
   file?: File;
   savedName?: string;
   onFile: (kind: AnexoKind, file: File | undefined) => void;
+  onTirarFoto: (kind: AnexoKind, label: string) => void;
+  fallbackInputRef: (el: HTMLInputElement | null) => void;
 }) {
   return (
     <div className="space-y-2 rounded-lg border p-3">
@@ -115,17 +228,18 @@ function DocAttach({
       {savedName && !file && <p className="text-xs text-emerald-600">Arquivo na pasta da empresa: {savedName}</p>}
       {file && <p className="text-xs text-foreground">Novo: {file.name}</p>}
       <div className="flex flex-wrap gap-2">
-        <label className="inline-flex cursor-pointer items-center rounded-md border px-2 py-1 text-xs">
+        <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => onTirarFoto(kind, label)}>
           Tirar foto
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={(e) => onFile(kind, e.target.files?.[0])}
-          />
-        </label>
-        <label className="inline-flex cursor-pointer items-center rounded-md border px-2 py-1 text-xs">
+        </Button>
+        <input
+          ref={fallbackInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => onFile(kind, e.target.files?.[0])}
+        />
+        <label className="inline-flex h-8 cursor-pointer items-center rounded-md border px-3 text-xs">
           Anexar arquivo
           <input
             type="file"
@@ -159,6 +273,9 @@ export function AdmissaoFichaForm({
   const savedByKind = Object.fromEntries(
     anexos.filter((a) => a.kind).map((a) => [a.kind as string, a.file_name]),
   );
+  const fallbackInputs = useRef<Partial<Record<AnexoKind, HTMLInputElement | null>>>({});
+  const [camera, setCamera] = useState<{ kind: AnexoKind; label: string } | null>(null);
+
   const setFile = (kind: AnexoKind, file: File | undefined) => {
     const next = { ...pendingByKind };
     if (file) next[kind] = file;
@@ -168,6 +285,17 @@ export function AdmissaoFichaForm({
       set({ [kind]: Boolean(file || savedByKind[kind]) } as Partial<AdmissionDados>);
     }
   };
+
+  const docProps = (kind: AnexoKind) => ({
+    kind,
+    file: pendingByKind[kind],
+    savedName: savedByKind[kind],
+    onFile: setFile,
+    onTirarFoto: (k: AnexoKind, lbl: string) => setCamera({ kind: k, label: lbl }),
+    fallbackInputRef: (el: HTMLInputElement | null) => {
+      fallbackInputs.current[kind] = el;
+    },
+  });
 
   return (
     <div className="space-y-8">
@@ -231,58 +359,36 @@ export function AdmissaoFichaForm({
       <section className="space-y-3">
         <h2 className="text-sm font-bold uppercase tracking-wide">Documentos para envio</h2>
         <p className="text-xs text-muted-foreground">
-          Cada item obrigatório precisa de foto ou arquivo. Os arquivos vão para a pasta de admissão
-          da empresa; o escritório acessa pelo painel.
+          Cada item obrigatório precisa de foto ou arquivo.{" "}
+          <span className="font-medium text-foreground">Tirar foto</span> abre a câmera (celular ou
+          webcam do computador, se você permitir).{" "}
+          <span className="font-medium text-foreground">Anexar arquivo</span> abre uma pasta do seu
+          computador. Os arquivos vão para a pasta de admissão da empresa; o escritório acessa pelo
+          painel.
         </p>
         <p className="text-xs font-medium">Obrigatórios</p>
         <div className="grid gap-2 sm:grid-cols-2">
           {DOCS_OBRIGATORIOS.map((d) => (
-            <DocAttach
-              key={d.key}
-              kind={d.key}
-              label={d.label}
-              obrigatorio
-              file={pendingByKind[d.key]}
-              savedName={savedByKind[d.key]}
-              onFile={setFile}
-            />
+            <DocAttach key={d.key} {...docProps(d.key)} label={d.label} obrigatorio />
           ))}
         </div>
         <p className="text-xs font-medium">Quando aplicável</p>
         <div className="grid gap-2 sm:grid-cols-2">
           <DocAttach
-            kind="docReservistaCopia"
+            {...docProps("docReservistaCopia")}
             label="Carteira de reservista (homem)"
             aplicavel
-            file={pendingByKind.docReservistaCopia}
-            savedName={savedByKind.docReservistaCopia}
-            onFile={setFile}
           />
           <DocAttach
-            kind="docCertidaoCivil"
+            {...docProps("docCertidaoCivil")}
             label="Certidão de casamento ou nascimento (solteiro)"
             aplicavel
-            file={pendingByKind.docCertidaoCivil}
-            savedName={savedByKind.docCertidaoCivil}
-            onFile={setFile}
           />
         </div>
         <p className="text-xs font-medium">Opcional</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          <DocAttach
-            kind="docFoto"
-            label="Foto 3x4"
-            file={pendingByKind.docFoto}
-            savedName={savedByKind.docFoto}
-            onFile={setFile}
-          />
-          <DocAttach
-            kind="docCopias"
-            label="CTPS parte da foto e verso"
-            file={pendingByKind.docCopias}
-            savedName={savedByKind.docCopias}
-            onFile={setFile}
-          />
+          <DocAttach {...docProps("docFoto")} label="Foto 3x4" />
+          <DocAttach {...docProps("docCopias")} label="CTPS parte da foto e verso" />
         </div>
         <label className="flex cursor-pointer items-start gap-2 text-sm">
           <Checkbox checked={dados.temFilhos} onCheckedChange={(c) => set({ temFilhos: c === true })} />
@@ -299,29 +405,20 @@ export function AdmissaoFichaForm({
             </label>
             <div className="sm:col-span-2">
               <DocAttach
-                kind="filhoCertidao"
+                {...docProps("filhoCertidao")}
                 label="Anexar certidão de nascimento dos filhos"
                 obrigatorio
-                file={pendingByKind.filhoCertidao}
-                savedName={savedByKind.filhoCertidao}
-                onFile={setFile}
               />
             </div>
             <DocAttach
-              kind="filhoVacina"
+              {...docProps("filhoVacina")}
               label="Cartão de vacina (< 5 anos)"
               aplicavel
-              file={pendingByKind.filhoVacina}
-              savedName={savedByKind.filhoVacina}
-              onFile={setFile}
             />
             <DocAttach
-              kind="filhoEscolaridade"
+              {...docProps("filhoEscolaridade")}
               label="Regularidade escolar (> 7 anos)"
               aplicavel
-              file={pendingByKind.filhoEscolaridade}
-              savedName={savedByKind.filhoEscolaridade}
-              onFile={setFile}
             />
           </div>
         )}
@@ -517,6 +614,21 @@ export function AdmissaoFichaForm({
           <Input type="date" value={dados.asoData} onChange={(e) => set({ asoData: e.target.value })} />
         </Field>
       </section>
+      <CameraCaptureDialog
+        open={Boolean(camera)}
+        title={camera?.label || ""}
+        onClose={() => setCamera(null)}
+        onCapture={(file) => {
+          if (camera) setFile(camera.kind, file);
+        }}
+        onUnavailable={() => {
+          const kind = camera?.kind;
+          setCamera(null);
+          window.setTimeout(() => {
+            if (kind) fallbackInputs.current[kind]?.click();
+          }, 200);
+        }}
+      />
     </div>
   );
 }
