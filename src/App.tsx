@@ -51,6 +51,7 @@ import CalendarioPage from "./pages/CalendarioPage.tsx";
 import FeriasPage from "./pages/FeriasPage.tsx";
 import ProximosPagamentosPage from "./pages/ProximosPagamentosPage.tsx";
 import EntregaPublicaPage from "./pages/EntregaPublicaPage.tsx";
+import CalculadoraCustoPage from "./pages/CalculadoraCustoPage.tsx";
 import AlterarSenhaPage from "./pages/AlterarSenhaPage.tsx";
 import ManutencaoPage from "./pages/ManutencaoPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
@@ -154,6 +155,8 @@ const AppRoutes = () => (
     <Route path="/reset-password" element={<ResetPasswordPage />} />
     {/* Link do WhatsApp: sem login, identificado por token opaco */}
     <Route path="/entrega/:token" element={<EntregaPublicaPage />} />
+    {/* Calculadora pública de custo de contratação — sem login */}
+    <Route path="/calculadora-custo" element={<CalculadoraCustoPage />} />
     {/* Painel do escritório: uma página por área, com menu lateral retrátil (AdminLayout) */}
     <Route path="/admin" element={<AdminOnlyRoute><VisaoGeralPage /></AdminOnlyRoute>} />
     <Route path="/admin/empresas" element={<AdminAreaRoute area="empresas"><EmpresasPage /></AdminAreaRoute>} />
