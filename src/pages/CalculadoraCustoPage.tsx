@@ -48,6 +48,7 @@ const CalculadoraCustoPage = () => {
   const [honorario, setHonorario] = useState("50");
   const [vt, setVt] = useState("0");
   const [vr, setVr] = useState("0");
+  const [outros, setOutros] = useState("0");
   const [incluiProv, setIncluiProv] = useState(true);
 
   useEffect(() => {
@@ -59,14 +60,17 @@ const CalculadoraCustoPage = () => {
     const hon = num(honorario);
     const valeT = num(vt);
     const valeR = num(vr);
+    const outrosFixos = num(outros);
     const t = TAXAS[regime];
     const taxaFolha = t.fgts + t.patronal;
 
-    const encSal = sal * taxaFolha;
-    const direto = sal + encSal + valeT + valeR + hon;
+    // Outros custos fixos entram na mesma base do salário (encargos + 13º/férias).
+    const base = sal + outrosFixos;
+    const encSal = base * taxaFolha;
+    const direto = base + encSal + valeT + valeR + hon;
 
-    const d13 = sal / 12;
-    const dFer = (sal * (4 / 3)) / 12; // férias + 1/3
+    const d13 = base / 12;
+    const dFer = (base * (4 / 3)) / 12; // férias + 1/3
     const encProv = (d13 + dFer) * taxaFolha;
     const prov = incluiProv ? d13 + dFer + encProv : 0;
 
@@ -74,8 +78,8 @@ const CalculadoraCustoPage = () => {
     const ano = total * 12;
     const pct = sal > 0 ? Math.round((total / sal) * 100) : 0;
 
-    return { sal, hon, valeT, valeR, t, encSal, direto, d13, dFer, encProv, prov, total, ano, pct };
-  }, [salario, regime, honorario, vt, vr, incluiProv]);
+    return { sal, hon, valeT, valeR, outrosFixos, t, encSal, direto, d13, dFer, encProv, prov, total, ano, pct };
+  }, [salario, regime, honorario, vt, vr, outros, incluiProv]);
 
   const Linha = ({ label, valor, small = false }: { label: string; valor: string; small?: boolean }) => (
     <div
@@ -157,6 +161,14 @@ const CalculadoraCustoPage = () => {
               <Input id="vr" type="number" min="0" step="10" value={vr} onChange={(e) => setVr(e.target.value)} />
             </div>
 
+            <div className="space-y-1.5">
+              <Label htmlFor="outros">
+                Outros custos fixos (R$){" "}
+                <span className="font-normal text-muted-foreground">entra na base do salário</span>
+              </Label>
+              <Input id="outros" type="number" min="0" step="10" value={outros} onChange={(e) => setOutros(e.target.value)} />
+            </div>
+
             <label className="flex cursor-pointer items-center gap-2.5 rounded-lg bg-muted/50 px-3 py-2.5">
               <Checkbox checked={incluiProv} onCheckedChange={(c) => setIncluiProv(c === true)} />
               <span className="text-sm font-medium">Incluir provisões de 13º e férias (custo real)</span>
@@ -166,6 +178,7 @@ const CalculadoraCustoPage = () => {
           {/* Resultado */}
           <div className="bg-muted/30 p-6">
             <Linha label="Salário bruto" valor={brl(r.sal)} />
+            {r.outrosFixos > 0 && <Linha label="Outros custos fixos" valor={brl(r.outrosFixos)} />}
             <Linha label={r.t.rot} valor={brl(r.encSal)} />
             {r.valeT > 0 && <Linha label="Vale-transporte" valor={brl(r.valeT)} />}
             {r.valeR > 0 && <Linha label="Vale-refeição" valor={brl(r.valeR)} />}
