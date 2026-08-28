@@ -391,6 +391,49 @@ export type AdminUser = {
   created_at: string;
 };
 
+export type MonthlyFollowKind = {
+  id: string;
+  titulo: string;
+  descricao: string | null;
+  prazo_tipo: string;
+  prazo_n: number | null;
+  default_assignee_id: string | null;
+  default_assignee_nome?: string | null;
+  ordem: number;
+  ativo: boolean;
+};
+
+export type MonthlyFollowTask = {
+  id: string;
+  kind_id: string;
+  titulo: string;
+  descricao: string | null;
+  competencia: string;
+  due_date: string;
+  assigned_admin_id: string | null;
+  assigned_nome: string | null;
+  status: string;
+  status_efetivo: string;
+  notes: string;
+  completed_at: string | null;
+  updated_at: string;
+};
+
+export type MeiCredential = {
+  id: string;
+  company_id: string | null;
+  nome: string;
+  cnpj: string | null;
+  portal: string | null;
+  login: string | null;
+  tem_senha: boolean;
+  observacao: string | null;
+  assigned_admin_id: string | null;
+  assigned_nome: string | null;
+  ativo: boolean;
+  updated_at: string;
+};
+
 export type LoginResponse =
   | {
       token: string;
@@ -1177,6 +1220,67 @@ export const api = {
         }),
       anexoUrl: (formId: string, anexoId: string) =>
         `${API_BASE}/admin/admissoes/${formId}/anexos/${anexoId}/file`,
+    },
+    acompanhamentos: {
+      mes: (competencia?: string) =>
+        request<{
+          competencia: string;
+          hoje: string;
+          quinto_dia_util: string | null;
+          decimo_dia_util: string | null;
+          ultimo_dia_util: string | null;
+          tarefas: MonthlyFollowTask[];
+        }>(`/admin/acompanhamentos/mes${competencia ? `?competencia=${competencia}` : ""}`),
+      kinds: () => request<MonthlyFollowKind[]>("/admin/acompanhamentos/kinds"),
+      criarKind: (data: {
+        titulo: string;
+        descricao?: string;
+        prazo_tipo: "n_dia_bancario" | "ultimo_dia_bancario";
+        prazo_n?: number;
+      }) =>
+        request<MonthlyFollowKind>("/admin/acompanhamentos/kinds", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      patchKind: (
+        id: string,
+        data: {
+          titulo?: string;
+          descricao?: string;
+          prazo_tipo?: string;
+          prazo_n?: number;
+          default_assignee_id?: string | null;
+          ativo?: boolean;
+        },
+      ) =>
+        request<MonthlyFollowKind>(`/admin/acompanhamentos/kinds/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      patchTarefa: (
+        id: string,
+        data: { assigned_admin_id?: string | null; status?: string; notes?: string },
+      ) =>
+        request<MonthlyFollowTask>(`/admin/acompanhamentos/tarefas/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      responsaveis: () =>
+        request<Array<{ id: string; nome: string }>>("/admin/acompanhamentos/responsaveis"),
+      meis: () => request<MeiCredential[]>("/admin/acompanhamentos/meis"),
+      criarMei: (data: Record<string, unknown>) =>
+        request<MeiCredential>("/admin/acompanhamentos/meis", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      patchMei: (id: string, data: Record<string, unknown>) =>
+        request<MeiCredential>(`/admin/acompanhamentos/meis/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      revelarSenhaMei: (id: string) =>
+        request<{ senha: string }>(`/admin/acompanhamentos/meis/${id}/senha`),
+    },
     },
     setManutencao: (data: { ativo?: boolean; mensagem?: string }) =>
       request<{ ativo: boolean; mensagem: string }>("/admin/manutencao", {

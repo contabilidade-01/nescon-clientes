@@ -24,6 +24,7 @@ const ADMIN_AREAS = [
   "alertas",
   "atendimento",
   "acessos",
+  "acompanhamentos",
 ];
 
 const ADMIN_AREA_LABELS = {
@@ -38,6 +39,7 @@ const ADMIN_AREA_LABELS = {
   alertas: "Alertas de vencimento",
   atendimento: "Atendimentos (chat)",
   acessos: "Controle de acessos",
+  acompanhamentos: "Acompanhamentos mensais",
 };
 
 /** Normaliza o JSON gravado: chave ausente vira false. `null` = acesso total. */

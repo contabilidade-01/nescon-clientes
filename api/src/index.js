@@ -29,6 +29,7 @@ const { ensureArquivamentoSchema } = require("./ensureArquivamentoSchema");
 const { ensureAcessosSchema } = require("./ensureAcessosSchema");
 const { ensureCompanyMatriz } = require("./ensureCompanyMatriz");
 const { ensureAdmissionSchema } = require("./ensureAdmissionSchema");
+const { ensureMonthlyFollowSchema } = require("./ensureMonthlyFollowSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -98,6 +99,7 @@ app.use("/api/admin/usuarios", require("./routes/adminUsers"));
 app.use("/api/admin/atendimentos", require("./routes/adminChat"));
 const admissionsRoutes = require("./routes/admissions");
 app.use("/api/admin/admissoes", admissionsRoutes.adminRouter);
+app.use("/api/admin/acompanhamentos", require("./routes/monthlyFollow"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/chat", require("./routes/chat"));
 app.use("/api/employees", require("./routes/employees"));
@@ -170,6 +172,7 @@ async function start() {
     await ensureAcessosSchema(db);
     await ensureCompanyMatriz(db);
     await ensureAdmissionSchema(db);
+    await ensureMonthlyFollowSchema(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).
     // Roda em background para não travar o arranque.
     setTimeout(async () => {

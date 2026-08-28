@@ -187,6 +187,19 @@ function nEsimoDiaUtilTrabalhista(ano, mes, n = 5) {
   return null;
 }
 
+/** N-ésimo dia bancário do mês (seg–sex, sem feriado nacional / 24 e 31/12). */
+function nEsimoDiaBancario(ano, mes, n = 5) {
+  const total = diasNoMes(ano, mes);
+  let contados = 0;
+  for (let d = 1; d <= total; d += 1) {
+    const data = iso(ano, mes, d);
+    if (!ehDiaBancario(data)) continue;
+    contados += 1;
+    if (contados === n) return data;
+  }
+  return null;
+}
+
 /** Soma dias corridos a uma data ISO. Usado para "o que vence daqui a N dias". */
 function somarDias(data, dias) {
   const t = paraUTC(data);
@@ -235,6 +248,7 @@ module.exports = {
   diaBancarioAnterior,
   ultimoDiaBancarioDoMes,
   nEsimoDiaUtilTrabalhista,
+  nEsimoDiaBancario,
   diasNoMes,
   somarDias,
   hojeSP,

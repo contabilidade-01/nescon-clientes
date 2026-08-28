@@ -17,6 +17,7 @@ export const ADMIN_AREAS = [
   "alertas",
   "atendimento",
   "acessos",
+  "acompanhamentos",
 ] as const;
 
 export type AdminArea = (typeof ADMIN_AREAS)[number];
@@ -42,6 +43,10 @@ export const ADMIN_AREA_LABELS: Record<AdminArea, { title: string; description: 
   acessos: {
     title: "Controle de acessos",
     description: "Quem usa o portal, o que mais acessam e o que baixam",
+  },
+  acompanhamentos: {
+    title: "Acompanhamentos mensais",
+    description: "Folha, impostos, NFs de MEI e destinação a quem executa",
   },
 };
 

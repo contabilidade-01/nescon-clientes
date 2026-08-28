@@ -54,6 +54,7 @@ import EntregaPublicaPage from "./pages/EntregaPublicaPage.tsx";
 import CalculadoraCustoPage from "./pages/CalculadoraCustoPage.tsx";
 import AdmissaoPage from "./pages/AdmissaoPage.tsx";
 import AdmissoesAdminPage from "./pages/admin/AdmissoesPage.tsx";
+import AcompanhamentosPage from "./pages/admin/AcompanhamentosPage.tsx";
 import AlterarSenhaPage from "./pages/AlterarSenhaPage.tsx";
 import ManutencaoPage from "./pages/ManutencaoPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
@@ -168,6 +169,7 @@ const AppRoutes = () => (
     <Route path="/admin/clientes-gclick" element={<OwnerOnlyRoute><ClientesGclickPage /></OwnerOnlyRoute>} />
     <Route path="/admin/funcionarios" element={<AdminAreaRoute area="funcionarios"><FuncionariosAdminPage /></AdminAreaRoute>} />
     <Route path="/admin/admissoes" element={<AdminAreaRoute area="funcionarios"><AdmissoesAdminPage /></AdminAreaRoute>} />
+    <Route path="/admin/acompanhamentos" element={<AdminAreaRoute area="acompanhamentos"><AcompanhamentosPage /></AdminAreaRoute>} />
     <Route path="/admin/entregas" element={<AdminAreaRoute area="entregas"><EntregasPage /></AdminAreaRoute>} />
     <Route path="/admin/licencas" element={<AdminAreaRoute area="licencas"><LicencasPage /></AdminAreaRoute>} />
     <Route path="/admin/taxas-anuais" element={<AdminAreaRoute area="taxas_anuais"><TaxasAnuaisPage /></AdminAreaRoute>} />

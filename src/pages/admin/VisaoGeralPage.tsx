@@ -137,6 +137,7 @@ const VisaoGeralPage = () => {
   const podeEntregas = canSeeArea("entregas", admin?.areas, admin?.isOwner);
   const podeFuncionarios = canSeeArea("funcionarios", admin?.areas, admin?.isOwner);
   const podeAtendimento = canSeeArea("atendimento", admin?.areas, admin?.isOwner);
+  const podeAcompanhamentos = canSeeArea("acompanhamentos", admin?.areas, admin?.isOwner);
   const { data: pendencias } = useGclickPendencias();
 
   // Resumo do atendimento. O servidor já devolve só o que ESTE usuário pode ver, então
@@ -168,6 +169,12 @@ const VisaoGeralPage = () => {
     queryKey: ["lgpd-consents"],
     queryFn: () => api.admin.lgpdConsents(),
     enabled: podeLgpd,
+  });
+
+  const { data: acompMes } = useQuery({
+    queryKey: ["acompanhamentos-mes-home"],
+    queryFn: () => api.admin.acompanhamentos.mes(),
+    enabled: podeAcompanhamentos,
   });
 
   const atencao = (licencas?.por_status.vencida ?? 0) + (licencas?.por_status.a_vencer ?? 0);
@@ -238,6 +245,20 @@ const VisaoGeralPage = () => {
           onClick={podeEntregas ? () => navigate("/admin/entregas") : undefined}
         />
       </section>
+      {podeAcompanhamentos && (
+        <section className="mt-3">
+          <StatCard
+            label="Acompanhamentos do mês"
+            value={acompMes ? acompMes.tarefas.filter((t) => t.status !== "concluido").length : "—"}
+            hint={
+              acompMes
+                ? `${acompMes.tarefas.filter((t) => t.status_efetivo === "atrasado").length} atrasada(s) · 5º dia útil ${acompMes.quinto_dia_util?.split("-").reverse().join("/") || ""}`
+                : "Folha, impostos e NFs MEI"
+            }
+            onClick={() => navigate("/admin/acompanhamentos")}
+          />
+        </section>
+      )}
 
       {podeAtendimento && (
       <Card>

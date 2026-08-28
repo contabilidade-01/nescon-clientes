@@ -122,4 +122,6 @@ module.exports = {
   setSetting,
   setSecretSetting,
   getSecretSetting,
+  encryptSecret,
+  decryptSecret,
 };

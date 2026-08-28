@@ -8,6 +8,7 @@ import {
   Bot,
   Building2,
   CalendarCheck,
+  CalendarClock,
   CalendarSearch,
   CircleDollarSign,
   UserCog,
@@ -110,6 +111,7 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
       { to: "/admin/alertas", label: "Alertas de vencimento", icon: BellRing, area: "alertas" },
       { to: "/admin/vencimentos-sugeridos", label: "Vencimentos sugeridos", icon: CalendarSearch, area: "entregas" },
       { to: "/admin/config-ia", label: "Configuração de IA", icon: Bot, area: "entregas" },
+      { to: "/admin/acompanhamentos", label: "Acompanhamentos mensais", icon: CalendarClock, area: "acompanhamentos" },
     ],
   },
   {
