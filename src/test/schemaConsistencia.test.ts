@@ -113,7 +113,10 @@ describe("INSERT: toda coluna escrita existe", () => {
       for (const m of txt.matchAll(/INSERT INTO (\w+)\s*\(([^)]*)\)\s*VALUES\s*\(([\s\S]*?)\)\s*(?:ON CONFLICT|RETURNING|`|\))/g)) {
         const nCols = m[2].split(",").filter((c) => c.trim()).length;
         // Conta os valores no topo: vírgulas dentro de CASE/função não contam.
-        const valores = m[3];
+        // Em INSERT de várias linhas — VALUES (..),(..),(..) — basta conferir a
+        // PRIMEIRA tupla: as demais têm a mesma aridade, e somar todas acusaria
+        // desequilíbrio onde não há (era o falso-positivo do seed de acompanhamentos).
+        const valores = m[3].split(/\)\s*,\s*\(/)[0];
         let nivel = 0;
         let nVals = 1;
         for (const ch of valores) {

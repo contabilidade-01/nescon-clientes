@@ -1281,7 +1281,6 @@ export const api = {
       revelarSenhaMei: (id: string) =>
         request<{ senha: string }>(`/admin/acompanhamentos/meis/${id}/senha`),
     },
-    },
     setManutencao: (data: { ativo?: boolean; mensagem?: string }) =>
       request<{ ativo: boolean; mensagem: string }>("/admin/manutencao", {
         method: "PUT",
