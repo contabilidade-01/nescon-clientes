@@ -71,22 +71,23 @@ export function generateSuspensionDoc(data: SuspensionData) {
         font: "Arial", size: F, bold: true,
       })
     );
-  } else {
+  } else if (data.recentAbsenceDate) {
+    // Só afirma "ausências" quando há PROVA disso (dias listados ou data da última
+    // falta). Antes, o caso sem nenhum dado caía aqui e o termo acusava faltas mesmo
+    // quando a suspensão era por briga, insubordinação ou uso de celular.
     justificationRuns.push(
       new TextRun({
-        text: `Devido às suas repetidas ausências não justificadas`,
+        text: `Devido às suas repetidas ausências não justificadas, inclusive a mais recente em ${data.recentAbsenceDate}`,
         font: "Arial", size: F,
       })
     );
-
-    if (data.recentAbsenceDate) {
-      justificationRuns.push(
-        new TextRun({
-          text: `, inclusive a mais recente em ${data.recentAbsenceDate}`,
-          font: "Arial", size: F,
-        })
-      );
-    }
+  } else {
+    justificationRuns.push(
+      new TextRun({
+        text: "Devido a conduta incompatível com as obrigações assumidas no contrato de trabalho",
+        font: "Arial", size: F,
+      })
+    );
   }
 
   if (data.previousSuspensions.length > 0) {
@@ -129,7 +130,9 @@ export function generateSuspensionDoc(data: SuspensionData) {
 
   justificationRuns.push(
     new TextRun({
-      text: " Esta medida é necessária para enfatizar a seriedade do cumprimento das responsabilidades e o impacto negativo que suas faltas geram na equipe e nos processos da empresa.",
+      // "a conduta" no lugar de "suas faltas": a suspensão pode ser por briga,
+      // insubordinação ou uso de celular — nem sempre por ausência.
+      text: " Esta medida é necessária para enfatizar a seriedade do cumprimento das responsabilidades e o impacto negativo que a conduta gera na equipe e nos processos da empresa.",
       font: "Arial", size: F,
     })
   );
@@ -145,9 +148,13 @@ export function generateSuspensionDoc(data: SuspensionData) {
     justificationRuns.push(
       new TextRun({ text: "\n\n", font: "Arial", size: F })
     );
+    // Com motivo customizado (briga, insubordinação…), a alínea "e" (desídia) não é o
+    // enquadramento certo — o aviso vai sem alínea para não enquadrar errado.
     justificationRuns.push(
       new TextRun({
-        text: "ATENÇÃO: A próxima falta injustificada poderá ensejar a RESCISÃO DO CONTRATO DE TRABALHO POR JUSTA CAUSA, nos termos do artigo 482, alínea \"e\" (desídia no desempenho das respectivas funções) da CLT.",
+        text: customReason
+          ? "ATENÇÃO: A reiteração desta conduta poderá ensejar a RESCISÃO DO CONTRATO DE TRABALHO POR JUSTA CAUSA, nos termos do artigo 482 da CLT."
+          : "ATENÇÃO: A próxima falta injustificada poderá ensejar a RESCISÃO DO CONTRATO DE TRABALHO POR JUSTA CAUSA, nos termos do artigo 482, alínea \"e\" (desídia no desempenho das respectivas funções) da CLT.",
         font: "Arial", size: F, bold: true,
       })
     );

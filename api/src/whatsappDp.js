@@ -1,0 +1,577 @@
+/**
+ * Assistente de DP no WhatsApp: áudio/texto → termo de ADVERTÊNCIA ou SUSPENSÃO em PDF.
+ *
+ * Regras que definem este fluxo:
+ *  1. Escopo fechado. Só advertência e suspensão. Rescisão, folha, férias, imposto e
+ *     qualquer outro tema respondem com o contato do escritório — nunca improvisa.
+ *  2. Diz que é IA. Quem está do outro lado precisa saber que não é uma pessoa.
+ *  3. Identidade antes de emitir. O telefone precisa bater com empresa cadastrada; se o
+ *     número atende a MAIS DE UMA empresa, pergunta qual antes de qualquer coisa. Emitir
+ *     documento disciplinar na empresa errada é o pior erro possível aqui.
+ *  4. Funcionário vem do cadastro. Lista os funcionários da empresa e confirma o nome —
+ *     o CPF sai do cadastro, não do que a pessoa digitou (documento sem CPF certo não vale).
+ *  5. Confirmação explícita antes de emitir.
+ *
+ * Ao confirmar, o documento é gerado no servidor (PDF + DOCX), registrado em
+ * `issued_documents` e enviado na conversa. O escritório recebe um aviso do que saiu.
+ */
+const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
+const db = require("./db");
+const { chamarIaConfigurada } = require("./iaProvider");
+const { enviarTexto, enviarDocumento, configurado } = require("./uazapi");
+const { getPublicAppUrl } = require("./mailer");
+const { gerarArquivos, CONDUTAS, CONDUTA_ORDEM, condutaDe } = require("./dpDocumento");
+const { UPLOAD_DIR } = require("./uploads");
+
+const SESSION_MS = 3 * 60 * 60 * 1000;
+const ADMIN_WHATSAPP = (process.env.ADMIN_WHATSAPP || "5511948626605").replace(/\D/g, "");
+const MAX_LISTA = 25;
+
+function digits(v) {
+  return String(v || "").replace(/\D/g, "");
+}
+
+function norm(s) {
+  return String(s || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+/** Assinatura de IA — vai na primeira resposta de cada atendimento. */
+const SELO_IA = "🤖 *Assistente virtual (IA) da Nescon* — respondo automaticamente.";
+
+function contatoNescon(comSelo = true) {
+  const num = digits(process.env.NESCON_CONTATO_WHATSAPP || process.env.ADMIN_WHATSAPP || "5511948626605");
+  const visivel = num.startsWith("55") && num.length >= 12
+    ? `(${num.slice(2, 4)}) ${num.slice(4, 9)}-${num.slice(9)}`
+    : num;
+  const portal = getPublicAppUrl() || "https://app.gestaoempresa.com";
+  return (
+    (comSelo ? `${SELO_IA}\n\n` : "") +
+    `Aqui eu trato *somente* de *advertência* e *suspensão* de funcionário.\n\n` +
+    `Para qualquer outro assunto (rescisão, folha, férias, impostos, dúvidas), fale com a *Nescon Contabilidade*:\n` +
+    `📱 WhatsApp: ${visivel}\n` +
+    `💻 Portal: ${portal}`
+  );
+}
+
+function classificarPorPalavra(texto) {
+  const t = norm(texto);
+  if (/\b(advertenc|advertir|advertido)\w*/.test(t) || t.includes("advertencia")) return "advertencia";
+  if (/\b(suspens|suspender|suspendido)\w*/.test(t) || t.includes("suspensao")) return "suspensao";
+  return "outro";
+}
+
+async function classificarTema(texto) {
+  const porPalavra = classificarPorPalavra(texto);
+  if (porPalavra !== "outro") return porPalavra;
+  try {
+    const { resposta } = await chamarIaConfigurada(db, {
+      timeoutMs: 20000,
+      prompt:
+        `Classifique o pedido de um cliente de escritório de contabilidade (departamento pessoal).\n` +
+        `Texto: """${String(texto).slice(0, 800)}"""\n` +
+        `Responda SOMENTE JSON: {"tema":"advertencia"} ou {"tema":"suspensao"} ou {"tema":"outro"}.\n` +
+        `advertencia = advertir funcionário.\n` +
+        `suspensao = suspender funcionário (dias sem trabalhar por medida disciplinar).\n` +
+        `outro = rescisão, demissão, desligamento, folha, férias, atestado, imposto, dúvida geral, cumprimento, áudio ininteligível.`,
+    });
+    const tema = String(resposta?.tema || "outro").toLowerCase();
+    if (tema === "advertencia" || tema === "suspensao") return tema;
+  } catch (err) {
+    console.warn("[whatsapp-dp] IA de classificação indisponível:", err.message);
+  }
+  return "outro";
+}
+
+/**
+ * TODAS as empresas ligadas ao telefone (não só a primeira).
+ * Casa pelos últimos 8 dígitos: o cadastro tem número com e sem DDI/9º dígito.
+ */
+async function empresasDoTelefone(phoneDigits) {
+  const d = digits(phoneDigits);
+  const chave = d.length >= 11 && d.startsWith("55") ? d.slice(2) : d;
+  const sufixo = chave.slice(-8);
+  if (sufixo.length < 8) return [];
+  const { rows } = await db.query(
+    `SELECT id, name, cnpj FROM companies
+      WHERE COALESCE(arquivada, false) = false
+        AND COALESCE(excluida, false) = false
+        AND regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') LIKE $1
+      ORDER BY name`,
+    [`%${sufixo}`]
+  );
+  return rows;
+}
+
+async function funcionariosDa(companyId) {
+  if (!companyId) return [];
+  const { rows } = await db.query(
+    `SELECT id, name, cpf FROM employees
+      WHERE company_id = $1 AND COALESCE(active, true) IS TRUE
+      ORDER BY name`,
+    [companyId]
+  );
+  return rows;
+}
+
+/**
+ * Resolve o que a pessoa escreveu num funcionário do cadastro.
+ * Devolve {escolhido} | {opcoes} (ambíguo) | {} (nada). Nunca inventa nome.
+ */
+function resolverFuncionario(lista, texto) {
+  const t = norm(texto);
+  if (!t || !lista.length) return {};
+
+  // "3" → terceiro item da lista que ele acabou de ver.
+  if (/^\d{1,2}$/.test(t)) {
+    const i = parseInt(t, 10) - 1;
+    if (i >= 0 && i < lista.length) return { escolhido: lista[i] };
+  }
+
+  const exato = lista.filter((e) => norm(e.name) === t);
+  if (exato.length === 1) return { escolhido: exato[0] };
+
+  const contem = lista.filter((e) => {
+    const nome = norm(e.name);
+    return nome.includes(t) || t.includes(nome);
+  });
+  if (contem.length === 1) return { escolhido: contem[0] };
+  if (contem.length > 1) return { opcoes: contem.slice(0, 10) };
+
+  // Último recurso: bate por partes do nome (primeiro nome, sobrenome).
+  const porParte = lista.filter((e) =>
+    norm(e.name).split(" ").some((p) => p.length > 2 && t.split(" ").includes(p))
+  );
+  if (porParte.length === 1) return { escolhido: porParte[0] };
+  if (porParte.length > 1) return { opcoes: porParte.slice(0, 10) };
+  return {};
+}
+
+function listar(itens, rotulo = (x) => x.name) {
+  return itens.map((x, i) => `${i + 1}. ${rotulo(x)}`).join("\n");
+}
+
+/** Aceita "hoje", "amanhã" e dd/mm[/aaaa]. Devolve Date ou null (não inventa data). */
+function parseData(texto) {
+  const t = norm(texto);
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  if (t === "hoje") return hoje;
+  if (t === "amanha") {
+    const d = new Date(hoje);
+    d.setDate(d.getDate() + 1);
+    return d;
+  }
+  const m = t.match(/^(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?$/);
+  if (!m) return null;
+  const dia = parseInt(m[1], 10);
+  const mes = parseInt(m[2], 10) - 1;
+  let ano = m[3] ? parseInt(m[3], 10) : hoje.getFullYear();
+  if (ano < 100) ano += 2000;
+  const d = new Date(ano, mes, dia);
+  if (d.getDate() !== dia || d.getMonth() !== mes) return null;
+  return d;
+}
+
+function formatBR(d) {
+  const p = (x) => String(x).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
+// --------------------------------------------------------------------------
+// Sessão
+// --------------------------------------------------------------------------
+async function getSessao(phone) {
+  const { rows } = await db.query("SELECT * FROM whatsapp_dp_sessions WHERE phone = $1", [phone]);
+  return rows[0] || null;
+}
+
+async function saveSessao(phone, patch) {
+  const cur = (await getSessao(phone)) || { phone, company_id: null, tema: null, step: "idle", dados: {} };
+  const dados = patch.replaceDados ? patch.dados || {} : { ...(cur.dados || {}), ...(patch.dados || {}) };
+  const next = { ...cur, ...patch, dados };
+  await db.query(
+    `INSERT INTO whatsapp_dp_sessions (phone, company_id, tema, step, dados, updated_at)
+     VALUES ($1,$2,$3,$4,$5::jsonb, now())
+     ON CONFLICT (phone) DO UPDATE SET
+       company_id = EXCLUDED.company_id, tema = EXCLUDED.tema, step = EXCLUDED.step,
+       dados = EXCLUDED.dados, updated_at = now()`,
+    [phone, next.company_id, next.tema, next.step, JSON.stringify(next.dados || {})]
+  );
+}
+
+async function limpar(phone) {
+  await db.query("DELETE FROM whatsapp_dp_sessions WHERE phone = $1", [phone]);
+}
+
+function sessaoViva(row) {
+  if (!row) return false;
+  return Date.now() - new Date(row.updated_at).getTime() < SESSION_MS;
+}
+
+function ehCancelar(texto) {
+  const t = norm(texto);
+  return /^(cancelar|cancela|parar|sair|menu)$/.test(t) || t.includes("comecar de novo");
+}
+
+async function avisarEscritorio(resumo) {
+  if (!configurado() || !ADMIN_WHATSAPP) return;
+  await enviarTexto({ numero: ADMIN_WHATSAPP, texto: resumo, delayMs: 400 }).catch(() => {});
+}
+
+// --------------------------------------------------------------------------
+// Emissão
+// --------------------------------------------------------------------------
+function gravar(buffer, nome) {
+  const seguro = String(nome).replace(/[^a-zA-Z0-9._-]/g, "_");
+  const arquivo = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}-${seguro}`;
+  fs.writeFileSync(path.join(UPLOAD_DIR, arquivo), buffer);
+  return arquivo;
+}
+
+/**
+ * Gera PDF+DOCX, registra a emissão e devolve as URLs públicas.
+ * O token é o que permite baixar sem login pelo link do WhatsApp.
+ */
+async function emitirDocumento({ phone, sessao }) {
+  const d = sessao.dados || {};
+  const { rows: emp } = await db.query("SELECT id, name, cnpj FROM companies WHERE id = $1", [sessao.company_id]);
+  const empresa = emp[0];
+  const ehSuspensao = sessao.tema === "suspensao";
+  const data = new Date(d.dataISO);
+
+  const { pdf, docx, nomeBase } = await gerarArquivos({
+    tipo: sessao.tema,
+    employeeName: d.funcionario,
+    cpf: d.cpf,
+    companyName: empresa.name,
+    cnpj: empresa.cnpj,
+    data,
+    suspensionDays: d.dias,
+    motivo: d.motivo,
+    conduta: d.conduta,
+  });
+
+  const arqPdf = gravar(pdf, `${nomeBase}.pdf`);
+  const arqDocx = gravar(docx, `${nomeBase}.docx`);
+  const token = crypto.randomBytes(24).toString("hex");
+
+  const retorno = ehSuspensao ? new Date(data.getTime() + (Number(d.dias) || 1) * 86400000) : null;
+  await db.query(
+    `INSERT INTO issued_documents
+       (document_type, employee_name, employee_cpf, company_name, company_cnpj, company_id,
+        start_date, suspension_days, return_date, description, file_pdf, file_docx, access_token, origem)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'whatsapp')`,
+    [
+      ehSuspensao ? "suspension" : "warning",
+      d.funcionario,
+      d.cpf || "",
+      empresa.name,
+      empresa.cnpj,
+      empresa.id,
+      data,
+      ehSuspensao ? Number(d.dias) || 1 : null,
+      retorno,
+      d.motivo || null,
+      arqPdf,
+      arqDocx,
+      token,
+    ]
+  );
+
+  const base = getPublicAppUrl() || "https://app.gestaoempresa.com";
+  return {
+    empresa,
+    urlPdf: `${base}/api/dp-docs/${token}/pdf`,
+    urlDocx: `${base}/api/dp-docs/${token}/docx`,
+    nomeBase,
+  };
+}
+
+async function concluir(phone, sessao) {
+  const d = sessao.dados || {};
+  const tipo = sessao.tema === "advertencia" ? "Advertência" : "Suspensão";
+
+  let doc;
+  try {
+    doc = await emitirDocumento({ phone, sessao });
+  } catch (err) {
+    console.error("[whatsapp-dp] emissão:", err.message);
+    await avisarEscritorio(
+      `⚠️ Falha ao emitir ${tipo} pelo WhatsApp\nCliente: ${phone}\nFuncionário: ${d.funcionario}\nErro: ${err.message}`
+    );
+    await limpar(phone);
+    return (
+      `Não consegui gerar o documento agora. Já avisei o escritório, que vai emitir manualmente.\n\n` +
+      contatoNescon(false)
+    );
+  }
+
+  await avisarEscritorio(
+    `📋 ${tipo} emitida pelo assistente (IA)\n` +
+      `Empresa: ${doc.empresa.name} (${doc.empresa.cnpj})\n` +
+      `Funcionário: ${d.funcionario}${d.cpf ? ` — CPF ${d.cpf}` : ""}\n` +
+      (sessao.tema === "suspensao" ? `Dias: ${d.dias}\n` : "") +
+      `Data: ${d.dataBR}\n` +
+      `Motivo: ${d.motivo}\n` +
+      `Enquadramento: ${condutaDe(d.conduta).rotulo}\n` +
+      `WhatsApp: ${phone}\n` +
+      `PDF: ${doc.urlPdf}`
+  );
+
+  // Anexa o PDF na conversa; o DOCX vai como link (via editável, uso do escritório).
+  if (configurado()) {
+    await enviarDocumento({
+      numero: phone,
+      fileUrl: doc.urlPdf,
+      docName: `${doc.nomeBase}.pdf`,
+      caption: `${tipo} — ${d.funcionario}`,
+      delayMs: 800,
+    }).catch((e) => console.error("[whatsapp-dp] anexo:", e.message));
+  }
+
+  await limpar(phone);
+  return (
+    `✅ *${tipo} emitida!* O PDF acabou de ser enviado aqui.\n\n` +
+    `• Funcionário: ${d.funcionario}\n` +
+    (d.dias ? `• Dias: ${d.dias}\n` : "") +
+    `• Data: ${d.dataBR}\n\n` +
+    `📝 Imprima em *2 vias*. Se o funcionário se recusar a assinar, use os campos de *testemunhas* no rodapé.\n` +
+    `📄 Versão editável (Word): ${doc.urlDocx}\n\n` +
+    `Precisa de outro assunto? ${contatoNescon(false)}`
+  );
+}
+
+// --------------------------------------------------------------------------
+// Máquina de estados
+// --------------------------------------------------------------------------
+
+/** Depois de saber a empresa: lista funcionários e pede o nome. */
+async function pedirFuncionario(phone, tema, empresa) {
+  const lista = await funcionariosDa(empresa.id);
+  await saveSessao(phone, {
+    company_id: empresa.id,
+    tema,
+    step: "funcionario",
+    dados: {},
+    replaceDados: true,
+  });
+  const titulo = tema === "advertencia" ? "*advertência*" : "*suspensão*";
+  if (!lista.length) {
+    return (
+      `Empresa: *${empresa.name}*.\nVamos emitir a ${titulo}.\n\n` +
+      `Não encontrei funcionários cadastrados nesta empresa. Digite o *nome completo* do funcionário.`
+    );
+  }
+  const mostra = lista.slice(0, MAX_LISTA);
+  return (
+    `Empresa: *${empresa.name}*.\nVamos emitir a ${titulo}.\n\n` +
+    `Qual o *funcionário*? Responda o *número* ou o nome:\n\n${listar(mostra)}` +
+    (lista.length > MAX_LISTA ? `\n\n(+${lista.length - MAX_LISTA} — se não estiver na lista, digite o nome)` : "")
+  );
+}
+
+async function seguirFluxo(phone, sessao, texto) {
+  const t = texto.trim();
+  const step = sessao.step;
+  const d = sessao.dados || {};
+
+  // Escolha da empresa (telefone ligado a mais de uma).
+  if (step === "empresa") {
+    const opcoes = d.opcoesEmpresa || [];
+    let escolhida = null;
+    if (/^\d{1,2}$/.test(t)) {
+      escolhida = opcoes[parseInt(t, 10) - 1] || null;
+    }
+    if (!escolhida) {
+      const n = norm(t);
+      const hits = opcoes.filter((e) => norm(e.name).includes(n) || digits(e.cnpj).includes(digits(t)));
+      if (hits.length === 1) escolhida = hits[0];
+    }
+    if (!escolhida) {
+      return `Não identifiquei. Responda com o *número* da empresa:\n\n${listar(opcoes, (e) => `${e.name} — ${e.cnpj}`)}`;
+    }
+    return pedirFuncionario(phone, sessao.tema, escolhida);
+  }
+
+  if (step === "funcionario") {
+    const lista = await funcionariosDa(sessao.company_id);
+    const r = resolverFuncionario(lista, t);
+
+    if (r.opcoes) {
+      await saveSessao(phone, { dados: { ultimaLista: r.opcoes.map((x) => x.id) } });
+      return `Encontrei mais de um. Qual deles? Responda o *número*:\n\n${listar(r.opcoes)}`;
+    }
+    if (!r.escolhido) {
+      if (!lista.length) {
+        // Sem cadastro: aceita o nome digitado, mas avisa que o CPF fica em branco.
+        await saveSessao(phone, { dados: { funcionario: t, cpf: null }, step: sessao.tema === "advertencia" ? "motivo" : "dias" });
+        return sessao.tema === "advertencia"
+          ? `Funcionário: *${t}* (sem cadastro — o CPF ficará em branco no termo).\n\nQual o *motivo* da advertência?`
+          : `Funcionário: *${t}* (sem cadastro — o CPF ficará em branco no termo).\n\nQuantos *dias* de suspensão? (1 a 30)`;
+      }
+      const mostra = lista.slice(0, MAX_LISTA);
+      return `Não achei "${t}" no cadastro. Responda o *número* da lista:\n\n${listar(mostra)}`;
+    }
+
+    await saveSessao(phone, {
+      dados: { funcionario: r.escolhido.name, cpf: r.escolhido.cpf || null, employeeId: r.escolhido.id },
+      step: sessao.tema === "advertencia" ? "motivo" : "dias",
+    });
+    return sessao.tema === "advertencia"
+      ? `Funcionário: *${r.escolhido.name}*.\n\nQual o *motivo* da advertência? (ex.: faltas, atrasos, má conduta)`
+      : `Funcionário: *${r.escolhido.name}*.\n\nQuantos *dias* de suspensão? (1 a 30)`;
+  }
+
+  if (step === "dias") {
+    const n = parseInt(String(t).replace(/\D/g, ""), 10);
+    if (!Number.isFinite(n) || n < 1 || n > 30) {
+      return "Informe um número de *1 a 30* dias (art. 474 da CLT). Ex.: 3";
+    }
+    await saveSessao(phone, { dados: { dias: n }, step: "data" });
+    return `${n} dia(s).\n\nQual a *data de início*? (ex.: 28/08/2026, *hoje* ou *amanhã*)`;
+  }
+
+  if (step === "motivo") {
+    if (t.length < 3) return "Descreva o *motivo* com um pouco mais de detalhe — ele vai no documento.";
+    await saveSessao(phone, { dados: { motivo: t }, step: "conduta" });
+    return perguntaConduta();
+  }
+
+  // Natureza da conduta → define a alínea do art. 482 citada no termo.
+  if (step === "conduta") {
+    const i = parseInt(t.replace(/\D/g, ""), 10) - 1;
+    const chave = CONDUTA_ORDEM[i];
+    if (!chave) return perguntaConduta("Responda com o *número* da opção:");
+    const proximo = sessao.tema === "advertencia" ? "data" : "confirma";
+    await saveSessao(phone, { dados: { conduta: chave }, step: proximo });
+    if (sessao.tema === "advertencia") {
+      return "Qual a *data* da advertência? (ex.: 28/08/2026, *hoje* ou *amanhã*)";
+    }
+    return resumoConfirmacao({ ...d, conduta: chave }, sessao.tema);
+  }
+
+  if (step === "data") {
+    const data = parseData(t);
+    if (!data) return "Não entendi a data. Use *dd/mm/aaaa* (ex.: 28/08/2026), *hoje* ou *amanhã*.";
+    const prox = sessao.tema === "advertencia" ? "confirma" : "motivo_sus";
+    await saveSessao(phone, { dados: { dataISO: data.toISOString(), dataBR: formatBR(data) }, step: prox });
+    if (sessao.tema === "suspensao") return "Qual o *motivo* da suspensão?";
+    return resumoConfirmacao({ ...d, dataBR: formatBR(data) }, sessao.tema);
+  }
+
+  if (step === "motivo_sus") {
+    if (t.length < 3) return "Descreva o *motivo* com um pouco mais de detalhe — ele vai no documento.";
+    await saveSessao(phone, { dados: { motivo: t }, step: "conduta" });
+    return perguntaConduta();
+  }
+
+  if (step === "confirma") {
+    if (/^(sim|s|confirmo|ok|pode|isso|certo)$/.test(norm(t))) {
+      const fresh = await getSessao(phone);
+      return concluir(phone, fresh);
+    }
+    if (/^(nao|n|cancelar|nao confirmo)$/.test(norm(t))) {
+      await limpar(phone);
+      return "Cancelado, nada foi emitido.\n\n" + contatoNescon(false);
+    }
+    return "Responda *SIM* para emitir o documento ou *NÃO* para cancelar.";
+  }
+
+  await limpar(phone);
+  return contatoNescon();
+}
+
+/**
+ * Pergunta a natureza da conduta. É o que define a alínea do art. 482 citada no termo —
+ * quem enquadra é o cliente, não a IA (alínea errada é pior do que alínea nenhuma).
+ */
+function perguntaConduta(cabecalho) {
+  const opcoes = CONDUTA_ORDEM.map((k, i) => `${i + 1}. ${CONDUTAS[k].rotulo}`).join("\n");
+  return (
+    `${cabecalho || "Qual a *natureza* da conduta? (define o enquadramento legal no termo)"}\n\n${opcoes}`
+  );
+}
+
+function resumoConfirmacao(d, tema) {
+  const ehSus = tema === "suspensao";
+  const cond = condutaDe(d.conduta);
+  return (
+    `Confira antes de eu emitir:\n\n` +
+    `• Documento: *${ehSus ? "Suspensão" : "Advertência"}*\n` +
+    `• Funcionário: *${d.funcionario}*\n` +
+    (d.cpf ? `• CPF: ${d.cpf}\n` : "• CPF: não cadastrado\n") +
+    (ehSus ? `• Dias: ${d.dias}\n` : "") +
+    `• Data${ehSus ? " de início" : ""}: ${d.dataBR}\n` +
+    `• Motivo: ${d.motivo}\n` +
+    `• Enquadramento: ${cond.rotulo}${cond.alinea ? ` (art. 482, "${cond.alinea}")` : ""}\n\n` +
+    `Responda *SIM* para emitir ou *NÃO* para cancelar.`
+  );
+}
+
+/** Processa uma mensagem já convertida em texto. */
+async function processarTexto({ phone, texto }) {
+  const raw = String(texto || "").trim();
+  if (!raw) {
+    return `${SELO_IA}\n\nNão consegui entender. Envie o áudio de novo ou escreva *advertência* ou *suspensão*.`;
+  }
+
+  let sessao = await getSessao(phone);
+  if (sessao && !sessaoViva(sessao)) {
+    await limpar(phone);
+    sessao = null;
+  }
+
+  if (sessao && sessao.step && sessao.step !== "idle") {
+    if (ehCancelar(raw)) {
+      await limpar(phone);
+      return "Fluxo cancelado.\n\n" + contatoNescon(false);
+    }
+    return seguirFluxo(phone, sessao, raw);
+  }
+
+  const tema = await classificarTema(raw);
+  if (tema === "outro") return contatoNescon();
+
+  // Identidade: sem empresa cadastrada neste número, não emite nada.
+  const empresas = await empresasDoTelefone(phone);
+  if (!empresas.length) {
+    return (
+      `${SELO_IA}\n\n` +
+      `Não encontrei nenhuma empresa cadastrada para este número de WhatsApp, então não posso emitir o documento por aqui.\n\n` +
+      contatoNescon(false)
+    );
+  }
+
+  if (empresas.length > 1) {
+    await saveSessao(phone, {
+      company_id: null,
+      tema,
+      step: "empresa",
+      dados: { opcoesEmpresa: empresas.map((e) => ({ id: e.id, name: e.name, cnpj: e.cnpj })) },
+      replaceDados: true,
+    });
+    return (
+      `${SELO_IA}\n\n` +
+      `Este número está ligado a *${empresas.length} empresas*. Para qual delas é a ${tema === "advertencia" ? "advertência" : "suspensão"}?\n\n` +
+      `Responda o *número*:\n\n${listar(empresas, (e) => `${e.name} — ${e.cnpj}`)}`
+    );
+  }
+
+  return `${SELO_IA}\n\n` + (await pedirFuncionario(phone, tema, empresas[0]));
+}
+
+module.exports = {
+  processarTexto,
+  contatoNescon,
+  // exportados para teste
+  resolverFuncionario,
+  parseData,
+  classificarPorPalavra,
+  empresasDoTelefone,
+};

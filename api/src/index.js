@@ -30,6 +30,8 @@ const { ensureAcessosSchema } = require("./ensureAcessosSchema");
 const { ensureCompanyMatriz } = require("./ensureCompanyMatriz");
 const { ensureAdmissionSchema } = require("./ensureAdmissionSchema");
 const { ensureMonthlyFollowSchema } = require("./ensureMonthlyFollowSchema");
+const { ensureWhatsappDpSchema } = require("./ensureWhatsappDpSchema");
+const { ensureDpDocsSchema } = require("./ensureDpDocsSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -121,6 +123,9 @@ app.use("/api/preferencias", require("./routes/preferencias"));
 app.use("/api/doc-upload", require("./routes/documentUpload"));
 app.use("/api/mensagens", require("./routes/engagement"));
 app.use("/api/portal", require("./routes/portal"));
+app.use("/api/whatsapp", require("./routes/whatsappWebhook"));
+// Download público (token opaco) dos termos emitidos pelo assistente do WhatsApp.
+app.use("/api/dp-docs", require("./routes/dpDocs"));
 
 // Health: sempre HTTP 200 para o healthcheck do Docker / proxy não derrubar o contentor.
 // Estado da BD vai no JSON (use database: "down" para diagnosticar login 500).
@@ -173,6 +178,8 @@ async function start() {
     await ensureCompanyMatriz(db);
     await ensureAdmissionSchema(db);
     await ensureMonthlyFollowSchema(db);
+    await ensureWhatsappDpSchema(db);
+    await ensureDpDocsSchema(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).
     // Roda em background para não travar o arranque.
     setTimeout(async () => {

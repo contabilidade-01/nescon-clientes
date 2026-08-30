@@ -133,10 +133,23 @@ async function owner() {
   return ownerCache.valor;
 }
 
+/** POST /message/download — áudio do webhook de DP, em base64. */
+async function baixarMidia(messageId) {
+  const j = await chamar("/message/download", {
+    metodo: "POST",
+    corpo: { id: messageId, return_base64: true, return_link: false },
+    timeoutMs: 45000,
+  });
+  const b64 = j.base64Data || j.base64 || j.file || "";
+  if (!b64) throw new Error("uazapi não devolveu o áudio em base64");
+  return { base64Data: b64, mimetype: j.mimetype || j.mimeType || "audio/ogg" };
+}
+
 module.exports = {
   configurado,
   enviarTexto,
   enviarDocumento,
+  baixarMidia,
   statusInstancia,
   owner,
   UazapiNaoConfigurado,

@@ -1,0 +1,168 @@
+// @vitest-environment node
+// pdfkit é uma lib de servidor: em jsdom ela tenta resolver os arquivos de fonte por URL
+// e quebra na importação. Este módulo só roda no backend, então o teste roda em node.
+import { describe, it, expect } from "vitest";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const dp = require("../../api/src/whatsappDp.js");
+const doc = require("../../api/src/dpDocumento.js");
+
+describe("classificação de tema (escopo fechado)", () => {
+  it("reconhece advertência e suspensão", () => {
+    expect(dp.classificarPorPalavra("preciso advertir o João")).toBe("advertencia");
+    expect(dp.classificarPorPalavra("quero uma advertência")).toBe("advertencia");
+    expect(dp.classificarPorPalavra("suspender a Maria por 3 dias")).toBe("suspensao");
+    expect(dp.classificarPorPalavra("SUSPENSÃO do funcionário")).toBe("suspensao");
+  });
+
+  it("não assume tema em assunto fora do escopo", () => {
+    for (const txt of ["quero demitir o José", "como está minha folha?", "boa tarde", "preciso das guias"]) {
+      expect(dp.classificarPorPalavra(txt)).toBe("outro");
+    }
+  });
+});
+
+describe("resolverFuncionario — nunca inventa nome", () => {
+  const lista = [
+    { id: "1", name: "MARIA APARECIDA SILVA", cpf: "111" },
+    { id: "2", name: "MARIA DE FATIMA SOUZA", cpf: "222" },
+    { id: "3", name: "JOAO PEDRO LIMA", cpf: "333" },
+  ];
+
+  it("escolhe pelo número da lista", () => {
+    expect(dp.resolverFuncionario(lista, "3").escolhido.id).toBe("3");
+  });
+
+  it("acha por nome único, ignorando acento e caixa", () => {
+    expect(dp.resolverFuncionario(lista, "joão pedro lima").escolhido.id).toBe("3");
+    expect(dp.resolverFuncionario(lista, "joao").escolhido.id).toBe("3");
+  });
+
+  it("devolve opções quando é ambíguo (duas Marias)", () => {
+    const r = dp.resolverFuncionario(lista, "maria");
+    expect(r.escolhido).toBeUndefined();
+    expect(r.opcoes).toHaveLength(2);
+  });
+
+  it("não casa nada quando o nome não existe", () => {
+    expect(dp.resolverFuncionario(lista, "carlos").escolhido).toBeUndefined();
+  });
+});
+
+describe("parseData", () => {
+  it("aceita hoje e amanhã", () => {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    expect(dp.parseData("hoje")?.getTime()).toBe(hoje.getTime());
+    expect(dp.parseData("AMANHÃ")?.getDate()).toBe(new Date(hoje.getTime() + 86400000).getDate());
+  });
+
+  it("aceita dd/mm/aaaa e dd/mm", () => {
+    const d = dp.parseData("28/08/2026")!;
+    expect([d.getDate(), d.getMonth(), d.getFullYear()]).toEqual([28, 7, 2026]);
+    expect(dp.parseData("05/01")?.getMonth()).toBe(0);
+  });
+
+  it("rejeita data inválida em vez de inventar", () => {
+    expect(dp.parseData("32/13/2026")).toBeNull();
+    expect(dp.parseData("semana que vem")).toBeNull();
+    expect(dp.parseData("")).toBeNull();
+  });
+});
+
+describe("documento gerado no servidor", () => {
+  const base = {
+    employeeName: "Maria Souza",
+    cpf: "987.654.321-00",
+    companyName: "Queijeiro 3 LTDA",
+    cnpj: "52.191.264/0001-73",
+    data: new Date(2026, 7, 28),
+    motivo: "ausência sem justificativa",
+  };
+
+  it("gera PDF e DOCX válidos para advertência", async () => {
+    const r = await doc.gerarArquivos({ ...base, tipo: "advertencia" });
+    expect(r.pdf.slice(0, 4).toString()).toBe("%PDF");
+    expect(r.docx.slice(0, 2).toString()).toBe("PK"); // zip do OOXML
+    expect(r.nomeBase).toContain("advertencia_maria_souza");
+  });
+
+  it("suspensão traz período, retorno e testemunhas", async () => {
+    const { blocos } = doc.montarBlocos({ ...base, tipo: "suspensao", suspensionDays: 3 });
+    const campos = blocos.filter((b: { t: string }) => b.t === "campo");
+    const periodo = campos.find((c: { rot: string }) => c.rot.startsWith("Período"));
+    const retorno = campos.find((c: { rot: string }) => c.rot.startsWith("Data de retorno"));
+    // 28,29,30 de suspensão → retorna no dia 31.
+    expect(periodo.val).toBe("28/08/2026 a 30/08/2026");
+    expect(retorno.val).toBe("31/08/2026");
+    expect(blocos.some((b: { t: string }) => b.t === "testemunhas")).toBe(true);
+  });
+
+  it("advertência também tem testemunhas (recusa de assinatura)", () => {
+    const { blocos } = doc.montarBlocos({ ...base, tipo: "advertencia" });
+    expect(blocos.some((b: { t: string }) => b.t === "testemunhas")).toBe(true);
+  });
+
+  it("capitaliza e pontua o motivo ditado pelo cliente", () => {
+    const { blocos } = doc.montarBlocos({ ...base, tipo: "advertencia", motivo: "faltou tres dias" });
+    const corpo = blocos.find((b: { t: string; align?: string }) => b.t === "p" && b.align === "just");
+    expect(corpo.runs[0].txt.startsWith("Faltou tres dias.")).toBe(true);
+  });
+
+  it("respeita o teto de 30 dias do art. 474", () => {
+    const { blocos } = doc.montarBlocos({ ...base, tipo: "suspensao", suspensionDays: 99 });
+    const total = blocos.find((b: { t: string; rot?: string }) => b.t === "campo" && b.rot?.startsWith("Total"));
+    expect(total.val).toContain("30");
+  });
+});
+
+describe("enquadramento no art. 482 (motivos que não são falta)", () => {
+  const base = {
+    employeeName: "Fulano",
+    cpf: "1",
+    companyName: "X",
+    cnpj: "1",
+    data: new Date(2026, 7, 28),
+    motivo: "discussão agressiva com colega na frente de clientes",
+  };
+  const corpoDe = (d: Record<string, unknown>) => {
+    const { blocos } = doc.montarBlocos(d);
+    const corpo = blocos.find((b: { t: string; align?: string }) => b.t === "p" && b.align === "just");
+    const legal = blocos.find(
+      (b: { t: string; runs?: Array<{ txt: string }> }) => b.t === "p" && b.runs?.[0]?.txt === "Base Legal: "
+    );
+    return { texto: corpo.runs[0].txt, legal: legal.runs.map((r: { txt: string }) => r.txt).join("") };
+  };
+
+  it("indisciplina cita a alínea h, não desídia", () => {
+    const r = corpoDe({ ...base, tipo: "suspensao", suspensionDays: 2, conduta: "ordem" });
+    expect(r.texto).toContain('alínea "h" (ato de indisciplina ou de insubordinação)');
+    expect(r.legal).toContain('alínea "h"');
+    expect(r.texto).not.toContain("desídia");
+  });
+
+  it("mau procedimento cita a alínea b", () => {
+    const r = corpoDe({ ...base, tipo: "advertencia", conduta: "conduta" });
+    expect(r.texto).toContain('alínea "b" (mau procedimento)');
+  });
+
+  it("faltas cita a alínea e (desídia)", () => {
+    const r = corpoDe({ ...base, tipo: "advertencia", conduta: "faltas" });
+    expect(r.texto).toContain('alínea "e" (desídia');
+  });
+
+  it('"outro" mantém o art. 482 genérico, sem enquadrar errado', () => {
+    const r = corpoDe({ ...base, tipo: "advertencia", conduta: "outro" });
+    expect(r.texto).toContain("artigo 482 da CLT");
+    expect(r.texto).not.toContain("alínea");
+    expect(r.legal).not.toContain("alínea");
+  });
+
+  it("sem conduta informada também fica genérico (nunca assume falta)", () => {
+    const r = corpoDe({ ...base, tipo: "suspensao", suspensionDays: 3 });
+    expect(r.texto).not.toContain("alínea");
+    expect(r.texto).not.toContain("falta");
+    expect(r.texto).not.toContain("ausência");
+  });
+});
