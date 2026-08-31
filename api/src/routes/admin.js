@@ -28,7 +28,8 @@ const coraSync = require("../coraSync");
 const coraClient = require("../cora");
 const { TIPOS: TIPOS_GCLICK } = require("../gclick/guides");
 const { gerarSenhaInicial } = require("../senhaInicial");
-const { enviarTexto, enviarDocumento } = require("../uazapi");
+const { enviarTexto, enviarDocumento, statusInstancia } = require("../uazapi");
+const { obterChaveApi } = require("../iaProvider");
 const numeroWpp = require("../whatsappNumero");
 const { minutosSP } = require("../diasBancarios");
 const { dentroDaJanela, descricaoJanela } = require("../janelaEnvio");
@@ -1675,6 +1676,69 @@ router.post("/config/ia/testar", adminOnly, async (req, res) => {
     res.json({ ok: resultado.ok, erro: resultado.ok ? null : `HTTP ${resultado.status}` });
   } catch (err) {
     res.json({ ok: false, erro: err.message });
+  }
+});
+
+/**
+ * GET /admin/whatsapp/diagnostico — check de comunicação com a uazapi.
+ *
+ * Junta os três pontos onde o assistente de DP (advertência/suspensão) pode falhar
+ * silenciosamente: (1) a instância está conectada? (2) o webhook está no ar e, se há
+ * secret, a URL registrada na uazapi PRECISA levar `?token=<secret>` — senão TODO
+ * webhook recebe 401 e o assistente nunca responde; (3) a transcrição de áudio tem chave.
+ */
+router.get("/whatsapp/diagnostico", requireArea("alertas"), async (_req, res) => {
+  try {
+    const instancia = await statusInstancia();
+    const base = (process.env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
+    const secretConfigurado = Boolean((process.env.UAZAPI_WEBHOOK_SECRET || "").trim());
+    const transcricaoOk = Boolean(
+      process.env.OPENAI_API_KEY ||
+        process.env.GROQ_API_KEY ||
+        (await getSecretSetting(db, "ia_api_key_chatgpt"))
+    );
+    const providerIa = (await getSetting(db, "provider_ia_cnpj")) || "claude";
+    const classificacaoOk = Boolean(await obterChaveApi(providerIa, db));
+    res.json({
+      instancia,
+      webhook: {
+        secret_configurado: secretConfigurado,
+        url_base: base ? `${base}/api/whatsapp/webhook` : null,
+        // Só a indicação; o secret em si nunca sai na resposta.
+        url_com_token: secretConfigurado && base
+          ? `${base}/api/whatsapp/webhook?token=SEU_SECRET`
+          : null,
+      },
+      assistente_dp: {
+        transcricao_audio_configurada: transcricaoOk,
+        classificacao_ia_configurada: classificacaoOk,
+      },
+    });
+  } catch (err) {
+    console.error("[admin] whatsapp/diagnostico:", err.message);
+    res.status(500).json({ error: "Erro ao consultar o diagnóstico" });
+  }
+});
+
+/**
+ * POST /admin/whatsapp/testar — envia uma mensagem de teste para um número, provando que
+ * o ENVIO (saída) funciona de ponta a ponta. Não valida o recebimento de webhook — para
+ * isso, mande "advertência" do seu WhatsApp para o número da Nescon e veja se responde.
+ */
+router.post("/whatsapp/testar", requireArea("alertas"), async (req, res) => {
+  const v = numeroWpp.validar(String(req.body?.numero || ""));
+  if (!v.ok) return res.status(400).json({ ok: false, erro: v.motivo });
+  try {
+    await enviarTexto({
+      numero: v.numero,
+      texto:
+        "✅ Teste de conexão do Portal Nescon. Se você recebeu esta mensagem, o envio pelo WhatsApp está funcionando.",
+      delayMs: 300,
+    });
+    res.json({ ok: true, numero: v.numero });
+  } catch (err) {
+    console.error("[admin] whatsapp/testar:", err.message);
+    res.status(502).json({ ok: false, erro: err.message });
   }
 });
 

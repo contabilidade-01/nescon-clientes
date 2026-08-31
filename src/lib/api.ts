@@ -1560,6 +1560,18 @@ export const api = {
         method: "POST",
         body: JSON.stringify(companyId ? { company_id: companyId } : {}),
       }),
+    /** Check de comunicação com o WhatsApp (uazapi): instância, webhook e transcrição. */
+    whatsappDiagnostico: () =>
+      request<{
+        instancia: { ok: boolean; categoria: string; mensagem: string; owner?: string | null };
+        webhook: { secret_configurado: boolean; url_base: string | null; url_com_token: string | null };
+        assistente_dp: { transcricao_audio_configurada: boolean; classificacao_ia_configurada: boolean };
+      }>("/admin/whatsapp/diagnostico"),
+    whatsappTestar: (numero: string) =>
+      request<{ ok: boolean; numero?: string; erro?: string }>("/admin/whatsapp/testar", {
+        method: "POST",
+        body: JSON.stringify({ numero }),
+      }),
     /** Opções da sincronização mudáveis pela tela (sem redeploy). */
     configSync: () =>
       request<{ alerta_so_ativos: boolean }>("/admin/configuracoes/sync"),

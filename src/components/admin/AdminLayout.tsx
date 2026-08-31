@@ -109,6 +109,7 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
       { to: "/admin/doc-upload", label: "Upload de documentos", icon: Upload, area: "entregas" },
       { to: "/admin/envio-guias", label: "Envio de guias", icon: Send, area: "envio_guias" },
       { to: "/admin/alertas", label: "Alertas de vencimento", icon: BellRing, area: "alertas" },
+      { to: "/admin/whatsapp", label: "Conexão do WhatsApp", icon: MessageCircle, area: "alertas" },
       { to: "/admin/vencimentos-sugeridos", label: "Vencimentos sugeridos", icon: CalendarSearch, area: "entregas" },
       { to: "/admin/config-ia", label: "Configuração de IA", icon: Bot, area: "entregas" },
       { to: "/admin/acompanhamentos", label: "Acompanhamentos mensais", icon: CalendarClock, area: "acompanhamentos" },

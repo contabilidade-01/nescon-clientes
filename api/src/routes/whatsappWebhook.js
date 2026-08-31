@@ -31,6 +31,9 @@ function isAudioType(messageType, mediaType) {
 
 router.post("/webhook", async (req, res) => {
   if (!webhookAutorizado(req)) {
+    console.warn(
+      "[whatsapp-dp] webhook 401 — UAZAPI_WEBHOOK_SECRET está no servidor, mas o pedido não trouxe ?token= nem x-webhook-token. A URL cadastrada na uazapi precisa incluir o token; senão todo evento é descartado e o assistente não responde."
+    );
     return res.status(401).json({ error: "Webhook não autorizado" });
   }
   res.status(200).json({ received: true });
@@ -39,8 +42,20 @@ router.post("/webhook", async (req, res) => {
     const body = req.body || {};
     const message = body.message || body;
     if (!message || message.fromMe) return;
-    const chatid = message.chatid || message.chatId || message.sender || "";
-    if (!chatid || String(chatid).endsWith("@g.us")) return;
+    const chatid =
+      message.chatid || message.chatId || message.sender || message.key?.remoteJid || "";
+    if (!chatid || String(chatid).endsWith("@g.us")) {
+      // Diagnóstico: se veio um evento com cara de mensagem mas sem chatid aproveitável,
+      // registra as chaves para descobrir o formato — é o rastro que faltava quando "não
+      // respondeu". Eventos de sistema (presença, status) caem aqui e são ruído tolerável.
+      if (!chatid && (message.text || message.body || message.messageType || message.type)) {
+        console.warn(
+          "[whatsapp-dp] evento sem chatid — chaves:",
+          Object.keys(message).join(",").slice(0, 200)
+        );
+      }
+      return;
+    }
 
     const messageid = message.messageid || message.id || "";
     if (messageid) {
@@ -60,7 +75,18 @@ router.post("/webhook", async (req, res) => {
 
     const messageType = message.messageType || message.type || "";
     const mediaType = message.mediaType || "";
-    let texto = String(message.text || message.body || message.conversation || "").trim();
+    // Extração tolerante a variações de payload da uazapi/WhatsApp: texto simples e as
+    // formas aninhadas (mensagem "estendida" com link/resposta, legenda de mídia).
+    let texto = String(
+      message.text ||
+        message.body ||
+        message.conversation ||
+        message.caption ||
+        message.message?.conversation ||
+        message.message?.extendedTextMessage?.text ||
+        message.message?.text ||
+        ""
+    ).trim();
 
     if (isAudioType(messageType, mediaType) && configurado()) {
       try {
@@ -80,7 +106,14 @@ router.post("/webhook", async (req, res) => {
       }
     }
 
-    if (!texto) return;
+    if (!texto) {
+      // Mensagem chegou (chatid ok) mas sem texto aproveitável e não era áudio: registra
+      // o tipo para diagnosticar por que o assistente não respondeu.
+      if (!isAudioType(messageType, mediaType)) {
+        console.warn(`[whatsapp-dp] mensagem de ${phone} sem texto — tipo="${messageType}/${mediaType}"`);
+      }
+      return;
+    }
 
     const resposta = await processarTexto({ phone, texto });
     if (resposta) {
