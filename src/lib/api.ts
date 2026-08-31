@@ -1564,6 +1564,17 @@ export const api = {
     whatsappDiagnostico: () =>
       request<{
         instancia: { ok: boolean; categoria: string; mensagem: string; owner?: string | null };
+        ambiente: {
+          public_app_url: string | null;
+          uazapi_subdomain: string | null;
+          uazapi_token_configurado: boolean;
+          webhook_secret_configurado: boolean;
+          nescon_contato_whatsapp: string | null;
+          admin_whatsapp: string | null;
+          openai_api_key_configurada: boolean;
+          groq_api_key_configurada: boolean;
+          chatgpt_tela_configurada: boolean;
+        };
         webhook: { secret_configurado: boolean; url_base: string | null; url_com_token: string | null };
         assistente_dp: { transcricao_audio_configurada: boolean; classificacao_ia_configurada: boolean };
       }>("/admin/whatsapp/diagnostico"),

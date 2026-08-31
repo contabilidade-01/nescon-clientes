@@ -9,6 +9,7 @@ import {
   MessageCircle,
   RefreshCw,
   Send,
+  Server,
   Webhook,
   XCircle,
 } from "lucide-react";
@@ -37,7 +38,7 @@ const WhatsAppStatusPage = () => {
   const queryClient = useQueryClient();
   const [numero, setNumero] = useState("");
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, error } = useQuery({
     queryKey: ["admin-whatsapp-diagnostico"],
     queryFn: () => api.admin.whatsappDiagnostico(),
     refetchInterval: 30000,
@@ -61,6 +62,61 @@ const WhatsAppStatusPage = () => {
       description="Verifica se o número da Nescon está conectado à uazapi e se o assistente de DP (advertência/suspensão) consegue receber e responder mensagens."
     >
       <div className="space-y-6">
+        {isError && (
+          <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <span>Não deu para ler a configuração do servidor: {(error as Error)?.message || "erro desconhecido"}.</span>
+          </div>
+        )}
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Server className="h-4 w-4" /> Variáveis no Easypanel
+            </CardTitle>
+            <CardDescription>
+              Leitura do ambiente da API. Tokens e chaves nunca aparecem — só se estão preenchidos.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {isLoading ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : data?.ambiente ? (
+              <>
+                <Linha ok={Boolean(data.ambiente.public_app_url)}>
+                  PUBLIC_APP_URL: {data.ambiente.public_app_url || "não definida"}
+                </Linha>
+                <Linha ok={Boolean(data.ambiente.uazapi_subdomain)}>
+                  UAZAPI_SUBDOMAIN: {data.ambiente.uazapi_subdomain || "não definido"}
+                </Linha>
+                <Linha ok={data.ambiente.uazapi_token_configurado}>
+                  UAZAPI_TOKEN: {data.ambiente.uazapi_token_configurado ? "preenchido" : "vazio"}
+                </Linha>
+                <Linha ok={data.ambiente.webhook_secret_configurado}>
+                  UAZAPI_WEBHOOK_SECRET: {data.ambiente.webhook_secret_configurado ? "preenchido" : "vazio"}
+                </Linha>
+                <Linha ok={Boolean(data.ambiente.nescon_contato_whatsapp)}>
+                  NESCON_CONTATO_WHATSAPP: {data.ambiente.nescon_contato_whatsapp || "não definido (usa o admin)"}
+                </Linha>
+                <Linha ok={Boolean(data.ambiente.admin_whatsapp)}>
+                  ADMIN_WHATSAPP: {data.ambiente.admin_whatsapp || "não definido (padrão 5511948626605)"}
+                </Linha>
+                <Linha ok={data.ambiente.openai_api_key_configurada}>
+                  OPENAI_API_KEY: {data.ambiente.openai_api_key_configurada ? "preenchida" : "vazia"}
+                </Linha>
+                <Linha ok={data.ambiente.groq_api_key_configurada}>
+                  GROQ_API_KEY: {data.ambiente.groq_api_key_configurada ? "preenchida" : "vazia"}
+                </Linha>
+                <Linha ok={data.ambiente.chatgpt_tela_configurada}>
+                  ChatGPT na tela Config. de IA: {data.ambiente.chatgpt_tela_configurada ? "com chave" : "sem chave"}
+                </Linha>
+              </>
+            ) : null}
+          </CardContent>
+        </Card>
+
         {/* Estado da instância */}
         <Card>
           <CardHeader className="pb-3">

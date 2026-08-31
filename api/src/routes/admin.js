@@ -1692,15 +1692,28 @@ router.get("/whatsapp/diagnostico", requireArea("alertas"), async (_req, res) =>
     const instancia = await statusInstancia();
     const base = (process.env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
     const secretConfigurado = Boolean((process.env.UAZAPI_WEBHOOK_SECRET || "").trim());
-    const transcricaoOk = Boolean(
-      process.env.OPENAI_API_KEY ||
-        process.env.GROQ_API_KEY ||
-        (await getSecretSetting(db, "ia_api_key_chatgpt"))
-    );
+    const openaiEnv = Boolean((process.env.OPENAI_API_KEY || "").trim());
+    const groqEnv = Boolean((process.env.GROQ_API_KEY || "").trim());
+    const chatgptTela = Boolean(await getSecretSetting(db, "ia_api_key_chatgpt"));
+    const transcricaoOk = openaiEnv || groqEnv || chatgptTela;
     const providerIa = (await getSetting(db, "provider_ia_cnpj")) || "claude";
     const classificacaoOk = Boolean(await obterChaveApi(providerIa, db));
+    const subdominio = (process.env.UAZAPI_SUBDOMAIN || "").trim();
+    const contato = (process.env.NESCON_CONTATO_WHATSAPP || "").trim();
+    const adminWpp = (process.env.ADMIN_WHATSAPP || "").trim();
     res.json({
       instancia,
+      ambiente: {
+        public_app_url: base || null,
+        uazapi_subdomain: subdominio || null,
+        uazapi_token_configurado: Boolean((process.env.UAZAPI_TOKEN || "").trim()),
+        webhook_secret_configurado: secretConfigurado,
+        nescon_contato_whatsapp: contato || null,
+        admin_whatsapp: adminWpp || null,
+        openai_api_key_configurada: openaiEnv,
+        groq_api_key_configurada: groqEnv,
+        chatgpt_tela_configurada: chatgptTela,
+      },
       webhook: {
         secret_configurado: secretConfigurado,
         url_base: base ? `${base}/api/whatsapp/webhook` : null,
