@@ -145,12 +145,52 @@ async function baixarMidia(messageId) {
   return { base64Data: b64, mimetype: j.mimetype || j.mimeType || "audio/ogg" };
 }
 
+/** Lê a URL de webhook cadastrada na instância uazapi (a mesma das guias). */
+async function lerWebhookCadastrado() {
+  if (!configurado()) {
+    return { ok: false, motivo: "UAZAPI_SUBDOMAIN/TOKEN ausentes no container." };
+  }
+  const mascarar = (url) => String(url || "").replace(/([?&]token=)[^&]+/gi, "$1***");
+  const tenta = async (caminho) => {
+    const j = await chamar(caminho, { metodo: "GET", timeoutMs: 15000 });
+    const url =
+      j.url ||
+      j.webhookUrl ||
+      j.webhook_url ||
+      (typeof j.webhook === "string" ? j.webhook : j.webhook?.url) ||
+      "";
+    return { bruto: j, url };
+  };
+  try {
+    let { bruto, url } = await tenta("/webhook");
+    if (!url) {
+      try {
+        const b = await tenta("/instance");
+        bruto = { ...bruto, instance: b.bruto };
+        url = b.url;
+      } catch {
+        /* /instance é opcional */
+      }
+    }
+    const mascarada = mascarar(url);
+    return {
+      ok: true,
+      url_mascarada: mascarada || null,
+      aponta_para_este_portal: /\/api\/whatsapp\/webhook/i.test(url),
+      chaves: Object.keys(bruto || {}).slice(0, 20),
+    };
+  } catch (err) {
+    return { ok: false, motivo: err.message };
+  }
+}
+
 module.exports = {
   configurado,
   enviarTexto,
   enviarDocumento,
   baixarMidia,
   statusInstancia,
+  lerWebhookCadastrado,
   owner,
   UazapiNaoConfigurado,
   UazapiTokenInvalido,

@@ -124,19 +124,38 @@ function montarBlocos(dados) {
   const cond = condutaDe(dados.conduta);
   let corpo;
   if (ehSuspensao) {
+    const cal = dados.calendario12x36;
     const dias = Math.min(30, Math.max(1, Number(dados.suspensionDays) || 1));
-    const fim = addDays(data, dias - 1);
-    const retorno = addDays(fim, 1);
-    const diasTxt = `${String(dias).padStart(2, "0")} (${extenso(dias)}) dia${dias > 1 ? "s" : ""}`;
+    let fim;
+    let retorno;
+    let diasTxt;
+    let periodo;
+    if (cal && cal.inicio) {
+      fim = cal.fim instanceof Date ? cal.fim : new Date(cal.fim);
+      retorno = cal.retorno instanceof Date ? cal.retorno : new Date(cal.retorno);
+      diasTxt = `${String(cal.diasPlantao || dias).padStart(2, "0")} (${extenso(cal.diasPlantao || dias)}) plantão(ões) em escala 12x36`;
+      periodo = `${formatBR(cal.inicio)} a ${formatBR(fim)}`;
+      if (cal.anuncio) {
+        blocos.push({ t: "campo", rot: "Data do anúncio: ", val: formatBR(cal.anuncio) });
+      }
+    } else {
+      fim = addDays(data, dias - 1);
+      retorno = addDays(fim, 1);
+      diasTxt = `${String(dias).padStart(2, "0")} (${extenso(dias)}) dia${dias > 1 ? "s" : ""}`;
+      periodo = `${formatBR(data)} a ${formatBR(fim)}`;
+    }
 
-    blocos.push({ t: "campo", rot: "Período de suspensão: ", val: `${formatBR(data)} a ${formatBR(fim)}` });
+    blocos.push({ t: "campo", rot: "Período de suspensão: ", val: periodo });
     blocos.push({ t: "campo", rot: "Total de dias: ", val: diasTxt });
     blocos.push({ t: "campo", rot: "Data de retorno: ", val: formatBR(retorno) });
 
     corpo =
       `${comPonto(dados.motivo)} Diante do exposto, estamos procedendo com uma suspensão disciplinar de ${diasTxt}, ` +
+      (cal && cal.inicio
+        ? "observada a escala 12x36 (o dia do anúncio é trabalhado; o dia seguinte é folga; a suspensão incide no(s) plantão(ões) seguinte(s), e o retorno ocorre após a folga subsequente). "
+        : "") +
       "com fundamento no artigo 474 da Consolidação das Leis do Trabalho (CLT), que confere ao empregador o poder " +
-      "disciplinar de suspender o empregado por até 30 (trinta) dias consecutivos." +
+      "disciplinar de suspender o empregado por até 30 (trinta) dias." +
       " Esta medida é necessária para enfatizar a seriedade do cumprimento das responsabilidades e o impacto negativo " +
       "que a conduta gera na equipe e nos processos da empresa." +
       ` Ressalta-se que, conforme o ${refArt482(cond)}, a continuidade desse comportamento pode resultar em rescisão ` +

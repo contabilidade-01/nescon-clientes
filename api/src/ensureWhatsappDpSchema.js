@@ -10,7 +10,13 @@ async function ensureWhatsappDpSchema(db) {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
     `);
-    console.log("[DB] whatsapp DP: sessão verificada/criada.");
+    await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS escala_12x36 BOOLEAN`);
+    await db.query(
+      `UPDATE companies SET escala_12x36 =
+         regexp_replace(COALESCE(cnpj, ''), '[^0-9]', '', 'g') IN ($1, $2)`,
+      ["52191264000173", "54803962000108"]
+    );
+    console.log("[DB] whatsapp DP: sessão e escala 12x36 verificadas.");
   } catch (err) {
     console.error("[DB] ensureWhatsappDpSchema falhou:", err.message, err.code || "");
     throw err;

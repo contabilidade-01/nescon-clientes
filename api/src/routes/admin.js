@@ -28,7 +28,7 @@ const coraSync = require("../coraSync");
 const coraClient = require("../cora");
 const { TIPOS: TIPOS_GCLICK } = require("../gclick/guides");
 const { gerarSenhaInicial } = require("../senhaInicial");
-const { enviarTexto, enviarDocumento, statusInstancia } = require("../uazapi");
+const { enviarTexto, enviarDocumento, statusInstancia, lerWebhookCadastrado } = require("../uazapi");
 const { obterChaveApi } = require("../iaProvider");
 const numeroWpp = require("../whatsappNumero");
 const { minutosSP } = require("../diasBancarios");
@@ -1717,10 +1717,10 @@ router.get("/whatsapp/diagnostico", requireArea("alertas"), async (_req, res) =>
       webhook: {
         secret_configurado: secretConfigurado,
         url_base: base ? `${base}/api/whatsapp/webhook` : null,
-        // Só a indicação; o secret em si nunca sai na resposta.
         url_com_token: secretConfigurado && base
           ? `${base}/api/whatsapp/webhook?token=SEU_SECRET`
           : null,
+        cadastrado_na_uazapi: await lerWebhookCadastrado(),
       },
       assistente_dp: {
         transcricao_audio_configurada: transcricaoOk,

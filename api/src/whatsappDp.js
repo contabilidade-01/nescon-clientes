@@ -28,6 +28,11 @@ const { UPLOAD_DIR } = require("./uploads");
 const SESSION_MS = 3 * 60 * 60 * 1000;
 const ADMIN_WHATSAPP = (process.env.ADMIN_WHATSAPP || "5511948626605").replace(/\D/g, "");
 const MAX_LISTA = 25;
+const CNPJ_12X36 = new Set(["52191264000173", "54803962000108"]);
+
+function eh12x36(cnpj) {
+  return CNPJ_12X36.has(digits(cnpj));
+}
 
 function digits(v) {
   return String(v || "").replace(/\D/g, "");
@@ -98,7 +103,7 @@ async function empresasDoTelefone(phoneDigits) {
   const sufixo = chave.slice(-8);
   if (sufixo.length < 8) return [];
   const { rows } = await db.query(
-    `SELECT id, name, cnpj FROM companies
+    `SELECT id, name, cnpj, escala_12x36 FROM companies
       WHERE COALESCE(arquivada, false) = false
         AND COALESCE(excluida, false) = false
         AND regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') LIKE $1
@@ -178,6 +183,84 @@ function parseData(texto) {
   return d;
 }
 
+/**
+ * WhatsApp (e algumas transcrições) prefixam o recado: "Jean:\n2". Sem isto o número
+ * da lista e o "hoje" não casam.
+ */
+function extrairResposta(texto) {
+  const raw = String(texto || "").trim();
+  if (!raw) return "";
+  const linhas = raw.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const ultima = linhas[linhas.length - 1] || "";
+  if (/^\d{1,2}$/.test(ultima)) return ultima;
+  if (parseData(ultima)) return ultima;
+  const semRotulo = raw.replace(/^[A-Za-zÀ-ÿ0-9 .'\-]{1,40}:\s*/i, "").trim();
+  if (semRotulo && semRotulo !== raw) {
+    if (/^\d{1,2}$/.test(semRotulo) || parseData(semRotulo)) return semRotulo;
+    const ultimasem = semRotulo.split(/\n+/).map((l) => l.trim()).filter(Boolean).pop() || semRotulo;
+    if (/^\d{1,2}$/.test(ultimasem) || parseData(ultimasem)) return ultimasem;
+    return semRotulo;
+  }
+  return raw;
+}
+
+function parseDatasLista(texto) {
+  const t = String(texto || "").trim();
+  const pedacos = t.split(/\s*(?:,|;|\be\b)\s*/i).map((p) => p.trim()).filter(Boolean);
+  const datas = [];
+  for (const p of pedacos) {
+    const d = parseData(p);
+    if (d) datas.push(d);
+  }
+  if (datas.length) return datas;
+  const unica = parseData(t);
+  return unica ? [unica] : [];
+}
+
+function ehFaltaOuAtraso(texto) {
+  const t = norm(texto);
+  return /\bfalta/.test(t) || /\batraso/.test(t) || /\bsaida antecip/.test(t);
+}
+
+function addDays(d, n) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+
+/**
+ * 12x36 (plantão / folga / plantão / folga). Anúncio num dia de trabalho:
+ * trabalha no anúncio, folga no dia seguinte, suspensão no próximo plantão,
+ * folga, e só então volta (1 dia de suspensão = 1 plantão, não 1 dia corrido).
+ */
+function calendarioSuspensao12x36({ anuncio, diasPlantao, anuncioEhPlantao }) {
+  const n = Math.min(30, Math.max(1, Number(diasPlantao) || 1));
+  const offset = anuncioEhPlantao ? 2 : 1;
+  const inicio = addDays(anuncio, offset);
+  const fim = addDays(inicio, (n - 1) * 2);
+  const retorno = addDays(fim, 2);
+  return { inicio, fim, retorno, diasPlantao: n, anuncioEhPlantao: Boolean(anuncioEhPlantao) };
+}
+
+function redigirMotivoAdvertencia(d) {
+  const base = String(d.motivo || "").trim();
+  if (d.datasFatoBR) {
+    return (
+      `Falta(s) ou atraso(s) injustificado(s) ao serviço na(s) data(s) ${d.datasFatoBR}, ` +
+      `em descumprimento ao contrato de trabalho e ao dever de assiduidade. ` +
+      `Relato do empregador: ${base.replace(/\.+$/, "")}.`
+    );
+  }
+  if (base.length < 50) {
+    return (
+      `${base.replace(/\.+$/, "")}. A conduta foi apurada pela empregadora e constitui ` +
+      `descumprimento das obrigações do contrato de trabalho.`
+    );
+  }
+  return base;
+}
+
 function formatBR(d) {
   const p = (x) => String(x).padStart(2, "0");
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
@@ -240,10 +323,14 @@ function gravar(buffer, nome) {
  */
 async function emitirDocumento({ phone, sessao }) {
   const d = sessao.dados || {};
-  const { rows: emp } = await db.query("SELECT id, name, cnpj FROM companies WHERE id = $1", [sessao.company_id]);
+  const { rows: emp } = await db.query(
+    "SELECT id, name, cnpj, escala_12x36 FROM companies WHERE id = $1",
+    [sessao.company_id]
+  );
   const empresa = emp[0];
   const ehSuspensao = sessao.tema === "suspensao";
   const data = new Date(d.dataISO);
+  const motivoDoc = ehSuspensao ? d.motivo : redigirMotivoAdvertencia(d);
 
   const { pdf, docx, nomeBase } = await gerarArquivos({
     tipo: sessao.tema,
@@ -251,17 +338,31 @@ async function emitirDocumento({ phone, sessao }) {
     cpf: d.cpf,
     companyName: empresa.name,
     cnpj: empresa.cnpj,
-    data,
+    data: d.suspInicioISO ? new Date(d.suspInicioISO) : data,
     suspensionDays: d.dias,
-    motivo: d.motivo,
+    motivo: motivoDoc,
     conduta: d.conduta,
+    calendario12x36: d.escala12
+      ? {
+          anuncio: data,
+          inicio: new Date(d.suspInicioISO),
+          fim: new Date(d.suspFimISO),
+          retorno: new Date(d.suspRetornoISO),
+          diasPlantao: d.dias,
+        }
+      : null,
   });
 
   const arqPdf = gravar(pdf, `${nomeBase}.pdf`);
   const arqDocx = gravar(docx, `${nomeBase}.docx`);
   const token = crypto.randomBytes(24).toString("hex");
 
-  const retorno = ehSuspensao ? new Date(data.getTime() + (Number(d.dias) || 1) * 86400000) : null;
+  const inicioDoc = d.suspInicioISO ? new Date(d.suspInicioISO) : data;
+  const retorno = ehSuspensao
+    ? d.suspRetornoISO
+      ? new Date(d.suspRetornoISO)
+      : new Date(inicioDoc.getTime() + (Number(d.dias) || 1) * 86400000)
+    : null;
   await db.query(
     `INSERT INTO issued_documents
        (document_type, employee_name, employee_cpf, company_name, company_cnpj, company_id,
@@ -274,10 +375,10 @@ async function emitirDocumento({ phone, sessao }) {
       empresa.name,
       empresa.cnpj,
       empresa.id,
-      data,
+      inicioDoc,
       ehSuspensao ? Number(d.dias) || 1 : null,
       retorno,
-      d.motivo || null,
+      motivoDoc || d.motivo || null,
       arqPdf,
       arqDocx,
       token,
@@ -316,8 +417,9 @@ async function concluir(phone, sessao) {
     `📋 ${tipo} emitida pelo assistente (IA)\n` +
       `Empresa: ${doc.empresa.name} (${doc.empresa.cnpj})\n` +
       `Funcionário: ${d.funcionario}${d.cpf ? ` — CPF ${d.cpf}` : ""}\n` +
-      (sessao.tema === "suspensao" ? `Dias: ${d.dias}\n` : "") +
-      `Data: ${d.dataBR}\n` +
+      (sessao.tema === "suspensao" ? `Dias (plantão${d.escala12 ? " 12x36" : ""}): ${d.dias}\n` : "") +
+      (d.datasFatoBR ? `Data do fato: ${d.datasFatoBR}\n` : "") +
+      `Data do termo: ${d.dataBR}\n` +
       `Motivo: ${d.motivo}\n` +
       `Enquadramento: ${condutaDe(d.conduta).rotulo}\n` +
       `WhatsApp: ${phone}\n` +
@@ -358,7 +460,7 @@ async function pedirFuncionario(phone, tema, empresa) {
     company_id: empresa.id,
     tema,
     step: "funcionario",
-    dados: {},
+    dados: { escala12: eh12x36(empresa.cnpj) },
     replaceDados: true,
   });
   const titulo = tema === "advertencia" ? "*advertência*" : "*suspensão*";
@@ -377,7 +479,7 @@ async function pedirFuncionario(phone, tema, empresa) {
 }
 
 async function seguirFluxo(phone, sessao, texto) {
-  const t = texto.trim();
+  const t = extrairResposta(texto);
   const step = sessao.step;
   const d = sessao.dados || {};
 
@@ -431,15 +533,71 @@ async function seguirFluxo(phone, sessao, texto) {
   if (step === "dias") {
     const n = parseInt(String(t).replace(/\D/g, ""), 10);
     if (!Number.isFinite(n) || n < 1 || n > 30) {
-      return "Informe um número de *1 a 30* dias (art. 474 da CLT). Ex.: 3";
+      return "Informe um número de *1 a 30* dias de *plantão/trabalho* (art. 474 da CLT). Ex.: 1";
     }
     await saveSessao(phone, { dados: { dias: n }, step: "data" });
-    return `${n} dia(s).\n\nQual a *data de início*? (ex.: 28/08/2026, *hoje* ou *amanhã*)`;
+    return perguntaDataSuspensao(d.escala12 === true);
+  }
+
+  if (step === "escala") {
+    const empresa = (await db.query("SELECT cnpj FROM companies WHERE id = $1", [sessao.company_id])).rows[0];
+    const escala12 = eh12x36(empresa?.cnpj);
+    await saveSessao(phone, { dados: { escala12 }, step: "data" });
+    return perguntaDataSuspensao(escala12);
+  }
+
+  if (step === "plantao") {
+    const nrm = norm(t);
+    let anuncioEhPlantao = null;
+    if (/^(sim|s|trabalha|plantao|plantão)$/.test(nrm)) anuncioEhPlantao = true;
+    else if (/^(nao|n|folga)$/.test(nrm)) anuncioEhPlantao = false;
+    if (anuncioEhPlantao === null) {
+      return "No dia do anúncio o funcionário *trabalha* (plantão)? *SIM* ou *NÃO* (está de folga).";
+    }
+    const anuncio = new Date(d.dataISO);
+    const cal = calendarioSuspensao12x36({ anuncio, diasPlantao: d.dias, anuncioEhPlantao });
+    await saveSessao(phone, {
+      dados: {
+        anuncioEhPlantao,
+        suspInicioISO: cal.inicio.toISOString(),
+        suspFimISO: cal.fim.toISOString(),
+        suspRetornoISO: cal.retorno.toISOString(),
+        suspInicioBR: formatBR(cal.inicio),
+        suspFimBR: formatBR(cal.fim),
+        suspRetornoBR: formatBR(cal.retorno),
+      },
+      step: "motivo_sus",
+    });
+    return (
+      `Na *12x36*, ${d.dias} dia(s) de suspensão não são dias corridos.\n\n` +
+      `• Dia do anúncio (${d.dataBR}): ${anuncioEhPlantao ? "trabalha" : "folga"}\n` +
+      (anuncioEhPlantao ? `• Dia seguinte: folga\n` : "") +
+      `• Suspensão (plantão em que não trabalha): ${formatBR(cal.inicio)}` +
+      (cal.inicio.getTime() !== cal.fim.getTime() ? ` a ${formatBR(cal.fim)}` : "") +
+      `\n• Folga seguinte e retorno ao trabalho: ${formatBR(cal.retorno)}\n\n` +
+      `Qual o *motivo* da suspensão?`
+    );
   }
 
   if (step === "motivo") {
     if (t.length < 3) return "Descreva o *motivo* com um pouco mais de detalhe — ele vai no documento.";
+    if (ehFaltaOuAtraso(t)) {
+      await saveSessao(phone, { dados: { motivo: t }, step: "data_fato" });
+      return (
+        "Qual a *data da falta* (o dia em que o funcionário não compareceu ou atrasou)?\n" +
+        "Pode informar mais de uma: 28/08/2026, 29/08/2026"
+      );
+    }
     await saveSessao(phone, { dados: { motivo: t }, step: "conduta" });
+    return perguntaConduta();
+  }
+
+  if (step === "data_fato") {
+    const datas = parseDatasLista(t);
+    if (!datas.length) {
+      return "Não entendi a data da falta. Use *dd/mm/aaaa*, *hoje*, ou várias separadas por vírgula.";
+    }
+    await saveSessao(phone, { dados: { datasFatoBR: datas.map(formatBR).join(", ") }, step: "conduta" });
     return perguntaConduta();
   }
 
@@ -451,7 +609,10 @@ async function seguirFluxo(phone, sessao, texto) {
     const proximo = sessao.tema === "advertencia" ? "data" : "confirma";
     await saveSessao(phone, { dados: { conduta: chave }, step: proximo });
     if (sessao.tema === "advertencia") {
-      return "Qual a *data* da advertência? (ex.: 28/08/2026, *hoje* ou *amanhã*)";
+      return (
+        "Qual a *data do termo* — o dia em que o documento será assinado, em geral *hoje*?\n" +
+        "(Isto *não* é a data da falta; a falta já foi registrada.)"
+      );
     }
     return resumoConfirmacao({ ...d, conduta: chave }, sessao.tema);
   }
@@ -459,9 +620,20 @@ async function seguirFluxo(phone, sessao, texto) {
   if (step === "data") {
     const data = parseData(t);
     if (!data) return "Não entendi a data. Use *dd/mm/aaaa* (ex.: 28/08/2026), *hoje* ou *amanhã*.";
-    const prox = sessao.tema === "advertencia" ? "confirma" : "motivo_sus";
-    await saveSessao(phone, { dados: { dataISO: data.toISOString(), dataBR: formatBR(data) }, step: prox });
-    if (sessao.tema === "suspensao") return "Qual o *motivo* da suspensão?";
+    if (sessao.tema === "suspensao" && d.escala12 === true) {
+      await saveSessao(phone, { dados: { dataISO: data.toISOString(), dataBR: formatBR(data) }, step: "plantao" });
+      return (
+        `Data do anúncio: *${formatBR(data)}*.\n\n` +
+        `Na 12x36: se ele *trabalha* nesse dia, folga no seguinte, a suspensão começa no *próximo plantão*, ` +
+        `depois vem folga, e só então ele volta.\n\n` +
+        `Nesse dia do anúncio o funcionário *trabalha* (está de plantão)? *SIM* ou *NÃO*.`
+      );
+    }
+    if (sessao.tema === "suspensao") {
+      await saveSessao(phone, { dados: { dataISO: data.toISOString(), dataBR: formatBR(data) }, step: "motivo_sus" });
+      return "Qual o *motivo* da suspensão?";
+    }
+    await saveSessao(phone, { dados: { dataISO: data.toISOString(), dataBR: formatBR(data) }, step: "confirma" });
     return resumoConfirmacao({ ...d, dataBR: formatBR(data) }, sessao.tema);
   }
 
@@ -491,6 +663,17 @@ async function seguirFluxo(phone, sessao, texto) {
  * Pergunta a natureza da conduta. É o que define a alínea do art. 482 citada no termo —
  * quem enquadra é o cliente, não a IA (alínea errada é pior do que alínea nenhuma).
  */
+function perguntaDataSuspensao(escala12) {
+  if (escala12) {
+    return (
+      "Qual a *data do anúncio* da suspensão (em geral *hoje*)?\n" +
+      "Na 12x36 isso não é o primeiro dia suspenso: ele ainda trabalha no anúncio, folga no dia seguinte, " +
+      "e a suspensão começa no próximo plantão."
+    );
+  }
+  return "Qual a *data de início* da suspensão (dias corridos)? Ex.: 28/08/2026, *hoje* ou *amanhã*.";
+}
+
 function perguntaConduta(cabecalho) {
   const opcoes = CONDUTA_ORDEM.map((k, i) => `${i + 1}. ${CONDUTAS[k].rotulo}`).join("\n");
   return (
@@ -506,8 +689,12 @@ function resumoConfirmacao(d, tema) {
     `• Documento: *${ehSus ? "Suspensão" : "Advertência"}*\n` +
     `• Funcionário: *${d.funcionario}*\n` +
     (d.cpf ? `• CPF: ${d.cpf}\n` : "• CPF: não cadastrado\n") +
-    (ehSus ? `• Dias: ${d.dias}\n` : "") +
-    `• Data${ehSus ? " de início" : ""}: ${d.dataBR}\n` +
+    (ehSus ? `• Dias${d.escala12 ? " de plantão (12x36)" : ""}: ${d.dias}\n` : "") +
+    (d.datasFatoBR ? `• Data da falta: ${d.datasFatoBR}\n` : "") +
+    `• Data do termo${ehSus ? "/anúncio" : ""}: ${d.dataBR}\n` +
+    (d.suspInicioBR
+      ? `• Período suspenso: ${d.suspInicioBR}${d.suspFimBR && d.suspFimBR !== d.suspInicioBR ? ` a ${d.suspFimBR}` : ""}\n• Retorno: ${d.suspRetornoBR}\n`
+      : "") +
     `• Motivo: ${d.motivo}\n` +
     `• Enquadramento: ${cond.rotulo}${cond.alinea ? ` (art. 482, "${cond.alinea}")` : ""}\n\n` +
     `Responda *SIM* para emitir ou *NÃO* para cancelar.`
@@ -516,7 +703,7 @@ function resumoConfirmacao(d, tema) {
 
 /** Processa uma mensagem já convertida em texto. */
 async function processarTexto({ phone, texto }) {
-  const raw = String(texto || "").trim();
+  const raw = extrairResposta(texto);
   if (!raw) {
     return `${SELO_IA}\n\nNão consegui entender. Envie o áudio de novo ou escreva *advertência* ou *suspensão*.`;
   }
@@ -553,7 +740,7 @@ async function processarTexto({ phone, texto }) {
       company_id: null,
       tema,
       step: "empresa",
-      dados: { opcoesEmpresa: empresas.map((e) => ({ id: e.id, name: e.name, cnpj: e.cnpj })) },
+      dados: { opcoesEmpresa: empresas.map((e) => ({ id: e.id, name: e.name, cnpj: e.cnpj, escala_12x36: e.escala_12x36 })) },
       replaceDados: true,
     });
     return (
@@ -572,6 +759,9 @@ module.exports = {
   // exportados para teste
   resolverFuncionario,
   parseData,
+  extrairResposta,
+  calendarioSuspensao12x36,
+  eh12x36,
   classificarPorPalavra,
   empresasDoTelefone,
 };

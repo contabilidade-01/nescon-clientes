@@ -48,6 +48,11 @@ describe("resolverFuncionario — nunca inventa nome", () => {
   it("não casa nada quando o nome não existe", () => {
     expect(dp.resolverFuncionario(lista, "carlos").escolhido).toBeUndefined();
   });
+
+  it("escolhe o número mesmo com prefixo de nome do WhatsApp", () => {
+    expect(dp.extrairResposta("Jean:\n2")).toBe("2");
+    expect(dp.resolverFuncionario(lista, dp.extrairResposta("Jean:\n2")).escolhido.id).toBe("2");
+  });
 });
 
 describe("parseData", () => {
@@ -68,6 +73,26 @@ describe("parseData", () => {
     expect(dp.parseData("32/13/2026")).toBeNull();
     expect(dp.parseData("semana que vem")).toBeNull();
     expect(dp.parseData("")).toBeNull();
+  });
+});
+
+describe("calendário 12x36", () => {
+  it("1 plantão após anúncio em dia de trabalho: folga, suspensão, folga, retorno", () => {
+    const anuncio = new Date(2026, 7, 31);
+    const c = dp.calendarioSuspensao12x36({ anuncio, diasPlantao: 1, anuncioEhPlantao: true });
+    const p = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}`;
+    expect(p(c.inicio)).toBe("2/9");
+    expect(p(c.fim)).toBe("2/9");
+    expect(p(c.retorno)).toBe("4/9");
+  });
+});
+
+describe("escala por CNPJ", () => {
+  it("só Queijeiro 3 e 4 são 12x36; o resto é 6x1", () => {
+    expect(dp.eh12x36("52.191.264/0001-73")).toBe(true);
+    expect(dp.eh12x36("54803962000108")).toBe(true);
+    expect(dp.eh12x36("26.786.637/0001-49")).toBe(false);
+    expect(dp.eh12x36("35.736.034/0001-23")).toBe(false);
   });
 });
 
