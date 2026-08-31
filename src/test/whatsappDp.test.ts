@@ -96,6 +96,33 @@ describe("escala por CNPJ", () => {
   });
 });
 
+describe("data da falta no texto", () => {
+  it("entende 'faltou no dia 30'", () => {
+    const ds = dp.parseDatasLista("Faltou no dia 30");
+    expect(ds).toHaveLength(1);
+    expect(ds[0].getDate()).toBe(30);
+  });
+});
+
+describe("teto de dias no assistente", () => {
+  it("aceita só 1, 2 ou 3", () => {
+    expect(dp.lerDiasSuspensao("1")).toBe(1);
+    expect(dp.lerDiasSuspensao("3 dias")).toBe(3);
+    expect(dp.lerDiasSuspensao("4")).toBeNull();
+    expect(dp.lerDiasSuspensao("30")).toBeNull();
+  });
+});
+
+describe("confirmação do resumo", () => {
+  it("SIM emite; NÃO sozinho cancela; 'não está correto' é correção", () => {
+    expect(dp.ehSimEmitir("sim")).toBe(true);
+    expect(dp.ehCancelarEmissao("não")).toBe(true);
+    expect(dp.ehCancelarEmissao("não está correto, faltou dia 28")).toBe(false);
+    expect(dp.temCorrecao({}, "não está correto, faltou no dia 28")).toBe(true);
+    expect(dp.temCorrecao({}, "não está correto")).toBe(false);
+  });
+});
+
 describe("documento gerado no servidor", () => {
   const base = {
     employeeName: "Maria Souza",

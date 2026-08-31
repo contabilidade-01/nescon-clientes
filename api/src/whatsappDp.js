@@ -20,6 +20,7 @@ const fs = require("fs");
 const path = require("path");
 const db = require("./db");
 const { chamarIaConfigurada } = require("./iaProvider");
+const { interpretarMensagem } = require("./whatsappDpIa");
 const { enviarTexto, enviarDocumento, configurado } = require("./uazapi");
 const { getPublicAppUrl } = require("./mailer");
 const { gerarArquivos, CONDUTAS, CONDUTA_ORDEM, condutaDe } = require("./dpDocumento");
@@ -214,7 +215,100 @@ function parseDatasLista(texto) {
   }
   if (datas.length) return datas;
   const unica = parseData(t);
-  return unica ? [unica] : [];
+  if (unica) return [unica];
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const out = [];
+  const re = /\b(?:no\s+)?dia\s+(\d{1,2})\b/gi;
+  let m;
+  while ((m = re.exec(t))) {
+    const dia = parseInt(m[1], 10);
+    const d = new Date(hoje.getFullYear(), hoje.getMonth(), dia);
+    if (d.getDate() === dia) out.push(d);
+  }
+  return out;
+}
+
+function soNumeroLista(texto) {
+  return /^\d{1,2}$/.test(String(texto || "").trim());
+}
+
+function lerDiasSuspensao(texto) {
+  const n = parseInt(String(texto).replace(/\D/g, ""), 10);
+  if (n === 1 || n === 2 || n === 3) return n;
+  return null;
+}
+
+function perguntaDiasSuspensao() {
+  return (
+    `Quantos *dias* de suspensão?\n\n` +
+    `1 — 1 dia\n2 — 2 dias\n3 — 3 dias\n\n` +
+    `A CLT (art. 474) permite até *30* dias; acima disso vira rescisão. Por aqui o escritório limita a *1, 2 ou 3*.`
+  );
+}
+
+function pareceFato(texto) {
+  const t = String(texto || "").trim();
+  if (t.length < 8) return false;
+  if (soNumeroLista(t)) return false;
+  if (parseData(t) && t.length < 18) return false;
+  if (/^(sim|nao|n|s|hoje|amanha)$/.test(norm(t))) return false;
+  return ehFaltaOuAtraso(t) || t.length >= 25;
+}
+
+function patchDeSlots({ ia, texto, step }) {
+  const patch = {};
+  const t = String(texto || "").trim();
+  const iaObj = ia && typeof ia === "object" ? ia : {};
+
+  if (iaObj.motivo && String(iaObj.motivo).trim().length >= 3) {
+    patch.motivo = String(iaObj.motivo).trim();
+  } else if (
+    pareceFato(t) &&
+    step !== "data" &&
+    step !== "plantao" &&
+    step !== "conduta"
+  ) {
+    patch.motivo = t;
+  }
+
+  const datas = [];
+  const datasIa = Array.isArray(iaObj.datas_falta) ? iaObj.datas_falta : [];
+  for (const x of datasIa) {
+    const parsed = parseData(String(x));
+    if (parsed) datas.push(parsed);
+    else datas.push(...parseDatasLista(String(x)));
+  }
+  if (!datas.length) datas.push(...parseDatasLista(t));
+  if (datas.length) patch.datasFatoBR = [...new Set(datas.map(formatBR))].join(", ");
+
+  const permitirDias = !(step === "funcionario" && soNumeroLista(t)) && step !== "conduta";
+  const diasDet = lerDiasSuspensao(t);
+  const diasIa = Number(iaObj.dias);
+  if (permitirDias) {
+    if (diasDet) patch.dias = diasDet;
+    else if (diasIa === 1 || diasIa === 2 || diasIa === 3) patch.dias = diasIa;
+  }
+
+  if (iaObj.data) {
+    const dt = parseData(String(iaObj.data));
+    if (dt) {
+      patch.dataISO = dt.toISOString();
+      patch.dataBR = formatBR(dt);
+    }
+  } else if ((step === "data" || step === "dias" || step === "confirma") && parseData(t) && !pareceFato(t)) {
+    const dt = parseData(t);
+    patch.dataISO = dt.toISOString();
+    patch.dataBR = formatBR(dt);
+  }
+
+  const cond = String(iaObj.conduta || "");
+  if (cond && CONDUTAS[cond]) patch.conduta = cond;
+
+  if (iaObj.anuncio_trabalha === true || iaObj.anuncio_trabalha === false) {
+    patch.anuncioEhPlantao = iaObj.anuncio_trabalha;
+  }
+  return patch;
 }
 
 function ehFaltaOuAtraso(texto) {
@@ -266,6 +360,147 @@ function formatBR(d) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
+async function garantirCalendario12(phone) {
+  const sessao = await getSessao(phone);
+  const d = sessao?.dados || {};
+  if (!d.escala12 || d.anuncioEhPlantao == null || !d.dataISO || d.suspInicioBR) return;
+  const cal = calendarioSuspensao12x36({
+    anuncio: new Date(d.dataISO),
+    diasPlantao: d.dias,
+    anuncioEhPlantao: d.anuncioEhPlantao,
+  });
+  await saveSessao(phone, {
+    dados: {
+      suspInicioISO: cal.inicio.toISOString(),
+      suspFimISO: cal.fim.toISOString(),
+      suspRetornoISO: cal.retorno.toISOString(),
+      suspInicioBR: formatBR(cal.inicio),
+      suspFimBR: formatBR(cal.fim),
+      suspRetornoBR: formatBR(cal.retorno),
+    },
+  });
+}
+
+/** Só pergunta o que ainda não veio na conversa (nem na IA). */
+async function perguntarProximo(phone) {
+  await garantirCalendario12(phone);
+  const sessao = await getSessao(phone);
+  const d = sessao.dados || {};
+  const tema = sessao.tema;
+
+  if (!d.funcionario) {
+    await saveSessao(phone, { step: "funcionario" });
+    const lista = await funcionariosDa(sessao.company_id);
+    const titulo = tema === "advertencia" ? "*advertência*" : "*suspensão*";
+    if (!lista.length) {
+      return `Vamos emitir a ${titulo}.\n\nDigite o *nome completo* do funcionário.`;
+    }
+    const mostra = lista.slice(0, MAX_LISTA);
+    return (
+      `Qual o *funcionário*? Responda o *número* ou o nome:\n\n${listar(mostra)}` +
+      (lista.length > MAX_LISTA ? `\n\n(+${lista.length - MAX_LISTA} — se não estiver na lista, digite o nome)` : "")
+    );
+  }
+
+  if (tema === "suspensao" && !d.dias) {
+    await saveSessao(phone, { step: "dias" });
+    return `Funcionário: *${d.funcionario}*.\n\n` + perguntaDiasSuspensao();
+  }
+
+  if (tema === "suspensao" && !d.dataISO) {
+    await saveSessao(phone, { step: "data" });
+    return perguntaDataSuspensao(d.escala12 === true);
+  }
+
+  if (tema === "suspensao" && d.escala12 === true && d.anuncioEhPlantao == null) {
+    await saveSessao(phone, { step: "plantao" });
+    return (
+      `Data do anúncio: *${d.dataBR}*.\n\n` +
+      `Na 12x36: se ele *trabalha* nesse dia, folga no seguinte, a suspensão começa no *próximo plantão*, ` +
+      `depois vem folga, e só então ele volta.\n\n` +
+      `Nesse dia do anúncio o funcionário *trabalha* (está de plantão)? *SIM* ou *NÃO*.`
+    );
+  }
+
+  if (!String(d.motivo || "").trim()) {
+    await saveSessao(phone, { step: tema === "advertencia" ? "motivo" : "motivo_sus" });
+    return tema === "advertencia"
+      ? `Funcionário: *${d.funcionario}*.\n\nQual o *motivo* da advertência? (ex.: faltas, atrasos, má conduta)`
+      : "Qual o *motivo* da suspensão?";
+  }
+
+  if (ehFaltaOuAtraso(d.motivo) && !d.datasFatoBR && tema === "advertencia") {
+    await saveSessao(phone, { step: "data_fato" });
+    return (
+      "Qual a *data da falta* (o dia em que o funcionário não compareceu ou atrasou)?\n" +
+      "Pode informar mais de uma: 28/08/2026, 29/08/2026"
+    );
+  }
+
+  if (!d.conduta && ehFaltaOuAtraso(d.motivo)) {
+    await saveSessao(phone, { dados: { conduta: "faltas" } });
+    return perguntarProximo(phone);
+  }
+
+  if (!d.conduta) {
+    await saveSessao(phone, { step: "conduta" });
+    return perguntaConduta();
+  }
+
+  if (tema === "advertencia" && !d.dataISO) {
+    await saveSessao(phone, { step: "data" });
+    return (
+      "Qual a *data do termo* — o dia em que o documento será assinado, em geral *hoje*?\n" +
+      (d.datasFatoBR ? "(Isto *não* é a data da falta; a falta já foi registrada.)" : "")
+    );
+  }
+
+  await saveSessao(phone, { step: "confirma" });
+  const fresh = await getSessao(phone);
+  let extra12 = "";
+  const f = fresh.dados || {};
+  if (tema === "suspensao" && f.escala12 && f.suspInicioBR) {
+    extra12 =
+      `Na *12x36*, ${f.dias} dia(s) de suspensão não são dias corridos.\n\n` +
+      `• Dia do anúncio (${f.dataBR}): ${f.anuncioEhPlantao ? "trabalha" : "folga"}\n` +
+      (f.anuncioEhPlantao ? `• Dia seguinte: folga\n` : "") +
+      `• Suspensão (plantão em que não trabalha): ${f.suspInicioBR}` +
+      (f.suspInicioBR !== f.suspFimBR ? ` a ${f.suspFimBR}` : "") +
+      `\n• Folga seguinte e retorno ao trabalho: ${f.suspRetornoBR}\n\n`;
+  }
+  return extra12 + resumoConfirmacao(f, tema);
+}
+
+async function tentarPreencherDaMensagem(phone, texto) {
+  const sessao = await getSessao(phone);
+  if (!sessao) return null;
+  const lista = await funcionariosDa(sessao.company_id);
+  let ia = {};
+  try {
+    ia = await interpretarMensagem(db, { texto, sessao, funcionarios: lista });
+  } catch (_) {
+    ia = {};
+  }
+  const slots = patchDeSlots({ ia, texto, step: sessao.step });
+  if (Object.keys(slots).length) await saveSessao(phone, { dados: slots });
+
+  const atual = await getSessao(phone);
+  if (!atual.dados?.funcionario) {
+    const chave = ia.funcionario_numero
+      ? String(ia.funcionario_numero)
+      : ia.funcionario_nome || texto;
+    const r = resolverFuncionario(lista, chave);
+    if (r.escolhido) {
+      await saveSessao(phone, {
+        dados: { funcionario: r.escolhido.name, cpf: r.escolhido.cpf || null, employeeId: r.escolhido.id },
+      });
+    }
+  }
+  const s2 = await getSessao(phone);
+  if (s2?.dados?.funcionario) return perguntarProximo(phone);
+  return null;
+}
+
 // --------------------------------------------------------------------------
 // Sessão
 // --------------------------------------------------------------------------
@@ -300,6 +535,28 @@ function sessaoViva(row) {
 function ehCancelar(texto) {
   const t = norm(texto);
   return /^(cancelar|cancela|parar|sair|menu)$/.test(t) || t.includes("comecar de novo");
+}
+
+function ehSimEmitir(texto) {
+  return /^(sim|s|confirmo|ok|pode|isso|certo)$/.test(norm(texto));
+}
+
+/** "não" sozinho cancela; "não está correto, o motivo é..." é correção. */
+function ehCancelarEmissao(texto) {
+  return /^(nao|n|cancelar|nao confirmo)$/.test(norm(texto));
+}
+
+function temCorrecao(ia, texto) {
+  const iaObj = ia && typeof ia === "object" ? ia : {};
+  if (iaObj.motivo || iaObj.dias || iaObj.data || iaObj.funcionario_nome || iaObj.funcionario_numero) return true;
+  if (iaObj.conduta || iaObj.anuncio_trabalha === true || iaObj.anuncio_trabalha === false) return true;
+  if (Array.isArray(iaObj.datas_falta) && iaObj.datas_falta.length) return true;
+  if (pareceFato(texto)) return true;
+  if (parseDatasLista(texto).length) return true;
+  if (parseData(texto)) return true;
+  const nrm = norm(texto);
+  if (/\b(2|3|dois|tres|duas)\s*dias?\b/.test(nrm) || /\b1\s*dia\b/.test(nrm)) return true;
+  return false;
 }
 
 async function avisarEscritorio(resumo) {
@@ -480,12 +737,11 @@ async function pedirFuncionario(phone, tema, empresa) {
 
 async function seguirFluxo(phone, sessao, texto) {
   const t = extrairResposta(texto);
-  const step = sessao.step;
-  const d = sessao.dados || {};
+  let step = sessao.step;
+  const d0 = sessao.dados || {};
 
-  // Escolha da empresa (telefone ligado a mais de uma).
   if (step === "empresa") {
-    const opcoes = d.opcoesEmpresa || [];
+    const opcoes = d0.opcoesEmpresa || [];
     let escolhida = null;
     if (/^\d{1,2}$/.test(t)) {
       escolhida = opcoes[parseInt(t, 10) - 1] || null;
@@ -498,12 +754,99 @@ async function seguirFluxo(phone, sessao, texto) {
     if (!escolhida) {
       return `Não identifiquei. Responda com o *número* da empresa:\n\n${listar(opcoes, (e) => `${e.name} — ${e.cnpj}`)}`;
     }
-    return pedirFuncionario(phone, sessao.tema, escolhida);
+    const intro = await pedirFuncionario(phone, sessao.tema, escolhida);
+    const extra = await tentarPreencherDaMensagem(phone, t);
+    return extra || intro;
   }
+
+  if (step === "confirma") {
+    if (ehSimEmitir(t)) {
+      const fresh = await getSessao(phone);
+      return concluir(phone, fresh);
+    }
+    if (ehCancelarEmissao(t)) {
+      await limpar(phone);
+      return "Cancelado, nada foi emitido.\n\n" + contatoNescon(false);
+    }
+
+    let ia = {};
+    try {
+      const listaIa = await funcionariosDa(sessao.company_id);
+      ia = await interpretarMensagem(db, { texto: t, sessao, funcionarios: listaIa });
+    } catch (_) {
+      ia = {};
+    }
+
+    const querCorrigir = temCorrecao(ia, t) || /errado|incorreto|corrige|corrigir|muda|altera|nao esta|nao e isso|nao foi/.test(norm(t));
+
+    if (ia.confirmar === true && !temCorrecao(ia, t)) {
+      const fresh = await getSessao(phone);
+      return concluir(phone, fresh);
+    }
+    if (ia.cancelar === true && !querCorrigir) {
+      await limpar(phone);
+      return "Cancelado, nada foi emitido.\n\n" + contatoNescon(false);
+    }
+
+    const slots = patchDeSlots({ ia, texto: t, step: "confirma" });
+    if (ia.funcionario_nome || ia.funcionario_numero) {
+      const lista = await funcionariosDa(sessao.company_id);
+      const chave = ia.funcionario_numero ? String(ia.funcionario_numero) : ia.funcionario_nome;
+      const r = resolverFuncionario(lista, chave);
+      if (r.escolhido) {
+        slots.funcionario = r.escolhido.name;
+        slots.cpf = r.escolhido.cpf || null;
+        slots.employeeId = r.escolhido.id;
+      } else if (r.opcoes) {
+        await saveSessao(phone, { step: "funcionario", dados: { ultimaLista: r.opcoes.map((x) => x.id) } });
+        return `Encontrei mais de um. Qual deles? Responda o *número*:\n\n${listar(r.opcoes)}`;
+      }
+    }
+    if (slots.dataISO || slots.dias) {
+      slots.suspInicioISO = null;
+      slots.suspFimISO = null;
+      slots.suspRetornoISO = null;
+      slots.suspInicioBR = null;
+      slots.suspFimBR = null;
+      slots.suspRetornoBR = null;
+    }
+    if (slots.dataISO) slots.anuncioEhPlantao = null;
+
+    if (Object.keys(slots).length) {
+      await saveSessao(phone, { dados: slots });
+      return "Atualizei com o que você falou. Confira de novo:\n\n" + (await perguntarProximo(phone));
+    }
+
+    return (
+      "O que preciso corrigir? Pode mandar *áudio* ou texto, por exemplo: *o motivo é falta no dia 28*, *são 2 dias*, *o funcionário é o João*.\n\n" +
+      "Se estiver certo, *SIM* para emitir. Para desistir, *cancelar*."
+    );
+  }
+
+  if (step === "escala") {
+    const empresa = (await db.query("SELECT cnpj FROM companies WHERE id = $1", [sessao.company_id])).rows[0];
+    await saveSessao(phone, { dados: { escala12: eh12x36(empresa?.cnpj) }, step: "data" });
+    sessao = await getSessao(phone);
+    step = "data";
+  }
+
+  let ia = {};
+  try {
+    const listaIa = await funcionariosDa(sessao.company_id);
+    ia = await interpretarMensagem(db, { texto: t, sessao, funcionarios: listaIa });
+  } catch (_) {
+    ia = {};
+  }
+  const slots = patchDeSlots({ ia, texto: t, step });
+  if (Object.keys(slots).length) await saveSessao(phone, { dados: slots });
+  sessao = await getSessao(phone);
+  const d = sessao.dados || {};
+  step = sessao.step;
 
   if (step === "funcionario") {
     const lista = await funcionariosDa(sessao.company_id);
-    const r = resolverFuncionario(lista, t);
+    const chave = soNumeroLista(t) ? t : ia.funcionario_numero ? String(ia.funcionario_numero) : ia.funcionario_nome || t;
+    const r = resolverFuncionario(lista, chave);
 
     if (r.opcoes) {
       await saveSessao(phone, { dados: { ultimaLista: r.opcoes.map((x) => x.id) } });
@@ -511,11 +854,8 @@ async function seguirFluxo(phone, sessao, texto) {
     }
     if (!r.escolhido) {
       if (!lista.length) {
-        // Sem cadastro: aceita o nome digitado, mas avisa que o CPF fica em branco.
-        await saveSessao(phone, { dados: { funcionario: t, cpf: null }, step: sessao.tema === "advertencia" ? "motivo" : "dias" });
-        return sessao.tema === "advertencia"
-          ? `Funcionário: *${t}* (sem cadastro — o CPF ficará em branco no termo).\n\nQual o *motivo* da advertência?`
-          : `Funcionário: *${t}* (sem cadastro — o CPF ficará em branco no termo).\n\nQuantos *dias* de suspensão? (1 a 30)`;
+        await saveSessao(phone, { dados: { funcionario: t, cpf: null } });
+        return perguntarProximo(phone);
       }
       const mostra = lista.slice(0, MAX_LISTA);
       return `Não achei "${t}" no cadastro. Responda o *número* da lista:\n\n${listar(mostra)}`;
@@ -523,136 +863,69 @@ async function seguirFluxo(phone, sessao, texto) {
 
     await saveSessao(phone, {
       dados: { funcionario: r.escolhido.name, cpf: r.escolhido.cpf || null, employeeId: r.escolhido.id },
-      step: sessao.tema === "advertencia" ? "motivo" : "dias",
     });
-    return sessao.tema === "advertencia"
-      ? `Funcionário: *${r.escolhido.name}*.\n\nQual o *motivo* da advertência? (ex.: faltas, atrasos, má conduta)`
-      : `Funcionário: *${r.escolhido.name}*.\n\nQuantos *dias* de suspensão? (1 a 30)`;
+    return perguntarProximo(phone);
   }
 
   if (step === "dias") {
-    const n = parseInt(String(t).replace(/\D/g, ""), 10);
-    if (!Number.isFinite(n) || n < 1 || n > 30) {
-      return "Informe um número de *1 a 30* dias de *plantão/trabalho* (art. 474 da CLT). Ex.: 1";
+    if (!d.dias) {
+      const n = lerDiasSuspensao(t);
+      if (!n) return "Informe *1, 2 ou 3* dias.\n\n" + perguntaDiasSuspensao();
+      await saveSessao(phone, { dados: { dias: n } });
     }
-    await saveSessao(phone, { dados: { dias: n }, step: "data" });
-    return perguntaDataSuspensao(d.escala12 === true);
-  }
-
-  if (step === "escala") {
-    const empresa = (await db.query("SELECT cnpj FROM companies WHERE id = $1", [sessao.company_id])).rows[0];
-    const escala12 = eh12x36(empresa?.cnpj);
-    await saveSessao(phone, { dados: { escala12 }, step: "data" });
-    return perguntaDataSuspensao(escala12);
+    return perguntarProximo(phone);
   }
 
   if (step === "plantao") {
-    const nrm = norm(t);
-    let anuncioEhPlantao = null;
-    if (/^(sim|s|trabalha|plantao|plantão)$/.test(nrm)) anuncioEhPlantao = true;
-    else if (/^(nao|n|folga)$/.test(nrm)) anuncioEhPlantao = false;
-    if (anuncioEhPlantao === null) {
-      return "No dia do anúncio o funcionário *trabalha* (plantão)? *SIM* ou *NÃO* (está de folga).";
+    if (d.anuncioEhPlantao == null) {
+      const nrm = norm(t);
+      let anuncioEhPlantao = null;
+      if (/^(sim|s|trabalha|plantao|plantão)$/.test(nrm)) anuncioEhPlantao = true;
+      else if (/^(nao|n|folga)$/.test(nrm)) anuncioEhPlantao = false;
+      if (anuncioEhPlantao === null) {
+        return "No dia do anúncio o funcionário *trabalha* (plantão)? *SIM* ou *NÃO* (está de folga).";
+      }
+      await saveSessao(phone, { dados: { anuncioEhPlantao } });
     }
-    const anuncio = new Date(d.dataISO);
-    const cal = calendarioSuspensao12x36({ anuncio, diasPlantao: d.dias, anuncioEhPlantao });
-    await saveSessao(phone, {
-      dados: {
-        anuncioEhPlantao,
-        suspInicioISO: cal.inicio.toISOString(),
-        suspFimISO: cal.fim.toISOString(),
-        suspRetornoISO: cal.retorno.toISOString(),
-        suspInicioBR: formatBR(cal.inicio),
-        suspFimBR: formatBR(cal.fim),
-        suspRetornoBR: formatBR(cal.retorno),
-      },
-      step: "motivo_sus",
-    });
-    return (
-      `Na *12x36*, ${d.dias} dia(s) de suspensão não são dias corridos.\n\n` +
-      `• Dia do anúncio (${d.dataBR}): ${anuncioEhPlantao ? "trabalha" : "folga"}\n` +
-      (anuncioEhPlantao ? `• Dia seguinte: folga\n` : "") +
-      `• Suspensão (plantão em que não trabalha): ${formatBR(cal.inicio)}` +
-      (cal.inicio.getTime() !== cal.fim.getTime() ? ` a ${formatBR(cal.fim)}` : "") +
-      `\n• Folga seguinte e retorno ao trabalho: ${formatBR(cal.retorno)}\n\n` +
-      `Qual o *motivo* da suspensão?`
-    );
+    return perguntarProximo(phone);
   }
 
-  if (step === "motivo") {
-    if (t.length < 3) return "Descreva o *motivo* com um pouco mais de detalhe — ele vai no documento.";
-    if (ehFaltaOuAtraso(t)) {
-      await saveSessao(phone, { dados: { motivo: t }, step: "data_fato" });
-      return (
-        "Qual a *data da falta* (o dia em que o funcionário não compareceu ou atrasou)?\n" +
-        "Pode informar mais de uma: 28/08/2026, 29/08/2026"
-      );
+  if (step === "motivo" || step === "motivo_sus") {
+    if (!String(d.motivo || "").trim()) {
+      if (t.length < 3) return "Descreva o *motivo* com um pouco mais de detalhe — ele vai no documento.";
+      await saveSessao(phone, { dados: { motivo: t } });
     }
-    await saveSessao(phone, { dados: { motivo: t }, step: "conduta" });
-    return perguntaConduta();
+    return perguntarProximo(phone);
   }
 
   if (step === "data_fato") {
-    const datas = parseDatasLista(t);
-    if (!datas.length) {
-      return "Não entendi a data da falta. Use *dd/mm/aaaa*, *hoje*, ou várias separadas por vírgula.";
+    if (!d.datasFatoBR) {
+      const datas = parseDatasLista(t);
+      if (!datas.length) {
+        return "Não entendi a data da falta. Use *dd/mm/aaaa*, *hoje*, ou várias separadas por vírgula.";
+      }
+      await saveSessao(phone, { dados: { datasFatoBR: datas.map(formatBR).join(", ") } });
     }
-    await saveSessao(phone, { dados: { datasFatoBR: datas.map(formatBR).join(", ") }, step: "conduta" });
-    return perguntaConduta();
+    return perguntarProximo(phone);
   }
 
-  // Natureza da conduta → define a alínea do art. 482 citada no termo.
   if (step === "conduta") {
-    const i = parseInt(t.replace(/\D/g, ""), 10) - 1;
-    const chave = CONDUTA_ORDEM[i];
-    if (!chave) return perguntaConduta("Responda com o *número* da opção:");
-    const proximo = sessao.tema === "advertencia" ? "data" : "confirma";
-    await saveSessao(phone, { dados: { conduta: chave }, step: proximo });
-    if (sessao.tema === "advertencia") {
-      return (
-        "Qual a *data do termo* — o dia em que o documento será assinado, em geral *hoje*?\n" +
-        "(Isto *não* é a data da falta; a falta já foi registrada.)"
-      );
+    if (!d.conduta) {
+      const i = parseInt(t.replace(/\D/g, ""), 10) - 1;
+      const chave = CONDUTA_ORDEM[i];
+      if (!chave) return perguntaConduta("Responda com o *número* da opção:");
+      await saveSessao(phone, { dados: { conduta: chave } });
     }
-    return resumoConfirmacao({ ...d, conduta: chave }, sessao.tema);
+    return perguntarProximo(phone);
   }
 
   if (step === "data") {
-    const data = parseData(t);
-    if (!data) return "Não entendi a data. Use *dd/mm/aaaa* (ex.: 28/08/2026), *hoje* ou *amanhã*.";
-    if (sessao.tema === "suspensao" && d.escala12 === true) {
-      await saveSessao(phone, { dados: { dataISO: data.toISOString(), dataBR: formatBR(data) }, step: "plantao" });
-      return (
-        `Data do anúncio: *${formatBR(data)}*.\n\n` +
-        `Na 12x36: se ele *trabalha* nesse dia, folga no seguinte, a suspensão começa no *próximo plantão*, ` +
-        `depois vem folga, e só então ele volta.\n\n` +
-        `Nesse dia do anúncio o funcionário *trabalha* (está de plantão)? *SIM* ou *NÃO*.`
-      );
+    if (!d.dataISO) {
+      const data = parseData(t);
+      if (!data) return "Não entendi a data. Use *dd/mm/aaaa* (ex.: 28/08/2026), *hoje* ou *amanhã*.";
+      await saveSessao(phone, { dados: { dataISO: data.toISOString(), dataBR: formatBR(data) } });
     }
-    if (sessao.tema === "suspensao") {
-      await saveSessao(phone, { dados: { dataISO: data.toISOString(), dataBR: formatBR(data) }, step: "motivo_sus" });
-      return "Qual o *motivo* da suspensão?";
-    }
-    await saveSessao(phone, { dados: { dataISO: data.toISOString(), dataBR: formatBR(data) }, step: "confirma" });
-    return resumoConfirmacao({ ...d, dataBR: formatBR(data) }, sessao.tema);
-  }
-
-  if (step === "motivo_sus") {
-    if (t.length < 3) return "Descreva o *motivo* com um pouco mais de detalhe — ele vai no documento.";
-    await saveSessao(phone, { dados: { motivo: t }, step: "conduta" });
-    return perguntaConduta();
-  }
-
-  if (step === "confirma") {
-    if (/^(sim|s|confirmo|ok|pode|isso|certo)$/.test(norm(t))) {
-      const fresh = await getSessao(phone);
-      return concluir(phone, fresh);
-    }
-    if (/^(nao|n|cancelar|nao confirmo)$/.test(norm(t))) {
-      await limpar(phone);
-      return "Cancelado, nada foi emitido.\n\n" + contatoNescon(false);
-    }
-    return "Responda *SIM* para emitir o documento ou *NÃO* para cancelar.";
+    return perguntarProximo(phone);
   }
 
   await limpar(phone);
@@ -697,7 +970,8 @@ function resumoConfirmacao(d, tema) {
       : "") +
     `• Motivo: ${d.motivo}\n` +
     `• Enquadramento: ${cond.rotulo}${cond.alinea ? ` (art. 482, "${cond.alinea}")` : ""}\n\n` +
-    `Responda *SIM* para emitir ou *NÃO* para cancelar.`
+    `Responda *SIM* para emitir ou *cancelar* para desistir.\n` +
+    `Se algo estiver errado, diga o que mudar (áudio ou texto) — eu atualizo o resumo.`
   );
 }
 
@@ -750,7 +1024,9 @@ async function processarTexto({ phone, texto }) {
     );
   }
 
-  return `${SELO_IA}\n\n` + (await pedirFuncionario(phone, tema, empresas[0]));
+  const intro = await pedirFuncionario(phone, tema, empresas[0]);
+  const extra = await tentarPreencherDaMensagem(phone, raw);
+  return `${SELO_IA}\n\n` + (extra || intro);
 }
 
 module.exports = {
@@ -759,9 +1035,14 @@ module.exports = {
   // exportados para teste
   resolverFuncionario,
   parseData,
+  parseDatasLista,
+  lerDiasSuspensao,
   extrairResposta,
   calendarioSuspensao12x36,
   eh12x36,
+  ehSimEmitir,
+  ehCancelarEmissao,
+  temCorrecao,
   classificarPorPalavra,
   empresasDoTelefone,
 };
