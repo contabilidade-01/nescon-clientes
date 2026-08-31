@@ -69,6 +69,14 @@ services:
       # Alertas de vencimento pelo WhatsApp (uazapi) — mesmas credenciais do G-Click.
       UAZAPI_SUBDOMAIN: ${UAZAPI_SUBDOMAIN:-}
       UAZAPI_TOKEN: ${UAZAPI_TOKEN:-}
+      # Webhook de entrada (DP: advertência/suspensão). Sem isto, a URL aceita qualquer POST.
+      UAZAPI_WEBHOOK_SECRET: ${UAZAPI_WEBHOOK_SECRET:-}
+      # Número que aparece na mensagem padrão e que recebe o resumo do pedido.
+      NESCON_CONTATO_WHATSAPP: ${NESCON_CONTATO_WHATSAPP:-}
+      ADMIN_WHATSAPP: ${ADMIN_WHATSAPP:-}
+      # Transcrição de áudio (Whisper). Sem isto, usa a chave ChatGPT da tela Config. de IA.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
       # Ligar o envio automático, a hora e o CNPJ do escritório NÃO são variáveis: são
       # decisões do dia a dia e ficam na tela (Alertas → Configuração, em app_settings).
       # Ambiente é para o que o app precisa saber antes de existir — senha, token, URL.
