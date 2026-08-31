@@ -4,6 +4,7 @@ import {
 import { saveAs } from "file-saver";
 import { format, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { paragrafosTestemunhasTermo } from "@/lib/testemunhasTermo";
 
 export interface SuspensionData {
   employeeName: string;
@@ -336,6 +337,7 @@ export function generateSuspensionDoc(data: SuspensionData) {
               new TextRun({ text: "Empregador", font: "Arial", size: 16, italics: true, color: "888888" }),
             ],
           }),
+          ...paragrafosTestemunhasTermo(),
         ],
       },
     ],

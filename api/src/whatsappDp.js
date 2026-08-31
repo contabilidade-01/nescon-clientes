@@ -19,7 +19,6 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const db = require("./db");
-const { chamarIaConfigurada } = require("./iaProvider");
 const { interpretarMensagem } = require("./whatsappDpIa");
 const { enviarTexto, enviarDocumento, configurado } = require("./uazapi");
 const { getPublicAppUrl } = require("./mailer");
@@ -67,31 +66,24 @@ function contatoNescon(comSelo = true) {
 
 function classificarPorPalavra(texto) {
   const t = norm(texto);
-  if (/\b(advertenc|advertir|advertido)\w*/.test(t) || t.includes("advertencia")) return "advertencia";
-  if (/\b(suspens|suspender|suspendido)\w*/.test(t) || t.includes("suspensao")) return "suspensao";
+  // Só abre o fluxo se a pessoa pediu o documento pelo nome (não por IA nem por "faltou").
+  if (/\b(advertencia|advertir|advertido)\b/.test(t)) return "advertencia";
+  if (/\b(suspensao|suspender|suspendido)\b/.test(t)) return "suspensao";
   return "outro";
 }
 
 async function classificarTema(texto) {
-  const porPalavra = classificarPorPalavra(texto);
-  if (porPalavra !== "outro") return porPalavra;
-  try {
-    const { resposta } = await chamarIaConfigurada(db, {
-      timeoutMs: 20000,
-      prompt:
-        `Classifique o pedido de um cliente de escritório de contabilidade (departamento pessoal).\n` +
-        `Texto: """${String(texto).slice(0, 800)}"""\n` +
-        `Responda SOMENTE JSON: {"tema":"advertencia"} ou {"tema":"suspensao"} ou {"tema":"outro"}.\n` +
-        `advertencia = advertir funcionário.\n` +
-        `suspensao = suspender funcionário (dias sem trabalhar por medida disciplinar).\n` +
-        `outro = rescisão, demissão, desligamento, folha, férias, atestado, imposto, dúvida geral, cumprimento, áudio ininteligível.`,
-    });
-    const tema = String(resposta?.tema || "outro").toLowerCase();
-    if (tema === "advertencia" || tema === "suspensao") return tema;
-  } catch (err) {
-    console.warn("[whatsapp-dp] IA de classificação indisponível:", err.message);
-  }
-  return "outro";
+  return classificarPorPalavra(texto);
+}
+
+function ehMensagemAlheia(texto) {
+  const t = norm(texto);
+  return (
+    t.includes("nao estamos disponiveis") ||
+    t.includes("agradecemos sua mensagem") ||
+    t.includes("responderemos assim que possivel") ||
+    t.includes("fora do horario")
+  );
 }
 
 /**
@@ -981,6 +973,7 @@ async function processarTexto({ phone, texto }) {
   if (!raw) {
     return `${SELO_IA}\n\nNão consegui entender. Envie o áudio de novo ou escreva *advertência* ou *suspensão*.`;
   }
+  if (ehMensagemAlheia(raw)) return null;
 
   let sessao = await getSessao(phone);
   if (sessao && !sessaoViva(sessao)) {
@@ -1044,5 +1037,6 @@ module.exports = {
   ehCancelarEmissao,
   temCorrecao,
   classificarPorPalavra,
+  ehMensagemAlheia,
   empresasDoTelefone,
 };

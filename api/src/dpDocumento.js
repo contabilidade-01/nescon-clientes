@@ -275,8 +275,12 @@ function gerarPdf(blocos) {
           doc.font("Helvetica-Oblique").fontSize(8).fillColor("#888").text(b.papel, { align: "center" });
           doc.fillColor("#000");
         } else if (b.t === "testemunhas") {
-          // Duas colunas lado a lado: cabe na mesma página e fica igual ao termo em papel.
-          doc.moveDown(1.2);
+          // Duas colunas; se não couber no rodapé, vai para a página seguinte (senão some do PDF).
+          const alturaBloco = 110;
+          if (doc.y + alturaBloco > doc.page.height - doc.page.margins.bottom) {
+            doc.addPage();
+          }
+          doc.moveDown(0.8);
           const colL = (larg - 24) / 2;
           const x1 = doc.page.margins.left;
           const x2 = doc.page.margins.left + colL + 24;
@@ -292,6 +296,7 @@ function gerarPdf(blocos) {
             doc.text("CPF: _______________________", x, doc.y + 2, { width: colL, align: "center" });
           }
           doc.x = doc.page.margins.left;
+          doc.y = y0 + alturaBloco;
           doc.fillColor("#000");
         }
       }

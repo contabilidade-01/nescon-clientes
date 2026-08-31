@@ -255,15 +255,9 @@ const WhatsAppStatusPage = () => {
                     </>
                   )}
                 </Linha>
-                <Linha ok={data.assistente_dp.classificacao_ia_configurada}>
-                  {data.assistente_dp.classificacao_ia_configurada ? (
-                    <>IA de classificação configurada (identifica advertência/suspensão em texto livre).</>
-                  ) : (
-                    <>
-                      Sem chave do provedor de IA da tela Config. de IA. Palavras óbvias ainda funcionam
-                      (advertência, suspensão); o resto vai para o contato da Nescon.
-                    </>
-                  )}
+                <Linha ok>
+                  O assistente só inicia se a mensagem tiver *advertência* / *advertir* ou *suspensão* / *suspender*.
+                  Qualquer outro recado (oi, falta, áudio sem essas palavras, aviso de ausência) vai para o contato da Nescon.
                 </Linha>
               </>
             )}

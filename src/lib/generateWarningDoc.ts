@@ -4,6 +4,7 @@ import {
 import { saveAs } from "file-saver";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { paragrafosTestemunhasTermo } from "@/lib/testemunhasTermo";
 
 export interface WarningData {
   employeeName: string;
@@ -228,6 +229,7 @@ export function generateWarningDoc(data: WarningData) {
               new TextRun({ text: "Empregador", font: "Arial", size: 16, italics: true, color: "888888" }),
             ],
           }),
+          ...paragrafosTestemunhasTermo(),
         ],
       },
     ],

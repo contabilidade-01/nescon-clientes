@@ -17,9 +17,22 @@ describe("classificação de tema (escopo fechado)", () => {
   });
 
   it("não assume tema em assunto fora do escopo", () => {
-    for (const txt of ["quero demitir o José", "como está minha folha?", "boa tarde", "preciso das guias"]) {
+    for (const txt of [
+      "quero demitir o José",
+      "como está minha folha?",
+      "boa tarde",
+      "preciso das guias",
+      "faltou no dia 30",
+      "Agradecemos sua mensagem. Não estamos disponíveis no momento",
+    ]) {
       expect(dp.classificarPorPalavra(txt)).toBe("outro");
     }
+  });
+
+  it("ignora aviso automático de ausência", () => {
+    expect(
+      dp.ehMensagemAlheia("Agradecemos sua mensagem. Não estamos disponíveis no momento, mas responderemos assim que possível.")
+    ).toBe(true);
   });
 });
 
