@@ -1078,6 +1078,76 @@ router.get("/cobertura", async (_req, res) => {
 });
 
 /**
+ * GET /admin/acompanhamento-envio?competencia=AAAA-MM
+ *
+ * Painel "visão de pássaro" do envio de Folha e encargos por competência. Para cada
+ * grupo (Folha, FGTS, INSS, DAS) diz, de bate-pronto, quantas empresas estão OK e
+ * quantas estão pendentes — e devolve as duas listas para o clique.
+ *
+ * "Quem é esperado" é AUTO-CALIBRADO pelo histórico: a empresa entra como esperada de um
+ * documento se ela já recebeu aquele documento em ALGUMA competência. Isso escopa DAS só
+ * a optante do Simples, Folha/FGTS só a quem roda folha, etc. — sem precisar cadastrar
+ * regime tributário à mão. OK = tem o documento na competência escolhida; pendente =
+ * é esperada mas ainda não tem.
+ */
+router.get("/acompanhamento-envio", requireArea("entregas"), async (req, res) => {
+  const competencia = String(req.query.competencia || "").trim();
+  if (!/^\d{4}-\d{2}$/.test(competencia)) {
+    return res.status(400).json({ error: "competencia deve estar no formato AAAA-MM" });
+  }
+  try {
+    // Um passe: por empresa, se TEM histórico de cada documento e se TEM na competência.
+    // Folha = categoria 'folha' (extrato/holerite); encargos e DAS = doc_type da guia.
+    const { rows } = await db.query(
+      `SELECT c.id, c.name, c.cnpj,
+              bool_or(d.category = 'folha')                          AS hist_folha,
+              bool_or(d.category = 'folha' AND d.competencia = $1)   AS cur_folha,
+              bool_or(d.doc_type = 'FGTS')                           AS hist_fgts,
+              bool_or(d.doc_type = 'FGTS' AND d.competencia = $1)    AS cur_fgts,
+              bool_or(d.doc_type IN ('DCTF_WEB','INSS'))                        AS hist_inss,
+              bool_or(d.doc_type IN ('DCTF_WEB','INSS') AND d.competencia = $1) AS cur_inss,
+              bool_or(d.doc_type = 'DAS')                            AS hist_das,
+              bool_or(d.doc_type = 'DAS' AND d.competencia = $1)     AS cur_das
+         FROM companies c
+         LEFT JOIN deliverables d
+                ON d.company_id = c.id AND d.cancelado IS NOT TRUE
+        WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
+        GROUP BY c.id, c.name, c.cnpj
+        ORDER BY c.name`,
+      [competencia]
+    );
+
+    const defs = [
+      { chave: "folha", rotulo: "Folha de pagamento", hist: "hist_folha", cur: "cur_folha" },
+      { chave: "fgts", rotulo: "FGTS", hist: "hist_fgts", cur: "cur_fgts" },
+      { chave: "inss", rotulo: "INSS (DCTF Web)", hist: "hist_inss", cur: "cur_inss" },
+      { chave: "das", rotulo: "DAS (Simples)", hist: "hist_das", cur: "cur_das" },
+    ];
+    const empresaLite = (r) => ({ id: r.id, name: r.name, cnpj: r.cnpj });
+
+    const grupos = defs.map((g) => {
+      const esperadas = rows.filter((r) => r[g.hist]);
+      const ok = esperadas.filter((r) => r[g.cur]);
+      const pendentes = esperadas.filter((r) => !r[g.cur]);
+      return {
+        chave: g.chave,
+        rotulo: g.rotulo,
+        esperadas: esperadas.length,
+        ok: ok.length,
+        pendentes: pendentes.length,
+        empresas_ok: ok.map(empresaLite),
+        empresas_pendentes: pendentes.map(empresaLite),
+      };
+    });
+
+    res.json({ competencia, total_empresas: rows.length, grupos });
+  } catch (err) {
+    console.error("[acompanhamento-envio]", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/**
  * Upload em lote de Programação de Férias.
  * O admin arrasta vários PDFs → o sistema lê o CNPJ de cada → aloca automaticamente.
  */

@@ -1560,6 +1560,21 @@ export const api = {
         method: "POST",
         body: JSON.stringify(companyId ? { company_id: companyId } : {}),
       }),
+    /** Visão de envio de Folha e encargos (FGTS/INSS/DAS) por competência. */
+    acompanhamentoEnvio: (competencia: string) =>
+      request<{
+        competencia: string;
+        total_empresas: number;
+        grupos: Array<{
+          chave: "folha" | "fgts" | "inss" | "das";
+          rotulo: string;
+          esperadas: number;
+          ok: number;
+          pendentes: number;
+          empresas_ok: Array<{ id: string; name: string; cnpj: string }>;
+          empresas_pendentes: Array<{ id: string; name: string; cnpj: string }>;
+        }>;
+      }>(`/admin/acompanhamento-envio?competencia=${encodeURIComponent(competencia)}`),
     /** Check de comunicação com o WhatsApp (uazapi): instância, webhook e transcrição. */
     whatsappDiagnostico: () =>
       request<{
