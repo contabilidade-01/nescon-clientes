@@ -1160,9 +1160,22 @@ router.get("/acompanhamento-envio", requireArea("entregas"), async (req, res) =>
  * vem do Extrato Mensal). Mês sem folha lida entra marcado `sem_folha` — mostra a base,
  * mas avisa que o adicional não pôde ser calculado (leia o extrato para fechar).
  */
-const HON_BASE = 350;
-const HON_REGISTROS_BASE = 3;
-const HON_ADICIONAL = 50;
+// Padrão da regra (usado quando o escritório ainda não salvou nada na tela).
+const HON_DEFAULT = { base: 350, registros_base: 3, adicional: 50 };
+
+/** Regra vigente: lê de app_settings com fallback no padrão. Configurável pela tela. */
+async function lerRegraHon() {
+  const num = async (chave, padrao) => {
+    const v = await getSetting(db, chave);
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : padrao;
+  };
+  return {
+    base: await num("honorario_base", HON_DEFAULT.base),
+    registros_base: await num("honorario_registros_base", HON_DEFAULT.registros_base),
+    adicional: await num("honorario_adicional", HON_DEFAULT.adicional),
+  };
+}
 
 /** Lista de competências 'AAAA-MM' de `desde` até `ate`, inclusive. */
 function competenciasEntre(desde, ate) {
@@ -1183,9 +1196,9 @@ function competenciasEntre(desde, ate) {
   return out;
 }
 
-function calcularHonorario(registros) {
-  const extra = Math.max(0, registros - HON_REGISTROS_BASE);
-  return HON_BASE + extra * HON_ADICIONAL;
+function calcularHonorario(registros, regra) {
+  const extra = Math.max(0, registros - regra.registros_base);
+  return regra.base + extra * regra.adicional;
 }
 
 router.get("/honorarios-folha", requireArea("funcionarios"), async (req, res) => {
@@ -1194,6 +1207,7 @@ router.get("/honorarios-folha", requireArea("funcionarios"), async (req, res) =>
     return res.status(400).json({ error: "desde deve estar no formato AAAA-MM" });
   }
   try {
+    const regra = await lerRegraHon();
     // Competência atual (São Paulo) como limite superior.
     const agora = new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Sao_Paulo",
@@ -1202,7 +1216,7 @@ router.get("/honorarios-folha", requireArea("funcionarios"), async (req, res) =>
     }).format(new Date());
     const ate = agora.slice(0, 7);
     const meses = competenciasEntre(desde, ate);
-    if (!meses.length) return res.json({ desde, ate, regra: regraHon(), unidades: [] });
+    if (!meses.length) return res.json({ desde, ate, regra, unidades: [] });
 
     // Unidades Queijeiro (nome contém "queijeiro"), ativas.
     const { rows: unidades } = await db.query(
@@ -1211,7 +1225,7 @@ router.get("/honorarios-folha", requireArea("funcionarios"), async (req, res) =>
           AND arquivada IS NOT TRUE AND excluida IS NOT TRUE
         ORDER BY name`
     );
-    if (!unidades.length) return res.json({ desde, ate, regra: regraHon(), unidades: [] });
+    if (!unidades.length) return res.json({ desde, ate, regra, unidades: [] });
 
     const ids = unidades.map((u) => u.id);
     const { rows: snaps } = await db.query(
@@ -1229,23 +1243,50 @@ router.get("/honorarios-folha", requireArea("funcionarios"), async (req, res) =>
         const emp = porEmpresaComp.get(`${u.id}|${competencia}`);
         const semFolha = emp === undefined || emp === null;
         const registros = semFolha ? null : Number(emp);
-        const honorario = semFolha ? HON_BASE : calcularHonorario(registros);
+        const honorario = semFolha ? regra.base : calcularHonorario(registros, regra);
         total += honorario;
         return { competencia, empregados: registros, sem_folha: semFolha, honorario };
       });
       return { id: u.id, name: u.name, cnpj: u.cnpj, meses: mesesLinha, total };
     });
 
-    res.json({ desde, ate, regra: regraHon(), unidades: resultado });
+    res.json({ desde, ate, regra, unidades: resultado });
   } catch (err) {
     console.error("[honorarios-folha]", err);
     res.status(500).json({ error: "Erro interno" });
   }
 });
 
-function regraHon() {
-  return { base: HON_BASE, registros_base: HON_REGISTROS_BASE, adicional: HON_ADICIONAL };
-}
+/** GET/PUT /admin/honorarios-config — regra de cálculo (base, registros da base, adicional). */
+router.get("/honorarios-config", requireArea("funcionarios"), async (_req, res) => {
+  try {
+    res.json({ ...(await lerRegraHon()), padrao: HON_DEFAULT });
+  } catch (err) {
+    console.error("[admin] honorarios-config GET:", err.message);
+    res.status(500).json({ error: "Erro ao carregar a configuração" });
+  }
+});
+
+router.put("/honorarios-config", requireArea("funcionarios"), async (req, res) => {
+  const { base, registros_base, adicional } = req.body || {};
+  const valida = (v) => v === undefined || (Number.isFinite(Number(v)) && Number(v) >= 0);
+  if (!valida(base) || !valida(registros_base) || !valida(adicional)) {
+    return res.status(400).json({ error: "Valores devem ser números não negativos" });
+  }
+  if (registros_base !== undefined && !Number.isInteger(Number(registros_base))) {
+    return res.status(400).json({ error: "Registros da base deve ser um número inteiro" });
+  }
+  try {
+    if (base !== undefined) await setSetting(db, "honorario_base", String(Number(base)));
+    if (registros_base !== undefined)
+      await setSetting(db, "honorario_registros_base", String(Number(registros_base)));
+    if (adicional !== undefined) await setSetting(db, "honorario_adicional", String(Number(adicional)));
+    res.json({ ...(await lerRegraHon()), padrao: HON_DEFAULT });
+  } catch (err) {
+    console.error("[admin] honorarios-config PUT:", err.message);
+    res.status(500).json({ error: "Erro ao salvar a configuração" });
+  }
+});
 
 /**
  * Upload em lote de Programação de Férias.

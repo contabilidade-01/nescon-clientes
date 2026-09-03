@@ -1560,6 +1560,16 @@ export const api = {
         method: "POST",
         body: JSON.stringify(companyId ? { company_id: companyId } : {}),
       }),
+    /** Regra de cálculo dos honorários (base, registros da base, adicional). */
+    honorariosConfig: () =>
+      request<{ base: number; registros_base: number; adicional: number; padrao: { base: number; registros_base: number; adicional: number } }>(
+        "/admin/honorarios-config"
+      ),
+    salvarHonorariosConfig: (body: { base: number; registros_base: number; adicional: number }) =>
+      request<{ base: number; registros_base: number; adicional: number }>("/admin/honorarios-config", {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
     /** Honorários das unidades Queijeiro por headcount da folha, mês a mês. */
     honorariosFolha: (desde: string) =>
       request<{

@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Calculator, Loader2, Store } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, Calculator, Loader2, Save, Store } from "lucide-react";
+import { toast } from "sonner";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,12 +20,54 @@ function competenciaBR(c: string): string {
 }
 
 const HonorariosQueijeiroPage = () => {
+  const queryClient = useQueryClient();
   const [desde, setDesde] = useState("2026-01");
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ["admin-honorarios-folha", desde],
     queryFn: () => api.admin.honorariosFolha(desde),
   });
+
+  // Regra editável (base, registros da base, adicional).
+  const { data: config } = useQuery({
+    queryKey: ["admin-honorarios-config"],
+    queryFn: () => api.admin.honorariosConfig(),
+  });
+  const [base, setBase] = useState("");
+  const [registrosBase, setRegistrosBase] = useState("");
+  const [adicional, setAdicional] = useState("");
+  // Semeia os campos quando a config chega (e só então).
+  useEffect(() => {
+    if (config) {
+      setBase(String(config.base));
+      setRegistrosBase(String(config.registros_base));
+      setAdicional(String(config.adicional));
+    }
+  }, [config]);
+
+  const salvarRegra = useMutation({
+    mutationFn: () =>
+      api.admin.salvarHonorariosConfig({
+        base: Number(base),
+        registros_base: Number(registrosBase),
+        adicional: Number(adicional),
+      }),
+    onSuccess: () => {
+      toast.success("Regra salva. Os valores foram recalculados.");
+      queryClient.invalidateQueries({ queryKey: ["admin-honorarios-config"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-honorarios-folha"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const regraMudou =
+    config &&
+    (Number(base) !== config.base ||
+      Number(registrosBase) !== config.registros_base ||
+      Number(adicional) !== config.adicional);
+  const regraValida =
+    base !== "" && registrosBase !== "" && adicional !== "" &&
+    Number(base) >= 0 && Number(registrosBase) >= 0 && Number(adicional) >= 0;
 
   const totalGeral = (data?.unidades ?? []).reduce((s, u) => s + u.total, 0);
 
@@ -33,19 +77,74 @@ const HonorariosQueijeiroPage = () => {
       description="Calcula o honorário de cada unidade Queijeiro por mês, pela quantidade de registros na folha. Retroativo a partir da competência escolhida."
     >
       <div className="space-y-6">
+        {/* Regra de cálculo — editável */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <Calculator className="h-4 w-4" /> Regra de cálculo
             </CardTitle>
             <CardDescription>
-              {data?.regra
-                ? `Base de ${brl(data.regra.base)} cobre até ${data.regra.registros_base} registros. ` +
-                  `A partir do ${data.regra.registros_base + 1}º, ${brl(data.regra.adicional)} por colaborador.`
+              {config
+                ? `Hoje: base de ${brl(config.base)} cobre até ${config.registros_base} registros; ` +
+                  `a partir do ${config.registros_base + 1}º, ${brl(config.adicional)} por colaborador. ` +
+                  `Alterar aqui recalcula todos os meses.`
                 : "Carregando regra…"}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap items-end gap-3">
+            <div>
+              <Label htmlFor="hon-base">Base (R$)</Label>
+              <Input
+                id="hon-base"
+                type="number"
+                min={0}
+                step="0.01"
+                value={base}
+                onChange={(e) => setBase(e.target.value)}
+                className="mt-1 w-28"
+              />
+            </div>
+            <div>
+              <Label htmlFor="hon-reg">Registros na base</Label>
+              <Input
+                id="hon-reg"
+                type="number"
+                min={0}
+                step="1"
+                value={registrosBase}
+                onChange={(e) => setRegistrosBase(e.target.value)}
+                className="mt-1 w-32"
+              />
+            </div>
+            <div>
+              <Label htmlFor="hon-add">Adicional por colaborador (R$)</Label>
+              <Input
+                id="hon-add"
+                type="number"
+                min={0}
+                step="0.01"
+                value={adicional}
+                onChange={(e) => setAdicional(e.target.value)}
+                className="mt-1 w-28"
+              />
+            </div>
+            <Button
+              onClick={() => salvarRegra.mutate()}
+              disabled={!regraValida || !regraMudou || salvarRegra.isPending}
+            >
+              {salvarRegra.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              Salvar regra
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Período + total */}
+        <Card>
+          <CardContent className="flex flex-wrap items-end gap-3 p-4">
             <div>
               <Label htmlFor="desde">A partir da competência</Label>
               <Input
