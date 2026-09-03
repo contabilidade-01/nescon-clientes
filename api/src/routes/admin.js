@@ -1150,32 +1150,18 @@ router.get("/acompanhamento-envio", requireArea("entregas"), async (req, res) =>
 /**
  * GET /admin/honorarios-folha?desde=AAAA-MM
  *
- * Cálculo de honorários por HEADCOUNT da folha, por unidade Queijeiro, mês a mês
- * (retroativo a partir de `desde`, padrão 2026-01). Regra: base cobre até 3 registros;
- * a partir do 4º, adicional por colaborador.
+ * Cálculo de honorários por HEADCOUNT da folha, mês a mês (retroativo a partir de
+ * `desde`, padrão 2026-01), para CADA empresa que tem uma regra em `honorario_regras`.
+ * A regra é POR EMPRESA (base cobre até `registros_base`; a partir do próximo, adicional
+ * por colaborador):
  *
- *   honorário = BASE + max(0, registros - REGISTROS_BASE) * ADICIONAL
+ *   honorário = base + max(0, registros - registros_base) * adicional
  *
- * "registros" = nº de empregados da folha daquele mês (payroll_snapshots.empregados, que
- * vem do Extrato Mensal). Mês sem folha lida entra marcado `sem_folha` — mostra a base,
- * mas avisa que o adicional não pôde ser calculado (leia o extrato para fechar).
+ * "registros" = nº de empregados da folha daquele mês (payroll_snapshots.empregados, do
+ * Extrato Mensal). Mês sem folha lida entra `sem_folha` — mostra a base, mas avisa que o
+ * adicional não pôde ser calculado (leia o extrato para fechar).
  */
-// Padrão da regra (usado quando o escritório ainda não salvou nada na tela).
 const HON_DEFAULT = { base: 350, registros_base: 3, adicional: 50 };
-
-/** Regra vigente: lê de app_settings com fallback no padrão. Configurável pela tela. */
-async function lerRegraHon() {
-  const num = async (chave, padrao) => {
-    const v = await getSetting(db, chave);
-    const n = Number(v);
-    return Number.isFinite(n) && n >= 0 ? n : padrao;
-  };
-  return {
-    base: await num("honorario_base", HON_DEFAULT.base),
-    registros_base: await num("honorario_registros_base", HON_DEFAULT.registros_base),
-    adicional: await num("honorario_adicional", HON_DEFAULT.adicional),
-  };
-}
 
 /** Lista de competências 'AAAA-MM' de `desde` até `ate`, inclusive. */
 function competenciasEntre(desde, ate) {
@@ -1207,7 +1193,6 @@ router.get("/honorarios-folha", requireArea("funcionarios"), async (req, res) =>
     return res.status(400).json({ error: "desde deve estar no formato AAAA-MM" });
   }
   try {
-    const regra = await lerRegraHon();
     // Competência atual (São Paulo) como limite superior.
     const agora = new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Sao_Paulo",
@@ -1216,16 +1201,18 @@ router.get("/honorarios-folha", requireArea("funcionarios"), async (req, res) =>
     }).format(new Date());
     const ate = agora.slice(0, 7);
     const meses = competenciasEntre(desde, ate);
-    if (!meses.length) return res.json({ desde, ate, regra, unidades: [] });
+    if (!meses.length) return res.json({ desde, ate, unidades: [] });
 
-    // Unidades Queijeiro (nome contém "queijeiro"), ativas.
+    // Empresas COM regra de honorário (é o que define quem entra na cobrança), ativas.
     const { rows: unidades } = await db.query(
-      `SELECT id, name, cnpj FROM companies
-        WHERE name ILIKE '%queijeiro%'
-          AND arquivada IS NOT TRUE AND excluida IS NOT TRUE
-        ORDER BY name`
+      `SELECT c.id, c.name, c.cnpj,
+              r.base::float8 AS base, r.registros_base, r.adicional::float8 AS adicional
+         FROM honorario_regras r
+         JOIN companies c ON c.id = r.company_id
+        WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
+        ORDER BY c.name`
     );
-    if (!unidades.length) return res.json({ desde, ate, regra, unidades: [] });
+    if (!unidades.length) return res.json({ desde, ate, unidades: [] });
 
     const ids = unidades.map((u) => u.id);
     const { rows: snaps } = await db.query(
@@ -1238,6 +1225,7 @@ router.get("/honorarios-folha", requireArea("funcionarios"), async (req, res) =>
     for (const s of snaps) porEmpresaComp.set(`${s.company_id}|${s.competencia}`, s.empregados);
 
     const resultado = unidades.map((u) => {
+      const regra = { base: u.base, registros_base: u.registros_base, adicional: u.adicional };
       let total = 0;
       const mesesLinha = meses.map((competencia) => {
         const emp = porEmpresaComp.get(`${u.id}|${competencia}`);
@@ -1247,44 +1235,82 @@ router.get("/honorarios-folha", requireArea("funcionarios"), async (req, res) =>
         total += honorario;
         return { competencia, empregados: registros, sem_folha: semFolha, honorario };
       });
-      return { id: u.id, name: u.name, cnpj: u.cnpj, meses: mesesLinha, total };
+      return { id: u.id, name: u.name, cnpj: u.cnpj, ...regra, meses: mesesLinha, total };
     });
 
-    res.json({ desde, ate, regra, unidades: resultado });
+    res.json({ desde, ate, unidades: resultado });
   } catch (err) {
     console.error("[honorarios-folha]", err);
     res.status(500).json({ error: "Erro interno" });
   }
 });
 
-/** GET/PUT /admin/honorarios-config — regra de cálculo (base, registros da base, adicional). */
+/**
+ * GET /admin/honorarios-config — regras por empresa + empresas disponíveis para incluir.
+ */
 router.get("/honorarios-config", requireArea("funcionarios"), async (_req, res) => {
   try {
-    res.json({ ...(await lerRegraHon()), padrao: HON_DEFAULT });
+    const { rows: regras } = await db.query(
+      `SELECT c.id AS company_id, c.name, c.cnpj,
+              r.base::float8 AS base, r.registros_base, r.adicional::float8 AS adicional
+         FROM honorario_regras r
+         JOIN companies c ON c.id = r.company_id
+        WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
+        ORDER BY c.name`
+    );
+    const { rows: disponiveis } = await db.query(
+      `SELECT id AS company_id, name, cnpj FROM companies c
+        WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
+          AND NOT EXISTS (SELECT 1 FROM honorario_regras r WHERE r.company_id = c.id)
+        ORDER BY name`
+    );
+    res.json({ padrao: HON_DEFAULT, regras, disponiveis });
   } catch (err) {
     console.error("[admin] honorarios-config GET:", err.message);
-    res.status(500).json({ error: "Erro ao carregar a configuração" });
+    res.status(500).json({ error: "Erro ao carregar as regras" });
   }
 });
 
+/**
+ * PUT /admin/honorarios-config — cria/edita a regra de UMA empresa (upsert).
+ * Adicionar uma empresa à cobrança = mandar company_id com os valores (ou vazios → padrão).
+ */
 router.put("/honorarios-config", requireArea("funcionarios"), async (req, res) => {
-  const { base, registros_base, adicional } = req.body || {};
-  const valida = (v) => v === undefined || (Number.isFinite(Number(v)) && Number(v) >= 0);
-  if (!valida(base) || !valida(registros_base) || !valida(adicional)) {
+  const { company_id, base, registros_base, adicional } = req.body || {};
+  if (!validateUUID(company_id || "")) return res.status(400).json({ error: "company_id inválido" });
+  const b = base === undefined ? HON_DEFAULT.base : Number(base);
+  const rb = registros_base === undefined ? HON_DEFAULT.registros_base : Number(registros_base);
+  const ad = adicional === undefined ? HON_DEFAULT.adicional : Number(adicional);
+  if (![b, rb, ad].every((n) => Number.isFinite(n) && n >= 0)) {
     return res.status(400).json({ error: "Valores devem ser números não negativos" });
   }
-  if (registros_base !== undefined && !Number.isInteger(Number(registros_base))) {
-    return res.status(400).json({ error: "Registros da base deve ser um número inteiro" });
-  }
+  if (!Number.isInteger(rb)) return res.status(400).json({ error: "Registros da base deve ser inteiro" });
   try {
-    if (base !== undefined) await setSetting(db, "honorario_base", String(Number(base)));
-    if (registros_base !== undefined)
-      await setSetting(db, "honorario_registros_base", String(Number(registros_base)));
-    if (adicional !== undefined) await setSetting(db, "honorario_adicional", String(Number(adicional)));
-    res.json({ ...(await lerRegraHon()), padrao: HON_DEFAULT });
+    const { rowCount } = await db.query(
+      `INSERT INTO honorario_regras (company_id, base, registros_base, adicional)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (company_id) DO UPDATE
+         SET base = EXCLUDED.base, registros_base = EXCLUDED.registros_base,
+             adicional = EXCLUDED.adicional, atualizado_em = now()`,
+      [company_id, b, rb, ad]
+    );
+    res.json({ ok: true, criado: rowCount === 1 });
   } catch (err) {
     console.error("[admin] honorarios-config PUT:", err.message);
-    res.status(500).json({ error: "Erro ao salvar a configuração" });
+    res.status(500).json({ error: "Erro ao salvar a regra" });
+  }
+});
+
+/** DELETE /admin/honorarios-config/:companyId — tira a empresa da cobrança por headcount. */
+router.delete("/honorarios-config/:companyId", requireArea("funcionarios"), async (req, res) => {
+  const { companyId } = req.params;
+  if (!validateUUID(companyId || "")) return res.status(400).json({ error: "company_id inválido" });
+  try {
+    await db.query("DELETE FROM honorario_regras WHERE company_id = $1", [companyId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[admin] honorarios-config DELETE:", err.message);
+    res.status(500).json({ error: "Erro ao remover a regra" });
   }
 });
 

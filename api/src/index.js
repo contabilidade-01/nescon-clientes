@@ -24,6 +24,7 @@ const { ensureAlertasSchema } = require("./ensureAlertasSchema");
 const { ensurePayrollHistorySchema } = require("./ensurePayrollHistorySchema");
 const { ensureCoraSchema } = require("./ensureCoraSchema");
 const { ensureDueDateSugestoesSchema } = require("./ensureDueDateSugestoesSchema");
+const { ensureHonorarioRegrasSchema } = require("./ensureHonorarioRegrasSchema");
 const { ensureChatSchema } = require("./ensureChatSchema");
 const { ensureArquivamentoSchema } = require("./ensureArquivamentoSchema");
 const { ensureAcessosSchema } = require("./ensureAcessosSchema");
@@ -174,6 +175,7 @@ async function start() {
     await ensureChatSchema(db);
     await ensureArquivamentoSchema(db);
     await ensureDueDateSugestoesSchema(db);
+    await ensureHonorarioRegrasSchema(db);
     await ensureAcessosSchema(db);
     await ensureCompanyMatriz(db);
     await ensureAdmissionSchema(db);

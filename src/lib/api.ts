@@ -1560,26 +1560,39 @@ export const api = {
         method: "POST",
         body: JSON.stringify(companyId ? { company_id: companyId } : {}),
       }),
-    /** Regra de cálculo dos honorários (base, registros da base, adicional). */
+    /** Regras de honorário POR EMPRESA + empresas disponíveis para incluir. */
     honorariosConfig: () =>
-      request<{ base: number; registros_base: number; adicional: number; padrao: { base: number; registros_base: number; adicional: number } }>(
-        "/admin/honorarios-config"
-      ),
-    salvarHonorariosConfig: (body: { base: number; registros_base: number; adicional: number }) =>
-      request<{ base: number; registros_base: number; adicional: number }>("/admin/honorarios-config", {
+      request<{
+        padrao: { base: number; registros_base: number; adicional: number };
+        regras: Array<{ company_id: string; name: string; cnpj: string; base: number; registros_base: number; adicional: number }>;
+        disponiveis: Array<{ company_id: string; name: string; cnpj: string }>;
+      }>("/admin/honorarios-config"),
+    /** Cria/edita a regra de UMA empresa (upsert). Sem valores → usa o padrão. */
+    salvarHonorarioRegra: (body: {
+      company_id: string;
+      base?: number;
+      registros_base?: number;
+      adicional?: number;
+    }) =>
+      request<{ ok: boolean; criado: boolean }>("/admin/honorarios-config", {
         method: "PUT",
         body: JSON.stringify(body),
       }),
-    /** Honorários das unidades Queijeiro por headcount da folha, mês a mês. */
+    /** Remove a empresa da cobrança por headcount. */
+    removerHonorarioRegra: (companyId: string) =>
+      request<{ ok: boolean }>(`/admin/honorarios-config/${companyId}`, { method: "DELETE" }),
+    /** Honorários por headcount da folha, por empresa com regra, mês a mês. */
     honorariosFolha: (desde: string) =>
       request<{
         desde: string;
         ate: string;
-        regra: { base: number; registros_base: number; adicional: number };
         unidades: Array<{
           id: string;
           name: string;
           cnpj: string;
+          base: number;
+          registros_base: number;
+          adicional: number;
           total: number;
           meses: Array<{
             competencia: string;
