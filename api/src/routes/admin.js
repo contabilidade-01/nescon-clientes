@@ -1148,6 +1148,106 @@ router.get("/acompanhamento-envio", requireArea("entregas"), async (req, res) =>
 });
 
 /**
+ * GET /admin/honorarios-folha?desde=AAAA-MM
+ *
+ * Cálculo de honorários por HEADCOUNT da folha, por unidade Queijeiro, mês a mês
+ * (retroativo a partir de `desde`, padrão 2026-01). Regra: base cobre até 3 registros;
+ * a partir do 4º, adicional por colaborador.
+ *
+ *   honorário = BASE + max(0, registros - REGISTROS_BASE) * ADICIONAL
+ *
+ * "registros" = nº de empregados da folha daquele mês (payroll_snapshots.empregados, que
+ * vem do Extrato Mensal). Mês sem folha lida entra marcado `sem_folha` — mostra a base,
+ * mas avisa que o adicional não pôde ser calculado (leia o extrato para fechar).
+ */
+const HON_BASE = 350;
+const HON_REGISTROS_BASE = 3;
+const HON_ADICIONAL = 50;
+
+/** Lista de competências 'AAAA-MM' de `desde` até `ate`, inclusive. */
+function competenciasEntre(desde, ate) {
+  const [ay, am] = desde.split("-").map(Number);
+  const [by, bm] = ate.split("-").map(Number);
+  const out = [];
+  let y = ay;
+  let m = am;
+  // Trava de segurança: no máximo 120 meses, para nunca cair em laço infinito.
+  for (let i = 0; i < 120 && (y < by || (y === by && m <= bm)); i += 1) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return out;
+}
+
+function calcularHonorario(registros) {
+  const extra = Math.max(0, registros - HON_REGISTROS_BASE);
+  return HON_BASE + extra * HON_ADICIONAL;
+}
+
+router.get("/honorarios-folha", requireArea("funcionarios"), async (req, res) => {
+  const desde = String(req.query.desde || "2026-01").trim();
+  if (!/^\d{4}-\d{2}$/.test(desde)) {
+    return res.status(400).json({ error: "desde deve estar no formato AAAA-MM" });
+  }
+  try {
+    // Competência atual (São Paulo) como limite superior.
+    const agora = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+    }).format(new Date());
+    const ate = agora.slice(0, 7);
+    const meses = competenciasEntre(desde, ate);
+    if (!meses.length) return res.json({ desde, ate, regra: regraHon(), unidades: [] });
+
+    // Unidades Queijeiro (nome contém "queijeiro"), ativas.
+    const { rows: unidades } = await db.query(
+      `SELECT id, name, cnpj FROM companies
+        WHERE name ILIKE '%queijeiro%'
+          AND arquivada IS NOT TRUE AND excluida IS NOT TRUE
+        ORDER BY name`
+    );
+    if (!unidades.length) return res.json({ desde, ate, regra: regraHon(), unidades: [] });
+
+    const ids = unidades.map((u) => u.id);
+    const { rows: snaps } = await db.query(
+      `SELECT company_id, competencia, empregados
+         FROM payroll_snapshots
+        WHERE company_id = ANY($1) AND competencia = ANY($2)`,
+      [ids, meses]
+    );
+    const porEmpresaComp = new Map();
+    for (const s of snaps) porEmpresaComp.set(`${s.company_id}|${s.competencia}`, s.empregados);
+
+    const resultado = unidades.map((u) => {
+      let total = 0;
+      const mesesLinha = meses.map((competencia) => {
+        const emp = porEmpresaComp.get(`${u.id}|${competencia}`);
+        const semFolha = emp === undefined || emp === null;
+        const registros = semFolha ? null : Number(emp);
+        const honorario = semFolha ? HON_BASE : calcularHonorario(registros);
+        total += honorario;
+        return { competencia, empregados: registros, sem_folha: semFolha, honorario };
+      });
+      return { id: u.id, name: u.name, cnpj: u.cnpj, meses: mesesLinha, total };
+    });
+
+    res.json({ desde, ate, regra: regraHon(), unidades: resultado });
+  } catch (err) {
+    console.error("[honorarios-folha]", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+function regraHon() {
+  return { base: HON_BASE, registros_base: HON_REGISTROS_BASE, adicional: HON_ADICIONAL };
+}
+
+/**
  * Upload em lote de Programação de Férias.
  * O admin arrasta vários PDFs → o sistema lê o CNPJ de cada → aloca automaticamente.
  */

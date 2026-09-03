@@ -1560,6 +1560,25 @@ export const api = {
         method: "POST",
         body: JSON.stringify(companyId ? { company_id: companyId } : {}),
       }),
+    /** Honorários das unidades Queijeiro por headcount da folha, mês a mês. */
+    honorariosFolha: (desde: string) =>
+      request<{
+        desde: string;
+        ate: string;
+        regra: { base: number; registros_base: number; adicional: number };
+        unidades: Array<{
+          id: string;
+          name: string;
+          cnpj: string;
+          total: number;
+          meses: Array<{
+            competencia: string;
+            empregados: number | null;
+            sem_folha: boolean;
+            honorario: number;
+          }>;
+        }>;
+      }>(`/admin/honorarios-folha?desde=${encodeURIComponent(desde)}`),
     /** Visão de envio de Folha e encargos (FGTS/INSS/DAS) por competência. */
     acompanhamentoEnvio: (competencia: string) =>
       request<{
