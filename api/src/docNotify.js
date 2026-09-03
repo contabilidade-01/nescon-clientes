@@ -92,7 +92,7 @@ function montarTexto(nomeEmpresa, documentos) {
   const link = portalUrl("/documentos");
 
   return [
-    `Olá! Chegou${plural ? "ram" : ""} novo${plural ? "s" : ""} documento${plural ? "s" : ""} no portal, ${nomeEmpresa}:`,
+    `Olá! Cheg${plural ? "aram" : "ou"} novo${plural ? "s" : ""} documento${plural ? "s" : ""} no portal, ${nomeEmpresa}:`,
     "",
     ...linhas,
     ...resto,
