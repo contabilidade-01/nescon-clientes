@@ -105,7 +105,11 @@ export function ChatbotFlow() {
     addUserMsg(emp.name);
 
     if (docType === "suspension") {
-      addBotMsg("Quantos dias de suspensão?");
+      addBotMsg(
+        escala12x36
+          ? "Quantos plantões de suspensão? Na escala 12x36 cada unidade é um plantão (dia sim, dia não) — o retorno pula a folga."
+          : "Quantos dias de suspensão?"
+      );
       setStep("days");
     } else {
       addBotMsg("Qual a data da advertência?");
@@ -114,7 +118,11 @@ export function ChatbotFlow() {
   };
 
   const submitDays = () => {
-    addUserMsg(`${days} dia${days > 1 ? "s" : ""}`);
+    addUserMsg(
+      escala12x36
+        ? `${days} plantã${days > 1 ? "os" : "o"}`
+        : `${days} dia${days > 1 ? "s" : ""}`
+    );
     addBotMsg("Qual a data de início da suspensão?");
     setStep("start_date");
   };
@@ -258,6 +266,9 @@ export function ChatbotFlow() {
     if (docType === "suspension") {
       summary += escala12x36 ? `• Plantões: ${days}\n` : `• Dias: ${days}\n`;
       if (returnDate) summary += `• Retorno: ${format(returnDate, "dd/MM/yyyy")}\n`;
+      if (escala12x36) {
+        summary += `• Contagem 12x36: plantões de dois em dois dias; o retorno pula a folga.\n`;
+      }
     }
     summary += `• Empresa: ${company?.name}\n`;
 
