@@ -23,6 +23,11 @@ export interface SuspensionData {
   reason?: string;
   /** 12x36: "N dias" são N plantões e o retorno pula a folga. */
   escala12x36?: boolean;
+  /**
+   * Data de retorno já calculada na tela. O Word só usa este valor na 12x36 —
+   * assim o arquivo escreve exatamente o dia que o portal mostrou, sem recalcular.
+   */
+  returnDate?: Date;
 }
 
 function formatDateBR(date: Date): string {
@@ -46,14 +51,19 @@ const FS = 18; // font size small (9pt)
 const FT = 24; // font size title (12pt)
 
 export function generateSuspensionDoc(data: SuspensionData) {
-  // O Word não pode recalcular sozinho: addDays(+1) mandava voltar no dia seguinte,
-  // que na 12x36 já é folga. Mesma regra da tela (suspensaoPeriodo.ts).
+  // Fora da 12x36 nada muda: fim no último dia corrido, retorno no dia seguinte.
+  // Na 12x36 o Word NÃO recalcula: grava a data que a tela já mostrou (dia 12, não 11).
   const escala12x36 = Boolean(data.escala12x36);
-  const { fim: endDate, retorno: returnDate } = calcularPeriodoSuspensao({
+  const calculado = calcularPeriodoSuspensao({
     inicio: data.startDate,
     dias: data.suspensionDays,
     escala12x36,
   });
+  const endDate = calculado.fim;
+  const retornoDaTela = data.returnDate instanceof Date && !Number.isNaN(data.returnDate.getTime())
+    ? data.returnDate
+    : null;
+  const returnDate = escala12x36 && retornoDaTela ? retornoDaTela : calculado.retorno;
   const unidade = escala12x36
     ? data.suspensionDays > 1
       ? "plantões"
@@ -173,6 +183,15 @@ export function generateSuspensionDoc(data: SuspensionData) {
           ? "ATENÇÃO: A reiteração desta conduta poderá ensejar a RESCISÃO DO CONTRATO DE TRABALHO POR JUSTA CAUSA, nos termos do artigo 482 da CLT."
           : "ATENÇÃO: A próxima falta injustificada poderá ensejar a RESCISÃO DO CONTRATO DE TRABALHO POR JUSTA CAUSA, nos termos do artigo 482, alínea \"e\" (desídia no desempenho das respectivas funções) da CLT.",
         font: "Arial", size: F, bold: true,
+      })
+    );
+  }
+
+  if (escala12x36) {
+    justificationRuns.push(
+      new TextRun({
+        text: ` Na escala 12x36 a contagem é por plantão: o retorno ao trabalho ocorre em ${formatDateBR(returnDate)}, após a folga.`,
+        font: "Arial", size: F,
       })
     );
   }

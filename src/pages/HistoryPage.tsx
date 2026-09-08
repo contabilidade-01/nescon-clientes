@@ -11,7 +11,7 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { downloadSuspensionDoc } from "@/lib/generateSuspensionDoc";
 import { downloadWarningDoc } from "@/lib/generateWarningDoc";
-import { dateFromApiOr } from "@/lib/apiDate";
+import { dateFromApi, dateFromApiOr } from "@/lib/apiDate";
 
 const HistoryPage = () => {
   const navigate = useNavigate();
@@ -43,6 +43,7 @@ const HistoryPage = () => {
           startDate: dateFromApiOr(doc.start_date, doc.created_at),
           suspensionDays: doc.suspension_days || 1,
           escala12x36: Boolean(company?.escala12x36),
+          returnDate: company?.escala12x36 ? dateFromApi(doc.return_date) ?? undefined : undefined,
           previousWarnings: [],
           previousSuspensions: [],
           recentAbsenceDate: "",

@@ -174,6 +174,8 @@ export function SuspensionForm() {
       isThirdSuspension,
       reason: isOtherReason ? reason : undefined,
       escala12x36,
+      // Só na 12x36 o Word recebe a data da tela. Sem a flag, o gerador segue no dia seguinte.
+      returnDate: escala12x36 && returnDate ? returnDate : undefined,
     };
 
     try {

@@ -281,6 +281,11 @@ export function ChatbotFlow() {
 
     try {
       if (docType === "suspension") {
+        const { retorno: returnDate } = calcularPeriodoSuspensao({
+          inicio: startDate,
+          dias: days,
+          escala12x36,
+        });
         const data: SuspensionData = {
           employeeName: selectedEmployee.name,
           cpf: selectedEmployee.cpf,
@@ -296,12 +301,8 @@ export function ChatbotFlow() {
           // O motivo respondido no chat entra na fundamentação do documento.
           reason: reason || undefined,
           escala12x36,
+          returnDate: escala12x36 ? returnDate : undefined,
         };
-        const { retorno: returnDate } = calcularPeriodoSuspensao({
-          inicio: startDate,
-          dias: days,
-          escala12x36,
-        });
         await api.documents.create({
           document_type: "suspension",
           employee_name: selectedEmployee.name,
