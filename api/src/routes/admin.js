@@ -2648,7 +2648,7 @@ router.post("/personificar/:id", requireArea("empresas"), async (req, res) => {
 
   try {
     const { rows } = await db.query(
-      `SELECT id, name, cnpj, tool_access, matriz_id
+      `SELECT id, name, cnpj, tool_access, matriz_id, escala_12x36
          FROM companies
         WHERE id = $1 AND arquivada IS NOT TRUE AND excluida IS NOT TRUE`,
       [id]
@@ -2692,6 +2692,7 @@ router.post("/personificar/:id", requireArea("empresas"), async (req, res) => {
         name: company.name,
         cnpj: company.cnpj,
         tool_access: mergeToolAccess(company.tool_access),
+        escala_12x36: Boolean(company.escala_12x36),
       },
       is_matriz: !company.matriz_id,
       empresas_grupo: empresasGrupo,

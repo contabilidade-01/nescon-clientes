@@ -456,6 +456,7 @@ export type LoginResponse =
         cnpj: string;
         tool_access?: CompanyToolAccessApi;
         must_change_password?: boolean;
+        escala_12x36?: boolean;
       };
     };
 
@@ -1914,7 +1915,7 @@ export const api = {
     personificar: (companyId: string) =>
       request<{
         token: string;
-        company: { id: string; name: string; cnpj: string; tool_access: Record<string, boolean> };
+        company: { id: string; name: string; cnpj: string; tool_access: Record<string, boolean>; escala_12x36?: boolean };
         is_matriz: boolean;
         empresas_grupo: Array<{ id: string; name: string; cnpj: string; is_matriz: boolean }>;
         personificando: boolean;

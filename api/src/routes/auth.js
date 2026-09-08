@@ -345,6 +345,7 @@ router.post("/login", loginIpLimiter, loginContaLimiter, async (req, res) => {
           tool_access: mergeToolAccess(company.tool_access),
           // Ainda com a senha inicial (= CNPJ): o front leva direto para a troca.
           must_change_password: Boolean(company.must_change_password),
+          escala_12x36: Boolean(company.escala_12x36),
         },
         is_matriz: isMatriz,
         empresas_grupo: empresasGrupo,
@@ -543,7 +544,7 @@ router.post("/trocar-empresa", authMiddleware, async (req, res) => {
     // sentidos. Antes, filial→matriz era bloqueado.
     const anchorId = req.company.matrizId || req.company.id;
     const { rows: destinos } = await db.query(
-      `SELECT id, name, cnpj, matriz_id, tool_access, must_change_password
+      `SELECT id, name, cnpj, matriz_id, tool_access, must_change_password, escala_12x36
          FROM companies
         WHERE id = $1
           AND arquivada IS NOT TRUE AND excluida IS NOT TRUE
@@ -576,6 +577,7 @@ router.post("/trocar-empresa", authMiddleware, async (req, res) => {
         cnpj: destino.cnpj,
         tool_access: mergeToolAccess(destino.tool_access),
         must_change_password: Boolean(destino.must_change_password),
+        escala_12x36: Boolean(destino.escala_12x36),
       },
       is_matriz: !matrizId,
     });

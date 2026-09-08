@@ -69,7 +69,7 @@ export function SuspensionForm() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isThirdSuspension, setIsThirdSuspension] = useState(false);
   const [thirdManuallySet, setThirdManuallySet] = useState(false);
-  const [escala12x36, setEscala12x36] = useState(false);
+  const [escala12x36, setEscala12x36] = useState(Boolean(company?.escala12x36));
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
   // 12x36 muda a contagem: "N dias" são N PLANTÕES e o retorno pula a folga. Sem isso, o
@@ -93,12 +93,14 @@ export function SuspensionForm() {
       .list({ companyId: company.id })
       .then((docs) => setIssuedDocs(docs))
       .catch(() => setIssuedDocs([]));
-    // Escala da empresa. Se falhar, fica em dias corridos (comportamento conservador:
-    // é o que valia antes, e não inventa folga que talvez não exista).
+    // A sessão já traz a escala (login/personificação). company-session só confirma
+    // o valor atual do banco — se falhar, NÃO apaga o que a sessão já sabe, senão
+    // o formulário volta a contar dia corrido e manda voltar num dia de folga.
+    setEscala12x36(Boolean(company.escala12x36));
     api.auth
       .companySession()
       .then((s) => setEscala12x36(Boolean(s.escala_12x36)))
-      .catch(() => setEscala12x36(false));
+      .catch(() => setEscala12x36(Boolean(company.escala12x36)));
   }, [company]);
 
   // Ao escolher o funcionário, puxa do histórico as suspensões e advertências já emitidas.

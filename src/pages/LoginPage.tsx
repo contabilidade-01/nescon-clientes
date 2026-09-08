@@ -75,6 +75,7 @@ const LoginPage = () => {
         mustChangePassword: precisaTrocarSenha,
         isMatriz: Boolean(data.is_matriz),
         empresasGrupo: Array.isArray(data.empresas_grupo) ? data.empresas_grupo : [],
+        escala12x36: Boolean(data.company.escala_12x36),
       });
       if (precisaTrocarSenha) {
         // Senha ainda é a inicial (= CNPJ): nada é liberado antes da troca.

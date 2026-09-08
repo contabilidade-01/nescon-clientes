@@ -123,6 +123,7 @@ const Index = () => {
           // Preserva a marca: este refresh é só de nome/permissões.
           mustChangePassword,
           temFuncionarios: data.tem_funcionarios !== false,
+          escala12x36: Boolean(data.escala_12x36),
           // Preserva o estado da sessão (senão o refresh apagava a personificação e o grupo).
           isAdminPersonified,
           isMatriz,

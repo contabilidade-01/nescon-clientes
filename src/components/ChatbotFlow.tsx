@@ -69,16 +69,16 @@ export function ChatbotFlow() {
   const [searchQuery, setSearchQuery] = useState("");
   const [faltaDates, setFaltaDates] = useState<Date[]>([]);
   // 12x36: "N dias" viram N plantões e o retorno pula a folga (ver suspensaoPeriodo.ts).
-  const [escala12x36, setEscala12x36] = useState(false);
+  const [escala12x36, setEscala12x36] = useState(Boolean(company?.escala12x36));
 
   useEffect(() => {
     if (company) {
       api.employees.list({ companyId: company.id }).then((data) => setEmployees(data));
-      // Escala da empresa. Falhou? Fica em dias corridos — o comportamento anterior.
+      setEscala12x36(Boolean(company.escala12x36));
       api.auth
         .companySession()
         .then((s) => setEscala12x36(Boolean(s.escala_12x36)))
-        .catch(() => setEscala12x36(false));
+        .catch(() => setEscala12x36(Boolean(company.escala12x36)));
     }
   }, [company]);
 

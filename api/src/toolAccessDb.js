@@ -35,7 +35,7 @@ async function getCompanyByCnpjForLogin(db, cnpjDigits) {
       // bcrypt, para a resposta ser a mesma de CNPJ inexistente ("Acesso não
       // encontrado"). Uma mensagem específica de "conta arquivada" contaria a quem
       // tentasse que aquele CNPJ é cliente da casa.
-      `SELECT id, name, cnpj, password_hash, tool_access, must_change_password, password_expires_at, matriz_id
+      `SELECT id, name, cnpj, password_hash, tool_access, must_change_password, password_expires_at, matriz_id, escala_12x36
        FROM companies WHERE cnpj = $1 AND arquivada IS NOT TRUE AND excluida IS NOT TRUE`,
       [cnpjDigits]
     );
