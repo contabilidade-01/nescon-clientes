@@ -2,9 +2,10 @@ import {
   Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle
 } from "docx";
 import { saveAs } from "file-saver";
-import { format, addDays } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { paragrafosTestemunhasTermo } from "@/lib/testemunhasTermo";
+import { calcularPeriodoSuspensao } from "@/lib/suspensaoPeriodo";
 
 export interface SuspensionData {
   employeeName: string;
@@ -20,6 +21,8 @@ export interface SuspensionData {
   isThirdSuspension?: boolean;
   /** Motivo customizado (má conduta, atrasos, briga etc.). Se vazio, usa o texto de faltas injustificadas. */
   reason?: string;
+  /** 12x36: "N dias" são N plantões e o retorno pula a folga. */
+  escala12x36?: boolean;
 }
 
 function formatDateBR(date: Date): string {
@@ -43,8 +46,21 @@ const FS = 18; // font size small (9pt)
 const FT = 24; // font size title (12pt)
 
 export function generateSuspensionDoc(data: SuspensionData) {
-  const endDate = addDays(data.startDate, data.suspensionDays - 1);
-  const returnDate = addDays(endDate, 1);
+  // O Word não pode recalcular sozinho: addDays(+1) mandava voltar no dia seguinte,
+  // que na 12x36 já é folga. Mesma regra da tela (suspensaoPeriodo.ts).
+  const escala12x36 = Boolean(data.escala12x36);
+  const { fim: endDate, retorno: returnDate } = calcularPeriodoSuspensao({
+    inicio: data.startDate,
+    dias: data.suspensionDays,
+    escala12x36,
+  });
+  const unidade = escala12x36
+    ? data.suspensionDays > 1
+      ? "plantões"
+      : "plantão"
+    : data.suspensionDays > 1
+      ? "dias"
+      : "dia";
 
   const justificationRuns: TextRun[] = [];
 
@@ -117,7 +133,7 @@ export function generateSuspensionDoc(data: SuspensionData) {
 
   justificationRuns.push(
     new TextRun({
-      text: `, estamos procedendo com uma suspensão disciplinar de ${data.suspensionDays.toString().padStart(2, "0")} (${data.suspensionDays > 1 ? extenso(data.suspensionDays) : "um"}) dia${data.suspensionDays > 1 ? "s" : ""}, `,
+      text: `, estamos procedendo com uma suspensão disciplinar de ${data.suspensionDays.toString().padStart(2, "0")} (${data.suspensionDays > 1 ? extenso(data.suspensionDays) : "um"}) ${unidade}, `,
       font: "Arial", size: F,
     })
   );
@@ -243,8 +259,8 @@ export function generateSuspensionDoc(data: SuspensionData) {
           new Paragraph({
             spacing: { after: 40 },
             children: [
-              new TextRun({ text: "Total de dias: ", font: "Arial", size: F, bold: true }),
-              new TextRun({ text: `${data.suspensionDays.toString().padStart(2, "0")} (${data.suspensionDays > 1 ? extenso(data.suspensionDays) : "um"}) dia${data.suspensionDays > 1 ? "s" : ""}`, font: "Arial", size: F }),
+              new TextRun({ text: escala12x36 ? "Total de plantões: " : "Total de dias: ", font: "Arial", size: F, bold: true }),
+              new TextRun({ text: `${data.suspensionDays.toString().padStart(2, "0")} (${data.suspensionDays > 1 ? extenso(data.suspensionDays) : "um"}) ${unidade}`, font: "Arial", size: F }),
             ],
           }),
           new Paragraph({

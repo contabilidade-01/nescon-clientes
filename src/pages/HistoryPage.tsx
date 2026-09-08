@@ -42,6 +42,7 @@ const HistoryPage = () => {
           cnpj: doc.company_cnpj,
           startDate: dateFromApiOr(doc.start_date, doc.created_at),
           suspensionDays: doc.suspension_days || 1,
+          escala12x36: Boolean(company?.escala12x36),
           previousWarnings: [],
           previousSuspensions: [],
           recentAbsenceDate: "",

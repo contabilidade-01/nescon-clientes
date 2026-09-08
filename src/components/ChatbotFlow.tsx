@@ -295,6 +295,7 @@ export function ChatbotFlow() {
           isThirdSuspension,
           // O motivo respondido no chat entra na fundamentação do documento.
           reason: reason || undefined,
+          escala12x36,
         };
         const { retorno: returnDate } = calcularPeriodoSuspensao({
           inicio: startDate,

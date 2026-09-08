@@ -173,6 +173,7 @@ export function SuspensionForm() {
       unjustifiedAbsences: isOtherReason ? [] : sortedAbsences.map(formatDateBR),
       isThirdSuspension,
       reason: isOtherReason ? reason : undefined,
+      escala12x36,
     };
 
     try {
