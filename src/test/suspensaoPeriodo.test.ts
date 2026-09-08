@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calcularPeriodoSuspensao } from "@/lib/suspensaoPeriodo";
+import { calcularPeriodoSuspensao, empresaEh12x36 } from "@/lib/suspensaoPeriodo";
 
 const d = (iso: string) => new Date(`${iso}T00:00:00`);
 const br = (x: Date) => `${x.getDate()}/${x.getMonth() + 1}`;
@@ -42,5 +42,19 @@ describe("período da suspensão — 12x36 (plantões)", () => {
     const r = calcularPeriodoSuspensao({ inicio: d("2026-09-29"), dias: 2, escala12x36: true });
     expect(br(r.fim)).toBe("1/10");
     expect(br(r.retorno)).toBe("3/10");
+  });
+});
+
+describe("empresaEh12x36", () => {
+  it("liga pela flag, mesmo com CNPJ de escala normal", () => {
+    expect(empresaEh12x36({ escala12x36: true, cnpj: "00000000000000" })).toBe(true);
+  });
+
+  it("Queijeiro 4 (CNPJ conhecido) é 12x36 mesmo sem flag na sessão", () => {
+    expect(empresaEh12x36({ cnpj: "54.803.962/0001-08" })).toBe(true);
+  });
+
+  it("empresa qualquer sem flag continua em dia corrido", () => {
+    expect(empresaEh12x36({ cnpj: "00.000.000/0001-00" })).toBe(false);
   });
 });

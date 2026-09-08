@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmployeeSelect } from "@/components/EmployeeSelect";
 import { downloadSuspensionDoc, type SuspensionData } from "@/lib/generateSuspensionDoc";
-import { calcularPeriodoSuspensao } from "@/lib/suspensaoPeriodo";
+import { calcularPeriodoSuspensao, empresaEh12x36 } from "@/lib/suspensaoPeriodo";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -69,11 +69,11 @@ export function SuspensionForm() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isThirdSuspension, setIsThirdSuspension] = useState(false);
   const [thirdManuallySet, setThirdManuallySet] = useState(false);
-  const [escala12x36, setEscala12x36] = useState(Boolean(company?.escala12x36));
+  // Sem estado próprio: um refresh da sessão apagava a flag e a tela voltava ao dia 11.
+  const escala12x36 = empresaEh12x36({ escala12x36: company?.escala12x36, cnpj: company?.cnpj });
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
-  // 12x36 muda a contagem: "N dias" são N PLANTÕES e o retorno pula a folga. Sem isso, o
-  // sistema mandava o empregado voltar num dia em que ele já estaria de folga.
+  // 12x36: 1 plantão no dia 10 → folga 11 → retorno 12. Fora dessa escala, dia corrido.
   const periodo = startDate
     ? calcularPeriodoSuspensao({ inicio: startDate, dias: suspensionDays, escala12x36 })
     : null;
@@ -93,16 +93,6 @@ export function SuspensionForm() {
       .list({ companyId: company.id })
       .then((docs) => setIssuedDocs(docs))
       .catch(() => setIssuedDocs([]));
-    // A sessão já traz a escala (login/personificação). company-session só confirma
-    // o valor atual do banco — se falhar, NÃO apaga o que a sessão já sabe, senão
-    // o formulário volta a contar dia corrido e manda voltar num dia de folga.
-    setEscala12x36(Boolean(company.escala12x36));
-    api.auth
-      .companySession()
-      .then((s) => {
-        if (typeof s.escala_12x36 === "boolean") setEscala12x36(s.escala_12x36);
-      })
-      .catch(() => setEscala12x36(Boolean(company.escala12x36)));
   }, [company]);
 
   // Ao escolher o funcionário, puxa do histórico as suspensões e advertências já emitidas.

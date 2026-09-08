@@ -5,7 +5,7 @@ import { saveAs } from "file-saver";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { paragrafosTestemunhasTermo } from "@/lib/testemunhasTermo";
-import { calcularPeriodoSuspensao } from "@/lib/suspensaoPeriodo";
+import { calcularPeriodoSuspensao, empresaEh12x36 } from "@/lib/suspensaoPeriodo";
 
 export interface SuspensionData {
   employeeName: string;
@@ -51,9 +51,9 @@ const FS = 18; // font size small (9pt)
 const FT = 24; // font size title (12pt)
 
 export function generateSuspensionDoc(data: SuspensionData) {
-  // Fora da 12x36 nada muda: fim no último dia corrido, retorno no dia seguinte.
-  // Na 12x36 o Word NÃO recalcula: grava a data que a tela já mostrou (dia 12, não 11).
-  const escala12x36 = Boolean(data.escala12x36);
+  // 12x36: 1 plantão no dia 10 → folga 11 → retorno 12. O CNPJ conhecido ou a flag
+  // da sessão ligam a regra; as demais empresas continuam em dia corrido.
+  const escala12x36 = empresaEh12x36({ escala12x36: data.escala12x36, cnpj: data.cnpj });
   const calculado = calcularPeriodoSuspensao({
     inicio: data.startDate,
     dias: data.suspensionDays,

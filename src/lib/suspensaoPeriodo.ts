@@ -1,6 +1,25 @@
 import { addDays } from "date-fns";
 
 /**
+ * Empresas que já operam em 12x36 (Queijeiro 3 e 4). A coluna `escala_12x36` liga
+ * qualquer outra; estas duas não podem cair em dia corrido só porque a sessão
+ * aberta ainda não carrega a flag.
+ */
+const CNPJ_12X36 = new Set(["52191264000173", "54803962000108"]);
+
+export function empresaEh12x36({
+  escala12x36,
+  cnpj,
+}: {
+  escala12x36?: boolean | null;
+  cnpj?: string | null;
+}): boolean {
+  if (escala12x36 === true) return true;
+  const digits = String(cnpj || "").replace(/\D/g, "");
+  return CNPJ_12X36.has(digits);
+}
+
+/**
  * Período de uma suspensão disciplinar: último dia suspenso e data de retorno.
  *
  * Duas escalas, duas contagens — e é essa diferença que gerava a data errada:

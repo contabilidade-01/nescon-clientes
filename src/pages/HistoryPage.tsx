@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { downloadSuspensionDoc } from "@/lib/generateSuspensionDoc";
 import { downloadWarningDoc } from "@/lib/generateWarningDoc";
 import { dateFromApi, dateFromApiOr } from "@/lib/apiDate";
+import { empresaEh12x36 } from "@/lib/suspensaoPeriodo";
 
 const HistoryPage = () => {
   const navigate = useNavigate();
@@ -35,6 +36,10 @@ const HistoryPage = () => {
   const recuperar = async (doc: NonNullable<typeof documents>[number]) => {
     try {
       if (doc.document_type === "suspension") {
+        const escala12x36 = empresaEh12x36({
+          escala12x36: company?.escala12x36,
+          cnpj: doc.company_cnpj,
+        });
         await downloadSuspensionDoc({
           employeeName: doc.employee_name,
           cpf: doc.employee_cpf,
@@ -42,8 +47,8 @@ const HistoryPage = () => {
           cnpj: doc.company_cnpj,
           startDate: dateFromApiOr(doc.start_date, doc.created_at),
           suspensionDays: doc.suspension_days || 1,
-          escala12x36: Boolean(company?.escala12x36),
-          returnDate: company?.escala12x36 ? dateFromApi(doc.return_date) ?? undefined : undefined,
+          escala12x36,
+          returnDate: escala12x36 ? dateFromApi(doc.return_date) ?? undefined : undefined,
           previousWarnings: [],
           previousSuspensions: [],
           recentAbsenceDate: "",
