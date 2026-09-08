@@ -368,6 +368,17 @@ router.patch("/companies/:id", requireArea("empresas"), async (req, res) => {
       }
     }
 
+    // Escala 12x36: muda o cálculo da suspensão (1 dia = 1 plantão; o retorno pula a
+    // folga). Editável aqui em vez de lista fixa no código.
+    if (Object.prototype.hasOwnProperty.call(req.body, "escala_12x36")) {
+      const e = req.body.escala_12x36;
+      if (typeof e !== "boolean") {
+        return res.status(400).json({ error: "escala_12x36 deve ser true ou false" });
+      }
+      sets.push(`escala_12x36 = $${i++}`);
+      vals.push(e);
+    }
+
     if (Object.prototype.hasOwnProperty.call(req.body, "tool_access")) {
       const ta = req.body.tool_access;
       if (ta === null || typeof ta !== "object" || Array.isArray(ta)) {

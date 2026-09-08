@@ -11,6 +11,7 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { downloadSuspensionDoc } from "@/lib/generateSuspensionDoc";
 import { downloadWarningDoc } from "@/lib/generateWarningDoc";
+import { dateFromApiOr } from "@/lib/apiDate";
 
 const HistoryPage = () => {
   const navigate = useNavigate();
@@ -39,7 +40,7 @@ const HistoryPage = () => {
           cpf: doc.employee_cpf,
           companyName: doc.company_name,
           cnpj: doc.company_cnpj,
-          startDate: doc.start_date ? new Date(doc.start_date + "T12:00:00") : new Date(doc.created_at),
+          startDate: dateFromApiOr(doc.start_date, doc.created_at),
           suspensionDays: doc.suspension_days || 1,
           previousWarnings: [],
           previousSuspensions: [],
@@ -53,14 +54,17 @@ const HistoryPage = () => {
           cpf: doc.employee_cpf,
           companyName: doc.company_name,
           cnpj: doc.company_cnpj,
-          warningDate: doc.start_date ? new Date(doc.start_date + "T12:00:00") : new Date(doc.created_at),
+          warningDate: dateFromApiOr(doc.start_date, doc.created_at),
           reason: doc.description || "Conduta inadequada",
           previousWarnings: [],
           unjustifiedAbsences: [],
         });
       }
       toast.success("Documento regenerado e baixado");
-    } catch {
+    } catch (err) {
+      // Não engolir o erro em silêncio: o motivo real vai para o console para
+      // diagnóstico, e o usuário vê a mensagem amigável.
+      console.error("Falha ao regenerar documento:", err);
       toast.error("Erro ao recuperar o documento");
     }
   };

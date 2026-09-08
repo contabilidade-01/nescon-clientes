@@ -11,9 +11,13 @@ async function ensureWhatsappDpSchema(db) {
       );
     `);
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS escala_12x36 BOOLEAN`);
+    // Semeadura ÚNICA: só preenche quem ainda está NULL. A escala passou a ser editável
+    // na tela de Empresas, então um UPDATE incondicional (como era antes) apagaria a
+    // configuração do escritório a cada deploy.
     await db.query(
       `UPDATE companies SET escala_12x36 =
-         regexp_replace(COALESCE(cnpj, ''), '[^0-9]', '', 'g') IN ($1, $2)`,
+         regexp_replace(COALESCE(cnpj, ''), '[^0-9]', '', 'g') IN ($1, $2)
+       WHERE escala_12x36 IS NULL`,
       ["52191264000173", "54803962000108"]
     );
     console.log("[DB] whatsapp DP: sessão e escala 12x36 verificadas.");

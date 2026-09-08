@@ -31,6 +31,8 @@ export function CompanyManageRow({
     phone: string | null;
     tool_access: CompanyToolAccess;
     gclick_status?: string | null;
+    /** 12x36: suspensão conta plantões e o retorno pula a folga. */
+    escala_12x36?: boolean | null;
   };
 }) {
   const [name, setName] = useState(company.name);
@@ -38,13 +40,15 @@ export function CompanyManageRow({
   const [phone, setPhone] = useState(company.phone ?? "");
   const [tools, setTools] = useState<CompanyToolAccess>(() => mergeClientToolAccess(company.tool_access));
   const [novaSenha, setNovaSenha] = useState("");
+  const [escala12x36, setEscala12x36] = useState(Boolean(company.escala_12x36));
 
   useEffect(() => {
     setName(company.name);
     setEmail(company.contact_email ?? "");
     setPhone(company.phone ?? "");
     setTools(mergeClientToolAccess(company.tool_access));
-  }, [company.name, company.contact_email, company.phone, company.tool_access]);
+    setEscala12x36(Boolean(company.escala_12x36));
+  }, [company.name, company.contact_email, company.phone, company.tool_access, company.escala_12x36]);
 
   const queryClient = useQueryClient();
 
@@ -71,6 +75,24 @@ export function CompanyManageRow({
       toast.success("Permissões das ferramentas atualizadas");
     },
     onError: (e: Error) => toast.error(e.message),
+  });
+
+  const salvarEscala = useMutation({
+    mutationFn: (valor: boolean) => api.admin.updateCompany(company.id, { escala_12x36: valor }),
+    // Otimista: o switch responde na hora; se o servidor recusar, volta ao anterior.
+    onMutate: (valor: boolean) => {
+      const anterior = escala12x36;
+      setEscala12x36(valor);
+      return { anterior };
+    },
+    onSuccess: (_r, valor) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      toast.success(valor ? "Escala 12x36 ligada para esta empresa" : "Escala 12x36 desligada");
+    },
+    onError: (e: Error, _valor, ctx) => {
+      if (ctx) setEscala12x36(ctx.anterior);
+      toast.error(e.message);
+    },
   });
 
   const alterarSenha = useMutation({
@@ -155,6 +177,25 @@ export function CompanyManageRow({
           >
             Alterar senha
           </Button>
+        </div>
+      </div>
+
+      {/* Escala de trabalho: muda o cálculo da suspensão disciplinar. */}
+      <div className="border-t pt-4 mt-4">
+        <div className="flex items-center justify-between gap-3 rounded-md border bg-background/60 px-3 py-2">
+          <div className="min-w-0">
+            <p className="text-sm font-medium leading-tight">Escala 12x36</p>
+            <p className="text-xs text-muted-foreground">
+              Trabalha dia sim, dia não. A suspensão passa a contar <strong>plantões</strong> (de dois em dois
+              dias) e o retorno pula a folga — sem isso, o sistema manda voltar num dia de folga.
+            </p>
+          </div>
+          <Switch
+            checked={escala12x36}
+            onCheckedChange={(c) => salvarEscala.mutate(c)}
+            disabled={salvarEscala.isPending}
+            aria-label="Escala 12x36"
+          />
         </div>
       </div>
 

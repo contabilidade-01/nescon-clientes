@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmployeeSelect } from "@/components/EmployeeSelect";
 import { downloadSuspensionDoc, type SuspensionData } from "@/lib/generateSuspensionDoc";
+import { calcularPeriodoSuspensao } from "@/lib/suspensaoPeriodo";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -68,10 +69,16 @@ export function SuspensionForm() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isThirdSuspension, setIsThirdSuspension] = useState(false);
   const [thirdManuallySet, setThirdManuallySet] = useState(false);
+  const [escala12x36, setEscala12x36] = useState(false);
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
-  const endDate = startDate ? addDays(startDate, suspensionDays - 1) : null;
-  const returnDate = endDate ? addDays(endDate, 1) : null;
+  // 12x36 muda a contagem: "N dias" são N PLANTÕES e o retorno pula a folga. Sem isso, o
+  // sistema mandava o empregado voltar num dia em que ele já estaria de folga.
+  const periodo = startDate
+    ? calcularPeriodoSuspensao({ inicio: startDate, dias: suspensionDays, escala12x36 })
+    : null;
+  const endDate = periodo?.fim ?? null;
+  const returnDate = periodo?.retorno ?? null;
 
   useEffect(() => {
     if (!company) return;
@@ -86,6 +93,12 @@ export function SuspensionForm() {
       .list({ companyId: company.id })
       .then((docs) => setIssuedDocs(docs))
       .catch(() => setIssuedDocs([]));
+    // Escala da empresa. Se falhar, fica em dias corridos (comportamento conservador:
+    // é o que valia antes, e não inventa folga que talvez não exista).
+    api.auth
+      .companySession()
+      .then((s) => setEscala12x36(Boolean(s.escala_12x36)))
+      .catch(() => setEscala12x36(false));
   }, [company]);
 
   // Ao escolher o funcionário, puxa do histórico as suspensões e advertências já emitidas.
@@ -252,9 +265,11 @@ export function SuspensionForm() {
               </div>
             </div>
             <div>
-              <Label htmlFor="days">Dias de Suspensão *</Label>
+              <Label htmlFor="days">{escala12x36 ? "Plantões de Suspensão *" : "Dias de Suspensão *"}</Label>
               <Input id="days" type="number" inputMode="numeric" min={1} max={30} value={suspensionDays} onChange={(e) => setSuspensionDays(Math.min(30, Math.max(1, parseInt(e.target.value) || 1)))} className="mt-1" />
-              <p className="text-xs text-muted-foreground mt-1">Máximo 30 dias (Art. 474 CLT)</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {escala12x36 ? "Escala 12x36: cada unidade é um plantão." : "Máximo 30 dias (Art. 474 CLT)"}
+              </p>
             </div>
           </div>
 
@@ -265,13 +280,21 @@ export function SuspensionForm() {
                 <span className="font-medium">{formatDateBR(startDate)} a {endDate && formatDateBR(endDate)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Total de dias:</span>
-                <span className="font-medium">{suspensionDays} dia{suspensionDays > 1 ? "s" : ""}</span>
+                <span className="text-muted-foreground">{escala12x36 ? "Total de plantões:" : "Total de dias:"}</span>
+                <span className="font-medium">
+                  {suspensionDays} {escala12x36 ? `plantã${suspensionDays > 1 ? "os" : "o"}` : `dia${suspensionDays > 1 ? "s" : ""}`}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Retorno ao trabalho:</span>
                 <span className="font-semibold text-primary">{returnDate && formatDateBR(returnDate)}</span>
               </div>
+              {escala12x36 && (
+                <p className="text-xs text-muted-foreground">
+                  Escala 12x36: a suspensão incide nos plantões (de dois em dois dias) e o retorno pula a folga
+                  seguinte.
+                </p>
+              )}
             </div>
           )}
 

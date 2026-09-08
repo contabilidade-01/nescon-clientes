@@ -12,7 +12,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { dateFromApiOr } from "@/lib/apiDate";
 
 const MONTHS = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -288,7 +288,7 @@ const CertificatesPage = () => {
                     </p>
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
-                      {format(new Date(cert.certificate_date + "T12:00:00"), "dd/MM/yyyy")}
+                      {format(dateFromApiOr(cert.certificate_date, cert.created_at), "dd/MM/yyyy")}
                       {cert.notes && ` • ${cert.notes}`}
                     </p>
                   </div>

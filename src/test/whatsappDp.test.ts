@@ -100,15 +100,6 @@ describe("calendário 12x36", () => {
   });
 });
 
-describe("escala por CNPJ", () => {
-  it("só Queijeiro 3 e 4 são 12x36; o resto é 6x1", () => {
-    expect(dp.eh12x36("52.191.264/0001-73")).toBe(true);
-    expect(dp.eh12x36("54803962000108")).toBe(true);
-    expect(dp.eh12x36("26.786.637/0001-49")).toBe(false);
-    expect(dp.eh12x36("35.736.034/0001-23")).toBe(false);
-  });
-});
-
 describe("data da falta no texto", () => {
   it("entende 'faltou no dia 30'", () => {
     const ds = dp.parseDatasLista("Faltou no dia 30");

@@ -28,10 +28,15 @@ const { UPLOAD_DIR } = require("./uploads");
 const SESSION_MS = 3 * 60 * 60 * 1000;
 const ADMIN_WHATSAPP = (process.env.ADMIN_WHATSAPP || "5511948626605").replace(/\D/g, "");
 const MAX_LISTA = 25;
-const CNPJ_12X36 = new Set(["52191264000173", "54803962000108"]);
-
-function eh12x36(cnpj) {
-  return CNPJ_12X36.has(digits(cnpj));
+/**
+ * A escala 12x36 é um dado DA EMPRESA (`companies.escala_12x36`), editável na tela de
+ * Empresas — não uma lista de CNPJs fixa no código, como era antes. Assim, marcar uma
+ * unidade nova como 12x36 não exige deploy.
+ */
+async function eh12x36PorId(companyId) {
+  if (!companyId) return false;
+  const { rows } = await db.query("SELECT escala_12x36 FROM companies WHERE id = $1", [companyId]);
+  return Boolean(rows[0]?.escala_12x36);
 }
 
 function digits(v) {
@@ -709,7 +714,7 @@ async function pedirFuncionario(phone, tema, empresa) {
     company_id: empresa.id,
     tema,
     step: "funcionario",
-    dados: { escala12: eh12x36(empresa.cnpj) },
+    dados: { escala12: Boolean(empresa.escala_12x36) },
     replaceDados: true,
   });
   const titulo = tema === "advertencia" ? "*advertência*" : "*suspensão*";
@@ -816,8 +821,7 @@ async function seguirFluxo(phone, sessao, texto) {
   }
 
   if (step === "escala") {
-    const empresa = (await db.query("SELECT cnpj FROM companies WHERE id = $1", [sessao.company_id])).rows[0];
-    await saveSessao(phone, { dados: { escala12: eh12x36(empresa?.cnpj) }, step: "data" });
+    await saveSessao(phone, { dados: { escala12: await eh12x36PorId(sessao.company_id) }, step: "data" });
     sessao = await getSessao(phone);
     step = "data";
   }
@@ -1032,7 +1036,7 @@ module.exports = {
   lerDiasSuspensao,
   extrairResposta,
   calendarioSuspensao12x36,
-  eh12x36,
+  eh12x36PorId,
   ehSimEmitir,
   ehCancelarEmissao,
   temCorrecao,

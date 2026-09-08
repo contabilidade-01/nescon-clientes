@@ -725,9 +725,12 @@ router.get("/company-session", authMiddleware, async (req, res) => {
   // O estado do LGPD vem da base (não do token): o aviso do primeiro acesso some
   // assim que o cliente responde, sem precisar de novo login.
   let lgpd = { consent_at: null, prompt_seen_at: null, versao: null };
+  // Escala 12x36 muda o cálculo da suspensão (1 dia = 1 plantão, e o retorno pula a
+  // folga). O portal precisa saber para não prometer retorno num dia de folga.
+  let escala12x36 = false;
   try {
     const { rows } = await db.query(
-      `SELECT lgpd_consent_at, lgpd_prompt_seen_at, lgpd_consent_version
+      `SELECT lgpd_consent_at, lgpd_prompt_seen_at, lgpd_consent_version, escala_12x36
          FROM companies WHERE id = $1`,
       [req.company.id]
     );
@@ -737,6 +740,7 @@ router.get("/company-session", authMiddleware, async (req, res) => {
         prompt_seen_at: rows[0].lgpd_prompt_seen_at,
         versao: rows[0].lgpd_consent_version,
       };
+      escala12x36 = Boolean(rows[0].escala_12x36);
     }
   } catch (err) {
     // Base ainda sem as colunas (migração por rodar): o portal segue normalmente.
@@ -750,6 +754,7 @@ router.get("/company-session", authMiddleware, async (req, res) => {
     },
     tool_access: req.companyToolAccess,
     tem_funcionarios: temFuncionarios,
+    escala_12x36: escala12x36,
     lgpd,
   });
 });

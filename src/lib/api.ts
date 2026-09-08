@@ -859,6 +859,8 @@ export const api = {
         tool_access: CompanyToolAccessApi;
         /** Falso quando a empresa só tem pró-labore: a seção Férias não aparece. */
         tem_funcionarios?: boolean;
+        /** 12x36: suspensão conta PLANTÕES e o retorno pula a folga (ver suspensaoPeriodo.ts). */
+        escala_12x36?: boolean;
         lgpd?: LgpdState;
       }>("/auth/company-session"),
   },
@@ -1425,6 +1427,8 @@ export const api = {
           ultimo_login_em: string | null;
           /** Grupo: se preenchido, esta empresa é filial da empresa-âncora daquele id. */
           matriz_id: string | null;
+          /** 12x36: suspensão conta plantões e o retorno pula a folga. */
+          escala_12x36: boolean | null;
         }>
       >("/admin/companies"),
     /**
@@ -1513,6 +1517,8 @@ export const api = {
         contact_email?: string | null;
         phone?: string | null;
         tool_access?: CompanyToolAccessApi;
+        /** 12x36: suspensão conta plantões e o retorno pula a folga. */
+        escala_12x36?: boolean;
       }
     ) =>
       request<{

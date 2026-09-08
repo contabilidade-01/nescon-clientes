@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
+import { calcularPeriodoSuspensao } from "@/lib/suspensaoPeriodo";
 import { downloadSuspensionDoc, type SuspensionData } from "@/lib/generateSuspensionDoc";
 import { downloadWarningDoc, type WarningData } from "@/lib/generateWarningDoc";
 import { REASON_PRESETS } from "@/lib/reasonPresets";
@@ -67,10 +68,17 @@ export function ChatbotFlow() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [faltaDates, setFaltaDates] = useState<Date[]>([]);
+  // 12x36: "N dias" viram N plantões e o retorno pula a folga (ver suspensaoPeriodo.ts).
+  const [escala12x36, setEscala12x36] = useState(false);
 
   useEffect(() => {
     if (company) {
       api.employees.list({ companyId: company.id }).then((data) => setEmployees(data));
+      // Escala da empresa. Falhou? Fica em dias corridos — o comportamento anterior.
+      api.auth
+        .companySession()
+        .then((s) => setEscala12x36(Boolean(s.escala_12x36)))
+        .catch(() => setEscala12x36(false));
     }
   }, [company]);
 
@@ -236,8 +244,11 @@ export function ChatbotFlow() {
     if (unjustifiedAbsences.length > 0) addUserMsg(unjustifiedAbsences.join(", "));
     setStep("confirm");
 
-    const endDate = startDate && docType === "suspension" ? addDays(startDate, days - 1) : null;
-    const returnDate = endDate ? addDays(endDate, 1) : null;
+    const periodo =
+      startDate && docType === "suspension"
+        ? calcularPeriodoSuspensao({ inicio: startDate, dias: days, escala12x36 })
+        : null;
+    const returnDate = periodo?.retorno ?? null;
 
     let summary = `📋 **Resumo:**\n`;
     summary += `• Tipo: ${docType === "suspension" ? "Suspensão" : "Advertência"}\n`;
@@ -245,7 +256,7 @@ export function ChatbotFlow() {
     summary += `• CPF: ${selectedEmployee?.cpf}\n`;
     if (startDate) summary += `• Data: ${format(startDate, "dd/MM/yyyy")}\n`;
     if (docType === "suspension") {
-      summary += `• Dias: ${days}\n`;
+      summary += escala12x36 ? `• Plantões: ${days}\n` : `• Dias: ${days}\n`;
       if (returnDate) summary += `• Retorno: ${format(returnDate, "dd/MM/yyyy")}\n`;
     }
     summary += `• Empresa: ${company?.name}\n`;
@@ -274,8 +285,11 @@ export function ChatbotFlow() {
           // O motivo respondido no chat entra na fundamentação do documento.
           reason: reason || undefined,
         };
-        const endDate = addDays(startDate, days - 1);
-        const returnDate = addDays(endDate, 1);
+        const { retorno: returnDate } = calcularPeriodoSuspensao({
+          inicio: startDate,
+          dias: days,
+          escala12x36,
+        });
         await api.documents.create({
           document_type: "suspension",
           employee_name: selectedEmployee.name,
