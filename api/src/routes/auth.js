@@ -729,7 +729,7 @@ router.get("/company-session", authMiddleware, async (req, res) => {
   let lgpd = { consent_at: null, prompt_seen_at: null, versao: null };
   // Escala 12x36 muda o cálculo da suspensão (1 dia = 1 plantão, e o retorno pula a
   // folga). O portal precisa saber para não prometer retorno num dia de folga.
-  let escala12x36 = false;
+  let escala12x36 = null;
   try {
     const { rows } = await db.query(
       `SELECT lgpd_consent_at, lgpd_prompt_seen_at, lgpd_consent_version, escala_12x36
@@ -746,6 +746,7 @@ router.get("/company-session", authMiddleware, async (req, res) => {
     }
   } catch (err) {
     // Base ainda sem as colunas (migração por rodar): o portal segue normalmente.
+    // Não manda false — o front trata null como "não sei" e não apaga a escala da sessão.
     console.error("company-session lgpd:", err.message);
   }
   res.json({

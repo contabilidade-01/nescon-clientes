@@ -860,8 +860,8 @@ export const api = {
         tool_access: CompanyToolAccessApi;
         /** Falso quando a empresa só tem pró-labore: a seção Férias não aparece. */
         tem_funcionarios?: boolean;
-        /** 12x36: suspensão conta PLANTÕES e o retorno pula a folga (ver suspensaoPeriodo.ts). */
-        escala_12x36?: boolean;
+        /** 12x36: suspensão conta PLANTÕES e o retorno pula a folga (ver suspensaoPeriodo.ts). null = servidor não soube. */
+        escala_12x36?: boolean | null;
         lgpd?: LgpdState;
       }>("/auth/company-session"),
   },

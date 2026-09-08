@@ -99,7 +99,9 @@ export function SuspensionForm() {
     setEscala12x36(Boolean(company.escala12x36));
     api.auth
       .companySession()
-      .then((s) => setEscala12x36(Boolean(s.escala_12x36)))
+      .then((s) => {
+        if (typeof s.escala_12x36 === "boolean") setEscala12x36(s.escala_12x36);
+      })
       .catch(() => setEscala12x36(Boolean(company.escala12x36)));
   }, [company]);
 
