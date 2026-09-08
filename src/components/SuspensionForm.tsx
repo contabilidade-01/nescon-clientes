@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmployeeSelect } from "@/components/EmployeeSelect";
 import { downloadSuspensionDoc, type SuspensionData } from "@/lib/generateSuspensionDoc";
-import { calcularPeriodoSuspensao } from "@/lib/suspensaoPeriodo";
+import { calcularPeriodoSuspensao, empresaEh12x36 } from "@/lib/suspensaoPeriodo";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -69,11 +69,16 @@ export function SuspensionForm() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isThirdSuspension, setIsThirdSuspension] = useState(false);
   const [thirdManuallySet, setThirdManuallySet] = useState(false);
-  const [escala12x36, setEscala12x36] = useState(false);
+  // Detecção pela empresa (flag da sessão ou CNPJ conhecido) é a fonte de verdade.
+  const empresa12x36 = empresaEh12x36({ escala12x36: company?.escala12x36, cnpj: company?.cnpj });
+  // Override que só LIGA (nunca desliga): permite emitir uma suspensão em 12x36 quando a
+  // empresa ainda não foi marcada no cadastro, sem depender de novo login. Como parte de
+  // `empresa12x36 ||`, um refresh que zere o override não desliga quem já é 12x36 pelo cadastro.
+  const [forcar12x36, setForcar12x36] = useState(false);
+  const escala12x36 = empresa12x36 || forcar12x36;
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
-  // 12x36 muda a contagem: "N dias" são N PLANTÕES e o retorno pula a folga. Sem isso, o
-  // sistema mandava o empregado voltar num dia em que ele já estaria de folga.
+  // 12x36: 1 plantão no dia 10 → folga 11 → retorno 12. Fora dessa escala, dia corrido.
   const periodo = startDate
     ? calcularPeriodoSuspensao({ inicio: startDate, dias: suspensionDays, escala12x36 })
     : null;
@@ -93,12 +98,6 @@ export function SuspensionForm() {
       .list({ companyId: company.id })
       .then((docs) => setIssuedDocs(docs))
       .catch(() => setIssuedDocs([]));
-    // Escala da empresa. Se falhar, fica em dias corridos (comportamento conservador:
-    // é o que valia antes, e não inventa folga que talvez não exista).
-    api.auth
-      .companySession()
-      .then((s) => setEscala12x36(Boolean(s.escala_12x36)))
-      .catch(() => setEscala12x36(false));
   }, [company]);
 
   // Ao escolher o funcionário, puxa do histórico as suspensões e advertências já emitidas.
@@ -171,6 +170,9 @@ export function SuspensionForm() {
       unjustifiedAbsences: isOtherReason ? [] : sortedAbsences.map(formatDateBR),
       isThirdSuspension,
       reason: isOtherReason ? reason : undefined,
+      escala12x36,
+      // O Word espelha exatamente a data de retorno mostrada na tela (12x36 ou não).
+      returnDate: returnDate ?? undefined,
     };
 
     try {
@@ -272,6 +274,31 @@ export function SuspensionForm() {
               </p>
             </div>
           </div>
+
+          {empresa12x36 ? (
+            <p className="text-xs text-muted-foreground">
+              Escala 12x36 aplicada automaticamente: a suspensão incide nos plantões e o retorno
+              pula a folga.
+            </p>
+          ) : (
+            <div className="flex items-start space-x-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+              <Checkbox
+                id="escala12x36"
+                checked={forcar12x36}
+                onCheckedChange={(checked) => setForcar12x36(checked === true)}
+                className="mt-0.5"
+              />
+              <div className="space-y-1">
+                <Label htmlFor="escala12x36" className="text-sm font-medium cursor-pointer">
+                  Funcionário em escala 12x36
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Conta plantões (de dois em dois dias) e o retorno pula a folga seguinte. Para deixar
+                  fixo nesta empresa, marque a escala no cadastro (Admin → Empresas).
+                </p>
+              </div>
+            </div>
+          )}
 
           {startDate && (
             <div className="rounded-lg bg-muted p-3 space-y-2">

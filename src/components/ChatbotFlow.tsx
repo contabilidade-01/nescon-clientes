@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
-import { calcularPeriodoSuspensao } from "@/lib/suspensaoPeriodo";
+import { calcularPeriodoSuspensao, empresaEh12x36 } from "@/lib/suspensaoPeriodo";
 import { downloadSuspensionDoc, type SuspensionData } from "@/lib/generateSuspensionDoc";
 import { downloadWarningDoc, type WarningData } from "@/lib/generateWarningDoc";
 import { REASON_PRESETS } from "@/lib/reasonPresets";
@@ -68,17 +68,11 @@ export function ChatbotFlow() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [faltaDates, setFaltaDates] = useState<Date[]>([]);
-  // 12x36: "N dias" viram N plantões e o retorno pula a folga (ver suspensaoPeriodo.ts).
-  const [escala12x36, setEscala12x36] = useState(false);
+  const escala12x36 = empresaEh12x36({ escala12x36: company?.escala12x36, cnpj: company?.cnpj });
 
   useEffect(() => {
     if (company) {
       api.employees.list({ companyId: company.id }).then((data) => setEmployees(data));
-      // Escala da empresa. Falhou? Fica em dias corridos — o comportamento anterior.
-      api.auth
-        .companySession()
-        .then((s) => setEscala12x36(Boolean(s.escala_12x36)))
-        .catch(() => setEscala12x36(false));
     }
   }, [company]);
 
@@ -281,6 +275,11 @@ export function ChatbotFlow() {
 
     try {
       if (docType === "suspension") {
+        const { retorno: returnDate } = calcularPeriodoSuspensao({
+          inicio: startDate,
+          dias: days,
+          escala12x36,
+        });
         const data: SuspensionData = {
           employeeName: selectedEmployee.name,
           cpf: selectedEmployee.cpf,
@@ -295,12 +294,9 @@ export function ChatbotFlow() {
           isThirdSuspension,
           // O motivo respondido no chat entra na fundamentação do documento.
           reason: reason || undefined,
-        };
-        const { retorno: returnDate } = calcularPeriodoSuspensao({
-          inicio: startDate,
-          dias: days,
           escala12x36,
-        });
+          returnDate: escala12x36 ? returnDate : undefined,
+        };
         await api.documents.create({
           document_type: "suspension",
           employee_name: selectedEmployee.name,

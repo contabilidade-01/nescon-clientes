@@ -53,6 +53,7 @@ const EmpresasPage = () => {
         toolAccess: mergeClientToolAccess(data.company.tool_access),
         isMatriz: data.is_matriz,
         empresasGrupo: data.empresas_grupo || [],
+        escala12x36: Boolean(data.company.escala_12x36),
         isAdminPersonified: true, // Marca que é uma sessão de personificação
       });
       toast.success(`Entrando como ${companyName}...`);

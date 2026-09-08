@@ -11,7 +11,8 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { downloadSuspensionDoc } from "@/lib/generateSuspensionDoc";
 import { downloadWarningDoc } from "@/lib/generateWarningDoc";
-import { dateFromApiOr } from "@/lib/apiDate";
+import { dateFromApi, dateFromApiOr } from "@/lib/apiDate";
+import { empresaEh12x36 } from "@/lib/suspensaoPeriodo";
 
 const HistoryPage = () => {
   const navigate = useNavigate();
@@ -35,6 +36,10 @@ const HistoryPage = () => {
   const recuperar = async (doc: NonNullable<typeof documents>[number]) => {
     try {
       if (doc.document_type === "suspension") {
+        const escala12x36 = empresaEh12x36({
+          escala12x36: company?.escala12x36,
+          cnpj: doc.company_cnpj,
+        });
         await downloadSuspensionDoc({
           employeeName: doc.employee_name,
           cpf: doc.employee_cpf,
@@ -42,6 +47,10 @@ const HistoryPage = () => {
           cnpj: doc.company_cnpj,
           startDate: dateFromApiOr(doc.start_date, doc.created_at),
           suspensionDays: doc.suspension_days || 1,
+          escala12x36,
+          // A data de retorno gravada reflete o que foi emitido; usá-la sempre que existir
+          // mantém o rebaixado igual ao original, mesmo se a flag da empresa mudou depois.
+          returnDate: dateFromApi(doc.return_date) ?? undefined,
           previousWarnings: [],
           previousSuspensions: [],
           recentAbsenceDate: "",

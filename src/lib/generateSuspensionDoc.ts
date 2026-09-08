@@ -2,9 +2,10 @@ import {
   Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle
 } from "docx";
 import { saveAs } from "file-saver";
-import { format, addDays } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { paragrafosTestemunhasTermo } from "@/lib/testemunhasTermo";
+import { calcularPeriodoSuspensao, empresaEh12x36 } from "@/lib/suspensaoPeriodo";
 
 export interface SuspensionData {
   employeeName: string;
@@ -20,6 +21,13 @@ export interface SuspensionData {
   isThirdSuspension?: boolean;
   /** Motivo customizado (má conduta, atrasos, briga etc.). Se vazio, usa o texto de faltas injustificadas. */
   reason?: string;
+  /** 12x36: "N dias" são N plantões e o retorno pula a folga. */
+  escala12x36?: boolean;
+  /**
+   * Data de retorno já calculada na tela. O Word só usa este valor na 12x36 —
+   * assim o arquivo escreve exatamente o dia que o portal mostrou, sem recalcular.
+   */
+  returnDate?: Date;
 }
 
 function formatDateBR(date: Date): string {
@@ -43,8 +51,29 @@ const FS = 18; // font size small (9pt)
 const FT = 24; // font size title (12pt)
 
 export function generateSuspensionDoc(data: SuspensionData) {
-  const endDate = addDays(data.startDate, data.suspensionDays - 1);
-  const returnDate = addDays(endDate, 1);
+  // 12x36: 1 plantão no dia 10 → folga 11 → retorno 12. O CNPJ conhecido ou a flag
+  // da sessão ligam a regra; as demais empresas continuam em dia corrido.
+  const escala12x36 = empresaEh12x36({ escala12x36: data.escala12x36, cnpj: data.cnpj });
+  const calculado = calcularPeriodoSuspensao({
+    inicio: data.startDate,
+    dias: data.suspensionDays,
+    escala12x36,
+  });
+  const endDate = calculado.fim;
+  const retornoDaTela = data.returnDate instanceof Date && !Number.isNaN(data.returnDate.getTime())
+    ? data.returnDate
+    : null;
+  // A data de retorno definida na emissão (tela) é a autoridade — o Word deve espelhá-la,
+  // inclusive ao rebaixar do histórico. Só cai no cálculo quando nenhuma foi informada
+  // (docs antigos, sem return_date gravado).
+  const returnDate = retornoDaTela ?? calculado.retorno;
+  const unidade = escala12x36
+    ? data.suspensionDays > 1
+      ? "plantões"
+      : "plantão"
+    : data.suspensionDays > 1
+      ? "dias"
+      : "dia";
 
   const justificationRuns: TextRun[] = [];
 
@@ -117,7 +146,7 @@ export function generateSuspensionDoc(data: SuspensionData) {
 
   justificationRuns.push(
     new TextRun({
-      text: `, estamos procedendo com uma suspensão disciplinar de ${data.suspensionDays.toString().padStart(2, "0")} (${data.suspensionDays > 1 ? extenso(data.suspensionDays) : "um"}) dia${data.suspensionDays > 1 ? "s" : ""}, `,
+      text: `, estamos procedendo com uma suspensão disciplinar de ${data.suspensionDays.toString().padStart(2, "0")} (${data.suspensionDays > 1 ? extenso(data.suspensionDays) : "um"}) ${unidade}, `,
       font: "Arial", size: F,
     })
   );
@@ -157,6 +186,15 @@ export function generateSuspensionDoc(data: SuspensionData) {
           ? "ATENÇÃO: A reiteração desta conduta poderá ensejar a RESCISÃO DO CONTRATO DE TRABALHO POR JUSTA CAUSA, nos termos do artigo 482 da CLT."
           : "ATENÇÃO: A próxima falta injustificada poderá ensejar a RESCISÃO DO CONTRATO DE TRABALHO POR JUSTA CAUSA, nos termos do artigo 482, alínea \"e\" (desídia no desempenho das respectivas funções) da CLT.",
         font: "Arial", size: F, bold: true,
+      })
+    );
+  }
+
+  if (escala12x36) {
+    justificationRuns.push(
+      new TextRun({
+        text: ` Na escala 12x36 a contagem é por plantão: o retorno ao trabalho ocorre em ${formatDateBR(returnDate)}, após a folga.`,
+        font: "Arial", size: F,
       })
     );
   }
@@ -243,8 +281,8 @@ export function generateSuspensionDoc(data: SuspensionData) {
           new Paragraph({
             spacing: { after: 40 },
             children: [
-              new TextRun({ text: "Total de dias: ", font: "Arial", size: F, bold: true }),
-              new TextRun({ text: `${data.suspensionDays.toString().padStart(2, "0")} (${data.suspensionDays > 1 ? extenso(data.suspensionDays) : "um"}) dia${data.suspensionDays > 1 ? "s" : ""}`, font: "Arial", size: F }),
+              new TextRun({ text: escala12x36 ? "Total de plantões: " : "Total de dias: ", font: "Arial", size: F, bold: true }),
+              new TextRun({ text: `${data.suspensionDays.toString().padStart(2, "0")} (${data.suspensionDays > 1 ? extenso(data.suspensionDays) : "um"}) ${unidade}`, font: "Arial", size: F }),
             ],
           }),
           new Paragraph({

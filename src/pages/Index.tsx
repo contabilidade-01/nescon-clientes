@@ -104,7 +104,7 @@ const Index = () => {
 
   useEffect(() => {
     if (!company?.id || !company.token) return;
-    const { id, token, mustChangePassword, isAdminPersonified, isMatriz, empresasGrupo } = company;
+    const { id, token, mustChangePassword, isAdminPersonified, isMatriz, empresasGrupo, escala12x36 } = company;
     let cancelled = false;
     (async () => {
       try {
@@ -123,6 +123,9 @@ const Index = () => {
           // Preserva a marca: este refresh é só de nome/permissões.
           mustChangePassword,
           temFuncionarios: data.tem_funcionarios !== false,
+          // Só troca a escala se o servidor mandou true/false. Campo ausente (API antiga
+          // ou falha) não pode zerar a flag — senão a tela volta a contar dia corrido.
+          escala12x36: typeof data.escala_12x36 === "boolean" ? data.escala_12x36 : Boolean(escala12x36),
           // Preserva o estado da sessão (senão o refresh apagava a personificação e o grupo).
           isAdminPersonified,
           isMatriz,

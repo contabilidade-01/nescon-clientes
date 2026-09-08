@@ -456,6 +456,7 @@ export type LoginResponse =
         cnpj: string;
         tool_access?: CompanyToolAccessApi;
         must_change_password?: boolean;
+        escala_12x36?: boolean;
       };
     };
 
@@ -859,8 +860,8 @@ export const api = {
         tool_access: CompanyToolAccessApi;
         /** Falso quando a empresa só tem pró-labore: a seção Férias não aparece. */
         tem_funcionarios?: boolean;
-        /** 12x36: suspensão conta PLANTÕES e o retorno pula a folga (ver suspensaoPeriodo.ts). */
-        escala_12x36?: boolean;
+        /** 12x36: suspensão conta PLANTÕES e o retorno pula a folga (ver suspensaoPeriodo.ts). null = servidor não soube. */
+        escala_12x36?: boolean | null;
         lgpd?: LgpdState;
       }>("/auth/company-session"),
   },
@@ -1914,7 +1915,7 @@ export const api = {
     personificar: (companyId: string) =>
       request<{
         token: string;
-        company: { id: string; name: string; cnpj: string; tool_access: Record<string, boolean> };
+        company: { id: string; name: string; cnpj: string; tool_access: Record<string, boolean>; escala_12x36?: boolean };
         is_matriz: boolean;
         empresas_grupo: Array<{ id: string; name: string; cnpj: string; is_matriz: boolean }>;
         personificando: boolean;

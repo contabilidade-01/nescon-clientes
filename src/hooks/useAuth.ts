@@ -20,6 +20,8 @@ export type CompanySession = {
   mustChangePassword?: boolean;
   /** Tem funcionário celetista (não só pró-labore). Decide se "Férias" aparece. */
   temFuncionarios?: boolean;
+  /** 12x36: suspensão conta plantões e o retorno pula a folga. */
+  escala12x36?: boolean;
   /** É a empresa-matriz do grupo (pode trocar para filiais). */
   isMatriz?: boolean;
   /** Lista de todas as empresas do grupo (a própria + filiais). Vem no login. */
@@ -82,6 +84,7 @@ function parseStored(): AuthSession | null {
         mustChangePassword: Boolean(o.mustChangePassword ?? o.must_change_password),
         // Ausente em sessões antigas: assume que tem, para não esconder à toa.
         temFuncionarios: o.temFuncionarios === undefined ? true : Boolean(o.temFuncionarios),
+        escala12x36: Boolean(o.escala12x36 ?? o.escala_12x36),
         isMatriz: Boolean(o.isMatriz ?? o.is_matriz),
         empresasGrupo: Array.isArray(o.empresasGrupo) ? o.empresasGrupo as EmpresaGrupo[] : [],
         // Sobrevive ao F5: sem isto, recarregar a página perdia a marca de personificação.
@@ -158,6 +161,7 @@ export function useAuth() {
         mustChangePassword: Boolean(data.company.must_change_password),
         isMatriz: Boolean(data.is_matriz),
         empresasGrupo, // mantém a lista original (não muda ao trocar)
+        escala12x36: Boolean(data.company.escala_12x36),
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(novaSession));
       setSession(novaSession);

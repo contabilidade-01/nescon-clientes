@@ -11,13 +11,23 @@ async function ensureWhatsappDpSchema(db) {
       );
     `);
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS escala_12x36 BOOLEAN`);
-    // Semeadura ÚNICA: só preenche quem ainda está NULL. A escala passou a ser editável
-    // na tela de Empresas, então um UPDATE incondicional (como era antes) apagaria a
-    // configuração do escritório a cada deploy.
+    // Queijeiro 3 e 4 são 12x36 POR DEFINIÇÃO — sempre automático, sem chaveamento. Força
+    // `true` no banco (idempotente) mesmo que a linha já tenha ficado false, casando com a
+    // lista fixa do front (src/lib/suspensaoPeriodo.ts). O `IS DISTINCT FROM true` evita
+    // escrita à toa quando já está correto.
     await db.query(
-      `UPDATE companies SET escala_12x36 =
-         regexp_replace(COALESCE(cnpj, ''), '[^0-9]', '', 'g') IN ($1, $2)
-       WHERE escala_12x36 IS NULL`,
+      `UPDATE companies SET escala_12x36 = true
+         WHERE regexp_replace(COALESCE(cnpj, ''), '[^0-9]', '', 'g') IN ($1, $2)
+           AND escala_12x36 IS DISTINCT FROM true`,
+      ["52191264000173", "54803962000108"]
+    );
+    // Demais empresas: default false só na PRIMEIRA vez (coluna NULL). A escala é editável
+    // na tela de Empresas, então nunca sobrescrevemos a configuração do escritório aqui —
+    // um UPDATE incondicional (como era antes) apagaria a edição a cada deploy.
+    await db.query(
+      `UPDATE companies SET escala_12x36 = false
+         WHERE escala_12x36 IS NULL
+           AND regexp_replace(COALESCE(cnpj, ''), '[^0-9]', '', 'g') NOT IN ($1, $2)`,
       ["52191264000173", "54803962000108"]
     );
     console.log("[DB] whatsapp DP: sessão e escala 12x36 verificadas.");
