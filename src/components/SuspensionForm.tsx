@@ -69,8 +69,13 @@ export function SuspensionForm() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isThirdSuspension, setIsThirdSuspension] = useState(false);
   const [thirdManuallySet, setThirdManuallySet] = useState(false);
-  // Sem estado próprio: um refresh da sessão apagava a flag e a tela voltava ao dia 11.
-  const escala12x36 = empresaEh12x36({ escala12x36: company?.escala12x36, cnpj: company?.cnpj });
+  // Detecção pela empresa (flag da sessão ou CNPJ conhecido) é a fonte de verdade.
+  const empresa12x36 = empresaEh12x36({ escala12x36: company?.escala12x36, cnpj: company?.cnpj });
+  // Override que só LIGA (nunca desliga): permite emitir uma suspensão em 12x36 quando a
+  // empresa ainda não foi marcada no cadastro, sem depender de novo login. Como parte de
+  // `empresa12x36 ||`, um refresh que zere o override não desliga quem já é 12x36 pelo cadastro.
+  const [forcar12x36, setForcar12x36] = useState(false);
+  const escala12x36 = empresa12x36 || forcar12x36;
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
   // 12x36: 1 plantão no dia 10 → folga 11 → retorno 12. Fora dessa escala, dia corrido.
@@ -166,8 +171,8 @@ export function SuspensionForm() {
       isThirdSuspension,
       reason: isOtherReason ? reason : undefined,
       escala12x36,
-      // Só na 12x36 o Word recebe a data da tela. Sem a flag, o gerador segue no dia seguinte.
-      returnDate: escala12x36 && returnDate ? returnDate : undefined,
+      // O Word espelha exatamente a data de retorno mostrada na tela (12x36 ou não).
+      returnDate: returnDate ?? undefined,
     };
 
     try {
@@ -269,6 +274,31 @@ export function SuspensionForm() {
               </p>
             </div>
           </div>
+
+          {empresa12x36 ? (
+            <p className="text-xs text-muted-foreground">
+              Escala 12x36 (definida no cadastro da empresa): a suspensão incide nos plantões e o
+              retorno pula a folga.
+            </p>
+          ) : (
+            <div className="flex items-start space-x-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+              <Checkbox
+                id="escala12x36"
+                checked={forcar12x36}
+                onCheckedChange={(checked) => setForcar12x36(checked === true)}
+                className="mt-0.5"
+              />
+              <div className="space-y-1">
+                <Label htmlFor="escala12x36" className="text-sm font-medium cursor-pointer">
+                  Funcionário em escala 12x36
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Conta plantões (de dois em dois dias) e o retorno pula a folga seguinte. Para deixar
+                  fixo nesta empresa, marque a escala no cadastro (Admin → Empresas).
+                </p>
+              </div>
+            </div>
+          )}
 
           {startDate && (
             <div className="rounded-lg bg-muted p-3 space-y-2">

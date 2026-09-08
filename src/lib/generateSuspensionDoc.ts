@@ -63,7 +63,10 @@ export function generateSuspensionDoc(data: SuspensionData) {
   const retornoDaTela = data.returnDate instanceof Date && !Number.isNaN(data.returnDate.getTime())
     ? data.returnDate
     : null;
-  const returnDate = escala12x36 && retornoDaTela ? retornoDaTela : calculado.retorno;
+  // A data de retorno definida na emissão (tela) é a autoridade — o Word deve espelhá-la,
+  // inclusive ao rebaixar do histórico. Só cai no cálculo quando nenhuma foi informada
+  // (docs antigos, sem return_date gravado).
+  const returnDate = retornoDaTela ?? calculado.retorno;
   const unidade = escala12x36
     ? data.suspensionDays > 1
       ? "plantões"

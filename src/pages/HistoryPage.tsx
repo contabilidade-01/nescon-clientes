@@ -48,7 +48,9 @@ const HistoryPage = () => {
           startDate: dateFromApiOr(doc.start_date, doc.created_at),
           suspensionDays: doc.suspension_days || 1,
           escala12x36,
-          returnDate: escala12x36 ? dateFromApi(doc.return_date) ?? undefined : undefined,
+          // A data de retorno gravada reflete o que foi emitido; usá-la sempre que existir
+          // mantém o rebaixado igual ao original, mesmo se a flag da empresa mudou depois.
+          returnDate: dateFromApi(doc.return_date) ?? undefined,
           previousWarnings: [],
           previousSuspensions: [],
           recentAbsenceDate: "",
