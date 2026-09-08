@@ -190,14 +190,8 @@ export function generateSuspensionDoc(data: SuspensionData) {
     );
   }
 
-  if (escala12x36) {
-    justificationRuns.push(
-      new TextRun({
-        text: ` Na escala 12x36 a contagem é por plantão: o retorno ao trabalho ocorre em ${formatDateBR(returnDate)}, após a folga.`,
-        font: "Arial", size: F,
-      })
-    );
-  }
+  // A data de retorno já aparece no bloco "Data de retorno" acima — não repetir na
+  // fundamentação para não soar redundante.
 
   justificationRuns.push(
     new TextRun({
