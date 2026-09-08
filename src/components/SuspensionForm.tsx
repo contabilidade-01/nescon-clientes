@@ -277,8 +277,8 @@ export function SuspensionForm() {
 
           {empresa12x36 ? (
             <p className="text-xs text-muted-foreground">
-              Escala 12x36 (definida no cadastro da empresa): a suspensão incide nos plantões e o
-              retorno pula a folga.
+              Escala 12x36 aplicada automaticamente: a suspensão incide nos plantões e o retorno
+              pula a folga.
             </p>
           ) : (
             <div className="flex items-start space-x-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
