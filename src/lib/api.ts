@@ -1609,6 +1609,114 @@ export const api = {
           }>;
         }>;
       }>(`/admin/honorarios-folha?desde=${encodeURIComponent(desde)}`),
+
+    /** Painel Atualização de Honorários (rentabilidade / reforma / reajuste). */
+    honorariosAtualizacao: () =>
+      request<{
+        config: { tol_abaixo_pct: number; tol_acima_pct: number };
+        totais: {
+          total: number;
+          pendentes: number;
+          prejuizo: number;
+          equilibrio: number;
+          lucro: number;
+          dentro: number;
+          pct_dentro: number | null;
+        };
+        empresas: Array<{
+          company_id: string;
+          name: string;
+          cnpj: string;
+          enquadramento: string | null;
+          tipo_empresa: string | null;
+          complexidade: string | null;
+          padrao_id: string | null;
+          padrao_label: string | null;
+          atual_centavos: number | null;
+          atual_origem: "cora" | "manual" | null;
+          ideal_sugerido_centavos: number | null;
+          ideal_centavos: number | null;
+          ideal_ajustado: boolean;
+          ok_manual: boolean | null;
+          ok_auto: boolean;
+          ok: boolean;
+          ok_editado_manual: boolean;
+          oculto: boolean;
+          situacao: "pendente" | "prejuizo" | "equilibrio" | "lucro";
+          dentro: boolean;
+          piso_centavos: number | null;
+          teto_centavos: number | null;
+          atualizado_em: string | null;
+        }>;
+        padroes: Array<{
+          id: string;
+          label: string;
+          enquadramento: string;
+          tipo_empresa: string;
+          complexidade: string;
+          valor_a_partir_centavos: number;
+          ativo: boolean;
+        }>;
+        enums: {
+          enquadramentos: string[];
+          tipos: string[];
+          complexidades: string[];
+        };
+      }>("/admin/honorarios-atualizacao"),
+    salvarHonorariosAtualizacaoConfig: (body: {
+      tol_abaixo_pct?: number;
+      tol_acima_pct?: number;
+    }) =>
+      request<{ ok: boolean; config: { tol_abaixo_pct: number; tol_acima_pct: number } }>(
+        "/admin/honorarios-atualizacao/config",
+        { method: "PUT", body: JSON.stringify(body) }
+      ),
+    salvarHonorarioPadrao: (
+      id: string,
+      body: { label?: string; valor_a_partir_centavos?: number; ativo?: boolean }
+    ) =>
+      request<{
+        ok: boolean;
+        padrao: {
+          id: string;
+          label: string;
+          enquadramento: string;
+          tipo_empresa: string;
+          complexidade: string;
+          valor_a_partir_centavos: number;
+          ativo: boolean;
+        };
+      }>(`/admin/honorarios-atualizacao/padroes/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    salvarHonorarioAtualizacaoEmpresa: (
+      companyId: string,
+      body: {
+        enquadramento?: string | null;
+        tipo_empresa?: string | null;
+        complexidade?: string | null;
+        padrao_id?: string | null;
+        atual_centavos?: number | null;
+        ideal_centavos?: number | null;
+        ok_manual?: boolean | null;
+        limpar_ok_manual?: boolean;
+      }
+    ) =>
+      request<{ ok: boolean; empresa: Record<string, unknown> }>(
+        `/admin/honorarios-atualizacao/${companyId}`,
+        { method: "PUT", body: JSON.stringify(body) }
+      ),
+    ocultarHonorarioAtualizacao: (companyId: string, oculto: boolean) =>
+      request<{ ok: boolean; oculto: boolean }>(
+        `/admin/honorarios-atualizacao/${companyId}/oculto`,
+        { method: "PUT", body: JSON.stringify({ oculto }) }
+      ),
+    importarHonorariosAtualizacaoCora: () =>
+      request<{ ok: boolean; importados: number }>(
+        "/admin/honorarios-atualizacao/importar-cora",
+        { method: "POST", body: "{}" }
+      ),
     /** Visão de envio de Folha e encargos (FGTS/INSS/DAS) por competência. */
     acompanhamentoEnvio: (competencia: string) =>
       request<{
