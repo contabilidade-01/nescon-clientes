@@ -13,7 +13,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { BellRing, FlaskConical, Search, Send, Sparkles, Wand2 } from "lucide-react";
+import { BellRing, FlaskConical, Heart, Search, Send, Sparkles, Wand2 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { api, type AlertCompanyRow, type AlertSendResult } from "@/lib/api";
+import { api, type AlertCompanyRow, type AlertSendResult, type AlertThanksResult } from "@/lib/api";
 import { validar as validarWhatsapp } from "@/lib/whatsappNumero";
 
 const ESFERA_LABEL: Record<string, string> = {
@@ -515,6 +515,25 @@ const AlertasPage = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Agradecimento por pagamento — motor próprio (honorariosAgradecimento.js).
+  const [confirmarAgradecimento, setConfirmarAgradecimento] = useState(false);
+  const [agradecimentoResultado, setAgradecimentoResultado] = useState<AlertThanksResult | null>(null);
+  const agradecer = useMutation({
+    mutationFn: (v: { simular: boolean }) =>
+      api.alertas.agradecimentos({
+        simular: v.simular,
+        companyIds: selecionadas.size ? [...selecionadas] : undefined,
+      }),
+    onSuccess: (r) => {
+      setAgradecimentoResultado(r);
+      if (r.motivo) toast.message(`Nada a agradecer agora: ${r.motivo}.`);
+      else if (r.simulado) toast.success("Ensaio pronto — nada foi enviado.");
+      else toast.success(`${r.enviados} agradecimento(s) enviado(s).`);
+      queryClient.invalidateQueries({ queryKey: ["alertas", "panorama"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const automaticas = useMutation({
     mutationFn: () => api.alertas.aplicarAutomaticas(),
     onSuccess: (r) => {
@@ -780,6 +799,17 @@ const AlertasPage = () => {
                   Envio automático diário
                 </Label>
               </div>
+              <div className="flex items-center gap-3">
+                <Switch
+                  id="agradecimento-ativo"
+                  checked={Boolean(config.data?.agradecimento_ativo)}
+                  disabled={salvarConfig.isPending}
+                  onCheckedChange={(v) => salvarConfig.mutate({ agradecimento_ativo: v })}
+                />
+                <Label htmlFor="agradecimento-ativo" className="font-normal">
+                  Agradecer pagamentos automaticamente
+                </Label>
+              </div>
               <div className="flex items-center gap-2">
                 <Label htmlFor="hora-envio" className="font-normal text-sm">
                   às
@@ -1020,6 +1050,66 @@ const AlertasPage = () => {
                 ) : (
                   <p className="text-sm text-red-600">{testeResult.erro}</p>
                 ))}
+            </CardContent>
+          </Card>
+
+          {/* Agradecimento por pagamento — reforço de parceria (Palmatier 2009: gratidão →
+              reciprocidade → retenção). Roda sozinho quando o toggle acima está ligado; aqui
+              ficam o ensaio e o disparo manual. */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Heart className="h-4 w-4" /> Agradecimento por pagamento
+              </CardTitle>
+              <CardDescription>
+                Envia <span className="font-medium">um</span> agradecimento por empresa a quem quitou honorários —
+                reforça a parceria, sem tom de cobrança. Só pagamentos recentes, uma vez por boleto.
+                {selecionadas.size ? ` Restrito aos ${selecionadas.size} marcados.` : ""}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => agradecer.mutate({ simular: true })}
+                  disabled={agradecer.isPending}
+                >
+                  Ensaiar (não envia)
+                </Button>
+                <Button
+                  onClick={() => setConfirmarAgradecimento(true)}
+                  disabled={agradecer.isPending || !whatsapp.data?.ok}
+                  title={whatsapp.data?.ok ? "Enviar os agradecimentos pendentes" : (whatsapp.data?.mensagem ?? "WhatsApp desconectado")}
+                >
+                  <Heart className="mr-2 h-4 w-4" />
+                  Enviar agradecimentos
+                </Button>
+              </div>
+              {agradecimentoResultado && (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    {agradecimentoResultado.motivo
+                      ? `Nada rodou: ${agradecimentoResultado.motivo}.`
+                      : agradecimentoResultado.simulado
+                        ? `${agradecimentoResultado.resultados.filter((r) => r.status === "sairia").length} sairia(m), ${agradecimentoResultado.pulados} de fora.`
+                        : `${agradecimentoResultado.enviados} enviado(s), ${agradecimentoResultado.pulados} pulado(s), ${agradecimentoResultado.erros.length} erro(s).`}
+                  </p>
+                  {agradecimentoResultado.resultados.map((r, i) => (
+                    <div key={i} className="rounded-md border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-medium">{r.empresa}</span>
+                        <Badge variant={r.status === "enviado" || r.status === "sairia" ? "default" : "secondary"}>
+                          {r.status}
+                        </Badge>
+                      </div>
+                      {r.motivo && <p className="mt-1 text-xs text-muted-foreground">{r.motivo}</p>}
+                      {r.texto && (
+                        <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-muted p-3 text-xs">{r.texto}</pre>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -1367,6 +1457,25 @@ const AlertasPage = () => {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={() => enviar.mutate({ simular: false })}>
+              Enviar agora
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Agradecimento de verdade também chega no cliente e não desfaz: pede confirmação. */}
+      <AlertDialog open={confirmarAgradecimento} onOpenChange={setConfirmarAgradecimento}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enviar os agradecimentos pendentes agora?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cada cliente que quitou honorários recebe um agradecimento no WhatsApp imediatamente e
+              sem desfazer. Se ainda não conferiu, use antes o ensaio.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => agradecer.mutate({ simular: false })}>
               Enviar agora
             </AlertDialogAction>
           </AlertDialogFooter>

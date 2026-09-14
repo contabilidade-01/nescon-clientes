@@ -496,6 +496,20 @@ function iniciarAgendadorAlertas(db) {
         console.error("[docNotify] drenar fila:", err.message);
       }
 
+      // Agradecimento por pagamento de honorário. Roda TODO ciclo (como a fila), FORA do
+      // gate de envio automático: agradecer não depende de a cobrança estar ligada. Só a
+      // chave própria e a janela diurna barram; a coluna de dedup impede repetição. Require
+      // tardio para não acoplar no arranque.
+      if (cfg.agradecimento_ativo && dentroDaJanela(minutosSP())) {
+        try {
+          const { agradecerPagamentos } = require("./honorariosAgradecimento");
+          const ra = await agradecerPagamentos({});
+          if (ra.enviados) console.log(`[agradecimento] fila: ${ra.enviados} enviado(s).`);
+        } catch (err) {
+          console.error("[agradecimento] ciclo:", err.message);
+        }
+      }
+
       if (!cfg.envio_automatico) return;
 
       const dia = hojeSP();

@@ -29,6 +29,9 @@ const CHAVES = {
   // Marcos de cobrança de HONORÁRIOS (boletos marcados como is_honorario=true).
   // Mais agressivo que boletos comuns porque é mensalidade fixa do escritório.
   honorariosCobrancaDias: "alertas_honorarios_cobranca_dias",
+  // Liga o AGRADECIMENTO automático ao reconhecer pagamento de honorário. Padrão
+  // desligado, como o envio automático — ninguém começa a mandar mensagem por acidente.
+  agradecimentoAtivo: "alertas_agradecimento_ativo",
 };
 
 /** Padrão do envio automático é **desligado**: ninguém começa a mandar mensagem por acidente. */
@@ -73,7 +76,7 @@ function parseCobrancaDias(valor, padrao = []) {
 }
 
 async function lerConfig(db) {
-  const [auto, hora, cnpj, whats, diasAntes, cobranca, honorariosCobranca] = await Promise.all([
+  const [auto, hora, cnpj, whats, diasAntes, cobranca, honorariosCobranca, agradecimento] = await Promise.all([
     getSetting(db, CHAVES.automatico),
     getSetting(db, CHAVES.hora),
     getSetting(db, CHAVES.escritorioCnpj),
@@ -81,9 +84,11 @@ async function lerConfig(db) {
     getSetting(db, CHAVES.boletoDiasAntes),
     getSetting(db, CHAVES.boletoCobrancaDias),
     getSetting(db, CHAVES.honorariosCobrancaDias),
+    getSetting(db, CHAVES.agradecimentoAtivo),
   ]);
   return {
     envio_automatico: auto === "true",
+    agradecimento_ativo: agradecimento === "true",
     hora: horaValida(hora),
     // Fallback no ambiente só para não perder o que já estava configurado antes desta
     // tela existir. A tela é a fonte assim que alguém salvar.
@@ -97,9 +102,12 @@ async function lerConfig(db) {
   };
 }
 
-async function salvarConfig(db, { envio_automatico, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_cobranca_dias, honorarios_cobranca_dias }) {
+async function salvarConfig(db, { envio_automatico, agradecimento_ativo, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_cobranca_dias, honorarios_cobranca_dias }) {
   if (envio_automatico !== undefined) {
     await setSetting(db, CHAVES.automatico, Boolean(envio_automatico));
+  }
+  if (agradecimento_ativo !== undefined) {
+    await setSetting(db, CHAVES.agradecimentoAtivo, Boolean(agradecimento_ativo));
   }
   if (hora !== undefined) {
     await setSetting(db, CHAVES.hora, horaValida(hora));
