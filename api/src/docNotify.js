@@ -1,18 +1,13 @@
 /**
  * Aviso de "documento novo" pelo WhatsApp — mandado pelo PRÓPRIO PORTAL.
  *
- * Antes, esse aviso dependia do sistema de guias (GCLICK) chamar POST /api/fiscal/release
- * e, do lado de lá, decidir mandar a mensagem (o portal só devolvia um campo
- * `avisar_cliente` de sinalização). Com o GCLICK pausado, ninguém nunca chamava essa
- * ponta — o cliente parava de ser avisado de documento novo e nada no sistema acusava
- * isso como erro, porque tecnicamente não era: o contrato dependia inteiro do outro lado.
- *
- * Agora que o portal já busca e libera o documento sozinho (`gclick/sync.js`), o aviso
- * sai daqui também — sem depender de mais nenhum sistema externo estar de pé.
+ * O sync do G-Click (`gclick/sync.js`) libera o documento e dispara o aviso daqui.
+ * Não depende de app externo (guias.gestaoempresa.com / GCLICK) nem de
+ * POST /api/fiscal/release.
  *
  * Reusa o MESMO limitador de envio de `alertasEnvio.js` (teto/hora, retry, trava contra
  * mandar pro próprio número da instância): é a mesma instância de WhatsApp, então o teto
- * tem que ser um só — dois limitadores independentes somados poderiam estourar o real.
+ * tem que ser um só.
  */
 const uazapi = require("./uazapi");
 const numeroWpp = require("./whatsappNumero");

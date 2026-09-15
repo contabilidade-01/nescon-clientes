@@ -54,11 +54,9 @@ services:
       JWT_SECRET: ${JWT_SECRET:-}
       PORT: 3001
       UPLOAD_DIR: /app/uploads
-      # Chave de serviço partilhada com o sistema de guias (release, sync-companies, access-stats).
-      # Vazia = rotas /api/fiscal/* desligadas.
-      INGEST_API_KEY: ${INGEST_API_KEY:-}
-      # Credenciais da API do G-Click: o portal puxa os documentos direto de lá.
-      # São as MESMAS do sistema de guias. Sem elas, o portal fica sem os documentos.
+      # App externo de guias desativado: /api/fiscal/* responde 410. Não usar.
+      # INGEST_API_KEY: ${INGEST_API_KEY:-}
+      # Credenciais da API Omie G-Click: o portal puxa os documentos direto de lá.
       GCLICK_CLIENT_ID: ${GCLICK_CLIENT_ID:-}
       GCLICK_CLIENT_SECRET: ${GCLICK_CLIENT_SECRET:-}
       # Quantos meses de histórico puxar e de quanto em quanto tempo (0 = só manual).
@@ -66,7 +64,7 @@ services:
       GCLICK_SYNC_INTERVAL_H: ${GCLICK_SYNC_INTERVAL_H:-6}
       # 1ª carga automática ao subir (só se o portal ainda estiver vazio). "false" desliga.
       GCLICK_SYNC_ON_BOOT: ${GCLICK_SYNC_ON_BOOT:-true}
-      # Alertas de vencimento pelo WhatsApp (uazapi) — mesmas credenciais do G-Click.
+      # Alertas de vencimento pelo WhatsApp (uazapi) — canal único deste portal.
       UAZAPI_SUBDOMAIN: ${UAZAPI_SUBDOMAIN:-}
       UAZAPI_TOKEN: ${UAZAPI_TOKEN:-}
       # Webhook de entrada (DP: advertência/suspensão). Sem isto, a URL aceita qualquer POST.

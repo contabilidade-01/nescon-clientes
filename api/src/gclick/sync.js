@@ -1,16 +1,11 @@
 /**
- * Puxa os documentos do G-Click para o portal.
+ * Puxa os documentos do G-Click (API Omie) para o portal.
  *
- * O portal é independente do sistema de guias: busca direto na API do G-Click,
- * guarda o PDF e sempre mantém a ÚLTIMA versão de cada documento (retificação
- * atualiza a linha em vez de criar outra — ver `chaveDocumento`).
+ * Busca direto na API, guarda o PDF e mantém a ÚLTIMA versão de cada documento
+ * (retificação atualiza a linha — ver `chaveDocumento`).
  *
- * Documento novo entra JÁ LIBERADO (`released_at` preenchido na hora) e o aviso por
- * WhatsApp sai DAQUI MESMO, no fim da sincronização — ver `docNotify.js`. Não depende
- * mais do sistema de guias (GCLICK) chamar nada: antes o aviso saía só quando o GCLICK
- * chamava POST /api/fiscal/release e decidia mandar do lado dele; com o GCLICK pausado,
- * essa ponta nunca era chamada e o cliente parava de ser avisado sem nenhum erro
- * aparecer em lugar nenhum. Ver docs/ESTADO-E-PROXIMO-PASSO.md.
+ * Documento novo entra JÁ LIBERADO e o aviso WhatsApp sai no fim da sincronização
+ * via `docNotify.js`. Canal único: este portal (não há app externo de guias).
  */
 const crypto = require("crypto");
 const fs = require("fs");

@@ -2,8 +2,9 @@
 
 Portal onde o cliente da contabilidade acessa tudo que o escritório entrega: guias fiscais,
 folha de pagamento, documentos, boletos e um calendário de vencimentos. Os documentos são
-puxados automaticamente do G-Click; o sistema de guias (GCLICK) apenas avisa o cliente por
-WhatsApp com um link para o portal.
+puxados automaticamente da **API Omie G-Click**. Lembretes de vencimento, aviso de documento
+novo (guias/folha) e demais WhatsApp saem **somente deste portal** (uazapi) — não há app
+externo de envio de guias no fluxo.
 
 Frontend React (Vite) + API Express + PostgreSQL. O front chama a API em `/api` (proxy Nginx) ou em `VITE_API_URL` quando o build aponta para outro domínio.
 
@@ -73,7 +74,7 @@ e cada rota é uma página em `src/pages/admin/`:
 | `/admin/sincronizacao` | Sincronização com o G-Click e e-mail do administrador. |
 | `/admin/usuarios` | **Só o dono** — usuários do painel e o que cada um pode ver. |
 | `/admin/clientes-gclick` | **Só o dono** — clientes novos vindos do G-Click, mudanças de situação e rejeitados. |
-| `/admin/envio-guias` | Iframe do sistema GCLICK (app separado). |
+| `/admin/alertas` | Configuração e disparo dos alertas WhatsApp (vencimentos, documentos). |
 
 ### Usuários do painel e acesso por área
 
@@ -94,9 +95,10 @@ menu escondido sozinho seria contornável chamando a API direto. As permissões 
 cada requisição, então tirar o acesso de alguém tem efeito imediato, sem esperar o token expirar.
 
 Áreas disponíveis: `empresas`, `funcionarios`, `entregas`, `licencas`, `taxas_anuais`, `lgpd`,
-`sincronizacao`, `envio_guias` (lista em `api/src/adminAreas.js`, espelhada em
-`src/lib/adminAreas.ts` — ao acrescentar uma, mexer nos dois e no menu). A **visão geral** é a porta
-de entrada e todo usuário vê; ela mostra só os números das áreas que a pessoa tem.
+`sincronizacao`, `alertas`, `atendimento`, `acessos`, `acompanhamentos` (lista em
+`api/src/adminAreas.js`, espelhada em `src/lib/adminAreas.ts` — ao acrescentar uma, mexer nos
+dois e no menu). A **visão geral** é a porta de entrada e todo usuário vê; ela mostra só os
+números das áreas que a pessoa tem.
 
 Compatibilidade: `areas` **nulo** = acesso total. Os logins que já existiam continuam funcionando
 sem migração, e o CPF do seed vira **dono** no primeiro arranque.

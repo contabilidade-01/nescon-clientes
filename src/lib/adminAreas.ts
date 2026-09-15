@@ -13,7 +13,6 @@ export const ADMIN_AREAS = [
   "taxas_anuais",
   "lgpd",
   "sincronizacao",
-  "envio_guias",
   "alertas",
   "atendimento",
   "acessos",
@@ -31,7 +30,6 @@ export const ADMIN_AREA_LABELS: Record<AdminArea, { title: string; description: 
   taxas_anuais: { title: "Taxas anuais", description: "Guias de taxa da prefeitura" },
   lgpd: { title: "Consentimentos LGPD", description: "Auditoria dos aceites dos clientes" },
   sincronizacao: { title: "Sincronização", description: "Carga de documentos do G-Click" },
-  envio_guias: { title: "Envio de guias", description: "Sistema GCLICK (app separado)" },
   alertas: {
     title: "Alertas de vencimento",
     description: "Quais obrigações cada cliente recebe e o texto que sai",

@@ -66,6 +66,6 @@ echo "    --- logs recentes whatsapp-dp (vazio = a uazapi não está batendo nes
 docker logs --tail 150 "$CID" 2>&1 | grep -Ei 'whatsapp-dp|Webhook não autorizado' || echo "    (nenhum log — mensagens não estão chegando neste container)"
 echo
 echo "Pronto. Interpretação:"
-echo "  • Enviar: token uazapi preenchido + instance connected = igual ao sistema de guias."
+echo "  • Enviar: token uazapi preenchido + instance connected = portal manda sozinho."
 echo "  • Receber: a URL do GET /webhook TEM que conter /api/whatsapp/webhook deste portal."
-echo "    Se a URL for do app de guias, troque no painel uazapi (uma instância = um webhook)."
+echo "    Uma instância uazapi = um webhook. Não apontar para app externo de guias."
