@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -12,7 +12,21 @@ import {
   XCircle,
   AlertTriangle,
   MessageCircle,
+  Send,
+  Square,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { dueTone, parseDue } from "@/lib/deliverableDisplay";
 import { differenceInCalendarDays, startOfToday } from "date-fns";
@@ -209,6 +223,89 @@ const BoletosCoraPage = () => {
     if (filtroBoletoComp && b.competencia !== filtroBoletoComp) return false;
     return true;
   });
+
+  // ---------------------------------------------------------------------------
+  // Envio em lote por WhatsApp (todos os filtrados ou só os marcados)
+  //
+  // Reaproveita o MESMO endpoint do botão individual, um boleto por vez: a mensagem
+  // (régua de cobrança se vencido, lembrete se a vencer) e o PDF fresco da Cora ficam
+  // num lugar só. O intervalo entre envios é proposital — disparo em rajada é o que
+  // faz o WhatsApp restringir o número.
+  // ---------------------------------------------------------------------------
+  const INTERVALO_ENVIO_MS = 4000;
+
+  /** Só entra no lote o que o botão individual também enviaria, e nunca boleto já pago. */
+  const podeEnviar = (b: { pdf_url?: string | null; status: string }) =>
+    Boolean(b.pdf_url) && b.status !== "paid";
+
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [confirmarLote, setConfirmarLote] = useState<null | { ids: string[]; rotulo: string }>(null);
+  const [lote, setLote] = useState<null | {
+    total: number;
+    feitos: number;
+    ok: number;
+    atual: string;
+    falhas: Array<{ empresa: string; erro: string }>;
+    rodando: boolean;
+    interrompido: boolean;
+  }>(null);
+  const interromperRef = useRef(false);
+
+  // Trocar o filtro limpa a seleção: evita enviar algo marcado que não está mais na tela.
+  useEffect(() => {
+    setSelecionados(new Set());
+  }, [filtroBoletoStatus, filtroBoletoEmpresa, filtroBoletoComp]);
+
+  const elegiveisFiltrados = boletosFiltrados.filter(podeEnviar);
+  const marcadosElegiveis = elegiveisFiltrados.filter((b) => selecionados.has(b.id));
+  const todosMarcados =
+    elegiveisFiltrados.length > 0 && marcadosElegiveis.length === elegiveisFiltrados.length;
+  const ignoradosSemPdf = boletosFiltrados.filter((b) => b.status !== "paid" && !b.pdf_url).length;
+
+  const alternarTodos = (marcar: boolean) =>
+    setSelecionados(marcar ? new Set(elegiveisFiltrados.map((b) => b.id)) : new Set());
+
+  const alternarUm = (id: string, marcar: boolean) =>
+    setSelecionados((prev) => {
+      const novo = new Set(prev);
+      if (marcar) novo.add(id);
+      else novo.delete(id);
+      return novo;
+    });
+
+  const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  const executarLote = async (ids: string[]) => {
+    const porId = new Map((boletos || []).map((b) => [b.id, b]));
+    interromperRef.current = false;
+    setLote({ total: ids.length, feitos: 0, ok: 0, atual: "", falhas: [], rodando: true, interrompido: false });
+
+    let ok = 0;
+    const falhas: Array<{ empresa: string; erro: string }> = [];
+    for (let i = 0; i < ids.length; i++) {
+      if (interromperRef.current) break;
+      const b = porId.get(ids[i]);
+      const empresa = b?.empresa_nome || ids[i];
+      setLote((l) => (l ? { ...l, atual: empresa } : l));
+      try {
+        await api.admin.coraEnviarWhatsapp(ids[i]);
+        ok++;
+      } catch (e) {
+        falhas.push({ empresa, erro: e instanceof Error ? e.message : "Falha no envio" });
+      }
+      setLote((l) => (l ? { ...l, feitos: i + 1, ok, falhas: [...falhas] } : l));
+      if (i < ids.length - 1 && !interromperRef.current) await esperar(INTERVALO_ENVIO_MS);
+    }
+
+    const interrompido = interromperRef.current;
+    setLote((l) => (l ? { ...l, rodando: false, atual: "", interrompido } : l));
+    setSelecionados(new Set());
+    if (falhas.length) {
+      toast.warning(`${ok} enviado(s), ${falhas.length} com falha${interrompido ? " (interrompido)" : ""}.`);
+    } else {
+      toast.success(`${ok} boleto(s) enviado(s) por WhatsApp${interrompido ? " (interrompido)" : ""}.`);
+    }
+  };
 
   const empresasFiltradas = (empresas || []).filter(
     (e) =>
@@ -442,6 +539,113 @@ const BoletosCoraPage = () => {
             </span>
           </div>
 
+          {/* Envio em lote */}
+          {totalBoletos > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 px-3 py-2">
+              <MessageCircle className="h-4 w-4 text-emerald-600" />
+              <span className="text-sm font-medium">Enviar por WhatsApp</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8"
+                disabled={!marcadosElegiveis.length || lote?.rodando}
+                onClick={() =>
+                  setConfirmarLote({
+                    ids: marcadosElegiveis.map((b) => b.id),
+                    rotulo: `${marcadosElegiveis.length} boleto(s) marcado(s)`,
+                  })
+                }
+              >
+                <Send className="mr-1.5 h-3.5 w-3.5" /> Enviar marcados ({marcadosElegiveis.length})
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 bg-emerald-600 text-white hover:bg-emerald-700"
+                disabled={!elegiveisFiltrados.length || lote?.rodando}
+                onClick={() =>
+                  setConfirmarLote({
+                    ids: elegiveisFiltrados.map((b) => b.id),
+                    rotulo: `todos os ${elegiveisFiltrados.length} boleto(s) da lista filtrada`,
+                  })
+                }
+              >
+                <Send className="mr-1.5 h-3.5 w-3.5" /> Enviar todos ({elegiveisFiltrados.length})
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Pagos não entram no envio.
+                {ignoradosSemPdf > 0 && ` ${ignoradosSemPdf} sem PDF ficam de fora.`}
+              </span>
+            </div>
+          )}
+
+          {lote && (
+            <Card>
+              <CardContent className="space-y-2 p-4">
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="font-medium">
+                    {lote.rodando
+                      ? `Enviando ${lote.feitos + 1} de ${lote.total}${lote.atual ? ` — ${lote.atual}` : ""}`
+                      : `${lote.interrompido ? "Interrompido" : "Concluído"}: ${lote.ok} enviado(s)` +
+                        (lote.falhas.length ? `, ${lote.falhas.length} com falha` : "")}
+                  </span>
+                  {lote.rodando ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7"
+                      onClick={() => {
+                        interromperRef.current = true;
+                      }}
+                    >
+                      <Square className="mr-1 h-3 w-3" /> Interromper
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="ghost" className="h-7" onClick={() => setLote(null)}>
+                      Fechar
+                    </Button>
+                  )}
+                </div>
+                <Progress value={lote.total ? (lote.feitos / lote.total) * 100 : 0} />
+                {lote.falhas.length > 0 && (
+                  <ul className="max-h-40 space-y-0.5 overflow-auto text-xs text-destructive">
+                    {lote.falhas.map((f, i) => (
+                      <li key={i}>
+                        <b>{f.empresa}</b>: {f.erro}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          <AlertDialog open={!!confirmarLote} onOpenChange={(o) => !o && setConfirmarLote(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Enviar boletos por WhatsApp?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Vou enviar {confirmarLote?.rotulo}, um por vez, com o PDF e a mensagem padrão
+                  (cobrança para vencidos, lembrete para os que ainda vão vencer). Leva cerca de{" "}
+                  {Math.max(1, Math.ceil(((confirmarLote?.ids.length || 0) * (INTERVALO_ENVIO_MS + 3000)) / 60000))}{" "}
+                  min — mantenha esta página aberta. Dá para interromper no meio.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Voltar</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                  onClick={() => {
+                    const ids = confirmarLote?.ids || [];
+                    setConfirmarLote(null);
+                    if (ids.length) executarLote(ids);
+                  }}
+                >
+                  Enviar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
           {loadingBoletos ? (
             <p className="py-8 text-center text-sm text-muted-foreground">Carregando...</p>
           ) : totalBoletos === 0 ? (
@@ -456,6 +660,14 @@ const BoletosCoraPage = () => {
               <table className="w-full text-sm">
                 <thead className="border-b bg-muted/50">
                   <tr>
+                    <th className="w-8 px-3 py-2">
+                      <Checkbox
+                        checked={todosMarcados}
+                        disabled={!elegiveisFiltrados.length || lote?.rodando}
+                        onCheckedChange={(c) => alternarTodos(c === true)}
+                        aria-label="Marcar todos os boletos enviáveis da lista"
+                      />
+                    </th>
                     <th className="px-3 py-2 text-left font-medium text-muted-foreground">Empresa</th>
                     <th className="px-3 py-2 text-left font-medium text-muted-foreground">Vencimento</th>
                     <th className="px-3 py-2 text-left font-medium text-muted-foreground">Valor</th>
@@ -467,6 +679,16 @@ const BoletosCoraPage = () => {
                 <tbody>
                   {boletosFiltrados.map((b) => (
                     <tr key={b.id} className="border-b last:border-0 hover:bg-muted/30">
+                      <td className="w-8 px-3 py-2">
+                        {podeEnviar(b) && (
+                          <Checkbox
+                            checked={selecionados.has(b.id)}
+                            disabled={lote?.rodando}
+                            onCheckedChange={(c) => alternarUm(b.id, c === true)}
+                            aria-label={`Marcar boleto de ${b.empresa_nome}`}
+                          />
+                        )}
+                      </td>
                       <td className="px-3 py-2">
                         <p className="truncate font-medium max-w-[200px]">{b.empresa_nome}</p>
                         <p className="text-xs text-muted-foreground">{b.empresa_cnpj}</p>
@@ -492,7 +714,7 @@ const BoletosCoraPage = () => {
                               size="sm"
                               className="h-7 text-xs text-emerald-700 hover:text-emerald-800"
                               onClick={() => enviarWhatsapp.mutate(b.id)}
-                              disabled={enviarWhatsapp.isPending}
+                              disabled={enviarWhatsapp.isPending || lote?.rodando}
                               title="Enviar PDF por WhatsApp"
                             >
                               <MessageCircle className="mr-1 h-3 w-3" /> WhatsApp
