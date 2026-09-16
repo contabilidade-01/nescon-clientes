@@ -66,13 +66,25 @@ function resetTokenCache() {
   tokenCache = { value: "", expiresAt: 0 };
 }
 
+async function mensagemErroHttp(res, path) {
+  const raw = await res.text().catch(() => "");
+  let detalhe = raw.slice(0, 240).replace(/\s+/g, " ").trim();
+  try {
+    const j = JSON.parse(raw);
+    detalhe = String(j.message || j.error || j.detail || detalhe);
+  } catch {
+    /* corpo não é JSON — usa o trecho cru */
+  }
+  return `G-Click ${path}: HTTP ${res.status}${detalhe ? ` — ${detalhe}` : ""}`;
+}
+
 async function get(path, params) {
   const token = await authenticate();
-  const qs = params ? `?${new URLSearchParams(params)}` : "";
+  const qs = params && Object.keys(params).length ? `?${new URLSearchParams(params)}` : "";
   const res = await fetchWithTimeout(`${BASE_URL}${path}${qs}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`G-Click ${path}: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(await mensagemErroHttp(res, path));
   return res.json();
 }
 
@@ -118,16 +130,57 @@ function listarAtividades(tarefaId) {
   return get(`/tarefas/${encodeURIComponent(tarefaId)}/atividades`);
 }
 
-async function listarClientes(size = 200) {
-  const first = await get("/clientes", { size: String(size), page: "0" });
+/**
+ * A doc oficial (Postman Omie.G-Click) lista GET /clientes com size=20 e page=1.
+ * size=200 ou page=0 devolve HTTP 400 em algumas contas. Tentamos o formato
+ * documentado e, se 400, o outro índice de página.
+ */
+function paginasRestantes(pageBase, totalPages) {
+  const ultima = pageBase === 0 ? totalPages - 1 : pageBase + (totalPages - 1);
+  const out = [];
+  for (let p = pageBase + 1; p <= ultima; p++) out.push(p);
+  return out;
+}
+
+async function primeiraPaginaClientes(size) {
+  const tentativas = [
+    { size: String(size), page: "0" },
+    { size: String(size), page: "1" },
+    { size: "20", page: "0" },
+    { size: "20", page: "1" },
+  ];
+  let lastErr = null;
+  const vistos = new Set();
+  for (const params of tentativas) {
+    const chave = `${params.size}|${params.page}`;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    try {
+      const json = await get("/clientes", params);
+      return { json, size: Number(params.size), pageBase: Number(params.page) };
+    } catch (err) {
+      lastErr = err;
+      if (!String(err.message || "").includes("HTTP 400")) throw err;
+    }
+  }
+  try {
+    return { json: await get("/clientes"), size, pageBase: 1 };
+  } catch (err) {
+    throw lastErr || err;
+  }
+}
+
+async function listarClientes(size = 20) {
+  const { json: first, size: sizeUsado, pageBase } = await primeiraPaginaClientes(size);
   if (Array.isArray(first)) return first;
   const todos = [...(first.content || [])];
   const totalPages = Number(first.totalPages || 1);
-  if (totalPages <= 1) return todos;
+  const atual = Number.isFinite(Number(first.number)) ? Number(first.number) : pageBase;
+  const paginas = paginasRestantes(atual, totalPages);
+  if (!paginas.length) return todos;
 
-  const paginas = Array.from({ length: totalPages - 1 }, (_, i) => i + 1);
   const restantes = await mapLimit(paginas, 4, (p) =>
-    get("/clientes", { size: String(size), page: String(p) })
+    get("/clientes", { size: String(sizeUsado), page: String(p) })
   );
   for (const j of restantes) if (j && !Array.isArray(j)) todos.push(...(j.content || []));
   return todos;
@@ -170,6 +223,7 @@ module.exports = {
   listarTarefasObrigacoes,
   listarAtividades,
   listarClientes,
+  paginasRestantes,
   baixarPdf,
   extrairDadosCliente,
   mapLimit,
