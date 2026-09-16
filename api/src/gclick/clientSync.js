@@ -131,6 +131,12 @@ async function sincronizarClientes({ alertaSoAtivos = null } = {}) {
     const brutos = await client.listarClientes();
     const clientes = brutos.map((c) => client.extrairDadosCliente(c)).filter((c) => c.cnpj);
     if (!clientes.length) {
+      ultimoResultado = {
+        ok: false,
+        erro: "G-Click não devolveu clientes",
+        em: new Date().toISOString(),
+        segundos: Math.round((Date.now() - inicio) / 1000),
+      };
       return { ok: false, erro: "G-Click não devolveu clientes" };
     }
 
@@ -185,6 +191,7 @@ async function sincronizarClientes({ alertaSoAtivos = null } = {}) {
     }
 
     ultimoResultado = {
+      ok: true,
       clientes: clientes.length,
       novos: plano.inserir.length,
       atualizados: plano.atualizar.length,
@@ -196,6 +203,12 @@ async function sincronizarClientes({ alertaSoAtivos = null } = {}) {
     return { ok: true, ...ultimoResultado };
   } catch (err) {
     console.error("[sync clientes] falhou:", err.message);
+    ultimoResultado = {
+      ok: false,
+      erro: err.message,
+      em: new Date().toISOString(),
+      segundos: Math.round((Date.now() - inicio) / 1000),
+    };
     return { ok: false, erro: err.message };
   } finally {
     emExecucao = false;
