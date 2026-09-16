@@ -15,6 +15,10 @@ const { getSetting, setSetting } = require("./appSettings");
 
 const MESES_PADRAO = Number(process.env.CORA_SYNC_MESES || 6);
 const CONCORRENCIA = 4;
+/** Janela da reconsulta individual dos boletos em aberto (ver `reconciliarPendentes`). */
+const RECONCILIAR_DIAS = Number(process.env.CORA_RECONCILIAR_DIAS || 60);
+/** Onde fica a última execução — em memória ela sumia a cada deploy. */
+const CHAVE_ULTIMA = "cora_sync_ultima";
 
 let emExecucao = false;
 let ultimoResultado = null;
@@ -203,6 +207,82 @@ async function gravarBoleto(boleto, companyId) {
 }
 
 /**
+ * Reconsulta, UM A UM, os boletos que ainda estão em aberto no portal.
+ *
+ * A listagem por CNPJ é o caminho principal, mas não pode ser o único: se ela falhar
+ * para uma empresa, vier incompleta ou a empresa estiver fora do filtro, o boleto pago
+ * fica "atrasado" no portal para sempre — e aí a régua de cobrança manda cobrança para
+ * quem já pagou. O detalhe (`GET /v2/invoices/:id`) é a fonte de verdade de cada boleto.
+ *
+ * Só olha a janela onde isso importa (vencidos há até RECONCILIAR_DIAS e os que vencem
+ * nos próximos dias), então são poucas chamadas por ciclo.
+ *
+ * Atualiza SÓ status/pagamento. Não passa por `gravarBoleto` de propósito: o detalhe
+ * tem formato diferente da listagem, e regravar a linha inteira com ele apagaria o PDF.
+ */
+async function reconciliarPendentes() {
+  const r = { conferidos: 0, pagos: 0, cancelados: 0, falhas: 0 };
+  const { rows } = await db.query(
+    `SELECT id, company_id, external_ref
+       FROM deliverables
+      WHERE source = 'cora' AND status <> 'paid' AND cancelado IS NOT TRUE
+        AND external_ref LIKE 'cora\\_%'
+        AND due_date BETWEEN current_date - $1::int AND current_date + 10`,
+    [RECONCILIAR_DIAS]
+  );
+
+  await mapLimit(rows, CONCORRENCIA, async (d) => {
+    const invoiceId = d.external_ref.slice("cora_".length);
+    const detalhe = await cora.getInvoiceDetail(invoiceId);
+    if (!detalhe?.status) {
+      r.falhas++;
+      return;
+    }
+    r.conferidos++;
+    try {
+      if (cora.ehCancelado(detalhe.status)) {
+        const { rowCount } = await db.query(
+          "DELETE FROM deliverables WHERE id = $1 AND source = 'cora'",
+          [d.id]
+        );
+        if (rowCount) r.cancelados++;
+      } else if (cora.mapCoraStatusToPortal(detalhe.status) === "paid") {
+        const { rowCount } = await db.query(
+          `UPDATE deliverables SET status = 'paid', paid_at = COALESCE(paid_at, now())
+            WHERE id = $1 AND status <> 'paid'`,
+          [d.id]
+        );
+        if (rowCount) r.pagos++;
+      }
+    } catch (err) {
+      console.error(`[cora] reconciliar ${invoiceId}:`, err.message);
+      r.falhas++;
+    }
+  });
+  return r;
+}
+
+/** Grava a última execução no banco — em memória ela sumia a cada deploy. */
+async function registrarUltima(resultado) {
+  ultimoResultado = resultado;
+  try {
+    await setSetting(db, CHAVE_ULTIMA, JSON.stringify(resultado));
+  } catch (err) {
+    console.error("[cora] gravar última sync:", err.message);
+  }
+}
+
+/** Recarrega a última execução gravada (chamado no arranque). */
+async function carregarUltima() {
+  try {
+    const bruto = await getSetting(db, CHAVE_ULTIMA);
+    if (bruto && !ultimoResultado) ultimoResultado = JSON.parse(bruto);
+  } catch {
+    /* sem registro anterior ou JSON inválido: a tela mostra "nunca" */
+  }
+}
+
+/**
  * Sincroniza boletos Cora para todas as empresas com `tool_access->'boletos' = true`.
  */
 async function sincronizar({ cnpjFiltro = null, de = null, ate = null } = {}) {
@@ -222,7 +302,10 @@ async function sincronizar({ cnpjFiltro = null, de = null, ate = null } = {}) {
 
     if (cnpjFiltro) {
       params.push(cnpjFiltro.replace(/\D/g, ""));
-      sql += ` AND REPLACE(cnpj, '.', '') = $${params.length}`;
+      // Compara só os dígitos dos dois lados. Tirar apenas os pontos deixava "/" e "-"
+      // no CNPJ gravado com máscara: a empresa não era encontrada e o "sincronizar
+      // empresa" terminava sem erro e sem fazer nada.
+      sql += ` AND regexp_replace(cnpj, '\\D', '', 'g') = $${params.length}`;
     }
 
     // Filtrar por tool_access: só empresas com 'boletos' habilitado
@@ -232,11 +315,7 @@ async function sincronizar({ cnpjFiltro = null, de = null, ate = null } = {}) {
     const { rows: empresas } = await db.query(sql, params);
 
     if (!empresas.length) {
-      ultimoResultado = {
-        ...total,
-        segundos: 0,
-        em: new Date().toISOString(),
-      };
+      await registrarUltima({ ...total, segundos: 0, em: new Date().toISOString() });
       return { ok: true, ...ultimoResultado };
     }
 
@@ -287,11 +366,28 @@ async function sincronizar({ cnpjFiltro = null, de = null, ate = null } = {}) {
       }
     });
 
-    ultimoResultado = {
+    // Rede de segurança da listagem: confere boleto a boleto o que ficou em aberto.
+    // Não roda no "sincronizar empresa" (lá o alvo é uma só e a listagem acabou de vir).
+    if (!cnpjFiltro) {
+      try {
+        const rec = await reconciliarPendentes();
+        total.reconciliadosPagos = rec.pagos;
+        total.reconciliadosCancelados = rec.cancelados;
+        total.atualizados += rec.pagos;
+        total.excluidos += rec.cancelados;
+        if (rec.falhas) total.erros += rec.falhas;
+        console.log("[cora] reconciliação:", JSON.stringify(rec));
+      } catch (err) {
+        console.error("[cora] reconciliação falhou:", err.message);
+        total.erros++;
+      }
+    }
+
+    await registrarUltima({
       ...total,
       segundos: Math.round((Date.now() - inicio) / 1000),
       em: new Date().toISOString(),
-    };
+    });
     console.log("[cora] sync concluída:", JSON.stringify(ultimoResultado));
     return { ok: true, ...ultimoResultado };
   } finally {
@@ -309,6 +405,10 @@ function iniciarAgendador() {
     backfillHonorarioCora().catch((err) => console.error("[cora] backfill honorário:", err.message));
   }, 8000).unref();
 
+  // A última execução vem do banco: a tela continua mostrando quando sincronizou mesmo
+  // logo depois de um deploy.
+  carregarUltima();
+
   if (!cora.isConfigured()) {
     console.log("[cora] certificados não encontrados — sync desligada.");
     return;
@@ -317,22 +417,19 @@ function iniciarAgendador() {
   const horas = Number(process.env.CORA_SYNC_INTERVAL_H || 0);
   const cargaInicial = process.env.CORA_SYNC_ON_BOOT !== "false";
 
+  // Sincroniza SEMPRE ao subir. Antes só rodava com o portal vazio, e o ciclo periódico
+  // conta as horas a partir do arranque: cada deploy zerava o relógio. Com deploys a
+  // menos de CORA_SYNC_INTERVAL_H de distância a sync nunca rodava, e boleto pago
+  // continuava "atrasado" no portal (foi o que aconteceu com os pagos em atraso de 09/2026).
   if (cargaInicial) {
     setTimeout(async () => {
       try {
-        const { rows } = await db.query(
-          "SELECT 1 FROM deliverables WHERE source = 'cora' LIMIT 1"
-        );
-        if (rows.length) {
-          console.log("[cora] já há boletos sincronizados; pulando carga inicial.");
-          return;
-        }
-        console.log("[cora] carga inicial (portal sem boletos Cora)...");
+        console.log("[cora] sincronização de arranque...");
         await sincronizar();
       } catch (err) {
-        console.error("[cora] carga inicial falhou:", err.message);
+        console.error("[cora] sincronização de arranque falhou:", err.message);
       }
-    }, 10000).unref(); // 10s (2s depois do G-Click, para não competir)
+    }, 60000).unref(); // 1 min: deixa a API subir e o G-Click começar antes
   }
 
   if (horas > 0) {
