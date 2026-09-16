@@ -753,6 +753,8 @@ export interface AcessosData {
 /** Configuração operacional — no banco, não no ambiente. */
 export interface AlertOpConfig {
   envio_automatico: boolean;
+  /** Liga o agradecimento automático ao reconhecer pagamento de honorário (padrão desligado). */
+  agradecimento_ativo: boolean;
   hora: number;
   escritorio_cnpj: string;
   /** WhatsApp do escritório para avisos internos (fila esgotou tentativas). Vazio = só no Dashboard. */
@@ -786,6 +788,25 @@ export interface AlertSendResult {
     motivo?: string;
     numero?: string;
     texto?: string;
+  }>;
+}
+
+export interface AlertThanksResult {
+  simulado?: boolean;
+  enviados: number;
+  pulados: number;
+  erros: Array<{ empresa?: string; motivo: string }>;
+  /** Preenchido quando nada rodou (fora da janela, uazapi off, antes do início). */
+  motivo?: string;
+  resultados: Array<{
+    empresa?: string;
+    company_id?: string;
+    /** sairia = ensaio; enviado/ignorado/falhou = execução real */
+    status: "sairia" | "enviado" | "ignorado" | "falhou";
+    motivo?: string;
+    numero?: string;
+    texto?: string;
+    boletos?: number;
   }>;
 }
 
@@ -1156,6 +1177,15 @@ export const api = {
     config: () => request<AlertOpConfig>("/alertas/config"),
     salvarConfig: (data: Partial<AlertOpConfig>) =>
       request<AlertOpConfig>("/alertas/config", { method: "PUT", body: JSON.stringify(data) }),
+    /** Agradecimentos por pagamento. `simular: true` (padrão no servidor) ensaia sem mandar. */
+    agradecimentos: (opts?: { simular?: boolean; companyIds?: string[] }) =>
+      request<AlertThanksResult>("/alertas/agradecimentos/enviar", {
+        method: "POST",
+        body: JSON.stringify({
+          simular: opts?.simular ?? true,
+          company_ids: opts?.companyIds,
+        }),
+      }),
     /** Envio manual de teste (isolado do fluxo automático). */
     enviarTeste: (companyId: string, tipo: "documentos" | "boleto_em_dia" | "boleto_vencido") =>
       request<{ ok: boolean; numero?: string | null; texto?: string; erro?: string }>(

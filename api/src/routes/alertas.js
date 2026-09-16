@@ -28,6 +28,7 @@ const {
   projecaoFerias,
 } = require("../alertas");
 const { enviarAlertasDoDia } = require("../alertasEnvio");
+const { agradecerPagamentos } = require("../honorariosAgradecimento");
 const { enviarAlertaTeste } = require("../alertaTeste");
 const { statusInstancia } = require("../uazapi");
 const { lerConfig, salvarConfig } = require("../alertasConfig");
@@ -313,9 +314,12 @@ router.get("/config", async (_req, res) => {
 });
 
 router.put("/config", async (req, res) => {
-  const { envio_automatico, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_cobranca_dias } = req.body || {};
+  const { envio_automatico, agradecimento_ativo, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_cobranca_dias } = req.body || {};
   if (envio_automatico !== undefined && typeof envio_automatico !== "boolean") {
     return res.status(400).json({ error: "envio_automatico deve ser booleano" });
+  }
+  if (agradecimento_ativo !== undefined && typeof agradecimento_ativo !== "boolean") {
+    return res.status(400).json({ error: "agradecimento_ativo deve ser booleano" });
   }
   if (hora !== undefined && (!Number.isInteger(hora) || hora < 0 || hora > 23)) {
     return res.status(400).json({ error: "hora deve ser um inteiro de 0 a 23" });
@@ -337,7 +341,7 @@ router.put("/config", async (req, res) => {
     }
   }
   try {
-    const r = await salvarConfig(db, { envio_automatico, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_cobranca_dias });
+    const r = await salvarConfig(db, { envio_automatico, agradecimento_ativo, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_cobranca_dias });
     // Número do escritório recusado volta com o motivo, em vez de salvar torto.
     if (r && r.erro) return res.status(400).json({ error: r.erro });
     res.json(r);
@@ -396,6 +400,28 @@ router.post("/enviar", async (req, res) => {
   } catch (err) {
     console.error("[alertas] enviar:", err.message);
     res.status(500).json({ error: "Erro ao disparar os alertas" });
+  }
+});
+
+/**
+ * Dispara os AGRADECIMENTOS por pagamento pendentes.
+ *
+ * Mesmo padrão do /enviar: `simular: true` (padrão) monta tudo e não envia — é o ensaio
+ * que mostra quem receberia o agradecimento e o texto. Enviar de verdade exige pedir.
+ * `company_ids` opcional restringe a seleção; vazio/ausente = todos os elegíveis.
+ */
+router.post("/agradecimentos/enviar", async (req, res) => {
+  const simular = req.body?.simular !== false;
+  const companyIds = Array.isArray(req.body?.company_ids) ? req.body.company_ids : null;
+  if (companyIds && companyIds.some((id) => !validateUUID(id))) {
+    return res.status(400).json({ error: "company_ids contém id inválido" });
+  }
+  try {
+    const r = await agradecerPagamentos({ simular, companyIds });
+    res.json({ simulado: simular, ...r });
+  } catch (err) {
+    console.error("[alertas] agradecimentos:", err.message);
+    res.status(500).json({ error: "Erro ao disparar os agradecimentos" });
   }
 });
 

@@ -45,7 +45,6 @@ import AcessosPage from "./pages/admin/AcessosPage.tsx";
 import FeriasUploadLotePage from "./pages/admin/FeriasUploadLotePage.tsx";
 import FeriasUrgenciaPage from "./pages/admin/FeriasUrgenciaPage.tsx";
 import EnviarAcessoPage from "./pages/admin/EnviarAcessoPage.tsx";
-import EnvioGuiasAdminPage from "./pages/EnvioGuiasAdminPage.tsx";
 import GuiasFiscaisPage from "./pages/GuiasFiscaisPage.tsx";
 import BoletosPage from "./pages/BoletosPage.tsx";
 import FolhaPage from "./pages/FolhaPage.tsx";
@@ -216,8 +215,6 @@ const AppRoutes = () => (
     <Route path="/ferias" element={<VacationRoute><FeriasPage /></VacationRoute>} />
     <Route path="/proximos-pagamentos" element={<CompanyToolRoute tool="calendar"><ProximosPagamentosPage /></CompanyToolRoute>} />
     <Route path="/mensagens" element={<CompanyToolRoute tool="chat"><MensagensPage /></CompanyToolRoute>} />
-    {/* Painel do escritório: iframe do sistema de envio de guias (não confundir com /guias) */}
-    <Route path="/admin/envio-guias" element={<AdminAreaRoute area="envio_guias"><EnvioGuiasAdminPage /></AdminAreaRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );

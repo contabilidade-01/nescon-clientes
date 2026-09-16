@@ -356,6 +356,7 @@ module.exports = {
   rodapeAutomatico,
   faseDe,
   competenciaBR,
+  valorBR,
   diasDesde,
   // constantes expostas para a tela/diagnóstico
   cadencia: {

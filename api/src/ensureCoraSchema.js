@@ -73,6 +73,20 @@ async function ensureCoraSchema(db) {
       ADD COLUMN IF NOT EXISTS honorario_cobrancas_enviadas INTEGER NOT NULL DEFAULT 0
     `);
 
+    /*
+     * Quando o AGRADECIMENTO de pagamento deste boleto foi enviado (NULL = ainda não).
+     *
+     * É o carimbo de dedup do envio de agradecimento (ver honorariosAgradecimento.js):
+     * o pagamento é reconhecido em vários pontos (sync da Cora, checagem fresca da
+     * cobrança, marcação manual do admin), todos gravando status='paid' + paid_at. A
+     * passada de agradecimento olha ESSE estado + esta coluna e envia UMA vez por boleto.
+     * Data, não booleano, para o dashboard poder mostrar "agradecido em ...".
+     */
+    await db.query(`
+      ALTER TABLE deliverables
+      ADD COLUMN IF NOT EXISTS agradecimento_enviado_em TIMESTAMPTZ
+    `);
+
     console.log("[DB] cora: colunas verificadas/criadas.");
   } catch (err) {
     console.error("[DB] ensureCoraSchema falhou:", err.message, err.code || "");

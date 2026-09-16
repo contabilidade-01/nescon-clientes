@@ -113,7 +113,6 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
       { to: "/admin/envio-folha", label: "Envio de folha e encargos", icon: ClipboardCheck, area: "entregas" },
       { to: "/admin/documentos", label: "Gestão de documentos", icon: FileText, area: "entregas" },
       { to: "/admin/doc-upload", label: "Upload de documentos", icon: Upload, area: "entregas" },
-      { to: "/admin/envio-guias", label: "Envio de guias", icon: Send, area: "envio_guias" },
       { to: "/admin/alertas", label: "Alertas de vencimento", icon: BellRing, area: "alertas" },
       { to: "/admin/whatsapp", label: "Conexão do WhatsApp", icon: MessageCircle, area: "alertas" },
       { to: "/admin/vencimentos-sugeridos", label: "Vencimentos sugeridos", icon: CalendarSearch, area: "entregas" },
