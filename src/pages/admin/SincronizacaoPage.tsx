@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { DatabaseBackup, HardDrive, History, Mail, UserPlus } from "lucide-react";
@@ -118,13 +118,39 @@ const SincronizacaoPage = () => {
   const conferirClientes = useMutation({
     mutationFn: () => api.gclickClientes.sincronizar(),
     onSuccess: (r) => {
-      queryClient.invalidateQueries({ queryKey: ["gclick-pendencias"] });
-      toast.success(
-        `${r.clientes} cliente(s) conferido(s) · ${r.novos} novo(s) no espelho · ${r.alertas} alerta(s)`
+      toast.success(r.message);
+      setTimeout(
+        () => queryClient.invalidateQueries({ queryKey: ["gclick-clientes-sync-status"] }),
+        500
       );
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const { data: clientesSyncStatus } = useQuery({
+    queryKey: ["gclick-clientes-sync-status"],
+    queryFn: () => api.gclickClientes.sincronizarStatus(),
+    refetchInterval: (q) => (q.state.data?.rodando ? 3000 : false),
+  });
+
+  const conferindoAntes = useRef(false);
+  useEffect(() => {
+    const rodando = Boolean(clientesSyncStatus?.rodando);
+    if (conferindoAntes.current && !rodando && clientesSyncStatus?.ultima) {
+      const u = clientesSyncStatus.ultima;
+      if (u.ok === false || u.erro) {
+        toast.error(u.erro || "Conferência de clientes falhou");
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["gclick-pendencias"] });
+        toast.success(
+          `${u.clientes} cliente(s) conferido(s) · ${u.novos} novo(s) no espelho · ${u.alertas} alerta(s)`
+        );
+      }
+    }
+    conferindoAntes.current = rodando;
+  }, [clientesSyncStatus, queryClient]);
+
+  const conferindoClientes = Boolean(clientesSyncStatus?.rodando) || conferirClientes.isPending;
 
   return (
     <AdminLayout
@@ -415,7 +441,8 @@ const SincronizacaoPage = () => {
             <UserPlus className="h-4 w-4" /> Clientes do G-Click
           </CardTitle>
           <p className="text-xs font-normal text-muted-foreground">
-            Confere a lista de clientes sem baixar documentos — leva segundos. Clientes novos e
+            Confere a lista de clientes sem baixar documentos. A busca no G-Click pode levar
+            um pouco se a carteira for grande — o painel acompanha até terminar. Clientes novos e
             mudanças de situação aparecem em <strong>Clientes do G-Click</strong>.
           </p>
         </CardHeader>
@@ -441,9 +468,9 @@ const SincronizacaoPage = () => {
             variant="outline"
             size="sm"
             onClick={() => conferirClientes.mutate()}
-            disabled={conferirClientes.isPending}
+            disabled={conferindoClientes}
           >
-            Conferir clientes agora
+            {conferindoClientes ? "Conferindo..." : "Conferir clientes agora"}
           </Button>
         </CardContent>
       </Card>

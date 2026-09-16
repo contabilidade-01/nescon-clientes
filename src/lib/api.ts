@@ -932,12 +932,24 @@ export const api = {
       }),
     ciente: (id: string) =>
       request<{ ok: boolean }>(`/gclick-clientes/pendencias/${id}/ciente`, { method: "POST" }),
-    /** Atualiza só o espelho de clientes (rápido — não baixa documentos). */
+    /** Dispara a conferência do espelho (segundo plano — acompanhar por sincronizarStatus). */
     sincronizar: () =>
-      request<{ clientes: number; novos: number; atualizados: number; alertas: number }>(
-        "/admin/sync-gclick/clientes",
-        { method: "POST" }
-      ),
+      request<{ message: string }>("/admin/sync-gclick/clientes", { method: "POST" }),
+    sincronizarStatus: () =>
+      request<{
+        configurado: boolean;
+        rodando: boolean;
+        ultima: {
+          ok?: boolean;
+          erro?: string;
+          clientes?: number;
+          novos?: number;
+          atualizados?: number;
+          alertas?: number;
+          segundos?: number;
+          em: string;
+        } | null;
+      }>("/admin/sync-gclick/clientes/status"),
   },
 
   /** Férias do cliente: previsão, custo e limite de faltas. */

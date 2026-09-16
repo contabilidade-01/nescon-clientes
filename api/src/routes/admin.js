@@ -869,16 +869,28 @@ router.post("/sync-gclick/historico", requireArea("sincronizacao"), async (req, 
 });
 
 /**
- * Atualiza só o espelho de clientes do G-Click (sem baixar documentos): traz clientes
- * novos e mudanças de status para a fila de alertas. Rápido — não varre competências.
+ * Atualiza só o espelho de clientes do G-Click (sem baixar documentos).
+ * A listagem paginada no G-Click pode passar de 60s — se o request esperar, o nginx
+ * devolve a página HTML de timeout e o painel mostra "API não respondeu em JSON".
+ * Mesmo padrão de POST /sync-gclick: dispara e o painel acompanha pelo /status.
  */
+router.get("/sync-gclick/clientes/status", requireArea("sincronizacao"), (_req, res) => {
+  res.json({
+    configurado: gclickClient.isConfigured(),
+    rodando: clientSync.estaRodando(),
+    ultima: clientSync.ultimaExecucao(),
+  });
+});
+
 router.post("/sync-gclick/clientes", requireArea("sincronizacao"), async (_req, res) => {
   if (!gclickClient.isConfigured()) {
     return res.status(503).json({ error: "G-Click não configurado (GCLICK_CLIENT_ID/SECRET)." });
   }
-  const r = await clientSync.sincronizarClientes();
-  if (!r.ok) return res.status(502).json({ error: r.erro });
-  res.json(r);
+  if (clientSync.estaRodando()) {
+    return res.status(409).json({ error: "Já existe uma conferência de clientes em andamento." });
+  }
+  clientSync.sincronizarClientes().catch((e) => console.error("[admin sync clientes]", e.message));
+  res.status(202).json({ message: "Conferência de clientes iniciada." });
 });
 
 /** Opções da sincronização que o escritório muda pela tela (sem redeploy). */

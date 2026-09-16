@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle, Check, RefreshCw, Search, UserPlus, X } from "lucide-react";
@@ -28,9 +28,15 @@ function dataHora(iso: string | null | undefined) {
 const ClientesGclickPage = () => {
   const queryClient = useQueryClient();
 
-  const { data: pendencias, isLoading } = useQuery({
+  const { data: pendencias, isLoading, isError, error } = useQuery({
     queryKey: ["gclick-pendencias"],
     queryFn: () => api.gclickClientes.pendencias(),
+  });
+
+  const { data: syncStatus } = useQuery({
+    queryKey: ["gclick-clientes-sync-status"],
+    queryFn: () => api.gclickClientes.sincronizarStatus(),
+    refetchInterval: (q) => (q.state.data?.rodando ? 3000 : false),
   });
 
   const invalidar = () => {
@@ -39,12 +45,30 @@ const ClientesGclickPage = () => {
     queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
   };
 
+  const rodandoAntes = useRef(false);
+  useEffect(() => {
+    const rodando = Boolean(syncStatus?.rodando);
+    if (rodandoAntes.current && !rodando && syncStatus?.ultima) {
+      const u = syncStatus.ultima;
+      if (u.ok === false || u.erro) {
+        toast.error(u.erro || "Conferência de clientes falhou");
+      } else {
+        invalidar();
+        toast.success(
+          `${u.clientes} cliente(s) conferido(s) · ${u.novos} novo(s) no espelho · ${u.alertas} alerta(s)`
+        );
+      }
+    }
+    rodandoAntes.current = rodando;
+  }, [syncStatus]);
+
   const sincronizar = useMutation({
     mutationFn: () => api.gclickClientes.sincronizar(),
     onSuccess: (r) => {
-      invalidar();
-      toast.success(
-        `${r.clientes} cliente(s) conferido(s) · ${r.novos} novo(s) no espelho · ${r.alertas} alerta(s)`
+      toast.success(r.message);
+      setTimeout(
+        () => queryClient.invalidateQueries({ queryKey: ["gclick-clientes-sync-status"] }),
+        500
       );
     },
     onError: (e: Error) => toast.error(e.message),
@@ -52,6 +76,7 @@ const ClientesGclickPage = () => {
 
   const novos = pendencias?.novos ?? [];
   const mudancas = pendencias?.mudancas ?? [];
+  const conferindo = Boolean(syncStatus?.rodando) || sincronizar.isPending;
 
   return (
     <AdminLayout
@@ -67,10 +92,10 @@ const ClientesGclickPage = () => {
           variant="outline"
           size="sm"
           onClick={() => sincronizar.mutate()}
-          disabled={sincronizar.isPending}
+          disabled={conferindo}
         >
-          <RefreshCw className={`mr-1 h-4 w-4 ${sincronizar.isPending ? "animate-spin" : ""}`} />
-          Conferir agora
+          <RefreshCw className={`mr-1 h-4 w-4 ${conferindo ? "animate-spin" : ""}`} />
+          {conferindo ? "Conferindo..." : "Conferir agora"}
         </Button>
       </div>
 
@@ -88,6 +113,10 @@ const ClientesGclickPage = () => {
         <TabsContent value="novos" className="mt-4 space-y-3">
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Carregando...</p>
+          ) : isError ? (
+            <p className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-8 text-center text-sm text-destructive">
+              {error instanceof Error ? error.message : "Não foi possível carregar as pendências."}
+            </p>
           ) : novos.length ? (
             novos.map((p) => <NovoClienteCard key={p.id} p={p} onResolvido={invalidar} />)
           ) : (
