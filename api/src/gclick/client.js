@@ -170,19 +170,84 @@ async function primeiraPaginaClientes(size) {
   }
 }
 
+const eh400 = (err) => String(err?.message || "").includes("HTTP 400");
+
+/**
+ * Um único cadastro com defeito no G-Click (ex.: "Status complementar 'Em Carteria' não
+ * encontrado" — status complementar apagado/renomeado lá) faz a API devolver HTTP 400
+ * para a PÁGINA INTEIRA onde ele cai. Sem isto, a listagem toda falhava e nenhum cliente
+ * novo chegava ao portal. Aqui a página ruim é refeita item a item (size=1) e só o
+ * cadastro defeituoso fica de fora — registrado em `ignorados`.
+ */
+async function paginaResiliente(page, size, ignorados) {
+  try {
+    const j = await get("/clientes", { size: String(size), page: String(page) });
+    return Array.isArray(j) ? j : j?.content || [];
+  } catch (err) {
+    if (!eh400(err) || size === 1) throw err;
+  }
+  const itens = [];
+  for (let i = 0; i < size; i++) {
+    const posicao = page * size + i;
+    try {
+      const j = await get("/clientes", { size: "1", page: String(posicao) });
+      const content = Array.isArray(j) ? j : j?.content || [];
+      if (!content.length) break; // passou do fim da lista
+      itens.push(...content);
+    } catch (err) {
+      if (!eh400(err)) throw err;
+      ignorados.push({ posicao, erro: err.message });
+    }
+  }
+  return itens;
+}
+
 async function listarClientes(size = 20) {
-  const { json: first, size: sizeUsado, pageBase } = await primeiraPaginaClientes(size);
+  const ignorados = [];
+  let first;
+  let sizeUsado = size;
+  let pageBase = 0;
+  try {
+    ({ json: first, size: sizeUsado, pageBase } = await primeiraPaginaClientes(size));
+  } catch (err) {
+    if (!eh400(err)) throw err;
+    // A própria primeira página tem o cadastro defeituoso: descobre o total por uma
+    // página vizinha e refaz a primeira item a item.
+    const conteudo = await paginaResiliente(0, size, ignorados);
+    let meta = null;
+    for (let p = 1; p < 20 && !meta; p++) {
+      try {
+        meta = await get("/clientes", { size: String(size), page: String(p) });
+      } catch (e) {
+        if (!eh400(e)) throw e;
+      }
+    }
+    first = { ...(meta || {}), number: 0, content: conteudo };
+    sizeUsado = size;
+    pageBase = 0;
+  }
   if (Array.isArray(first)) return first;
   const todos = [...(first.content || [])];
   const totalPages = Number(first.totalPages || 1);
   const atual = Number.isFinite(Number(first.number)) ? Number(first.number) : pageBase;
   const paginas = paginasRestantes(atual, totalPages);
-  if (!paginas.length) return todos;
+  // A API é 0-based (conferido: page=0 → number=0). Se a página 0 deu 400 e a tentativa
+  // caiu na page=1, a página 0 ficaria de fora — busca ela também, item a item se preciso.
+  for (let p = atual - 1; p >= 0; p--) paginas.unshift(p);
 
-  const restantes = await mapLimit(paginas, 4, (p) =>
-    get("/clientes", { size: String(sizeUsado), page: String(p) })
-  );
-  for (const j of restantes) if (j && !Array.isArray(j)) todos.push(...(j.content || []));
+  if (paginas.length) {
+    const restantes = await mapLimit(paginas, 4, (p) => paginaResiliente(p, sizeUsado, ignorados));
+    for (const lista of restantes) todos.push(...lista);
+  }
+
+  if (ignorados.length) {
+    console.warn(
+      `[gclick] ${ignorados.length} cliente(s) ignorado(s) por cadastro com defeito no G-Click:`,
+      ignorados.map((x) => `posição ${x.posicao}: ${x.erro}`).join(" | ")
+    );
+  }
+  // Propriedade extra no array: quem só itera não percebe; quem quer mostrar, lê.
+  todos.ignorados = ignorados;
   return todos;
 }
 

@@ -57,6 +57,12 @@ const ClientesGclickPage = () => {
         toast.success(
           `${u.clientes} cliente(s) conferido(s) · ${u.novos} novo(s) no espelho · ${u.alertas} alerta(s)`
         );
+        if (u.ignorados) {
+          toast.warning(
+            `${u.ignorados} cliente(s) não vieram: cadastro com defeito no G-Click. ${u.ignorados_detalhe?.[0] ?? ""}`,
+            { duration: 15000 }
+          );
+        }
       }
     }
     rodandoAntes.current = rodando;
