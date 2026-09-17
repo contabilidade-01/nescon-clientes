@@ -2337,7 +2337,7 @@ router.post("/companies/enviar-acesso", requireArea("empresas"), async (req, res
     // e mandava WhatsApp para ex-clientes — inclusive as arquivadas que a lista da tela
     // já escondia, porque o caminho "all" resolvia as empresas direto aqui no banco.
     const BASE = "c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE";
-    const TEM_FONE = "COALESCE(c.phone, g.phone) IS NOT NULL AND COALESCE(c.phone, g.phone) <> ''";
+    const TEM_FONE = `${numeroWpp.celularSql()} IS NOT NULL`;
     let filtro = "";
     const params = [];
     if (companyIds === "all") {
@@ -2354,7 +2354,7 @@ router.post("/companies/enviar-acesso", requireArea("empresas"), async (req, res
 
     const { rows: empresas } = await db.query(
       `SELECT c.id, c.name, c.cnpj, c.contact_email,
-              COALESCE(c.phone, g.phone) AS phone
+              ${numeroWpp.celularSql()} AS phone
          FROM companies c
          LEFT JOIN gclick_clients g ON g.company_id = c.id
         ${filtro}`,

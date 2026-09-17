@@ -68,4 +68,22 @@ function formatar(valor) {
   return String(valor || "");
 }
 
-module.exports = { normalizar, validar, formatar, soDigitos };
+/**
+ * SQL do número de envio de uma empresa: o **primeiro celular válido** entre o WhatsApp
+ * manual, o telefone do Cadastro e o telefone do espelho G-Click — nessa ordem.
+ *
+ * Antes cada envio escolhia de um jeito: alertas/cobrança iam de `whatsapp` → G-Click (e
+ * ignoravam o telefone do Cadastro), o "enviar acesso" ia de `phone` → G-Click. Empresa com
+ * celular no Cadastro e fixo no G-Click recebia "Parece telefone fixo" no alerta.
+ *
+ * Nenhum válido? Devolve o primeiro preenchido, para a validação explicar o que está errado.
+ * Exige o JOIN `LEFT JOIN gclick_clients g ON g.company_id = c.id`.
+ */
+function celularSql(c = "c", g = "g") {
+  const valido = (col) =>
+    `CASE WHEN regexp_replace(COALESCE(${col}, ''), '[^0-9]', '', 'g') ~ '^(55)?[1-9][1-9]9[0-9]{8}$' THEN ${col} END`;
+  const cols = [`${c}.whatsapp`, `${c}.phone`, `${g}.phone`];
+  return `COALESCE(${cols.map(valido).join(", ")}, ${cols.map((x) => `NULLIF(${x}, '')`).join(", ")})`;
+}
+
+module.exports = { normalizar, validar, formatar, soDigitos, celularSql };

@@ -120,7 +120,7 @@ router.post("/cora/boletos/:id/enviar-whatsapp", requireArea("sincronizacao"), a
               d.honorario_cobrancas_enviadas AS count, d.competencia,
               to_char(d.due_date, 'YYYY-MM-DD') AS due_date,
               c.name AS empresa_nome,
-              COALESCE(NULLIF(c.whatsapp, ''), g.phone) AS empresa_whatsapp
+              ${numeroWpp.celularSql()} AS empresa_whatsapp
          FROM deliverables d
          JOIN companies c ON c.id = d.company_id
          LEFT JOIN gclick_clients g ON g.company_id = c.id
@@ -243,7 +243,7 @@ router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req
               to_char(d.due_date, 'YYYY-MM-DD') AS due_date,
               c.id AS empresa_id, c.name AS empresa_nome,
               c.honorario_cobranca_ativo,
-              COALESCE(NULLIF(c.whatsapp, ''), g.phone) AS whatsapp
+              ${numeroWpp.celularSql()} AS whatsapp
          FROM deliverables d
          JOIN companies c ON c.id = d.company_id
          LEFT JOIN gclick_clients g ON g.company_id = c.id
@@ -386,7 +386,7 @@ router.get("/honorarios", requireArea("sincronizacao"), async (_req, res) => {
               to_char(d.due_date, 'YYYY-MM-DD') AS due_date, d.competencia,
               d.alert_sent_at, d.created_at,
               c.name AS empresa_nome, c.cnpj AS empresa_cnpj,
-              COALESCE(NULLIF(c.whatsapp, ''), g.phone) AS whatsapp
+              ${numeroWpp.celularSql()} AS whatsapp
          FROM deliverables d
          JOIN companies c ON c.id = d.company_id
          LEFT JOIN gclick_clients g ON g.company_id = c.id

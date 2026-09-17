@@ -67,3 +67,14 @@ describe("formatar", () => {
     expect(formatar("123")).toBe("123");
   });
 });
+
+describe("celularSql", () => {
+  it("prioriza WhatsApp manual, depois telefone do Cadastro, depois G-Click", async () => {
+    const { celularSql } = await import("../../api/src/whatsappNumero.js");
+    const sql = celularSql();
+    const pos = (s: string) => sql.indexOf(s);
+    expect(pos("THEN c.whatsapp")).toBeLessThan(pos("THEN c.phone"));
+    expect(pos("THEN c.phone")).toBeLessThan(pos("THEN g.phone"));
+    expect(sql).toContain("'[^0-9]'");
+  });
+});

@@ -33,7 +33,7 @@ const numeroWpp = require("./whatsappNumero");
  * aleatório. Com COALESCE há um lugar certo para corrigir e um só para consultar.
  */
 function whatsappSql(aliasCompany = "c") {
-  return `COALESCE(NULLIF(${aliasCompany}.whatsapp, ''), g.phone)`;
+  return numeroWpp.celularSql(aliasCompany, "g");
 }
 
 /** JOIN que acompanha `whatsappSql`. */

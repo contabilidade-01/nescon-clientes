@@ -217,7 +217,7 @@ async function cobrarHonorarios({ simular = false, agora = new Date() } = {}) {
             d.alert_sent_at, d.honorario_cobrancas_enviadas AS count,
             to_char(d.due_date, 'YYYY-MM-DD') AS due_date,
             c.name AS empresa_nome,
-            COALESCE(NULLIF(c.whatsapp, ''), g.phone) AS whatsapp
+            ${numeroWpp.celularSql()} AS whatsapp
        FROM deliverables d
        JOIN companies c ON c.id = d.company_id
        LEFT JOIN gclick_clients g ON g.company_id = c.id

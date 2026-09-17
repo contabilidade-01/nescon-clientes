@@ -139,7 +139,7 @@ async function agradecerPagamentos({ simular = false, agora = new Date(), compan
   const { rows } = await db.query(
     `SELECT d.id, d.competencia, d.valor_centavos,
             c.id AS company_id, c.name AS empresa_nome,
-            COALESCE(NULLIF(c.whatsapp, ''), g.phone) AS whatsapp
+            ${numeroWpp.celularSql()} AS whatsapp
        FROM deliverables d
        JOIN companies c ON c.id = d.company_id
        LEFT JOIN gclick_clients g ON g.company_id = c.id
