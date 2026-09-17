@@ -521,6 +521,20 @@ router.post("/cora/sync-empresa", requireArea("sincronizacao"), async (req, res)
   res.status(202).json({ message: `Sincronização iniciada para ${cnpj}.` });
 });
 
+/**
+ * Boletos em aberto na Cora de CNPJ que o portal não importa (sem cadastro ou com boletos
+ * desligado). Resultado da última sincronização completa — não consulta a Cora na hora.
+ */
+router.get("/cora/boletos-sem-cadastro", requireArea("sincronizacao"), async (_req, res) => {
+  try {
+    const { lerSemCadastro } = require("../coraSemCadastro");
+    res.json((await lerSemCadastro(db)) || { em: null, lidos: 0, itens: [] });
+  } catch (err) {
+    console.error("[admin] cora sem cadastro:", err.message);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
 /** Lista empresas com info de boletos Cora. */
 router.get("/cora/empresas", requireArea("sincronizacao"), async (_req, res) => {
   try {

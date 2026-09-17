@@ -12,6 +12,7 @@ const crypto = require("crypto");
 const db = require("./db");
 const cora = require("./cora");
 const { getSetting, setSetting } = require("./appSettings");
+const { conferirSemCadastro } = require("./coraSemCadastro");
 
 const MESES_PADRAO = Number(process.env.CORA_SYNC_MESES || 6);
 const CONCORRENCIA = 4;
@@ -380,6 +381,16 @@ async function sincronizar({ cnpjFiltro = null, de = null, ate = null } = {}) {
       } catch (err) {
         console.error("[cora] reconciliação falhou:", err.message);
         total.erros++;
+      }
+
+      // Boleto em aberto de CNPJ que o portal não importa (sem cadastro ou com boletos
+      // desligado). Só avisa; falha aqui não conta como erro da sincronização.
+      try {
+        const sc = await conferirSemCadastro(db, cora, { start, end });
+        total.semCadastro = sc.itens.length;
+        if (sc.itens.length) console.log(`[cora] ${sc.itens.length} cliente(s) com boleto em aberto fora do portal.`);
+      } catch (err) {
+        console.error("[cora] conferência sem cadastro falhou:", err.message);
       }
     }
 

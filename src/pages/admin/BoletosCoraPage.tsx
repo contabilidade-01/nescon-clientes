@@ -131,6 +131,12 @@ const BoletosCoraPage = () => {
     queryFn: () => api.admin.coraEmpresas(),
   });
 
+  // Boleto em aberto na Cora de quem o portal não importa (resultado da última sync)
+  const { data: semCadastro } = useQuery({
+    queryKey: ["admin-cora-sem-cadastro"],
+    queryFn: () => api.admin.coraSemCadastro(),
+  });
+
   // Boletos
   const { data: boletos, isLoading: loadingBoletos } = useQuery({
     queryKey: ["admin-cora-boletos"],
@@ -146,6 +152,7 @@ const BoletosCoraPage = () => {
         queryClient.invalidateQueries({ queryKey: ["admin-sync-cora-status"] });
         queryClient.invalidateQueries({ queryKey: ["admin-cora-boletos"] });
         queryClient.invalidateQueries({ queryKey: ["admin-cora-empresas"] });
+        queryClient.invalidateQueries({ queryKey: ["admin-cora-sem-cadastro"] });
       }, 2000);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -160,6 +167,7 @@ const BoletosCoraPage = () => {
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["admin-cora-boletos"] });
         queryClient.invalidateQueries({ queryKey: ["admin-cora-empresas"] });
+        queryClient.invalidateQueries({ queryKey: ["admin-cora-sem-cadastro"] });
       }, 3000);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -361,6 +369,44 @@ const BoletosCoraPage = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Boleto em aberto de CNPJ que o portal não importa */}
+      {semCadastro && semCadastro.itens.length > 0 && (
+        <Card className="border-amber-500/60 bg-amber-50/60 dark:bg-amber-950/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base text-amber-800 dark:text-amber-300">
+              <AlertTriangle className="h-4 w-4" />
+              {semCadastro.itens.length} cliente(s) com boleto em aberto na Cora que não aparece no portal
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Sem cadastro, esses boletos não entram na tela, na cobrança nem nos alertas. Cadastre a
+              empresa (ou ligue os boletos dela) e sincronize.
+              {semCadastro.em &&
+                ` Conferido em ${format(new Date(semCadastro.em), "dd/MM 'às' HH:mm", { locale: ptBR })}.`}
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {semCadastro.itens.map((i) => (
+              <div
+                key={i.documento}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background/70 px-3 py-2 text-sm"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium break-words">{i.nome || "Sem nome na Cora"}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {i.documento} · {i.boletos} boleto(s) · {formatCurrency(i.total_centavos)}
+                    {i.vencimentos[0] &&
+                      ` · vence(u) ${i.vencimentos.map((v) => v.split("-").reverse().join("/")).join(", ")}`}
+                  </p>
+                </div>
+                <Badge variant="outline" className="border-amber-500 text-amber-700 dark:text-amber-300">
+                  {i.situacao === "sem_cadastro" ? "Sem cadastro" : "Boletos desligados"}
+                </Badge>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Toolbar */}
       <Card>

@@ -162,7 +162,8 @@ async function searchInvoices(cnpj, options = {}) {
     const queryParams = new URLSearchParams({
       page: options.page || 1,
       perPage: Math.min(options.perPage || 100, 200), // Máximo 200
-      search: cnpj,
+      // Sem CNPJ = listagem geral (usada para achar boleto de quem não está no cadastro).
+      ...(cnpj && { search: cnpj }),
       ...(options.start && { start: options.start }),
       ...(options.end && { end: options.end }),
       ...(options.state && { state: options.state }),

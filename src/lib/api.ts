@@ -1962,6 +1962,20 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ cnpj }),
       }),
+    /** Boletos em aberto na Cora de CNPJ que o portal não importa (última sync completa). */
+    coraSemCadastro: () =>
+      request<{
+        em: string | null;
+        lidos: number;
+        itens: Array<{
+          documento: string;
+          nome: string | null;
+          situacao: "sem_cadastro" | "sem_acesso_boletos";
+          boletos: number;
+          total_centavos: number;
+          vencimentos: string[];
+        }>;
+      }>("/admin/cora/boletos-sem-cadastro"),
     /** Lista empresas com info de boletos Cora. */
     coraEmpresas: () =>
       request<Array<{
