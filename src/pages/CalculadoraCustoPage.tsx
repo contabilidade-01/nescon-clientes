@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Calculator } from "lucide-react";
+import { Calculator, Download } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { downloadCustoContratacaoPdf } from "@/lib/generateCustoContratacaoPdf";
 
 /**
  * Calculadora de Custo de Contratação — PÚBLICA (sem login).
@@ -213,6 +214,39 @@ const CalculadoraCustoPage = () => {
                 Projeção anual: {brl(r.ano)} • equivale a {r.pct}% do salário
               </p>
             </div>
+
+            <Button
+              type="button"
+              className="mt-4 w-full"
+              disabled={r.sal <= 0}
+              onClick={() =>
+                downloadCustoContratacaoPdf({
+                  regimeLabel: regime === "simples" ? "Simples Nacional" : "Presumido / Real",
+                  salario: r.sal,
+                  outrosFixos: r.outrosFixos,
+                  encargosLabel: r.t.rot,
+                  encargos: r.encSal,
+                  valeTransporte: r.valeT,
+                  valeRefeicao: r.valeR,
+                  honorario: r.hon,
+                  custoDireto: r.direto,
+                  incluiProvisoes: incluiProv,
+                  decimoTerceiro: r.d13,
+                  ferias: r.dFer,
+                  encargosProvisoesLabel:
+                    regime === "simples" ? "FGTS sobre 13º e férias" : "Encargos sobre 13º e férias",
+                  encargosProvisoes: r.encProv,
+                  provisoes: r.prov,
+                  totalMensal: r.total,
+                  projecaoAnual: r.ano,
+                  pctSalario: r.pct,
+                  nota: r.t.nota,
+                })
+              }
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Baixar simulação em PDF
+            </Button>
           </div>
         </div>
 
