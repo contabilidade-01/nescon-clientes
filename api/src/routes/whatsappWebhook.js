@@ -13,6 +13,7 @@ const { transcreverAudio } = require("../whatsappAudio");
 const { processarTexto } = require("../whatsappDp");
 const { enviarTexto } = require("../uazapi");
 const db = require("../db");
+const { ehCliente } = require("../whatsappDestino");
 
 const router = express.Router();
 const processed = new Map();
@@ -109,6 +110,14 @@ router.post("/webhook", async (req, res) => {
     const instOwner = await owner().catch(() => null);
     if (instOwner && digitsEq(phone, instOwner)) {
       registrar({ resultado: "ignorado_owner" });
+      return;
+    }
+
+    // Regra do escritório: o robô só conversa com cliente cadastrado. Quem não é cliente
+    // é ignorado em silêncio — nem transcreve áudio, nem responde. A instância é a mesma
+    // do número da Nescon, então responder estranho seria falar em nome do escritório.
+    if (!(await ehCliente(phone, db).catch(() => false))) {
+      registrar({ resultado: "ignorado_nao_cliente", tel: phone.slice(-4) });
       return;
     }
 

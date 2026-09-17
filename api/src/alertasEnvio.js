@@ -233,8 +233,9 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, comp
         motivo: err.message,
       });
       await anotar(err.message, "falhou");
-      // Falha transitória: para a fila retentar com backoff.
-      await enfileirar(1);
+      // Falha transitória: para a fila retentar com backoff. Destino bloqueado (não é
+      // cliente ativo) não é transitório — não entra na fila.
+      if (!(err instanceof uazapi.UazapiDestinoNaoPermitido)) await enfileirar(1);
       // Token inválido/desconectado não melhora na próxima empresa: para tudo aqui em
       // vez de colecionar o mesmo erro sessenta vezes. As mensagens que ainda não foram
       // tentadas também entram na fila, para o drenador retomá-las quando a instância voltar.
@@ -272,6 +273,7 @@ async function enviarComRetry({ numero, texto, tentativas = 2 }) {
       return await uazapi.enviarTexto({ numero, texto, delayMs: DELAY_DIGITANDO_MS });
     } catch (err) {
       if (err instanceof uazapi.UazapiTokenInvalido) throw err;
+      if (err instanceof uazapi.UazapiDestinoNaoPermitido) throw err;
       ultimo = err;
       console.warn(`[alertas] envio falhou (${i + 1}/${tentativas}): ${err.message}`);
       if (i + 1 < tentativas) await espera(800 * (i + 1));

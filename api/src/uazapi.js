@@ -15,6 +15,22 @@
 
 class UazapiNaoConfigurado extends Error {}
 class UazapiTokenInvalido extends Error {}
+/** Número que não é cliente ativo do portal (nem do escritório). Não adianta repetir. */
+class UazapiDestinoNaoPermitido extends Error {}
+
+/**
+ * Regra do escritório: só cliente cadastrado recebe mensagem. Fica aqui, no único ponto
+ * por onde toda saída passa, para nenhum envio novo esquecer de conferir.
+ */
+async function exigirDestinoPermitido(numero) {
+  const { destinoPermitido } = require("./whatsappDestino");
+  const r = await destinoPermitido(numero);
+  if (!r.ok) {
+    const final = String(numero || "").replace(/\D/g, "").slice(-4);
+    console.warn(`[uazapi] envio bloqueado para ...${final}: ${r.motivo}`);
+    throw new UazapiDestinoNaoPermitido(`Envio bloqueado: ${r.motivo}.`);
+  }
+}
 
 function credenciais() {
   return {
@@ -71,6 +87,7 @@ async function chamar(caminho, { metodo = "GET", corpo = null, timeoutMs = 30000
  * detalhe que faz a mensagem parecer menos robô.
  */
 async function enviarTexto({ numero, texto, delayMs = 0 }) {
+  await exigirDestinoPermitido(numero);
   const corpo = { number: numero, text: texto };
   if (delayMs > 0) corpo.delay = Math.floor(delayMs);
   return chamar("/send/text", { metodo: "POST", corpo, timeoutMs: 60000 });
@@ -83,6 +100,7 @@ async function enviarTexto({ numero, texto, delayMs = 0 }) {
  * `delayMs` faz a uazapi exibir "digitando…" antes de entregar.
  */
 async function enviarDocumento({ numero, fileUrl, docName, caption = null, delayMs = 0 }) {
+  await exigirDestinoPermitido(numero);
   const corpo = { number: numero, type: "document", file: fileUrl, docName };
   if (caption) corpo.text = caption;
   if (delayMs > 0) corpo.delay = Math.floor(delayMs);
@@ -194,4 +212,5 @@ module.exports = {
   owner,
   UazapiNaoConfigurado,
   UazapiTokenInvalido,
+  UazapiDestinoNaoPermitido,
 };
