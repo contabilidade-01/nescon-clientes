@@ -196,6 +196,9 @@ async function sincronizarClientes({ alertaSoAtivos = null } = {}) {
       novos: plano.inserir.length,
       atualizados: plano.atualizar.length,
       alertas,
+      // Cadastros que o G-Click não conseguiu devolver (defeito do lado de lá).
+      ignorados: (brutos.ignorados || []).length,
+      ignorados_detalhe: (brutos.ignorados || []).map((x) => x.erro),
       segundos: Math.round((Date.now() - inicio) / 1000),
       em: new Date().toISOString(),
     };

@@ -946,6 +946,8 @@ export const api = {
           novos?: number;
           atualizados?: number;
           alertas?: number;
+          ignorados?: number;
+          ignorados_detalhe?: string[];
           segundos?: number;
           em: string;
         } | null;
