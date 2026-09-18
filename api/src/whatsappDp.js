@@ -662,8 +662,7 @@ async function concluir(phone, sessao) {
     );
     await limpar(phone);
     return (
-      `Não consegui gerar o documento agora. Já avisei o escritório, que vai emitir manualmente.\n\n` +
-      contatoNescon(false)
+      `Não consegui gerar o documento agora. Já avisei o escritório, que vai emitir manualmente.`
     );
   }
 
@@ -698,8 +697,7 @@ async function concluir(phone, sessao) {
     (d.dias ? `• Dias: ${d.dias}\n` : "") +
     `• Data: ${d.dataBR}\n\n` +
     `📝 Imprima em *2 vias*. Se o funcionário se recusar a assinar, use os campos de *testemunhas* no rodapé.\n` +
-    `📄 Versão editável (Word): ${doc.urlDocx}\n\n` +
-    `Precisa de outro assunto? ${contatoNescon(false)}`
+    `📄 Versão editável (Word): ${doc.urlDocx}`
   );
 }
 
@@ -763,7 +761,7 @@ async function seguirFluxo(phone, sessao, texto) {
     }
     if (ehCancelarEmissao(t)) {
       await limpar(phone);
-      return "Cancelado, nada foi emitido.\n\n" + contatoNescon(false);
+      return "Cancelado, nada foi emitido.";
     }
 
     let ia = {};
@@ -782,7 +780,7 @@ async function seguirFluxo(phone, sessao, texto) {
     }
     if (ia.cancelar === true && !querCorrigir) {
       await limpar(phone);
-      return "Cancelado, nada foi emitido.\n\n" + contatoNescon(false);
+      return "Cancelado, nada foi emitido.";
     }
 
     const slots = patchDeSlots({ ia, texto: t, step: "confirma" });
@@ -925,7 +923,7 @@ async function seguirFluxo(phone, sessao, texto) {
   }
 
   await limpar(phone);
-  return contatoNescon();
+  return null;
 }
 
 /**
@@ -988,21 +986,22 @@ async function processarTexto({ phone, texto }) {
   if (sessao && sessao.step && sessao.step !== "idle") {
     if (ehCancelar(raw)) {
       await limpar(phone);
-      return "Fluxo cancelado.\n\n" + contatoNescon(false);
+      return "Fluxo cancelado.";
     }
     return seguirFluxo(phone, sessao, raw);
   }
 
   const tema = await classificarTema(raw);
-  if (tema === "outro") return contatoNescon();
+  // Fora do escopo (qualquer assunto que não seja advertência/suspensão): silêncio. O
+  // escritório decidiu não mandar mais o aviso "aqui eu trato somente de…".
+  if (tema === "outro") return null;
 
   // Identidade: sem empresa cadastrada neste número, não emite nada.
   const empresas = await empresasDoTelefone(phone);
   if (!empresas.length) {
     return (
       `${SELO_IA}\n\n` +
-      `Não encontrei nenhuma empresa cadastrada para este número de WhatsApp, então não posso emitir o documento por aqui.\n\n` +
-      contatoNescon(false)
+      `Não encontrei nenhuma empresa cadastrada para este número de WhatsApp, então não posso emitir o documento por aqui.`
     );
   }
 
