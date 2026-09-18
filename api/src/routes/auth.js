@@ -288,7 +288,13 @@ router.post("/login", loginIpLimiter, loginContaLimiter, async (req, res) => {
       }
       const valid = await bcryptMatches(company.password_hash, password);
       if (!valid) return res.status(401).json({ error: "Senha incorreta" });
-      if (company.password_expires_at && new Date(company.password_expires_at) < new Date()) {
+      const { senhaTemporariaExpirada } = require("../senhaExpiracao");
+      if (
+        senhaTemporariaExpirada({
+          mustChangePassword: company.must_change_password,
+          passwordExpiresAt: company.password_expires_at,
+        })
+      ) {
         return res.status(401).json({ error: "Senha temporária expirada. Solicite novo acesso ao escritório." });
       }
       // Grupo do login. A ÂNCORA do grupo é a matriz: se a empresa é filial, é o
@@ -488,7 +494,8 @@ router.post("/reset-password", resetPasswordLimiter, async (req, res) => {
       const passwordHash = await bcrypt.hash(password, 10);
       if (row.company_id) {
         await client.query(
-          "UPDATE companies SET password_hash = $1, must_change_password = false WHERE id = $2",
+          // Limpa o prazo junto: senha criada pelo próprio cliente não expira.
+          "UPDATE companies SET password_hash = $1, must_change_password = false, password_expires_at = NULL WHERE id = $2",
           [passwordHash, row.company_id]
         );
       } else {

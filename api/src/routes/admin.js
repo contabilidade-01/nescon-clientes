@@ -665,12 +665,15 @@ router.post("/companies/:id/senha-inicial", requireArea("empresas"), async (req,
   if (!validateUUID(id)) return res.status(400).json({ error: "ID inválido" });
   try {
     const senha = gerarSenhaInicial();
+    // Prazo novo junto com a senha nova: sem isto, a senha regerada herdava a data já
+    // vencida da anterior e o cliente era barrado com "Senha temporária expirada".
+    const { novoPrazoSenhaTemporaria } = require("../senhaExpiracao");
     const { rows } = await db.query(
       `UPDATE companies
-          SET password_hash = $1, must_change_password = true
+          SET password_hash = $1, must_change_password = true, password_expires_at = $3
         WHERE id = $2
         RETURNING id, name, cnpj`,
-      [await bcrypt.hash(senha, 10), id]
+      [await bcrypt.hash(senha, 10), id, novoPrazoSenhaTemporaria()]
     );
     if (!rows.length) return res.status(404).json({ error: "Empresa não encontrada" });
     res.json({
