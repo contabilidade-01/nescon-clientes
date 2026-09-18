@@ -392,6 +392,23 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
     let adminId = null;
     let emailOnRecord = null;
 
+    // Cliente pelo documento (CNPJ, ou CPF de pessoa física). Compara só os dígitos: o
+    // cadastro pode ter o CNPJ gravado com máscara, e aí `cnpj = $1` nunca casava.
+    const clientePorDocumento = async () => {
+      const { rows } = await db.query(
+        `SELECT id, contact_email FROM companies
+          WHERE regexp_replace(cnpj, '[^0-9]', '', 'g') = $1
+            AND arquivada IS NOT TRUE AND excluida IS NOT TRUE
+          LIMIT 1`,
+        [clean]
+      );
+      const c = rows[0];
+      if (!c?.contact_email || normalizeEmail(c.contact_email) !== emailNorm) return false;
+      companyId = c.id;
+      emailOnRecord = c.contact_email;
+      return true;
+    };
+
     if (clean.length === 11) {
       if (!validateCPF(rawLogin)) {
         return res.json({ message: GENERIC_FORGOT_MSG });
@@ -400,33 +417,25 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
         "SELECT id, contact_email FROM platform_admins WHERE cpf = $1",
         [clean]
       );
-      if (!rows.length || !rows[0].contact_email) {
+      const adm = rows[0];
+      if (adm?.contact_email && normalizeEmail(adm.contact_email) === emailNorm) {
+        adminId = adm.id;
+        emailOnRecord = adm.contact_email;
+      } else if (!(await clientePorDocumento())) {
+        // CPF que não é administrador pode ser cliente pessoa física — antes esse
+        // cliente nunca conseguia recuperar a senha.
         return res.json({ message: GENERIC_FORGOT_MSG });
       }
-      if (normalizeEmail(rows[0].contact_email) !== emailNorm) {
-        return res.json({ message: GENERIC_FORGOT_MSG });
-      }
-      adminId = rows[0].id;
-      emailOnRecord = rows[0].contact_email;
     } else if (clean.length === 14) {
       if (!validateCNPJ(rawLogin)) {
         return res.json({ message: GENERIC_FORGOT_MSG });
       }
-      const { rows } = await db.query(
-        "SELECT id, contact_email FROM companies WHERE cnpj = $1",
-        [clean]
-      );
-      if (!rows.length || !rows[0].contact_email) {
+      if (!(await clientePorDocumento())) {
         return res.json({ message: GENERIC_FORGOT_MSG });
       }
-      if (normalizeEmail(rows[0].contact_email) !== emailNorm) {
-        return res.json({ message: GENERIC_FORGOT_MSG });
-      }
-      companyId = rows[0].id;
-      emailOnRecord = rows[0].contact_email;
     } else {
       return res.status(400).json({
-        error: "Login deve ser CNPJ (empresa) ou CPF (administrador)",
+        error: "Login deve ser CNPJ ou CPF",
       });
     }
 
