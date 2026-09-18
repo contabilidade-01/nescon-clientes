@@ -2062,9 +2062,16 @@ export const api = {
       }),
     /** Empresas que ainda não trocaram a senha inicial — a fila de risco a zerar. */
     senhaPendente: () =>
-      request<{ total: number; empresas: Array<{ id: string; name: string; cnpj: string }> }>(
-        "/admin/companies/senha-pendente"
-      ),
+      request<{
+        total: number;
+        empresas: Array<{
+          id: string;
+          name: string;
+          cnpj: string;
+          ultimo_login_em: string | null;
+          acesso_enviado_em: string | null;
+        }>;
+      }>("/admin/companies/senha-pendente"),
     /** Gera senha nova e devolve UMA vez — não há como consultá-la depois. */
     gerarSenhaInicial: (companyId: string) =>
       request<{ id: string; name: string; cnpj: string; senha_inicial: string; message: string }>(

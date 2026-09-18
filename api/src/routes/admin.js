@@ -733,7 +733,10 @@ router.put("/companies/:id/alterar-senha", requireArea("empresas"), async (req, 
 router.get("/companies/senha-pendente", requireArea("empresas"), async (_req, res) => {
   try {
     const { rows } = await db.query(
-      `SELECT id, name, cnpj, created_at
+      // Sai da lista sozinha quando o cliente cria a própria senha (troca no 1º acesso ou
+      // "esqueci minha senha" — os dois gravam must_change_password = false). As datas
+      // mostram ao escritório por que cada uma continua aqui.
+      `SELECT id, name, cnpj, created_at, ultimo_login_em, acesso_enviado_em
          FROM companies
         WHERE must_change_password IS TRUE AND arquivada IS NOT TRUE AND excluida IS NOT TRUE
         ORDER BY name`

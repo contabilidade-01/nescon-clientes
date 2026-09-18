@@ -88,6 +88,8 @@ const EmpresasPage = () => {
   const senhaPendente = useQuery({
     queryKey: ["senha-pendente"],
     queryFn: () => api.admin.senhaPendente(),
+    // Quem cria a senha sai da lista sozinho; atualiza sem precisar recarregar a tela.
+    refetchInterval: 60000,
   });
 
   const gerarSenha = useMutation({
@@ -234,11 +236,22 @@ const EmpresasPage = () => {
           <div className="mt-3 space-y-1 pt-3 border-t">
             <p className="text-xs text-muted-foreground mb-2">
               Enquanto o cliente não troca, o acesso vale para quem tiver a senha (o próprio CNPJ nas antigas). Gerar uma senha nova fecha esse acesso na hora.
+              A empresa sai desta lista sozinha assim que o cliente cria a própria senha — no 1º acesso ou pelo
+              "Esqueci minha senha".
             </p>
             {senhaPendente.data?.empresas.map((c) => (
               <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-1.5 last:border-0">
-                <span className="min-w-0 truncate text-sm">
-                  {c.name} <span className="text-xs text-muted-foreground">{maskCNPJ(c.cnpj)}</span>
+                <span className="min-w-0 text-sm">
+                  <span className="block truncate">
+                    {c.name} <span className="text-xs text-muted-foreground">{maskCNPJ(c.cnpj)}</span>
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    {c.ultimo_login_em
+                      ? `Entrou em ${new Date(c.ultimo_login_em).toLocaleDateString("pt-BR")}, mas não criou a senha`
+                      : "Nenhum acesso registrado"}
+                    {c.acesso_enviado_em &&
+                      ` · acesso enviado em ${new Date(c.acesso_enviado_em).toLocaleDateString("pt-BR")}`}
+                  </span>
                 </span>
                 <Button
                   variant="outline"
