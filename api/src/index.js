@@ -34,6 +34,7 @@ const { ensureAdmissionSchema } = require("./ensureAdmissionSchema");
 const { ensureMonthlyFollowSchema } = require("./ensureMonthlyFollowSchema");
 const { ensureWhatsappDpSchema } = require("./ensureWhatsappDpSchema");
 const { ensureDpDocsSchema } = require("./ensureDpDocsSchema");
+const { ensureCircularSchema } = require("./ensureCircularSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -125,6 +126,7 @@ app.use("/api/alertas", require("./routes/alertas"));
 app.use("/api/preferencias", require("./routes/preferencias"));
 app.use("/api/doc-upload", require("./routes/documentUpload"));
 app.use("/api/mensagens", require("./routes/engagement"));
+app.use("/api/circulares", require("./routes/circulares"));
 app.use("/api/portal", require("./routes/portal"));
 app.use("/api/whatsapp", require("./routes/whatsappWebhook"));
 // Download público (token opaco) dos termos emitidos pelo assistente do WhatsApp.
@@ -185,6 +187,9 @@ async function start() {
     await ensureMonthlyFollowSchema(db);
     await ensureWhatsappDpSchema(db);
     await ensureDpDocsSchema(db);
+    await ensureCircularSchema(db);
+    // Circular que estava enviando quando a API caiu volta como "pausada" para retomar.
+    await require("./circular").recuperarNoArranque(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).
     // Roda em background para não travar o arranque.
     setTimeout(async () => {

@@ -108,6 +108,21 @@ async function enviarDocumento({ numero, fileUrl, docName, caption = null, delay
 }
 
 /**
+ * Envia imagem ou vídeo (circular). Mesmo endpoint do documento, com `type` de mídia —
+ * o WhatsApp mostra direto na conversa, sem o cliente precisar baixar.
+ */
+async function enviarMidia({ numero, fileUrl, tipo, docName = null, caption = null, delayMs = 0 }) {
+  if (tipo !== "image" && tipo !== "video") throw new Error(`Tipo de mídia não suportado: ${tipo}`);
+  await exigirDestinoPermitido(numero);
+  const corpo = { number: numero, type: tipo, file: fileUrl };
+  if (docName) corpo.docName = docName;
+  if (caption) corpo.text = caption;
+  if (delayMs > 0) corpo.delay = Math.floor(delayMs);
+  // Vídeo: a uazapi baixa o arquivo antes de mandar; dá mais tempo que o documento.
+  return chamar("/send/media", { metodo: "POST", corpo, timeoutMs: 120000 });
+}
+
+/**
  * Diagnóstico da instância, em formato pronto para a tela. Nunca lança: um painel que
  * quebra quando o WhatsApp cai é pior que um painel dizendo que o WhatsApp caiu.
  */
@@ -206,6 +221,7 @@ module.exports = {
   configurado,
   enviarTexto,
   enviarDocumento,
+  enviarMidia,
   baixarMidia,
   statusInstancia,
   lerWebhookCadastrado,

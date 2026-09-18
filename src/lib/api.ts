@@ -2630,4 +2630,74 @@ export const api = {
     },
     anexoUrl: (id: string, anexoId: string) => `${API_BASE}/admissoes/${id}/anexos/${anexoId}/file`,
   },
+  /** Circular do escritório (texto + vídeo/imagem) para as empresas ativas. */
+  circulares: {
+    listar: () => request<Circular[]>("/circulares"),
+    destinatarios: () => request<CircularDestinatario[]>("/circulares/destinatarios"),
+    detalhe: (id: string) => request<Circular & { envios: CircularEnvio[] }>(`/circulares/${id}`),
+    criar: async (texto: string, midia: File | null) => {
+      const token = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const fd = new FormData();
+      fd.append("texto", texto);
+      if (midia) fd.append("midia", midia);
+      const res = await fetch(`${API_BASE}/circulares`, { method: "POST", body: fd, headers });
+      const data = await parseResponseJson<unknown>(res);
+      if (res.status === 401) {
+        localStorage.removeItem("company_session");
+        window.location.href = "/login";
+        throw new Error("Sessão expirada");
+      }
+      if (res.status === 413) throw new Error("Arquivo grande demais (limite de 16 MB).");
+      if (!res.ok) throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+      return data as Circular;
+    },
+    enviar: (id: string, companyIds: string[]) =>
+      request<{ na_fila: number; ignorados: number; ja_estavam: number; minutos_estimados: number }>(
+        `/circulares/${id}/enviar`,
+        { method: "POST", body: JSON.stringify({ company_ids: companyIds }) }
+      ),
+    retomar: (id: string) => request<{ ok: boolean }>(`/circulares/${id}/retomar`, { method: "POST" }),
+    parar: (id: string) => request<{ ok: boolean }>(`/circulares/${id}/parar`, { method: "POST" }),
+    apagar: (id: string) => request<{ ok: boolean }>(`/circulares/${id}`, { method: "DELETE" }),
+  },
 };
+
+export type CircularStatus = "rascunho" | "enviando" | "pausada" | "concluida";
+
+export interface Circular {
+  id: string;
+  texto: string;
+  midia_nome: string | null;
+  midia_tipo: "image" | "video" | null;
+  midia_url: string | null;
+  status: CircularStatus;
+  ultimo_erro: string | null;
+  criado_em: string;
+  atualizado_em: string;
+  enviados: number;
+  pendentes: number;
+  falhas: number;
+  ignorados: number;
+  rodando: boolean;
+}
+
+export interface CircularEnvio {
+  id: string;
+  company_id: string | null;
+  empresa_nome: string | null;
+  numero: string | null;
+  status: "pendente" | "enviado" | "falhou" | "sem_whatsapp" | "duplicado";
+  erro: string | null;
+  enviado_em: string | null;
+}
+
+export interface CircularDestinatario {
+  id: string;
+  name: string;
+  cnpj: string;
+  whatsapp: string | null;
+  whatsapp_ok: boolean;
+  motivo: string | null;
+}

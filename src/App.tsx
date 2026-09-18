@@ -38,6 +38,7 @@ import DocumentosAdminPage from "./pages/admin/DocumentosAdminPage.tsx";
 import ConfigIaPage from "./pages/admin/ConfigIaPage.tsx";
 import VencimentosSugeridosPage from "./pages/admin/VencimentosSugeridosPage.tsx";
 import WhatsAppStatusPage from "./pages/admin/WhatsAppStatusPage.tsx";
+import CircularPage from "./pages/admin/CircularPage.tsx";
 import AcompanhamentoEnvioPage from "./pages/admin/AcompanhamentoEnvioPage.tsx";
 import HonorariosQueijeiroPage from "./pages/admin/HonorariosQueijeiroPage.tsx";
 import HonorariosAtualizacaoPage from "./pages/admin/HonorariosAtualizacaoPage.tsx";
@@ -188,6 +189,7 @@ const AppRoutes = () => (
     <Route path="/admin/config-ia" element={<AdminAreaRoute area="entregas"><ConfigIaPage /></AdminAreaRoute>} />
     <Route path="/admin/vencimentos-sugeridos" element={<AdminAreaRoute area="entregas"><VencimentosSugeridosPage /></AdminAreaRoute>} />
     <Route path="/admin/whatsapp" element={<AdminAreaRoute area="alertas"><WhatsAppStatusPage /></AdminAreaRoute>} />
+    <Route path="/admin/circular" element={<AdminAreaRoute area="alertas"><CircularPage /></AdminAreaRoute>} />
     <Route path="/admin/envio-folha" element={<AdminAreaRoute area="entregas"><AcompanhamentoEnvioPage /></AdminAreaRoute>} />
     <Route path="/admin/honorarios-queijeiro" element={<AdminAreaRoute area="funcionarios"><HonorariosQueijeiroPage /></AdminAreaRoute>} />
     <Route path="/admin/honorarios-atualizacao" element={<AdminAreaRoute area="funcionarios"><HonorariosAtualizacaoPage /></AdminAreaRoute>} />
