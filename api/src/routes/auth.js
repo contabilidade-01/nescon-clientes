@@ -11,13 +11,13 @@ const {
   validateCNPJ,
   validateString,
   validateCPF,
-  validateEmailFormat,
 } = require("../middleware/validate");
 const { isSmtpConfigured, getPublicAppUrl, sendPasswordResetEmail } = require("../mailer");
 const { LGPD_CONSENT_VERSION, lgpdTermo } = require("../lgpd");
 const { mergeAreas } = require("../adminAreas");
 const { funcionarioRealSql, funcionarioFeriasSql } = require("../payrollRoles");
 const { lerManutencao, MENSAGEM_PADRAO } = require("../maintenanceMode");
+const { mascararEmail } = require("../emailMascara");
 
 /**
  * Admin no login. Base antiga sem as colunas de permissão (42703) devolve o mínimo e
@@ -117,20 +117,9 @@ const changePasswordLimiter = rateLimit({
   message: { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." },
 });
 
-function normalizeEmail(val) {
-  if (val == null) return "";
-  return String(val).trim().toLowerCase();
-}
-
-/** joao@empresa.com → j***@empresa.com — confirma o destino sem expor o endereço. */
+/** Mesmo padrão do "esqueci minha senha" (jo•••••@gm•••.com) — ver emailMascara.js. */
 function maskEmail(email) {
-  const s = String(email || "").trim();
-  const at = s.indexOf("@");
-  if (at < 1) return "seu e-mail";
-  const nome = s.slice(0, at);
-  const dominio = s.slice(at);
-  const visivel = nome.slice(0, 1);
-  return `${visivel}${"*".repeat(Math.max(nome.length - 1, 1))}${dominio}`;
+  return mascararEmail(email) || "seu e-mail";
 }
 
 function hashToken(raw) {
@@ -369,10 +358,12 @@ router.post("/login", loginIpLimiter, loginContaLimiter, async (req, res) => {
 
 router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
   try {
+    // Padrão dos bancos: o cliente informa só o login; o link vai para o e-mail do
+    // cadastro e a tela mostra esse e-mail mascarado (jo•••••@gm•••.com). Antes ele
+    // precisava acertar qual e-mail estava cadastrado — a maior causa de "não recebi".
     const rawLogin = (req.body.login || req.body.cnpj || req.body.cpf || "").toString();
-    const emailRaw = req.body.email;
-    if (!rawLogin || !validateString(emailRaw, 3, 254) || !validateEmailFormat(emailRaw)) {
-      return res.status(400).json({ error: "Informe login (CNPJ ou CPF) e um e-mail válido" });
+    if (!rawLogin) {
+      return res.status(400).json({ error: "Informe o CNPJ ou CPF do login" });
     }
     if (!isSmtpConfigured()) {
       return res.status(503).json({
@@ -386,15 +377,32 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
     }
 
     const clean = rawLogin.replace(/\D/g, "");
-    const emailNorm = normalizeEmail(emailRaw);
+    if (clean.length !== 11 && clean.length !== 14) {
+      return res.status(400).json({ error: "Login deve ser CNPJ ou CPF" });
+    }
+    if (clean.length === 11 ? !validateCPF(rawLogin) : !validateCNPJ(rawLogin)) {
+      return res.status(400).json({ error: clean.length === 11 ? "CPF inválido" : "CNPJ inválido" });
+    }
 
     let companyId = null;
     let adminId = null;
     let emailOnRecord = null;
+    let encontrado = false;
 
-    // Cliente pelo documento (CNPJ, ou CPF de pessoa física). Compara só os dígitos: o
-    // cadastro pode ter o CNPJ gravado com máscara, e aí `cnpj = $1` nunca casava.
-    const clientePorDocumento = async () => {
+    // CPF pode ser administrador ou cliente pessoa física; CNPJ é sempre cliente.
+    if (clean.length === 11) {
+      const { rows } = await db.query(
+        "SELECT id, contact_email FROM platform_admins WHERE cpf = $1",
+        [clean]
+      );
+      if (rows[0]) {
+        encontrado = true;
+        adminId = rows[0].id;
+        emailOnRecord = rows[0].contact_email || null;
+      }
+    }
+    if (!encontrado) {
+      // Compara só os dígitos: o cadastro pode ter o documento gravado com máscara.
       const { rows } = await db.query(
         `SELECT id, contact_email FROM companies
           WHERE regexp_replace(cnpj, '[^0-9]', '', 'g') = $1
@@ -402,40 +410,21 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
           LIMIT 1`,
         [clean]
       );
-      const c = rows[0];
-      if (!c?.contact_email || normalizeEmail(c.contact_email) !== emailNorm) return false;
-      companyId = c.id;
-      emailOnRecord = c.contact_email;
-      return true;
-    };
+      if (rows[0]) {
+        encontrado = true;
+        companyId = rows[0].id;
+        emailOnRecord = rows[0].contact_email || null;
+      }
+    }
 
-    if (clean.length === 11) {
-      if (!validateCPF(rawLogin)) {
-        return res.json({ message: GENERIC_FORGOT_MSG });
-      }
-      const { rows } = await db.query(
-        "SELECT id, contact_email FROM platform_admins WHERE cpf = $1",
-        [clean]
-      );
-      const adm = rows[0];
-      if (adm?.contact_email && normalizeEmail(adm.contact_email) === emailNorm) {
-        adminId = adm.id;
-        emailOnRecord = adm.contact_email;
-      } else if (!(await clientePorDocumento())) {
-        // CPF que não é administrador pode ser cliente pessoa física — antes esse
-        // cliente nunca conseguia recuperar a senha.
-        return res.json({ message: GENERIC_FORGOT_MSG });
-      }
-    } else if (clean.length === 14) {
-      if (!validateCNPJ(rawLogin)) {
-        return res.json({ message: GENERIC_FORGOT_MSG });
-      }
-      if (!(await clientePorDocumento())) {
-        return res.json({ message: GENERIC_FORGOT_MSG });
-      }
-    } else {
-      return res.status(400).json({
-        error: "Login deve ser CNPJ ou CPF",
+    // Login que não existe: resposta genérica, sem dizer que não é cliente.
+    if (!encontrado) return res.json({ message: GENERIC_FORGOT_MSG });
+
+    const emailMascarado = mascararEmail(emailOnRecord);
+    if (!emailMascarado) {
+      return res.json({
+        sem_email: true,
+        message: "Não há e-mail cadastrado para este acesso. Fale com a Nescon para liberar um novo acesso.",
       });
     }
 
@@ -450,7 +439,10 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
       throw err;
     }
 
-    return res.json({ message: GENERIC_FORGOT_MSG });
+    return res.json({
+      email_mascarado: emailMascarado,
+      message: `Enviamos o link para ${emailMascarado}. Confira também a caixa de spam.`,
+    });
   } catch (err) {
     console.error("forgot-password:", err.message);
     res.status(500).json({ error: "Erro interno" });

@@ -17,8 +17,9 @@ const WHATSAPP_URL = `https://wa.me/${NESCON_WHATSAPP}?text=${encodeURIComponent
 
 const ForgotPasswordPage = () => {
   const [loginField, setLoginField] = useState("");
-  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
+  // Resposta do servidor: e-mail mascarado para onde foi o link (padrão dos bancos).
+  const [resultado, setResultado] = useState<{ message: string; email?: string; semEmail?: boolean } | null>(null);
 
   const handleLoginField = (value: string) => {
     const digits = value.replace(/\D/g, "").slice(0, 14);
@@ -27,15 +28,16 @@ const ForgotPasswordPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loginField.trim() || !email.trim()) {
-      toast.error("Preencha login e e-mail");
+    if (!loginField.trim()) {
+      toast.error("Informe o CNPJ ou CPF");
       return;
     }
 
     setLoading(true);
+    setResultado(null);
     try {
-      const data = await api.auth.forgotPassword(loginField, email.trim());
-      toast.success(data.message);
+      const data = await api.auth.forgotPassword(loginField);
+      setResultado({ message: data.message, email: data.email_mascarado, semEmail: data.sem_email });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro ao enviar pedido";
       toast.error(message);
@@ -53,8 +55,8 @@ const ForgotPasswordPage = () => {
           </div>
           <CardTitle className="text-2xl">Recuperar senha</CardTitle>
           <p className="text-sm text-muted-foreground text-balance">
-            Informe o mesmo CNPJ ou CPF do login e o e-mail cadastrado para esta conta. Se os dados
-            coincidirem, você receberá um link para definir uma nova senha.
+            Informe o CNPJ ou CPF do login. Enviaremos um link para o e-mail cadastrado para você
+            definir uma nova senha.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -73,25 +75,35 @@ const ForgotPasswordPage = () => {
                 />
               </div>
             </div>
-            <div>
-              <Label htmlFor="email">E-mail cadastrado</Label>
-              <div className="relative mt-1">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="seu@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10"
-                  autoComplete="email"
-                />
-              </div>
-            </div>
             <Button type="submit" disabled={loading} className="w-full h-12 text-base font-semibold">
               {loading ? "Enviando..." : "Enviar link"}
             </Button>
           </form>
+
+          {resultado && (
+            <div
+              role="status"
+              className={`rounded-lg border p-3 text-sm ${
+                resultado.semEmail
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+                  : "border-primary/30 bg-primary/5"
+              }`}
+            >
+              {resultado.email ? (
+                <>
+                  <p className="flex items-center gap-2 font-medium">
+                    <Mail className="h-4 w-4 shrink-0" /> Link enviado para
+                  </p>
+                  <p className="mt-1 break-all text-base font-semibold tracking-wide">{resultado.email}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Confira também o spam. Não reconhece este e-mail? Fale com a Nescon pelo botão abaixo.
+                  </p>
+                </>
+              ) : (
+                <p>{resultado.message}</p>
+              )}
+            </div>
+          )}
 
           <div className="rounded-lg border border-emerald-600/30 bg-emerald-600/5 p-3 text-center">
             <p className="text-sm text-muted-foreground">

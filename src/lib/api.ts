@@ -850,11 +850,11 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ login, password }),
       }),
-    forgotPassword: (login: string, email: string) =>
-      publicRequest<{ message: string }>("/auth/forgot-password", {
-        method: "POST",
-        body: JSON.stringify({ login, email }),
-      }),
+    forgotPassword: (login: string) =>
+      publicRequest<{ message: string; email_mascarado?: string; sem_email?: boolean }>(
+        "/auth/forgot-password",
+        { method: "POST", body: JSON.stringify({ login }) }
+      ),
     checkResetToken: (token: string) =>
       publicRequest<{ valid: boolean }>(`/auth/reset-token?token=${encodeURIComponent(token)}`),
     /** Estado do modo manutenção — público, para a tela de login e a página de manutenção. */
