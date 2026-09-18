@@ -112,7 +112,7 @@ const CircularPage = () => {
 
   const atualizar = () => {
     queryClient.invalidateQueries({ queryKey: ["circulares"] });
-    queryClient.invalidateQueries({ queryKey: ["circular", selecionadaId] });
+    queryClient.invalidateQueries({ queryKey: ["circular"] });
   };
 
   const escolherArquivo = (f: File | null) => {
@@ -133,14 +133,28 @@ const CircularPage = () => {
       setTexto("");
       escolherArquivo(null);
       setSelecionadaId(c.id);
-      setMarcadas(new Set());
       queryClient.invalidateQueries({ queryKey: ["circulares"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Com texto/anexo no quadro de escrever, "Enviar" cria a circular nova e já manda;
+  // sem nada escrito, manda a circular escolhida no histórico.
+  const temRascunho = Boolean(texto.trim() || arquivo);
+
   const enviar = useMutation({
-    mutationFn: () => api.circulares.enviar(selecionadaId!, [...marcadas]),
+    mutationFn: async () => {
+      let id = selecionadaId;
+      if (temRascunho) {
+        const c = await api.circulares.criar(texto.trim(), arquivo);
+        id = c.id;
+        setSelecionadaId(c.id);
+        setTexto("");
+        escolherArquivo(null);
+      }
+      if (!id) throw new Error("Escreva o texto ou anexe o vídeo/imagem antes de enviar.");
+      return api.circulares.enviar(id, [...marcadas]);
+    },
     onSuccess: (r) => {
       setConfirmar(false);
       if (!r.na_fila) {
@@ -186,15 +200,16 @@ const CircularPage = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Situação de cada empresa na circular em foco. Rascunho novo = ninguém recebeu ainda.
+  const envios = useMemo(() => (temRascunho ? [] : detalhe?.envios ?? []), [temRascunho, detalhe]);
+
   // Quem já está nesta circular (recebeu ou na fila) não pode ser marcado de novo.
   const jaNaCircular = useMemo(
     () =>
       new Set(
-        (detalhe?.envios ?? [])
-          .filter((e) => e.status === "enviado" || e.status === "pendente")
-          .map((e) => e.company_id)
+        envios.filter((e) => e.status === "enviado" || e.status === "pendente").map((e) => e.company_id)
       ),
-    [detalhe]
+    [envios]
   );
 
   const filtrados = useMemo(() => {
@@ -327,20 +342,19 @@ const CircularPage = () => {
         {/* Coluna 2: destinatários e andamento da circular escolhida */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">
-              {selecionada ? "Para quem enviar" : "Escolha ou crie uma circular"}
-            </CardTitle>
-            {selecionada && (
-              <p className="text-xs text-muted-foreground">
-                Teste primeiro: marque <strong>uma</strong> empresa e envie. Conferiu no celular? Marque todas e envie
-                de novo — quem já recebeu fica de fora.
-              </p>
-            )}
+            <CardTitle className="text-base">Para quem enviar</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {temRascunho
+                ? "Marque as empresas e clique em Enviar: a circular que você escreveu é criada e sai na hora."
+                : selecionada
+                  ? "Enviando a circular selecionada no histórico. Quem já recebeu fica de fora."
+                  : "Escreva a circular ao lado (texto e/ou vídeo), marque as empresas e envie."}{" "}
+              Teste primeiro com <strong>uma</strong> empresa; conferiu no celular, marque todas.
+            </p>
           </CardHeader>
-          {selecionada && detalhe && (
-            <CardContent className="space-y-4">
+          <CardContent className="space-y-4">
               {/* Andamento */}
-              {total > 0 && (
+              {!temRascunho && detalhe && total > 0 && (
                 <div className="space-y-2 rounded-md border p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                     <span>
@@ -385,7 +399,7 @@ const CircularPage = () => {
 
               <div className="max-h-80 divide-y overflow-y-auto rounded-md border">
                 {filtrados.map((e) => {
-                  const envio = detalhe.envios.find((x) => x.company_id === e.id);
+                  const envio = envios.find((x) => x.company_id === e.id);
                   const bloqueada = !e.whatsapp_ok || jaNaCircular.has(e.id);
                   const st = envio ? STATUS_ENVIO[envio.status] : null;
                   return (
@@ -415,7 +429,7 @@ const CircularPage = () => {
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2">
-                {detalhe.enviados === 0 && !rodando ? (
+                {!temRascunho && detalhe && detalhe.enviados === 0 && !rodando ? (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -429,20 +443,24 @@ const CircularPage = () => {
                   <span />
                 )}
                 <Button
-                  disabled={!marcadas.size || enviar.isPending}
+                  disabled={!marcadas.size || enviar.isPending || (!temRascunho && !selecionada)}
+                  title={!temRascunho && !selecionada ? "Escreva a circular ao lado primeiro" : undefined}
                   onClick={() => (marcadas.size === 1 ? enviar.mutate() : setConfirmar(true))}
                 >
                   {enviar.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Send className="mr-1 h-4 w-4" />}
-                  {marcadas.size === 1 ? "Enviar teste para 1 empresa" : `Enviar para ${marcadas.size} empresa(s)`}
+                  {marcadas.size <= 1 ? "Enviar teste para 1 empresa" : `Enviar para ${marcadas.size} empresas`}
                 </Button>
               </div>
               <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                {detalhe.midia_tipo === "video" ? <Video className="h-3 w-3" /> : detalhe.midia_tipo === "image" ? <ImageIcon className="h-3 w-3" /> : null}
+                {arquivo?.type.startsWith("video") || (!temRascunho && detalhe?.midia_tipo === "video") ? (
+                  <Video className="h-3 w-3" />
+                ) : arquivo || (!temRascunho && detalhe?.midia_tipo === "image") ? (
+                  <ImageIcon className="h-3 w-3" />
+                ) : null}
                 Só empresas ativas aparecem aqui (arquivadas e excluídas nunca recebem). Número repetido em duas
                 empresas recebe uma vez só.
               </p>
-            </CardContent>
-          )}
+          </CardContent>
         </Card>
       </div>
 
