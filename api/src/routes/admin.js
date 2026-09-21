@@ -703,12 +703,15 @@ router.put("/companies/:id/alterar-senha", requireArea("empresas"), async (req, 
   try {
     const hash = await bcrypt.hash(String(nova_senha).trim(), 10);
     const mustChange = obrigar_troca !== false; // default: obriga trocar
+    // Senha temporária tem prazo (30 dias, igual à do "Enviar acesso"); senha definitiva
+    // escolhida pelo admin não expira.
+    const { novoPrazoSenhaTemporaria } = require("../senhaExpiracao");
     const { rows } = await db.query(
       `UPDATE companies
-          SET password_hash = $1, must_change_password = $2, password_expires_at = NULL
+          SET password_hash = $1, must_change_password = $2, password_expires_at = $4
         WHERE id = $3
         RETURNING id, name, cnpj`,
-      [hash, mustChange, id]
+      [hash, mustChange, id, mustChange ? novoPrazoSenhaTemporaria() : null]
     );
     if (!rows.length) return res.status(404).json({ error: "Empresa não encontrada" });
     res.json({
