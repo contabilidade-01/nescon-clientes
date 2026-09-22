@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CalendarClock, CircleDollarSign, Users, Building2 } from "lucide-react";
+import { AlertTriangle, CalendarClock, CircleDollarSign, Users, Building2, FileDown } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { downloadFeriasUrgenciaPdf } from "@/lib/generateFeriasUrgenciaPdf";
 
 function formatDateBR(d: string | null | undefined) {
   if (!d) return "—";
@@ -35,11 +37,11 @@ const FeriasUrgenciaPage = () => {
   });
 
   const empresas = (data?.empresas || []).filter(
-    (e: any) =>
+    (e) =>
       !busca ||
       e.empresa_nome.toLowerCase().includes(busca.toLowerCase()) ||
       e.empresa_cnpj.includes(busca) ||
-      e.funcionarios.some((f: any) => f.nome.toLowerCase().includes(busca.toLowerCase()))
+      e.funcionarios.some((f) => f.nome.toLowerCase().includes(busca.toLowerCase()))
   );
 
   return (
@@ -96,13 +98,49 @@ const FeriasUrgenciaPage = () => {
         </Card>
       </div>
 
-      {/* Busca */}
-      <Input
-        placeholder="Buscar por empresa, CNPJ ou funcionário..."
-        className="max-w-sm"
-        value={busca}
-        onChange={(e) => setBusca(e.target.value)}
-      />
+      {/* Busca + relatório */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          placeholder="Buscar por empresa, CNPJ ou funcionário..."
+          className="max-w-sm"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!empresas.length}
+          // O PDF leva o que está em tela: com filtro, só as empresas filtradas.
+          onClick={() =>
+            downloadFeriasUrgenciaPdf({
+              empresas,
+              total_empresas: busca ? empresas.length : data?.total_empresas,
+              total_funcionarios: busca
+                ? empresas.reduce((t: number, e) => t + e.funcionarios.length, 0)
+                : data?.total_funcionarios,
+              total_vencidos: busca
+                ? empresas.reduce(
+                    (t: number, e) => t + e.funcionarios.filter((f) => f.situacao === "vencida").length,
+                    0
+                  )
+                : data?.total_vencidos,
+              total_em_risco_faltas: busca
+                ? empresas.reduce(
+                    (t: number, e) =>
+                      t + e.funcionarios.filter((f) => f.alerta_faltas && f.alerta_faltas.faltasRestantes <= 3).length,
+                    0
+                  )
+                : data?.total_em_risco_faltas,
+              custo_carteira: busca
+                ? empresas.reduce((t: number, e) => t + (e.custo_total || 0), 0)
+                : data?.custo_carteira,
+              filtro: busca,
+            })
+          }
+        >
+          <FileDown className="mr-1 h-4 w-4" /> Relatório em PDF
+        </Button>
+      </div>
 
       {/* Lista por empresa */}
       {isLoading ? (
@@ -118,9 +156,9 @@ const FeriasUrgenciaPage = () => {
         </div>
       ) : (
         <div className="space-y-6">
-          {empresas.map((emp: any) => {
+          {empresas.map((emp) => {
             const emRiscoFaltas = emp.funcionarios.filter(
-              (f: any) => f.alerta_faltas && f.alerta_faltas.faltasRestantes <= 3
+              (f) => f.alerta_faltas && f.alerta_faltas.faltasRestantes <= 3
             ).length;
 
             return (
@@ -147,7 +185,7 @@ const FeriasUrgenciaPage = () => {
                   )}
 
                   {/* Cards por funcionário — mesmo visual que o cliente */}
-                  {emp.funcionarios.map((f: any) => {
+                  {emp.funcionarios.map((f) => {
                     const s = SITUACAO[f.situacao as Situacao] || SITUACAO.ok;
                     return (
                       <div key={f.id} className="rounded-2xl border bg-card/70 p-4">

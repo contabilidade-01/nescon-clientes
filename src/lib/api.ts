@@ -1381,22 +1381,34 @@ export const api = {
         total_empresas: number;
         total_funcionarios: number;
         total_vencidos: number;
+        total_em_risco_faltas: number;
+        custo_carteira: number;
         empresas: Array<{
           company_id: string;
           empresa_nome: string;
           empresa_cnpj: string;
+          custo_total: number;
           funcionarios: Array<{
             id: string;
             nome: string;
             codigo: string | null;
             admissao: string | null;
+            inicio_aquisitivo: string | null;
+            fim_aquisitivo: string | null;
             limite_gozo: string | null;
+            situacao: "vencida" | "a_vencer" | "ok" | "sem_limite";
             dias_direito: number;
             dias_gozados: number;
-            dias_restantes: number;
-            dias_para_vencer: number | null;
-            vencido: boolean;
+            dias_a_pagar: number | null;
             faltas: number | null;
+            origem_salario: string | null;
+            custo: { total: number | null } | null;
+            alerta_faltas: {
+              faltasAtuais: number;
+              faltasRestantes: number;
+              diasAtuais: number;
+              diasDepois: number;
+            } | null;
           }>;
         }>;
       }>("/admin/ferias-urgencia"),
