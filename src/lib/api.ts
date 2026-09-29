@@ -2681,7 +2681,211 @@ export const api = {
     parar: (id: string) => request<{ ok: boolean }>(`/circulares/${id}/parar`, { method: "POST" }),
     apagar: (id: string) => request<{ ok: boolean }>(`/circulares/${id}`, { method: "DELETE" }),
   },
+
+  /**
+   * Impostos pendentes no e-CAC (portal do cliente). O CNPJ nunca vai daqui: a API usa
+   * o do token. Admin informa `company_id`.
+   */
+  ecac: {
+    pendencias: (companyId?: string) =>
+      request<EcacPendencias>(`/ecac/pendencias${companyId ? `?company_id=${companyId}` : ""}`),
+    gerarGuia: (dados: { tipo: "SN" | "MEI"; periodo_apuracao: string; data_pagamento?: string; company_id?: string }) =>
+      request<{ ok: boolean; reuso: boolean; guia: EcacGuia; pdf_url: string }>("/ecac/guias", {
+        method: "POST",
+        body: JSON.stringify(dados),
+      }),
+    /** URL absoluta do PDF (o download vai com o Bearer via fetch em `baixarGuia`). */
+    baixarGuia: async (guiaId: number, companyId?: string) => {
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/ecac/guias/${guiaId}/pdf${companyId ? `?company_id=${companyId}` : ""}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const data = (await parseResponseJson<{ error?: string }>(res).catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      return res.blob();
+    },
+  },
+
+  /** Painel: cobrança de pendências do e-CAC (área `alertas`). */
+  adminEcac: {
+    config: () => request<EcacConfig>("/admin/ecac/config"),
+    salvarConfig: (dados: Partial<EcacConfig>) =>
+      request<EcacConfig>("/admin/ecac/config", { method: "PUT", body: JSON.stringify(dados) }),
+    importar: () => request<EcacImportacaoResumo>("/admin/ecac/importar", { method: "POST", body: "{}" }),
+    processar: () => request<{ total: number; feitos: Array<Record<string, unknown>> }>("/admin/ecac/processar", { method: "POST", body: "{}" }),
+    cobrancas: (filtros?: { ciclo?: string; estado?: string; abertas?: boolean }) => {
+      const p = new URLSearchParams();
+      if (filtros?.ciclo) p.set("ciclo", filtros.ciclo);
+      if (filtros?.estado) p.set("estado", filtros.estado);
+      if (filtros?.abertas) p.set("abertas", "1");
+      const q = p.toString();
+      return request<EcacCobrancaResumo[]>(`/admin/ecac/cobrancas${q ? `?${q}` : ""}`);
+    },
+    cobranca: (id: number) => request<EcacCobrancaDetalhe>(`/admin/ecac/cobrancas/${id}`),
+    previa: (id: number, etapa: string) => request<{ assunto: string | null; texto: string | null; whatsapp: string | null }>(`/admin/ecac/cobrancas/${id}/previa?etapa=${etapa}`),
+    reenviar: (id: number, etapa: string, canal: "email" | "whatsapp") =>
+      request<{ ok: boolean; resultados: Array<{ canal: string; status: string; motivo?: string }> }>(`/admin/ecac/cobrancas/${id}/reenviar`, {
+        method: "POST",
+        body: JSON.stringify({ etapa, canal }),
+      }),
+    pausar: (companyId: string, motivo: string) =>
+      request<{ ok: boolean }>(`/admin/ecac/empresas/${companyId}/pausar`, { method: "POST", body: JSON.stringify({ motivo }) }),
+    retomar: (companyId: string) =>
+      request<{ ok: boolean }>(`/admin/ecac/empresas/${companyId}/retomar`, { method: "POST", body: "{}" }),
+  },
 };
+
+// ------------------------------------------------------------------ e-CAC
+export interface EcacDebito {
+  tipo: string;
+  receita: string;
+  periodo_apuracao: string;
+  periodo_aaaamm: string | null;
+  data_vencimento: string | null;
+  valor_original: number;
+  saldo_devedor: number;
+  multa: number;
+  juros: number;
+  saldo_devedor_total: number;
+  situacao: string;
+  em_atraso: boolean;
+  valido: boolean;
+  motivos: string[];
+  guia: string | null;
+  recalculo_disponivel: boolean;
+}
+
+export interface EcacGuia {
+  id: number;
+  emissao_id: number;
+  tipo: string;
+  periodo_apuracao: string;
+  data_consolidacao: string | null;
+  numero_documento: string | null;
+  vencimento: string | null;
+  valor_total: number | string | null;
+  reuso: boolean;
+  criado_em: string;
+}
+
+export interface EcacPendencias {
+  disponivel: boolean;
+  motivo?: string;
+  empresa?: { id: string; name: string };
+  relatorio: { id: number; data: string | null; importado_em: string } | null;
+  em_atraso: EcacDebito[];
+  a_vencer: EcacDebito[];
+  total_atraso: number;
+  omissoes: Array<{ tipo: string; ano: string; meses: string[] }>;
+  parcelamento: string | null;
+  pgfn: string | null;
+  cobranca: { id: number; ciclo: string; estado: string; rotulo: string; proxima_acao: string | null; proxima_acao_em: string | null } | null;
+  guias: EcacGuia[];
+  aviso_valores: string;
+}
+
+export interface EcacConfig {
+  importacao_ativa: boolean;
+  dia_importacao: number;
+  envio_ativo: boolean;
+  modo_teste: boolean;
+  dias_lembrete: number;
+  dias_regeracao: number;
+  dias_cobranca: number;
+  max_regeracoes: number;
+  max_msgs_canal: number;
+  ultimo_ciclo_importado: string | null;
+  ultima_importacao: string | null;
+  ultima_importacao_resumo: EcacImportacaoResumo | null;
+  escritorio_nome: string;
+  escritorio_email: string;
+  escritorio_whatsapp: string;
+  integracao_configurada: boolean;
+  central_ecac: { success?: boolean; agora?: string; limite_gasto?: { limite: number; gasto_mes: number; restante: number | null; sem_teto: boolean }; erro?: string } | null;
+  estados: Record<string, string>;
+}
+
+export interface EcacImportacaoResumo {
+  ciclo: string;
+  quem: string;
+  abertas: number;
+  encerradas: number;
+  total_ecac: number;
+  casadas: number;
+  novas: number;
+  com_atraso: number;
+  sem_cadastro: Array<{ cnpj: string; razao_social: string | null }>;
+  sem_relatorio: Array<{ cnpj: string; name: string }>;
+  relatorios_velhos: Array<{ cnpj: string; name: string; relatorio_data: string | null }>;
+  inativas_no_ecac: Array<{ cnpj: string; name: string }>;
+  erros: Array<{ cnpj: string; erro: string }>;
+  em: string;
+  pulado?: boolean;
+  motivo?: string;
+}
+
+export interface EcacCobrancaResumo {
+  id: number;
+  ciclo: string;
+  estado: string;
+  rotulo: string;
+  estado_desde: string;
+  proxima_acao: string | null;
+  proxima_acao_em: string | null;
+  regeracoes: number;
+  emails: number;
+  whatsapps: number;
+  iniciado_em: string;
+  atualizado_em: string;
+  encerrado_em: string | null;
+  encerrado_motivo: string | null;
+  company_id: string;
+  name: string;
+  cnpj: string;
+  contact_email: string | null;
+  ecac_cobranca_ativa: boolean;
+  ecac_pausado_motivo: string | null;
+  alertas_ativos: boolean;
+  qtd_atraso: number;
+  total_atraso: number | string;
+  relatorio_data: string | null;
+  guias: number | string;
+  ultimo_clique: string | null;
+  ultima_abertura: string | null;
+  falhas: number | string;
+}
+
+export interface EcacNotificacao {
+  id: number;
+  etapa: string;
+  canal: string;
+  destino: string | null;
+  status: string;
+  erro: string | null;
+  status_entrega: string | null;
+  status_entrega_em: string | null;
+  aberto_em: string | null;
+  clicado_em: string | null;
+  tentativas: number;
+  assunto: string | null;
+  texto: string | null;
+  modo_teste: boolean;
+  criado_em: string;
+  enviado_em: string | null;
+}
+
+export interface EcacCobrancaDetalhe extends Omit<EcacCobrancaResumo, "guias"> {
+  em_atraso: EcacDebito[];
+  invalidos: EcacDebito[];
+  omissoes: Array<{ tipo: string; ano: string; meses: string[] }>;
+  parcelamento: string | null;
+  pgfn: string | null;
+  notificacoes: EcacNotificacao[];
+  guias: EcacGuia[];
+  eventos: Array<{ id: number; tipo: string; dados: Record<string, unknown> | null; criado_em: string }>;
+}
 
 export type CircularStatus = "rascunho" | "enviando" | "pausada" | "concluida";
 
