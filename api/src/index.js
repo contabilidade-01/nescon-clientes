@@ -137,6 +137,8 @@ app.use("/api/ecac", require("./routes/ecac"));
 app.use("/api/whatsapp", require("./routes/whatsappWebhook"));
 // Download público (token opaco) dos termos emitidos pelo assistente do WhatsApp.
 app.use("/api/dp-docs", require("./routes/dpDocs"));
+// Integração com central-ecac: endpoints internos (sync contatos, disparo WhatsApp).
+app.use("/api/interno", require("./routes/interno"));
 
 // Health: sempre HTTP 200 para o healthcheck do Docker / proxy não derrubar o contentor.
 // Estado da BD vai no JSON (use database: "down" para diagnosticar login 500).
