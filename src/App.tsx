@@ -47,6 +47,8 @@ import FeriasUploadLotePage from "./pages/admin/FeriasUploadLotePage.tsx";
 import FeriasUrgenciaPage from "./pages/admin/FeriasUrgenciaPage.tsx";
 import EnviarAcessoPage from "./pages/admin/EnviarAcessoPage.tsx";
 import GuiasFiscaisPage from "./pages/GuiasFiscaisPage.tsx";
+import ImpostosPendentesPage from "./pages/ImpostosPendentesPage.tsx";
+import ImpostosEcacPage from "./pages/admin/ImpostosEcacPage.tsx";
 import BoletosPage from "./pages/BoletosPage.tsx";
 import FolhaPage from "./pages/FolhaPage.tsx";
 import CustoFolhaPage from "./pages/CustoFolhaPage.tsx";
@@ -190,6 +192,7 @@ const AppRoutes = () => (
     <Route path="/admin/vencimentos-sugeridos" element={<AdminAreaRoute area="entregas"><VencimentosSugeridosPage /></AdminAreaRoute>} />
     <Route path="/admin/whatsapp" element={<AdminAreaRoute area="alertas"><WhatsAppStatusPage /></AdminAreaRoute>} />
     <Route path="/admin/circular" element={<AdminAreaRoute area="alertas"><CircularPage /></AdminAreaRoute>} />
+    <Route path="/admin/impostos-ecac" element={<AdminAreaRoute area="alertas"><ImpostosEcacPage /></AdminAreaRoute>} />
     <Route path="/admin/envio-folha" element={<AdminAreaRoute area="entregas"><AcompanhamentoEnvioPage /></AdminAreaRoute>} />
     <Route path="/admin/honorarios-queijeiro" element={<AdminAreaRoute area="funcionarios"><HonorariosQueijeiroPage /></AdminAreaRoute>} />
     <Route path="/admin/honorarios-atualizacao" element={<AdminAreaRoute area="funcionarios"><HonorariosAtualizacaoPage /></AdminAreaRoute>} />
@@ -209,6 +212,7 @@ const AppRoutes = () => (
     <Route path="/atestados" element={<CompanyToolRoute tool="certificates"><CertificatesPage /></CompanyToolRoute>} />
     {/* Portal do Cliente: entregas da contabilidade */}
     <Route path="/guias" element={<CompanyToolRoute tool="fiscal_guides"><GuiasFiscaisPage /></CompanyToolRoute>} />
+    <Route path="/impostos-pendentes" element={<CompanyToolRoute tool="fiscal_guides"><ImpostosPendentesPage /></CompanyToolRoute>} />
     <Route path="/boletos" element={<CompanyToolRoute tool="boletos"><BoletosPage /></CompanyToolRoute>} />
     <Route path="/folha" element={<CompanyToolRoute tool="payroll_files"><FolhaPage /></CompanyToolRoute>} />
     <Route path="/custo-folha" element={<CompanyToolRoute tool="payroll_files"><CustoFolhaPage /></CompanyToolRoute>} />

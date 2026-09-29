@@ -73,6 +73,19 @@ router.post("/webhook", async (req, res) => {
 
   try {
     const body = req.body || {};
+
+    // Status de entrega das mensagens que NÓS mandamos (cobrança do e-CAC): a uazapi
+    // avisa "entregue"/"lido" por evento de atualização. Best-effort e sem resposta ao
+    // cliente. O formato do evento varia entre versões da uazapi — registrar o que
+    // vier e conferir em /api/whatsapp/status na primeira semana.
+    const statusEntrega = extrairStatusEntrega(body);
+    if (statusEntrega) {
+      const { registrarStatusMensagem } = require("../ecacCobranca");
+      const ok = await registrarStatusMensagem(db, statusEntrega).catch(() => false);
+      registrar({ resultado: ok ? "status_entrega" : "status_entrega_ignorado", status: statusEntrega.status });
+      if (ok) return;
+    }
+
     const message = body.message || body;
     if (!message || message.fromMe) {
       registrar({ resultado: message?.fromMe ? "ignorado_fromMe" : "sem_message" });
@@ -193,6 +206,28 @@ router.post("/webhook", async (req, res) => {
     console.error("[whatsapp-dp] webhook:", err);
   }
 });
+
+/**
+ * Evento de status da uazapi → { mensagemId, status } ou null. Aceita as variações
+ * conhecidas: `EventType`/`event` contendo "update"/"status", com `status` numérico
+ * (1 pendente, 2 enviado, 3 entregue, 4 lido) ou textual (DELIVERY_ACK, READ, ...).
+ */
+function extrairStatusEntrega(body) {
+  const tipo = String(body.EventType || body.event || body.type || "").toLowerCase();
+  const m = body.message || body.data || body;
+  const bruto = m?.status ?? body.status ?? m?.ack ?? body.ack;
+  if (bruto === undefined || bruto === null) return null;
+  const pareceStatus = tipo.includes("update") || tipo.includes("status") || tipo.includes("ack") || m?.fromMe === true;
+  if (!pareceStatus) return null;
+  const id = m?.messageid || m?.id || m?.key?.id || body.messageid || body.id || null;
+  if (!id) return null;
+  const s = String(bruto).toUpperCase();
+  let status = null;
+  if (s === "3" || s.includes("DELIVER")) status = "entregue";
+  else if (s === "4" || s === "5" || s.includes("READ") || s.includes("PLAYED")) status = "lido";
+  else if (s === "2" || s.includes("SERVER") || s.includes("SENT")) status = "enviado";
+  return status ? { mensagemId: String(id), status } : null;
+}
 
 function digitsEq(a, b) {
   const da = String(a || "").replace(/\D/g, "");

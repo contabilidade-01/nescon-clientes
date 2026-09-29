@@ -108,6 +108,11 @@ services:
       BACKUP_SENHA: ${BACKUP_SENHA:-}
       # Varredura de arquivos órfãos no volume de uploads.
       UPLOADS_TTL_HORAS: ${UPLOADS_TTL_HORAS:-48}
+      # Pendências do e-CAC: URL pública do central-ecac e o MESMO token de lá
+      # (INTEGRACAO_TOKEN, 32+ caracteres). Importação e envio ligam na tela.
+      ECAC_API_URL: ${ECAC_API_URL:-}
+      ECAC_INTEGRACAO_TOKEN: ${ECAC_INTEGRACAO_TOKEN:-}
+      ECAC_EMAIL_ESCRITORIO: ${ECAC_EMAIL_ESCRITORIO:-}
       UPLOADS_LIMPEZA_INTERVALO_H: ${UPLOADS_LIMPEZA_INTERVALO_H:-12}
       # Recuperação de senha: URL pública do front (HTTPS em produção, sem / no fim)
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}

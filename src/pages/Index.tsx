@@ -60,6 +60,9 @@ const MENU_ITEMS: MenuItem[] = [
     title: "Próximos pagamentos", description: "Atrasados e próximos" },
   { key: "fiscal_guides", tool: "fiscal_guides", path: "/guias", icon: Receipt,
     title: "Guias fiscais", description: "Impostos e contribuições" },
+  // Mesma permissão das guias: o que a Receita mostra em aberto e a guia atualizada.
+  { key: "impostos_pendentes", tool: "fiscal_guides", path: "/impostos-pendentes", icon: AlertTriangle,
+    title: "Impostos em aberto", description: "O que consta na Receita e a guia atualizada" },
   { key: "boletos", tool: "boletos", path: "/boletos", icon: Barcode,
     title: "Boletos", description: "Boletos a pagar" },
   { key: "payroll_files", tool: "payroll_files", path: "/folha", icon: FileText,

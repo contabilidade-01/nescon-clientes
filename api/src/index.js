@@ -35,6 +35,7 @@ const { ensureMonthlyFollowSchema } = require("./ensureMonthlyFollowSchema");
 const { ensureWhatsappDpSchema } = require("./ensureWhatsappDpSchema");
 const { ensureDpDocsSchema } = require("./ensureDpDocsSchema");
 const { ensureCircularSchema } = require("./ensureCircularSchema");
+const { ensureEcacSchema } = require("./ensureEcacSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -106,6 +107,8 @@ const admissionsRoutes = require("./routes/admissions");
 app.use("/api/admin/admissoes", admissionsRoutes.adminRouter);
 app.use("/api/admin/acompanhamentos", require("./routes/monthlyFollow"));
 app.use("/api/admin/honorarios-atualizacao", require("./routes/honorariosAtualizacao"));
+// Cobrança de pendências do e-CAC (painel). Antes de /api/admin: rota mais específica.
+app.use("/api/admin/ecac", require("./routes/adminEcac"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/chat", require("./routes/chat"));
 app.use("/api/employees", require("./routes/employees"));
@@ -128,6 +131,9 @@ app.use("/api/doc-upload", require("./routes/documentUpload"));
 app.use("/api/mensagens", require("./routes/engagement"));
 app.use("/api/circulares", require("./routes/circulares"));
 app.use("/api/portal", require("./routes/portal"));
+// Impostos pendentes no e-CAC (portal do cliente) + rastreio público de link/pixel.
+// O CNPJ enviado ao central-ecac é SEMPRE o do token — ver routes/ecac.js.
+app.use("/api/ecac", require("./routes/ecac"));
 app.use("/api/whatsapp", require("./routes/whatsappWebhook"));
 // Download público (token opaco) dos termos emitidos pelo assistente do WhatsApp.
 app.use("/api/dp-docs", require("./routes/dpDocs"));
@@ -188,6 +194,7 @@ async function start() {
     await ensureWhatsappDpSchema(db);
     await ensureDpDocsSchema(db);
     await ensureCircularSchema(db);
+    await ensureEcacSchema(db);
     // Circular que estava enviando quando a API caiu volta como "pausada" para retomar.
     await require("./circular").recuperarNoArranque(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).
@@ -228,6 +235,9 @@ async function start() {
     require("./gclick/sync").iniciarAgendador();
     // Puxa boletos da Cora de tempos em tempos (CORA_SYNC_INTERVAL_H).
     require("./coraSync").iniciarAgendador();
+    // Pendências do e-CAC: importação mensal do central-ecac e cobrança amigável por
+    // e-mail/WhatsApp. Importação e envio nascem DESLIGADOS (tela Impostos e-CAC).
+    require("./ecacCobranca").iniciarAgendadorEcac(db);
   } catch (err) {
     console.error("Startup DB tasks:", err.message);
     throw err;
