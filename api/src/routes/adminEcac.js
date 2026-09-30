@@ -169,6 +169,15 @@ router.post("/empresas/:companyId/retomar", async (req, res) => {
   res.json({ ok: true });
 });
 
+/** Cobrança pausada porque o cliente respondeu no WhatsApp: escritório retoma o automático. */
+router.post("/cobrancas/:id/retomar", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "id inválido" });
+  const r = await cobranca.retomarCobranca(db, id, quem(req));
+  if (!r.ok) return res.status(409).json({ error: r.erro });
+  res.json({ ok: true });
+});
+
 /** Reenvia uma etapa (apaga o registro anterior daquela etapa×canal e manda de novo). */
 router.post("/cobrancas/:id/reenviar", async (req, res) => {
   const id = Number(req.params.id);

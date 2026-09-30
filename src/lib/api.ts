@@ -2730,6 +2730,7 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ etapa, canal }),
       }),
+    retomarCobranca: (id: number) => request<{ ok: boolean }>(`/admin/ecac/cobrancas/${id}/retomar`, { method: "POST", body: "{}" }),
     pausar: (companyId: string, motivo: string) =>
       request<{ ok: boolean }>(`/admin/ecac/empresas/${companyId}/pausar`, { method: "POST", body: JSON.stringify({ motivo }) }),
     retomar: (companyId: string) =>

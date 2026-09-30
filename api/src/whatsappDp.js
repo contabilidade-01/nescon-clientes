@@ -1025,8 +1025,20 @@ async function processarTexto({ phone, texto }) {
   return `${SELO_IA}\n\n` + (extra || intro);
 }
 
+/**
+ * A mensagem é assunto do assistente de DP? Sim quando há um fluxo em andamento neste
+ * telefone ou quando o texto pede advertência/suspensão pelo nome. Usado pelo webhook
+ * para decidir entre o assistente e a resposta à cobrança do e-CAC.
+ */
+async function ehAssuntoDp(phone, texto) {
+  const sessao = await getSessao(phone).catch(() => null);
+  if (sessao && sessaoViva(sessao) && sessao.step && sessao.step !== "idle") return true;
+  return classificarPorPalavra(texto) !== "outro";
+}
+
 module.exports = {
   processarTexto,
+  ehAssuntoDp,
   contatoNescon,
   // exportados para teste
   resolverFuncionario,

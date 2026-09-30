@@ -141,6 +141,25 @@ describe("máquina de estados", () => {
     expect(d.canais).toEqual(["whatsapp"]);
   });
 
+  it("quem clicou ou entrou no portal recebe o lembrete só por e-mail", () => {
+    const cb = { ...base, estado: "notificado", estado_desde: "2026-09-28" };
+    const semSinal = decidir({ cobranca: cb, pendenciaAtual: atual, hoje: "2026-10-05" });
+    expect(semSinal.canais).toEqual(["email", "whatsapp"]);
+    const comSinal = decidir({ cobranca: cb, pendenciaAtual: atual, engajou: true, hoje: "2026-10-05" });
+    expect(comSinal).toMatchObject({ acao: "enviar", etapa: "lembrete", canais: ["email"] });
+    // cobrança 2 continua por WhatsApp: é a última tentativa antes de escalar
+    const emC1 = { ...base, estado: "cobranca_1", estado_desde: "2026-10-08" };
+    expect(decidir({ cobranca: emC1, pendenciaAtual: atual, engajou: true, hoje: "2026-10-14" }).canais).toEqual(["whatsapp"]);
+  });
+
+  it("cliente respondeu: o automático cala até o escritório retomar, salvo quitação", () => {
+    const cb = { ...base, estado: "respondeu", estado_desde: "2026-10-01" };
+    expect(decidir({ cobranca: cb, pendenciaAtual: atual, hoje: "2026-12-01" }).acao).toBe("nada");
+    expect(decidir({ cobranca: cb, pendenciaAtual: atual, recalculou: true, hoje: "2026-12-01" }).acao).toBe("nada");
+    expect(decidir({ cobranca: cb, pendenciaAtual: { relatorio_id: 42, qtd_atraso: 0 }, hoje: "2026-10-05" }).estado).toBe("quitado");
+    expect(decidir({ cobranca: cb, pendenciaAtual: { relatorio_id: 42, qtd_atraso: 1 }, hoje: "2026-10-05" }).acao).toBe("nada");
+  });
+
   it("estados terminais não fazem nada", () => {
     for (const estado of ["quitado", "escalado", "encerrado"]) {
       expect(decidir({ cobranca: { ...base, estado }, pendenciaAtual: { relatorio_id: 99, qtd_atraso: 5 }, recalculou: true, hoje: "2026-12-01" }).acao).toBe("nada");
