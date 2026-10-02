@@ -11,6 +11,8 @@ import {
   decidirAutomaticas,
   sugerirPorEntregas,
   textoDaEvidencia,
+  itensTributariosDoDia,
+  obrigacoesSemGuia,
   montarMensagemAlerta,
 } from "../../api/src/alertasRegras.js";
 
@@ -251,5 +253,83 @@ describe("montarMensagemAlerta", () => {
       ],
     })!;
     expect(texto).not.toMatch(/Já recebi este aviso/);
+  });
+});
+
+describe("itensTributariosDoDia", () => {
+  // 19/08/2026 (quarta): FGTS, INSS e DAS vencem quinta, 20/08.
+  const hoje = "2026-08-19";
+
+  it("sem guia de DAS no portal, não avisa de Simples (empresa sem DAS no mês)", () => {
+    const itens = itensTributariosDoDia({ codigos: ["DAS"], proximaGuia: new Map(), hoje });
+    expect(itens).toEqual([]);
+  });
+
+  it("com a guia no portal vencendo amanhã, avisa com a data da guia", () => {
+    const itens = itensTributariosDoDia({
+      codigos: ["DAS", "FGTS", "INSS_DCTFWEB"],
+      proximaGuia: new Map([
+        ["DAS", "2026-08-20"],
+        ["FGTS", "2026-08-20"],
+      ]),
+      hoje,
+    });
+    expect(codigos(itens)).toEqual(["DAS", "FGTS"]);
+    expect(itens.every((i) => i.temGuiaNoPortal && i.vencimento === "2026-08-20")).toBe(true);
+  });
+
+  it("guia com vencimento noutro dia não avisa hoje", () => {
+    const itens = itensTributariosDoDia({
+      codigos: ["FGTS"],
+      proximaGuia: new Map([["FGTS", "2026-09-18"]]),
+      hoje,
+    });
+    expect(itens).toEqual([]);
+  });
+
+  it("salário continua saindo pelo catálogo, porque nunca tem guia", () => {
+    // Agosto/2026: 5º dia útil trabalhista é quinta, 06/08 (sábado conta); aviso no próprio dia.
+    const itens = itensTributariosDoDia({ codigos: ["SALARIO"], proximaGuia: new Map(), hoje: "2026-08-06" });
+    expect(codigos(itens)).toEqual(["SALARIO"]);
+  });
+
+  it("férias não entram aqui (têm caminho próprio)", () => {
+    expect(itensTributariosDoDia({ codigos: ["FERIAS_LIMITE"], proximaGuia: new Map(), hoje })).toEqual([]);
+  });
+});
+
+describe("obrigacoesSemGuia", () => {
+  const hoje = "2026-08-14";
+
+  it("lista a obrigação que vence na janela e não tem guia no mês", () => {
+    const faltando = obrigacoesSemGuia({ codigos: ["DAS", "FGTS"], guias: [], hoje, dias: 7 });
+    expect(faltando).toEqual([
+      { codigo: "DAS", nome: "Simples Nacional (DAS)", vencimento: "2026-08-20" },
+      { codigo: "FGTS", nome: "FGTS", vencimento: "2026-08-20" },
+    ]);
+  });
+
+  it("guia do mesmo tipo no mês do vencimento tira da lista", () => {
+    const faltando = obrigacoesSemGuia({
+      codigos: ["DAS", "INSS_DCTFWEB"],
+      guias: [{ doc_type: "DCTF_WEB", mes: "2026-08" }],
+      hoje,
+      dias: 7,
+    });
+    expect(codigos(faltando)).toEqual(["DAS"]);
+  });
+
+  it("guia de outro mês não conta", () => {
+    const faltando = obrigacoesSemGuia({
+      codigos: ["FGTS"],
+      guias: [{ doc_type: "FGTS", mes: "2026-07" }],
+      hoje,
+      dias: 7,
+    });
+    expect(codigos(faltando)).toEqual(["FGTS"]);
+  });
+
+  it("fora da janela e obrigação sem documento ficam de fora", () => {
+    expect(obrigacoesSemGuia({ codigos: ["FGTS", "SALARIO"], guias: [], hoje: "2026-08-01", dias: 7 })).toEqual([]);
   });
 });

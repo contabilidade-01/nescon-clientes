@@ -711,6 +711,21 @@ export interface DocUploadAiState {
   modelo?: string;
 }
 
+/** Obrigação que vence em breve sem guia no portal: o cliente não será avisado. */
+export interface AlertMissingGuides {
+  referencia: string;
+  dias: number;
+  total: number;
+  vence_amanha: number;
+  itens: Array<{
+    company_id: string;
+    empresa: string;
+    codigo: string;
+    nome: string;
+    vencimento: string;
+  }>;
+}
+
 /** Guia retida com vencimento próximo — o alerta do escritório, não do cliente. */
 export interface AlertHeldGuides {
   referencia: string;
@@ -1176,6 +1191,8 @@ export const api = {
       request<AlertPreview>(`/alertas/previsao${data ? `?data=${data}` : ""}`),
     /** Guias que vencem em breve e ainda não foram liberadas ao cliente. */
     retidos: (dias = 7) => request<AlertHeldGuides>(`/alertas/retidos?dias=${dias}`),
+    /** Obrigações que vencem em breve e não têm guia no portal (o cliente não é avisado). */
+    faltando: (dias = 7) => request<AlertMissingGuides>(`/alertas/faltando?dias=${dias}`),
     /** Estado da instância de WhatsApp (uazapi). Nunca lança por instância caída. */
     whatsapp: () => request<AlertWhatsappStatus>("/alertas/whatsapp"),
     /** `simular: true` (padrão no servidor) ensaia sem mandar nada. */
