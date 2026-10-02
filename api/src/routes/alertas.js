@@ -22,6 +22,7 @@ const {
   salvarPreferencias,
   salvarPreferenciasLote,
   guiasRetidas,
+  guiasFaltando,
   falhasRecentes,
   dashboardFalhas,
   limparDecisaoManual,
@@ -297,6 +298,20 @@ router.get("/retidos", async (req, res) => {
   } catch (err) {
     console.error("[alertas] retidos:", err.message);
     res.status(500).json({ error: "Erro ao listar as guias retidas" });
+  }
+});
+
+/**
+ * Obrigações que vencem em breve sem guia no portal. Sem guia o cliente não é avisado:
+ * esta é a lista para o escritório anexar a guia ou confirmar que não há o que pagar.
+ */
+router.get("/faltando", async (req, res) => {
+  const dias = Math.min(30, Math.max(1, Number(req.query.dias) || 7));
+  try {
+    res.json(await guiasFaltando(db, { dias }));
+  } catch (err) {
+    console.error("[alertas] faltando:", err.message);
+    res.status(500).json({ error: "Erro ao listar as guias que faltam" });
   }
 });
 

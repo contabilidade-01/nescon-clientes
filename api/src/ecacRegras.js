@@ -97,16 +97,36 @@ function proximoDiaUtil(iso) {
 
 // ------------------------------------------------------------ leitura das pendências
 
+/**
+ * Tipos que o central-ecac traz mas NUNCA vão para o cliente — nem na mensagem, nem na
+ * tela "Impostos em aberto", nem na emissão de guia pelo portal.
+ *
+ * MAED (multa por atraso na entrega de declaração) é tratada pelo escritório: quase
+ * sempre a declaração atrasada é responsabilidade nossa, e cobrar a multa do cliente
+ * por régua automática seria o pior jeito de ele descobrir isso. (Jean, 02/10/2026)
+ *
+ * Também casa pela descrição da receita, para o caso de a multa vir classificada como
+ * OUTROS.
+ */
+const TIPOS_FORA_DO_CLIENTE = new Set(["MAED"]);
+
+function vaiParaCliente(d) {
+  if (!d || !d.valido) return false;
+  if (TIPOS_FORA_DO_CLIENTE.has(String(d.tipo || "").toUpperCase())) return false;
+  if (/\bMAED\b/i.test(String(d.receita || ""))) return false;
+  return true;
+}
+
 /** Só o que pode ir para o cliente: válido e em atraso, do mais antigo ao mais novo. */
 function debitosCobraveis(debitos) {
   return (Array.isArray(debitos) ? debitos : [])
-    .filter((d) => d && d.valido && d.em_atraso)
+    .filter((d) => vaiParaCliente(d) && d.em_atraso)
     .sort((a, b) => String(a.data_vencimento || "").localeCompare(String(b.data_vencimento || "")));
 }
 
 function debitosAVencer(debitos) {
   return (Array.isArray(debitos) ? debitos : [])
-    .filter((d) => d && d.valido && !d.em_atraso)
+    .filter((d) => vaiParaCliente(d) && !d.em_atraso)
     .sort((a, b) => String(a.data_vencimento || "").localeCompare(String(b.data_vencimento || "")));
 }
 
@@ -497,6 +517,8 @@ module.exports = {
   diasUteisEntre,
   somarDiasUteis,
   proximoDiaUtil,
+  TIPOS_FORA_DO_CLIENTE,
+  vaiParaCliente,
   debitosCobraveis,
   debitosAVencer,
   totalCobravel,

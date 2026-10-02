@@ -17,8 +17,8 @@
  * Em nenhum dos dois casos a regra passa por cima do admin: decisão gravada à mão
  * (`origem = 'manual'`) é definitiva, inclusive a negativa.
  */
-const { OBRIGACOES, obrigacao } = require("./obrigacoes");
-const { ddmm } = require("./diasBancarios");
+const { OBRIGACOES, obrigacao, calcularVencimento, obrigacoesQueVencemEm } = require("./obrigacoes");
+const { ddmm, somarDias } = require("./diasBancarios");
 
 /**
  * O que marcar sozinho, dado o retrato da empresa.
@@ -117,6 +117,77 @@ function textoDaEvidencia(s) {
   const vezes = s.ocorrencias === 1 ? "1 guia encontrada" : `${s.ocorrencias} guias encontradas`;
   const quando = s.ultima_competencia ? `, a última em ${s.ultima_competencia}` : "";
   return `${vezes} no portal${quando}.`;
+}
+
+/**
+ * Tributos que entram no aviso de hoje.
+ *
+ * **Tributo com guia só avisa se a guia está no portal.** Antes, sem guia, o catálogo
+ * avisava mesmo assim ("a guia ainda não está no portal"). Na prática isso mandava
+ * "vence amanhã: Simples Nacional" para empresa que não teve DAS no mês (sem
+ * faturamento, por exemplo) — aviso de imposto que não existe. A guia é a prova de que
+ * há o que pagar; sem ela, quem confere é o escritório (ver `obrigacoesSemGuia`).
+ *
+ * Obrigação sem documento (o prazo do salário) continua saindo pelo catálogo: nunca
+ * vai ter guia, e o prazo existe do mesmo jeito.
+ *
+ * `proximaGuia` = Map doc_type → due_date ('YYYY-MM-DD') da próxima guia liberada e
+ * ainda não paga da empresa.
+ */
+function itensTributariosDoDia({ codigos = [], proximaGuia = new Map(), hoje } = {}) {
+  const itens = [];
+  for (const codigo of codigos) {
+    if (codigo === "FERIAS_LIMITE") continue;
+    const o = obrigacao(codigo);
+    if (!o) continue;
+    const alvo = somarDias(hoje, o.avisarDiasAntes ?? 1);
+
+    if (o.docTypes.length) {
+      const tipo = o.docTypes.find((t) => proximaGuia.has(t));
+      if (!tipo) continue;
+      // A guia decide o dia do aviso, e o catálogo não palpita por cima: o cliente lê a
+      // mesma data no WhatsApp e no portal.
+      if (proximaGuia.get(tipo) !== alvo) continue;
+      itens.push({ codigo, nome: o.nome, observacao: null, vencimento: alvo, temGuiaNoPortal: true });
+      continue;
+    }
+
+    for (const v of obrigacoesQueVencemEm(alvo, [codigo])) {
+      itens.push({ ...v, vencimento: alvo, temGuiaNoPortal: false });
+    }
+  }
+  return itens;
+}
+
+/**
+ * Obrigações marcadas que vencem nos próximos `dias` e não têm guia no portal.
+ *
+ * É o outro lado de `itensTributariosDoDia`: o cliente sem guia não é avisado, então o
+ * escritório precisa ver a lista a tempo de anexar a guia ou confirmar que no mês não há
+ * nada a pagar.
+ *
+ * `guias` = [{ doc_type, mes }] com `mes` 'YYYY-MM' do vencimento da guia, liberada ou
+ * não. Guia do mesmo tipo no mesmo mês do vencimento conta como presente.
+ */
+function obrigacoesSemGuia({ codigos = [], guias = [], hoje, dias = 7 } = {}) {
+  const presentes = new Set(guias.map((g) => `${g.doc_type}|${g.mes}`));
+  const limite = somarDias(hoje, dias);
+  const [ano, mes] = String(hoje).split("-").map(Number);
+  const meses = [{ ano, mes }, mes === 12 ? { ano: ano + 1, mes: 1 } : { ano, mes: mes + 1 }];
+
+  const faltando = [];
+  for (const codigo of codigos) {
+    const o = obrigacao(codigo);
+    if (!o || !o.docTypes.length) continue;
+    for (const ref of meses) {
+      const v = calcularVencimento(codigo, ref.ano, ref.mes);
+      if (!v || v.data < hoje || v.data > limite) continue;
+      const mesVenc = v.data.slice(0, 7);
+      if (o.docTypes.some((t) => presentes.has(`${t}|${mesVenc}`))) continue;
+      faltando.push({ codigo, nome: o.nome, vencimento: v.data });
+    }
+  }
+  return faltando.sort((a, b) => a.vencimento.localeCompare(b.vencimento));
 }
 
 /**
@@ -287,6 +358,8 @@ module.exports = {
   decidirAutomaticas,
   sugerirPorEntregas,
   textoDaEvidencia,
+  itensTributariosDoDia,
+  obrigacoesSemGuia,
   montarMensagemAlerta,
   nomesDe,
 };
