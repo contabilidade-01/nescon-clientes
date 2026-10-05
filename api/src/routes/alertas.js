@@ -150,6 +150,7 @@ router.put("/empresas/:id/preferencias", async (req, res) => {
     boleto_lembrete_ativo,
     boleto_cobranca_ativo,
     honorario_cobranca_ativo,
+    avisos_documentos_ativos,
     whatsapp,
   } = req.body || {};
   // Cada flag, se vier, tem de ser booleana — evita gravar "true" (string) por engano.
@@ -162,6 +163,7 @@ router.put("/empresas/:id/preferencias", async (req, res) => {
     booleana(boleto_lembrete_ativo, "boleto_lembrete_ativo"),
     booleana(boleto_cobranca_ativo, "boleto_cobranca_ativo"),
     booleana(honorario_cobranca_ativo, "honorario_cobranca_ativo"),
+    booleana(avisos_documentos_ativos, "avisos_documentos_ativos"),
   ]) {
     if (erro) return res.status(400).json({ error: erro });
   }
@@ -176,6 +178,7 @@ router.put("/empresas/:id/preferencias", async (req, res) => {
       boletoLembreteAtivo: boleto_lembrete_ativo,
       boletoCobrancaAtivo: boleto_cobranca_ativo,
       honorarioCobrancaAtivo: honorario_cobranca_ativo,
+      avisosDocumentosAtivos: avisos_documentos_ativos,
       whatsapp,
     });
     if (!r) return res.status(400).json({ error: "Nada para salvar" });
@@ -203,6 +206,7 @@ router.put("/preferencias-lote", async (req, res) => {
     "boleto_lembrete_ativo",
     "boleto_cobranca_ativo",
     "honorario_cobranca_ativo",
+    "avisos_documentos_ativos",
   ];
   for (const nome of nomes) {
     if (body[nome] === undefined) continue;

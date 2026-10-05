@@ -869,6 +869,7 @@ async function salvarPreferencias(
     boletoLembreteAtivo,
     boletoCobrancaAtivo,
     honorarioCobrancaAtivo,
+    avisosDocumentosAtivos,
     whatsapp,
   }
 ) {
@@ -885,6 +886,7 @@ async function salvarPreferencias(
   flag(boletoLembreteAtivo, "boleto_lembrete_ativo");
   flag(boletoCobrancaAtivo, "boleto_cobranca_ativo");
   flag(honorarioCobrancaAtivo, "honorario_cobranca_ativo");
+  flag(avisosDocumentosAtivos, "avisos_documentos_ativos");
   if (whatsapp !== undefined) {
     // Grava já normalizado (com o 55). Assim o número no banco é o número que a uazapi
     // recebe — sem conversão espalhada por quem for enviar.
@@ -903,7 +905,7 @@ async function salvarPreferencias(
     `UPDATE companies SET ${campos.join(", ")} WHERE id = $1
      RETURNING id, whatsapp, alertas_ativos, incentivo_ativo,
                avisos_gerais_ativos, boleto_lembrete_ativo, boleto_cobranca_ativo,
-               honorario_cobranca_ativo`,
+               honorario_cobranca_ativo, avisos_documentos_ativos`,
     params
   );
   return rows[0] ?? null;
@@ -930,6 +932,7 @@ async function salvarPreferenciasLote(db, campos = {}, companyIds = null) {
   flag(campos.boleto_lembrete_ativo, "boleto_lembrete_ativo");
   flag(campos.boleto_cobranca_ativo, "boleto_cobranca_ativo");
   flag(campos.honorario_cobranca_ativo, "honorario_cobranca_ativo");
+  flag(campos.avisos_documentos_ativos, "avisos_documentos_ativos");
   if (!sets.length) return { atualizadas: 0 };
 
   const ids = Array.isArray(companyIds) ? companyIds.filter(Boolean) : null;

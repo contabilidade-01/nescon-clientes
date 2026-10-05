@@ -78,6 +78,7 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
       boleto_lembrete_ativo?: boolean;
       boleto_cobranca_ativo?: boolean;
       honorario_cobranca_ativo?: boolean;
+      avisos_documentos_ativos?: boolean;
       whatsapp?: string;
     }) => api.alertas.preferencias(companyId, v),
     onSuccess: invalidar,
@@ -186,13 +187,17 @@ function DetalheEmpresa({ companyId, onClose }: { companyId: string; onClose: ()
             />
           </div>
           <div className="flex items-center justify-between gap-4">
-            <Label className="font-normal">Aviso de documento novo</Label>
-            {/* Só leitura: esta é a decisão do cliente, tomada no portal dele. */}
-            <span className="text-xs text-muted-foreground">
-              {empresa.avisos_documentos_ativos
-                ? "o cliente aceita receber"
-                : "o cliente pediu para não receber"}
-            </span>
+            <Label htmlFor="avisos-documentos" className="font-normal">
+              Aviso de documento novo
+              <span className="block text-xs text-muted-foreground">
+                "Chegou novo documento no portal" — independe da chave geral
+              </span>
+            </Label>
+            <Switch
+              id="avisos-documentos"
+              checked={empresa.avisos_documentos_ativos}
+              onCheckedChange={(v) => preferencias.mutate({ avisos_documentos_ativos: v })}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="whatsapp">WhatsApp do alerta</Label>

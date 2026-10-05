@@ -1136,6 +1136,7 @@ export const api = {
         boleto_lembrete_ativo?: boolean;
         boleto_cobranca_ativo?: boolean;
         honorario_cobranca_ativo?: boolean;
+        avisos_documentos_ativos?: boolean;
         whatsapp?: string | null;
       }
     ) =>
@@ -1148,6 +1149,7 @@ export const api = {
         boleto_lembrete_ativo: boolean;
         boleto_cobranca_ativo: boolean;
         honorario_cobranca_ativo: boolean;
+        avisos_documentos_ativos: boolean;
       }>(`/alertas/empresas/${companyId}/preferencias`, {
         method: "PUT",
         body: JSON.stringify(data),
