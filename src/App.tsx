@@ -18,6 +18,7 @@ import ChatbotPage from "./pages/ChatbotPage.tsx";
 import SalaryAdhocPage from "./pages/SalaryAdhocPage.tsx";
 import CertificatesPage from "./pages/CertificatesPage.tsx";
 import VisaoGeralPage from "./pages/admin/VisaoGeralPage.tsx";
+import HubPage from "./pages/admin/HubPage.tsx";
 import EmpresasPage from "./pages/admin/EmpresasPage.tsx";
 import GruposPage from "./pages/admin/GruposPage.tsx";
 import ClientesGclickPage from "./pages/admin/ClientesGclickPage.tsx";
@@ -79,7 +80,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function CompanyOnlyRoute({ children }: { children: React.ReactNode }) {
   const { isLoggedIn, isAdmin, company } = useAuth();
   if (!isLoggedIn) return <Navigate to="/login" replace />;
-  if (isAdmin) return <Navigate to="/admin" replace />;
+  if (isAdmin) return <Navigate to="/admin/hub" replace />;
   if (company?.mustChangePassword) return <Navigate to="/alterar-senha" replace />;
   return <>{children}</>;
 }
@@ -87,7 +88,7 @@ function CompanyOnlyRoute({ children }: { children: React.ReactNode }) {
 function CompanyToolRoute({ tool, children }: { tool: CompanyToolKey; children: React.ReactNode }) {
   const { isLoggedIn, isAdmin, company } = useAuth();
   if (!isLoggedIn) return <Navigate to="/login" replace />;
-  if (isAdmin) return <Navigate to="/admin" replace />;
+  if (isAdmin) return <Navigate to="/admin/hub" replace />;
   if (!company) return <Navigate to="/login" replace />;
   // Senha ainda é a inicial (= CNPJ, público): nada é liberado antes da troca.
   if (company.mustChangePassword) return <Navigate to="/alterar-senha" replace />;
@@ -102,7 +103,7 @@ function CompanyToolRoute({ tool, children }: { tool: CompanyToolKey; children: 
 function VacationRoute({ children }: { children: React.ReactNode }) {
   const { isLoggedIn, isAdmin, company } = useAuth();
   if (!isLoggedIn) return <Navigate to="/login" replace />;
-  if (isAdmin) return <Navigate to="/admin" replace />;
+  if (isAdmin) return <Navigate to="/admin/hub" replace />;
   if (!company) return <Navigate to="/login" replace />;
   if (company.mustChangePassword) return <Navigate to="/alterar-senha" replace />;
   if (!isToolAllowed(company.toolAccess, "vacations")) return <Navigate to="/" replace />;
@@ -146,7 +147,7 @@ function AdminAreaRoute({ area, children }: { area: AdminArea; children: React.R
   if (!isLoggedIn) return <Navigate to="/login" replace />;
   if (!isAdmin) return <Navigate to="/" replace />;
   if (admin?.mustChangePassword) return <Navigate to="/alterar-senha" replace />;
-  if (!canSeeArea(area, admin?.areas, admin?.isOwner)) return <Navigate to="/admin" replace />;
+  if (!canSeeArea(area, admin?.areas, admin?.isOwner)) return <Navigate to="/admin/hub" replace />;
   return <>{children}</>;
 }
 
@@ -154,7 +155,7 @@ function AdminAreaRoute({ area, children }: { area: AdminArea; children: React.R
 function OwnerOnlyRoute({ children }: { children: React.ReactNode }) {
   const { isLoggedIn, isAdmin, admin } = useAuth();
   if (!isLoggedIn) return <Navigate to="/login" replace />;
-  if (!isAdmin || !admin?.isOwner) return <Navigate to="/admin" replace />;
+  if (!isAdmin || !admin?.isOwner) return <Navigate to="/admin/hub" replace />;
   return <>{children}</>;
 }
 
@@ -171,6 +172,7 @@ const AppRoutes = () => (
     {/* Ficha de admissão — pública; se houver sessão de empresa, pré-preenche */}
     <Route path="/admissao" element={<AdmissaoPage />} />
     {/* Painel do escritório: uma página por área, com menu lateral retrátil (AdminLayout) */}
+    <Route path="/admin/hub" element={<AdminOnlyRoute><HubPage /></AdminOnlyRoute>} />
     <Route path="/admin" element={<AdminOnlyRoute><VisaoGeralPage /></AdminOnlyRoute>} />
     <Route path="/admin/empresas" element={<AdminAreaRoute area="empresas"><EmpresasPage /></AdminAreaRoute>} />
     <Route path="/admin/grupos" element={<AdminAreaRoute area="empresas"><GruposPage /></AdminAreaRoute>} />

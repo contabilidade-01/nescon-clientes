@@ -39,7 +39,7 @@ const AlterarSenhaPage = () => {
       setAtual("");
       setNova("");
       setConfirma("");
-      navigate(admin ? "/admin" : "/");
+      navigate(admin ? "/admin/hub" : "/");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -69,7 +69,7 @@ const AlterarSenhaPage = () => {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => navigate(admin ? "/admin" : "/")}
+              onClick={() => navigate(admin ? "/admin/hub" : "/")}
               aria-label="Voltar"
             >
               <ArrowLeft className="h-5 w-5" />

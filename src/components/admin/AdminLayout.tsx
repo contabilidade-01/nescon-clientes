@@ -1,39 +1,7 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import {
-  Activity,
-  AlertTriangle,
-  BellRing,
-  Bot,
-  Building2,
-  CalendarCheck,
-  CalendarClock,
-  CalendarSearch,
-  CircleDollarSign,
-  UserCog,
-  UserPlus,
-  FileCheck2,
-  FileText,
-  FileUp,
-  KeyRound,
-  Landmark,
-  Calculator,
-  ClipboardCheck,
-  LayoutDashboard,
-  LogOut,
-  MessageCircle,
-  Megaphone,
-  Network,
-  Receipt,
-  RefreshCw,
-  Scale,
-  FileSignature,
-  Send,
-  ShieldCheck,
-  Upload,
-  Users,
-} from "lucide-react";
+import { KeyRound, LayoutDashboard, LayoutGrid, LogOut } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -54,104 +22,24 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
-import { canSeeArea, mergeAdminAreas, type AdminArea } from "@/lib/adminAreas";
+import { mergeAdminAreas } from "@/lib/adminAreas";
+import {
+  HUB_PATH,
+  ITEM_VISAO_GERAL,
+  setorDoCaminho,
+  setoresVisiveis,
+  type NavItem,
+} from "@/lib/adminNav";
 import { useGclickPendencias } from "@/hooks/useGclickPendencias";
 import { GclickAlertaDialog } from "@/components/admin/GclickAlertaDialog";
 
 /**
- * Painel do escritório dividido por área. Cada item é uma rota própria — nada de uma
- * página só com tudo empilhado. O menu lateral retrai para ícones (botão no topo ou
- * Ctrl/Cmd+B) e vira gaveta no celular.
+ * Painel do escritório dividido por setor (mapa em src/lib/adminNav.ts, o mesmo do hub).
+ * Cada item é uma rota própria. Dentro de um setor o menu mostra só as páginas dele; no
+ * hub, na Visão geral e em rota fora do mapa mostra todos os setores, como era antes.
+ * O menu lateral retrai para ícones (botão no topo ou Ctrl/Cmd+B) e vira gaveta no celular.
  */
-type NavItem = {
-  to: string;
-  label: string;
-  icon: typeof LayoutDashboard;
-  end?: boolean;
-  /** Área exigida. Sem área = todo administrador vê. `owner` = só o dono. */
-  area?: AdminArea;
-  ownerOnly?: boolean;
-  /** Mostra o número de pendências dos clientes do G-Click ao lado do item. */
-  badgePendencias?: boolean;
-  /** Mostra quantas mensagens de cliente esperam resposta (ver /atendimentos/unread). */
-  badgeAtendimentos?: boolean;
-};
-
-const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
-  {
-    label: "Geral",
-    items: [{ to: "/admin", label: "Visão geral", icon: LayoutDashboard, end: true }],
-  },
-  {
-    label: "Cadastro",
-    items: [
-      { to: "/admin/empresas", label: "Empresas", icon: Building2, area: "empresas" },
-      { to: "/admin/grupos", label: "Grupos de empresas", icon: Network, area: "empresas" },
-      { to: "/admin/propostas", label: "Propostas", icon: FileText, area: "empresas" },
-      { to: "/admin/contratos", label: "Contratos", icon: FileSignature, area: "empresas" },
-      {
-        to: "/admin/enviar-acesso",
-        label: "Enviar acesso (WhatsApp)",
-        icon: Send,
-        area: "empresas",
-      },
-      {
-        to: "/admin/clientes-gclick",
-        label: "Clientes do G-Click",
-        icon: UserPlus,
-        ownerOnly: true,
-        badgePendencias: true,
-      },
-      { to: "/admin/funcionarios", label: "Funcionários", icon: Users, area: "funcionarios" },
-      { to: "/admin/admissoes", label: "Admissões", icon: UserPlus, area: "funcionarios" },
-      { to: "/admin/folha", label: "Painel de folha", icon: CircleDollarSign, area: "funcionarios" },
-      { to: "/admin/honorarios-queijeiro", label: "Honorários (folha)", icon: Calculator, area: "funcionarios" },
-      { to: "/admin/honorarios-atualizacao", label: "Atualização de Honorários", icon: Scale, area: "funcionarios" },
-      { to: "/admin/ferias-lote", label: "Upload de férias (lote)", icon: FileUp, area: "funcionarios" },
-      { to: "/admin/ferias-urgencia", label: "Férias — Urgência", icon: AlertTriangle, area: "funcionarios" },
-    ],
-  },
-  {
-    label: "Entregas",
-    items: [
-      { to: "/admin/entregas", label: "Documentos e entregas", icon: FileCheck2, area: "entregas" },
-      { to: "/admin/envio-folha", label: "Envio de folha e encargos", icon: ClipboardCheck, area: "entregas" },
-      { to: "/admin/documentos", label: "Gestão de documentos", icon: FileText, area: "entregas" },
-      { to: "/admin/doc-upload", label: "Upload de documentos", icon: Upload, area: "entregas" },
-      { to: "/admin/alertas", label: "Alertas de vencimento", icon: BellRing, area: "alertas" },
-      { to: "/admin/whatsapp", label: "Conexão do WhatsApp", icon: MessageCircle, area: "alertas" },
-      { to: "/admin/circular", label: "Circular (WhatsApp)", icon: Megaphone, area: "alertas" },
-      { to: "/admin/impostos-ecac", label: "Impostos e-CAC (cobrança)", icon: Landmark, area: "alertas" },
-      { to: "/admin/vencimentos-sugeridos", label: "Vencimentos sugeridos", icon: CalendarSearch, area: "entregas" },
-      { to: "/admin/config-ia", label: "Configuração de IA", icon: Bot, area: "entregas" },
-      { to: "/admin/acompanhamentos", label: "Acompanhamentos mensais", icon: CalendarClock, area: "acompanhamentos" },
-    ],
-  },
-  {
-    label: "Licenças e taxas",
-    items: [
-      { to: "/admin/licencas", label: "Licenças", icon: ShieldCheck, area: "licencas" },
-      { to: "/admin/taxas-anuais", label: "Taxas anuais", icon: CalendarCheck, area: "taxas_anuais" },
-    ],
-  },
-  {
-    label: "Conformidade",
-    items: [
-      { to: "/admin/lgpd", label: "Consentimentos LGPD", icon: ShieldCheck, area: "lgpd" },
-      {
-        to: "/admin/atendimentos",
-        label: "Atendimentos",
-        icon: MessageCircle,
-        area: "atendimento",
-        badgeAtendimentos: true,
-      },
-      { to: "/admin/acessos", label: "Controle de acessos", icon: Activity, area: "acessos" },
-      { to: "/admin/sincronizacao", label: "Sincronização", icon: RefreshCw, area: "sincronizacao" },
-      { to: "/admin/boletos-cora", label: "Boletos Cora", icon: Receipt, area: "sincronizacao" },
-      { to: "/admin/usuarios", label: "Usuários do painel", icon: UserCog, ownerOnly: true },
-    ],
-  },
-];
+const ITEM_HUB: NavItem = { to: HUB_PATH, label: "Setores (início)", icon: LayoutGrid };
 
 function formatCpf(cpf?: string) {
   if (!cpf) return "";
@@ -208,16 +96,14 @@ export function AdminLayout({
     navigate("/login");
   };
 
-  const podeVer = (item: NavItem) => {
-    if (item.ownerOnly) return Boolean(admin?.isOwner);
-    if (!item.area) return true;
-    return canSeeArea(item.area, admin?.areas, admin?.isOwner);
-  };
-
-  const secoesVisiveis = NAV_SECTIONS.map((s) => ({
-    ...s,
-    items: s.items.filter(podeVer),
-  })).filter((s) => s.items.length > 0);
+  const setorAtual = setorDoCaminho(pathname);
+  const todos = setoresVisiveis(admin);
+  // Dentro de um setor: só o dele. Fora de qualquer setor: todos, como antes do hub.
+  const setoresNoMenu = setorAtual ? todos.filter((x) => x.id === setorAtual.id) : todos;
+  const secoesVisiveis: Array<{ label: string; items: NavItem[] }> = [
+    { label: "Geral", items: [ITEM_HUB, ITEM_VISAO_GERAL] },
+    ...setoresNoMenu.map((x) => ({ label: x.label, items: x.items })),
+  ];
 
   return (
     <SidebarProvider>
@@ -245,7 +131,7 @@ export function AdminLayout({
               <SidebarGroupContent>
                 <SidebarMenu>
                   {section.items.map((item) => {
-                    const ativo = item.end ? pathname === item.to : pathname.startsWith(item.to);
+                    const ativo = item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`);
                     return (
                       <SidebarMenuItem key={item.to}>
                         <SidebarMenuButton asChild isActive={ativo} tooltip={item.label}>

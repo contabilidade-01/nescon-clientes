@@ -205,7 +205,7 @@ const Index = () => {
     if (backup) {
       localStorage.setItem("company_session", backup);
       localStorage.removeItem("admin_session_backup");
-      window.location.href = "/admin";
+      window.location.href = "/admin/hub";
     }
   };
 

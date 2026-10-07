@@ -61,7 +61,7 @@ const LoginPage = () => {
           return;
         }
         toast.success("Painel administrador");
-        navigate("/admin");
+        navigate("/admin/hub");
         return;
       }
       const precisaTrocarSenha = Boolean(data.company.must_change_password);
