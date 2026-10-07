@@ -113,6 +113,10 @@ services:
       ECAC_API_URL: ${ECAC_API_URL:-}
       ECAC_INTEGRACAO_TOKEN: ${ECAC_INTEGRACAO_TOKEN:-}
       ECAC_EMAIL_ESCRITORIO: ${ECAC_EMAIL_ESCRITORIO:-}
+      # Token das rotas /api/interno/* chamadas pelo central-ecac (guias MEI por WhatsApp,
+      # vínculo por CNPJ). 32+ caracteres; o MESMO valor vai em NESCON_INTERNAL_TOKEN lá.
+      # Sem ele essas rotas respondem 503.
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
       UPLOADS_LIMPEZA_INTERVALO_H: ${UPLOADS_LIMPEZA_INTERVALO_H:-12}
       # Recuperação de senha: URL pública do front (HTTPS em produção, sem / no fim)
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
