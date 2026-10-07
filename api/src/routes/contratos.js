@@ -25,6 +25,7 @@ const { enviarEmailContrato } = require("../contratosMail");
 const { getSetting, setSetting } = require("../appSettings");
 const { obterChaveApi } = require("../iaProvider");
 const { conversarContrato } = require("../contratoAssistente");
+const { criarOnboardingDoContrato } = require("../onboardingServico");
 
 const CHAVE_PADROES = "contratos_padroes";
 const SECOES = ["contratante", "contratada", "objeto", "prazos", "honorarios", "vigencia", "assinatura"];
@@ -92,6 +93,9 @@ function publico(row) {
     titulo: row.titulo,
     tipo: row.tipo || "contrato",
     contrato_pai_id: row.contrato_pai_id || null,
+    proposta_id: row.proposta_id || null,
+    onboarding_id: row.onboarding_id || null,
+    onboarding_status: row.onboarding_status || null,
     aditivo_numero: row.aditivo_numero ?? null,
     dados: row.dados,
     status: row.status,
@@ -110,8 +114,9 @@ function publico(row) {
 
 async function buscar(id) {
   const { rows } = await db.query(
-    `SELECT c.*, e.name AS company_name
+    `SELECT c.*, e.name AS company_name, o.id AS onboarding_id, o.status AS onboarding_status
        FROM contratos c LEFT JOIN companies e ON e.id = c.company_id
+       LEFT JOIN onboardings o ON o.contrato_id = c.id
       WHERE c.id = $1`,
     [id]
   );
@@ -157,6 +162,12 @@ async function concluirAssinatura(contrato, detalhe) {
     );
     await client.query("COMMIT");
     const atualizado = rows[0];
+
+    // Cliente novo: o roteiro de primeiros passos nasce junto com a assinatura. Falha aqui
+    // NUNCA desfaz a assinatura (já commitada) — o escritório cria à mão pelo painel.
+    criarOnboardingDoContrato(db, atualizado).catch((err) =>
+      console.error("[onboarding] criação automática falhou:", err.message)
+    );
 
     const portal = getPublicAppUrl();
     enviarEmailContrato({
@@ -482,8 +493,9 @@ adminRouter.get("/", async (_req, res) => {
     const { rows } = await db.query(
       `SELECT c.id, c.company_id, e.name AS company_name, c.titulo, c.tipo, c.contrato_pai_id, c.aditivo_numero, c.status, c.file_path,
               c.signed_file_path, c.zapsign_token, c.zapsign_enviado_em, c.assinado_em,
-              c.created_at, c.updated_at
+              c.created_at, c.updated_at, c.proposta_id, o.id AS onboarding_id, o.status AS onboarding_status
          FROM contratos c LEFT JOIN companies e ON e.id = c.company_id
+         LEFT JOIN onboardings o ON o.contrato_id = c.id
         ORDER BY c.updated_at DESC`
     );
     res.json(
@@ -495,6 +507,9 @@ adminRouter.get("/", async (_req, res) => {
         tipo: r.tipo || "contrato",
         contrato_pai_id: r.contrato_pai_id,
         aditivo_numero: r.aditivo_numero,
+        proposta_id: r.proposta_id || null,
+        onboarding_id: r.onboarding_id || null,
+        onboarding_status: r.onboarding_status || null,
         status: r.status,
         tem_pdf: Boolean(r.file_path),
         tem_pdf_assinado: Boolean(r.signed_file_path),
@@ -553,7 +568,9 @@ function validarCorpo(body) {
   const tipo = body.tipo === "aditivo" ? "aditivo" : "contrato";
   const paiId = tipo === "aditivo" && body.contrato_pai_id ? String(body.contrato_pai_id) : null;
   if (tipo === "aditivo" && (!paiId || !validateUUID(paiId))) return { erro: "Aditivo precisa do contrato original" };
-  return { titulo: titulo.slice(0, 200), dados: body.dados, companyId, pdf: body.pdf_base64 || null, tipo, paiId };
+  const propostaId = body.proposta_id ? String(body.proposta_id) : null;
+  if (propostaId && !validateUUID(propostaId)) return { erro: "Proposta inválida" };
+  return { titulo: titulo.slice(0, 200), dados: body.dados, companyId, pdf: body.pdf_base64 || null, tipo, paiId, propostaId };
 }
 
 adminRouter.post("/", async (req, res) => {
@@ -589,8 +606,8 @@ adminRouter.post("/", async (req, res) => {
         })
       : null;
     const { rows } = await client.query(
-      `INSERT INTO contratos (company_id, titulo, dados, status, file_path, file_name, deliverable_id, criado_por, tipo, contrato_pai_id, aditivo_numero)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      `INSERT INTO contratos (company_id, titulo, dados, status, file_path, file_name, deliverable_id, criado_por, tipo, contrato_pai_id, aditivo_numero, proposta_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
       [
         v.companyId,
         v.titulo,
@@ -603,6 +620,7 @@ adminRouter.post("/", async (req, res) => {
         v.tipo,
         v.paiId,
         aditivoNumero,
+        v.propostaId,
       ]
     );
     await client.query("COMMIT");

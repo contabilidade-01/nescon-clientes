@@ -21,7 +21,7 @@ const seed = require("../../api/src/seeds/onboarding-modelos.json");
 
 const simples = {
   objeto: { enquadramento: "simples", areaContabil: true, areaFiscal: true, areaPessoal: true, funcionariosIncluidos: 3 },
-  prazos: { diaVariaveisFolha: 20, diaDocsFinanceiros: 5, diasGuias: "Guias até 3 dias antes do vencimento", horarioAtendimento: "8h às 18h", prazoRespostaDiasUteis: 1 },
+  prazos: { diaVariaveisFolha: 20, diaDocsFinanceiros: 5, diasGuias: 3, horarioAtendimento: "8h às 18h", prazoRespostaDiasUteis: 1 },
   vigencia: { dataInicio: "2026-11-03" },
 };
 
@@ -83,7 +83,7 @@ describe("resolverItens", () => {
     const modelo = seed.find((m: any) => /Simples/.test(m.nome));
     const itens = resolverItens(modelo, simples, "2026-10-07");
     const folha = itens.find((i: any) => i.titulo === "Variáveis da folha");
-    expect(folha.regra).toBe("Todo mês, até o dia 20.");
+    expect(folha.regra).toMatch(/^Todo mês, até o dia 20 /);
     expect(itens.some((i: any) => /funcionários/.test(i.titulo))).toBe(true);
 
     const semFunc = { ...simples, objeto: { ...simples.objeto, areaPessoal: false, funcionariosIncluidos: 0 } };
@@ -126,5 +126,16 @@ describe("status e atrasos", () => {
   it("atrasado = obrigatório vencido sem envio; opcional não conta", () => {
     const a = itensAtrasados(itens, { "2-documento": "enviado" }, "2026-10-15");
     expect(a.map((i: any) => i.id)).toEqual(["1-documento"]);
+  });
+});
+
+describe("texto com padrão", () => {
+  it("usa o padrão quando o campo está vazio ou ausente, e o valor quando existe", () => {
+    expect(preencherTexto("dia {{prazos.diaVariaveisFolha|2}}", { prazos: { diaVariaveisFolha: "" } })).toBe("dia 2");
+    expect(preencherTexto("dia {{prazos.x|2}}", {})).toBe("dia 2");
+    expect(preencherTexto("dia {{prazos.diaVariaveisFolha|2}}", { prazos: { diaVariaveisFolha: "10" } })).toBe("dia 10");
+  });
+  it("0 é valor válido, não cai no padrão", () => {
+    expect(preencherTexto("{{a.b|9}}", { a: { b: 0 } })).toBe("0");
   });
 });

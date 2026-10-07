@@ -7,8 +7,10 @@ const path = require("path");
  * - `onboarding_modelos`: o roteiro reutilizável (blocos em JSONB, na ordem). `regras` diz
  *   para qual contrato o modelo serve (áreas contratadas, enquadramento, tipo de empresa,
  *   se tem funcionários). Montado no painel por arrastar e soltar ou pelo agente de IA.
- * - `onboardings`: uma linha por contrato assinado (UNIQUE em contrato_id — o webhook do
- *   ZapSign pode chegar duas vezes). `itens` guarda os blocos já resolvidos com datas
+ * - `onboardings`: normalmente uma linha por contrato assinado (UNIQUE em contrato_id — o
+ *   webhook do ZapSign pode chegar duas vezes). Também pode nascer à mão, sem contrato
+ *   (origem: contrato_auto | contrato_manual | proposta | empresa | manual); `proposta_id`
+ *   amarra à proposta que originou o cadastro. `itens` guarda os blocos já resolvidos com datas
  *   absolutas, para mudar o modelo depois não reescrever o que o cliente já viu.
  * - `onboarding_arquivos`: o que o cliente enviou, item a item.
  * - `onboarding_eventos`: trilha do que foi enviado/lembrado/aprovado.
@@ -33,7 +35,9 @@ async function ensureOnboardingSchema(db) {
   await db.query(`
     CREATE TABLE IF NOT EXISTS onboardings (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      contrato_id UUID NOT NULL UNIQUE REFERENCES contratos(id) ON DELETE CASCADE,
+      contrato_id UUID UNIQUE REFERENCES contratos(id) ON DELETE CASCADE,
+      proposta_id UUID REFERENCES propostas(id) ON DELETE SET NULL,
+      origem TEXT NOT NULL DEFAULT 'contrato_auto',
       company_id UUID REFERENCES companies(id) ON DELETE SET NULL,
       modelo_id UUID REFERENCES onboarding_modelos(id) ON DELETE SET NULL,
       cliente_nome TEXT NOT NULL DEFAULT '',
@@ -50,6 +54,13 @@ async function ensureOnboardingSchema(db) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  // Instalações que criaram a tabela antes de o onboarding poder nascer sem contrato.
+  await db.query(`ALTER TABLE onboardings ALTER COLUMN contrato_id DROP NOT NULL;`);
+  await db.query(`ALTER TABLE onboardings ADD COLUMN IF NOT EXISTS proposta_id UUID REFERENCES propostas(id) ON DELETE SET NULL;`);
+  await db.query(`ALTER TABLE onboardings ADD COLUMN IF NOT EXISTS origem TEXT NOT NULL DEFAULT 'contrato_auto';`);
+  // A cadeia proposta -> contrato -> onboarding: o contrato guarda de qual proposta nasceu.
+  await db.query(`ALTER TABLE contratos ADD COLUMN IF NOT EXISTS proposta_id UUID REFERENCES propostas(id) ON DELETE SET NULL;`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_contratos_proposta ON contratos(proposta_id);`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_onboardings_status ON onboardings(status, updated_at DESC);`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_onboardings_company ON onboardings(company_id);`);
   await db.query(`

@@ -60,26 +60,26 @@
         "tipo": "prazo_recorrente",
         "titulo": "Variáveis da folha",
         "descricao": "Faltas, horas extras, vales e admissões/demissões do mês.",
-        "regra": "Todo mês, até o dia {{prazos.diaVariaveisFolha}}.",
+        "regra": "Todo mês, até o dia {{prazos.diaVariaveisFolha|2}} (a folha é paga até o 5º dia útil).",
         "condicao": { "comFuncionarios": true }
       },
       {
         "tipo": "prazo_recorrente",
         "titulo": "Documentos financeiros do mês",
         "descricao": "Extratos, notas e comprovantes do mês fechado.",
-        "regra": "Todo mês, até o dia {{prazos.diaDocsFinanceiros}}.",
+        "regra": "Todo mês, até {{prazos.diaDocsFinanceiros|5}} dias corridos após o fim do mês.",
         "condicao": { "areas": ["contabil"] }
       },
       {
         "tipo": "prazo_recorrente",
         "titulo": "Quando você recebe as guias",
         "descricao": "Guias de impostos e folha chegam pelo portal e por WhatsApp.",
-        "regra": "{{prazos.diasGuias}}"
+        "regra": "Enviamos as guias por e-mail {{prazos.diasGuias|5}} dias corridos antes do vencimento, com cópia no portal."
       },
       {
         "tipo": "contato",
         "titulo": "Fale com a gente",
-        "descricao": "Atendimento em {{prazos.horarioAtendimento}}. Respondemos em até {{prazos.prazoRespostaDiasUteis}} dia(s) útil(eis).",
+        "descricao": "Atendimento em {{prazos.horarioAtendimento|horário comercial}}. Respondemos em até {{prazos.prazoRespostaDiasUteis|1}} dia(s) útil(eis).",
         "contato": "Use o chat do portal ou o WhatsApp do escritório."
       },
       {
@@ -118,12 +118,12 @@
         "tipo": "prazo_recorrente",
         "titulo": "Guia do MEI (DAS)",
         "descricao": "Vence todo dia 20.",
-        "regra": "{{prazos.diasGuias}}"
+        "regra": "Enviamos as guias por e-mail {{prazos.diasGuias|5}} dias corridos antes do vencimento, com cópia no portal."
       },
       {
         "tipo": "contato",
         "titulo": "Fale com a gente",
-        "descricao": "Atendimento em {{prazos.horarioAtendimento}}.",
+        "descricao": "Atendimento em {{prazos.horarioAtendimento|horário comercial}}.",
         "contato": "Use o chat do portal ou o WhatsApp do escritório."
       }
     ]
@@ -173,18 +173,18 @@
         "tipo": "prazo_recorrente",
         "titulo": "Documentos financeiros do mês",
         "descricao": "Extratos, notas e comprovantes do mês fechado.",
-        "regra": "Todo mês, até o dia {{prazos.diaDocsFinanceiros}}."
+        "regra": "Todo mês, até {{prazos.diaDocsFinanceiros|5}} dias corridos após o fim do mês."
       },
       {
         "tipo": "marco",
         "titulo": "Primeiro balancete",
-        "descricao": "Entregamos o primeiro balancete {{objeto.balancetes}} com os documentos aprovados.",
+        "descricao": "Entregamos o primeiro balancete {{objeto.balancetes|mensal}} com os documentos aprovados.",
         "prazo": { "ref": "inicio", "dias": 45 }
       },
       {
         "tipo": "contato",
         "titulo": "Fale com a gente",
-        "descricao": "Atendimento em {{prazos.horarioAtendimento}}.",
+        "descricao": "Atendimento em {{prazos.horarioAtendimento|horário comercial}}.",
         "contato": "Use o chat do portal ou o WhatsApp do escritório."
       }
     ]
@@ -209,7 +209,7 @@
       {
         "tipo": "contato",
         "titulo": "Fale com a gente",
-        "descricao": "Atendimento em {{prazos.horarioAtendimento}}.",
+        "descricao": "Atendimento em {{prazos.horarioAtendimento|horário comercial}}.",
         "contato": "Use o chat do portal ou o WhatsApp do escritório."
       }
     ]

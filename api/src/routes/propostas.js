@@ -23,6 +23,7 @@ const { getSetting, setSetting } = require("../appSettings");
 const { isSmtpConfigured, getPublicAppUrl } = require("../mailer");
 const { obterChaveApi } = require("../iaProvider");
 const { conversarProposta } = require("../propostaIa");
+const { propostaParaDadosContrato } = require("../propostaParaDados");
 
 const CHAVE_CATALOGO = "propostas_catalogo";
 const STATUS = ["rascunho", "salva", "enviada", "aceita", "recusada"];
@@ -250,6 +251,35 @@ adminRouter.get("/:id", async (req, res) => {
     res.json(publico(row));
   } catch (err) {
     console.error("[propostas] detalhe", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/**
+ * GET /:id/dados-contrato — o cadastro da proposta já no formato do contrato. Uma só
+ * fonte para a tela de contratos (pré-preenchimento) e para o onboarding: o que o cliente
+ * disse na proposta não é digitado de novo.
+ */
+adminRouter.get("/:id/dados-contrato", async (req, res) => {
+  if (!validateUUID(req.params.id)) return res.status(400).json({ error: "ID inválido" });
+  try {
+    const row = await buscar(req.params.id);
+    if (!row) return res.status(404).json({ error: "Proposta não encontrada" });
+    const { rows: gerados } = await db.query(
+      `SELECT c.id, c.titulo, c.status, o.id AS onboarding_id, o.status AS onboarding_status
+         FROM contratos c LEFT JOIN onboardings o ON o.contrato_id = c.id
+        WHERE c.proposta_id = $1 ORDER BY c.created_at DESC`,
+      [row.id]
+    );
+    res.json({
+      proposta_id: row.id,
+      titulo: row.titulo,
+      company_id: row.company_id,
+      dados: propostaParaDadosContrato(row.dados, row.total_mensal),
+      contratos: gerados,
+    });
+  } catch (err) {
+    console.error("[propostas] dados-contrato", err);
     res.status(500).json({ error: "Erro interno" });
   }
 });

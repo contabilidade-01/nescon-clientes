@@ -18,7 +18,8 @@
  *   inicio     = vigencia.dataInicio do contrato (cliente que começa só depois da assinatura
  *                recebe o prazo contado do início real, não da assinatura)
  *
- * Textos aceitam {{secao.campo}} do contrato, ex.: "até o dia {{prazos.diaVariaveisFolha}}".
+ * Textos aceitam {{secao.campo}} do contrato e {{secao.campo|padrão}} para quando o campo está vazio,
+ * ex.: "até o dia {{prazos.diaVariaveisFolha|2}}".
  */
 const { proximoDiaBancario, somarDias } = require("./diasBancarios");
 
@@ -103,9 +104,10 @@ function porCaminho(obj, caminho) {
 
 /** Troca {{secao.campo}} pelo valor do contrato; campo vazio some em vez de aparecer "undefined". */
 function preencherTexto(texto, dados) {
-  return String(texto || "").replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, caminho) => {
+  return String(texto || "").replace(/\{\{\s*([\w.]+)\s*(?:\|([^}]*))?\}\}/g, (_, caminho, padrao) => {
     const v = porCaminho(dados, caminho);
-    return v === undefined || v === null ? "" : String(v);
+    if (v === undefined || v === null || v === "") return padrao === undefined ? "" : padrao.trim();
+    return String(v);
   });
 }
 
