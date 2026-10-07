@@ -117,6 +117,17 @@ async function pendenciaPorId(db, id) {
   return rows[0] || null;
 }
 
+/** O cliente deu sinal neste ciclo: clicou num link da cobrança ou entrou no portal. */
+async function engajouDesde(db, cobranca) {
+  const { rows } = await db.query(
+    `SELECT 1
+       WHERE EXISTS (SELECT 1 FROM ecac_notificacoes n WHERE n.cobranca_id = $1 AND n.clicado_em IS NOT NULL)
+          OR EXISTS (SELECT 1 FROM portal_eventos e WHERE e.company_id = $2 AND e.tipo = 'login' AND e.criado_em >= $3)`,
+    [cobranca.id, cobranca.company_id, cobranca.iniciado_em]
+  );
+  return rows.length > 0;
+}
+
 /** O cliente gerou guia DEPOIS de `desdeIso` (data do estado atual)? */
 async function recalculouDesde(db, companyId, desdeIso) {
   const { rows } = await db.query(
@@ -148,6 +159,7 @@ async function passo(db, cobranca, cfg, hoje) {
   const bloqueio = envio.motivoBloqueio(empresa);
   const pendenciaAtual = await pend.ultimaPendencia(db, cobranca.company_id);
   const recalculou = await recalculouDesde(db, cobranca.company_id, cobranca.estado_desde_iso);
+  const engajou = await engajouDesde(db, cobranca);
 
   const decisao = regras.decidir({
     cobranca: {
@@ -162,6 +174,7 @@ async function passo(db, cobranca, cfg, hoje) {
     },
     pendenciaAtual: pendenciaAtual ? { relatorio_id: pendenciaAtual.relatorio_id, qtd_atraso: pendenciaAtual.qtd_atraso } : null,
     recalculou,
+    engajou,
     hoje,
     cfg,
   });
@@ -375,6 +388,54 @@ async function registrarStatusMensagem(db, { mensagemId, status }) {
   return rowCount > 0;
 }
 
+/**
+ * Resposta do cliente no WhatsApp para um número com cobrança aberta: NÃO responde
+ * (robô nenhum), muda a cobrança para `respondeu` — o automático cala — e avisa o
+ * escritório. Devolve true quando tratou; false quando o número não tem cobrança aberta.
+ */
+async function registrarRespostaCliente(db, { phone, texto }) {
+  const d = String(phone || "").replace(/\D/g, "");
+  const sufixo = (d.startsWith("55") && d.length >= 12 ? d.slice(2) : d).slice(-8);
+  if (sufixo.length < 8) return false;
+  const { rows } = await db.query(
+    `SELECT cb.id, cb.company_id, cb.estado, c.name
+       FROM ecac_cobrancas cb
+       JOIN companies c ON c.id = cb.company_id
+       LEFT JOIN gclick_clients g ON g.company_id = c.id
+      WHERE cb.encerrado_em IS NULL
+        AND cb.estado NOT IN ('quitado', 'escalado', 'encerrado', 'respondeu')
+        AND (regexp_replace(COALESCE(c.whatsapp, ''), '[^0-9]', '', 'g') LIKE $1
+          OR regexp_replace(COALESCE(c.phone, ''), '[^0-9]', '', 'g') LIKE $1
+          OR regexp_replace(COALESCE(g.phone, ''), '[^0-9]', '', 'g') LIKE $1)
+      ORDER BY cb.id DESC LIMIT 1`,
+    [`%${sufixo}`]
+  );
+  if (!rows.length) return false;
+  const cb = rows[0];
+  const trecho = String(texto || "").slice(0, 500);
+  await mudarEstado(db, cb, "respondeu", { proxima_acao: "atendimento humano", proxima_acao_em: null });
+  await evento(db, cb.company_id, cb.id, "cliente_respondeu", { estado_anterior: cb.estado, texto: trecho });
+  const cfg = await lerConfig(db);
+  await envio.avisarEscritorio(db, cfg, {
+    assunto: `[e-CAC] ${cb.name} respondeu no WhatsApp`,
+    texto: `A empresa ${cb.name} respondeu à cobrança do e-CAC (estava em "${regras.ROTULO_ESTADO[cb.estado] || cb.estado}").\n` +
+      `Mensagem: "${trecho}"\nAs mensagens automáticas dessa cobrança foram pausadas. Responda pelo WhatsApp e, ` +
+      `resolvido, retome a cobrança no painel (Impostos e-CAC).`,
+  });
+  return true;
+}
+
+/** Escritório retoma uma cobrança pausada por resposta do cliente: volta ao ritmo a partir de hoje. */
+async function retomarCobranca(db, cobrancaId, quem) {
+  const { rows } = await db.query(`SELECT * FROM ecac_cobrancas WHERE id = $1`, [cobrancaId]);
+  if (!rows.length) return { ok: false, erro: "Cobrança não encontrada" };
+  const cb = rows[0];
+  if (cb.estado !== "respondeu") return { ok: false, erro: `Cobrança não está pausada por resposta (estado: ${cb.estado})` };
+  await mudarEstado(db, cb, "notificado", { proxima_acao: "lembrete", proxima_acao_em: null });
+  await evento(db, cb.company_id, cb.id, "retomada_cobranca", { quem });
+  return { ok: true };
+}
+
 async function pausar(db, companyId, motivo, quem) {
   await db.query(
     `UPDATE companies SET ecac_cobranca_ativa = false, ecac_pausado_motivo = $2, ecac_pausado_em = now() WHERE id = $1`,
@@ -440,6 +501,8 @@ module.exports = {
   registrarClique,
   registrarAbertura,
   registrarStatusMensagem,
+  registrarRespostaCliente,
+  retomarCobranca,
   pausar,
   retomar,
   iniciarAgendadorEcac,

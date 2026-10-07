@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { isToolAllowed, type CompanyToolKey } from "@/lib/companyTools";
 import { canSeeArea, type AdminArea } from "@/lib/adminAreas";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -87,7 +87,10 @@ function CompanyOnlyRoute({ children }: { children: React.ReactNode }) {
 
 function CompanyToolRoute({ tool, children }: { tool: CompanyToolKey; children: React.ReactNode }) {
   const { isLoggedIn, isAdmin, company } = useAuth();
-  if (!isLoggedIn) return <Navigate to="/login" replace />;
+  const location = useLocation();
+  // Link de e-mail/WhatsApp aberto sem sessão: guarda o destino para voltar a ele
+  // depois do login (senão o cliente cai na página inicial e precisa achar a tela).
+  if (!isLoggedIn) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   if (isAdmin) return <Navigate to="/admin/hub" replace />;
   if (!company) return <Navigate to="/login" replace />;
   // Senha ainda é a inicial (= CNPJ, público): nada é liberado antes da troca.

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Building2, Lock, LogIn, Wrench } from "lucide-react";
 import { maskCNPJ, maskCPF } from "@/lib/masks";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,10 @@ const LoginPage = () => {
   const [manutencao, setManutencao] = useState<{ ativo: boolean; mensagem: string } | null>(null);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Destino guardado pela rota protegida (só caminho interno; nunca URL externa).
+  const from = (location.state as { from?: string } | null)?.from;
+  const destino = from && from.startsWith("/") && !from.startsWith("//") && from !== "/login" ? from : "/";
 
   // Avisa o cliente já na porta se o portal está em manutenção (o admin ainda entra).
   useEffect(() => {
@@ -83,7 +87,7 @@ const LoginPage = () => {
         return;
       }
       toast.success(`Bem-vindo! ${data.company.name}`);
-      navigate("/");
+      navigate(destino);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro ao fazer login";
       toast.error(message);

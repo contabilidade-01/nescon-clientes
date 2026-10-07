@@ -10,7 +10,7 @@
 const express = require("express");
 const { configurado, baixarMidia, owner, lerWebhookCadastrado } = require("../uazapi");
 const { transcreverAudio } = require("../whatsappAudio");
-const { processarTexto } = require("../whatsappDp");
+const { processarTexto, ehAssuntoDp } = require("../whatsappDp");
 const { enviarTexto } = require("../uazapi");
 const db = require("../db");
 const { ehCliente } = require("../whatsappDestino");
@@ -192,6 +192,21 @@ router.post("/webhook", async (req, res) => {
       }
       registrar({ resultado: "sem_texto", tel: phone.slice(-4), tipo: `${messageType}/${mediaType}` });
       return;
+    }
+
+    // Resposta a uma cobrança do e-CAC: sem robô. Se o número tem cobrança aberta e o
+    // assunto não é o do assistente de DP, o sistema cala, pausa a cobrança e avisa o
+    // escritório — gente responde. (Regra determinística, sem IA.)
+    if (!(await ehAssuntoDp(phone, texto).catch(() => false))) {
+      const { registrarRespostaCliente } = require("../ecacCobranca");
+      const tratou = await registrarRespostaCliente(db, { phone, texto }).catch((e) => {
+        console.error("[ecac] resposta do cliente:", e.message);
+        return false;
+      });
+      if (tratou) {
+        registrar({ resultado: "resposta_cobranca_ecac", tel: phone.slice(-4) });
+        return;
+      }
     }
 
     const resposta = await processarTexto({ phone, texto });

@@ -36,6 +36,7 @@ const COR_ESTADO: Record<string, string> = {
   aguardando_regeracao: "bg-violet-100 text-violet-800",
   cobranca_1: "bg-orange-100 text-orange-800",
   cobranca_2: "bg-red-100 text-red-800",
+  respondeu: "bg-teal-100 text-teal-800",
   escalado: "bg-red-200 text-red-900",
   quitado: "bg-emerald-100 text-emerald-800",
   encerrado: "bg-slate-100 text-slate-600",
@@ -326,6 +327,14 @@ const ImpostosEcacPage = () => {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const retomarCobranca = useMutation({
+    mutationFn: (c: EcacCobrancaResumo) => api.adminEcac.retomarCobranca(c.id),
+    onSuccess: () => {
+      toast.success("Cobrança retomada: as mensagens automáticas voltam a contar a partir de hoje.");
+      qc.invalidateQueries({ queryKey: ["admin-ecac-cobrancas"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const retomar = useMutation({
     mutationFn: (c: EcacCobrancaResumo) => api.adminEcac.retomar(c.company_id),
     onSuccess: () => {
@@ -407,6 +416,11 @@ const ImpostosEcacPage = () => {
                           {c.encerrado_em ? c.encerrado_motivo || "encerrada" : `${c.proxima_acao || "—"} ${c.proxima_acao_em ? dataBR(c.proxima_acao_em) : ""}`}
                         </td>
                         <td className="py-2 pr-2">
+                          {c.estado === "respondeu" && !c.encerrado_em && (
+                            <Button size="sm" variant="outline" className="mr-1" title="Cliente respondeu no WhatsApp; retomar as mensagens automáticas" onClick={() => retomarCobranca.mutate(c)}>
+                              Retomar cobrança
+                            </Button>
+                          )}
                           {c.ecac_cobranca_ativa ? (
                             <Button
                               size="sm"

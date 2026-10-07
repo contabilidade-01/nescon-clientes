@@ -27,7 +27,7 @@ const { ehFeriadoNacional, somarDias } = require("./diasBancarios");
 const ESTADOS_TERMINAIS = new Set(["quitado", "escalado", "encerrado"]);
 const ESTADOS = [
   "aberta", "notificado", "lembrete", "aguardando_regeracao", "cobranca_1", "cobranca_2",
-  "escalado", "quitado", "encerrado",
+  "respondeu", "escalado", "quitado", "encerrado",
 ];
 
 const CFG_PADRAO = Object.freeze({
@@ -159,19 +159,27 @@ function comCanais(cobranca, canais, cfg) {
  *                     whatsapps, regeracao_pedida_em 'YYYY-MM-DD'|null, proxima_acao_em }
  *   pendenciaAtual  espelho mais novo da empresa { relatorio_id, qtd_atraso } (ou null)
  *   recalculou      true se o cliente gerou guia DEPOIS de `estado_desde`
+ *   engajou         true se o cliente clicou no link ou entrou no portal neste ciclo —
+ *                   o lembrete vai só por e-mail (WhatsApp fica para quem não deu sinal)
  *   hoje            'YYYY-MM-DD'
  *   cfg             CFG_PADRAO (parcial permitido)
  *
  * Saída: { acao, etapa?, canais?, estado, proxima_acao_em?, motivo }
  *   acao ∈ nada | enviar | agendar_regeracao | consultar | escalar | aguardar
  */
-function decidir({ cobranca, pendenciaAtual = null, recalculou = false, hoje, cfg: cfgParcial = {} }) {
+function decidir({ cobranca, pendenciaAtual = null, recalculou = false, engajou = false, hoje, cfg: cfgParcial = {} }) {
   const cfg = { ...CFG_PADRAO, ...(cfgParcial || {}) };
   const estado = cobranca.estado || "aberta";
   const desde = cobranca.estado_desde || hoje;
+  const canaisLembrete = engajou ? ["email"] : ["email", "whatsapp"];
 
   if (ESTADOS_TERMINAIS.has(estado)) {
     return { acao: "nada", estado, motivo: "cobrança encerrada" };
+  }
+  // O cliente respondeu no WhatsApp: gente atende, o automático cala até o escritório
+  // retomar. Relatório novo sem débito ainda encerra (regra 1, abaixo).
+  if (estado === "respondeu" && !(pendenciaAtual && Number(pendenciaAtual.relatorio_id) > Number(cobranca.relatorio_id) && Number(pendenciaAtual.qtd_atraso) === 0)) {
+    return { acao: "nada", estado, motivo: "cliente respondeu — em atendimento humano" };
   }
 
   // 1) Relatório novo (lote mensal ou regeração pedida): decide pelo que a Receita diz.
@@ -228,7 +236,7 @@ function decidir({ cobranca, pendenciaAtual = null, recalculou = false, hoje, cf
     }
     // a regeração não veio (fila travada por teto/procuração): não fica preso — lembra
     return {
-      acao: "enviar", etapa: "lembrete", canais: comCanais(cobranca, ["email", "whatsapp"], cfg),
+      acao: "enviar", etapa: "lembrete", canais: comCanais(cobranca, canaisLembrete, cfg),
       estado: "lembrete", motivo: "relatório regerado não chegou; segue com lembrete",
     };
   }
@@ -238,8 +246,8 @@ function decidir({ cobranca, pendenciaAtual = null, recalculou = false, hoje, cf
   if (estado === "notificado") {
     if (passados >= cfg.dias_lembrete) {
       return {
-        acao: "enviar", etapa: "lembrete", canais: comCanais(cobranca, ["email", "whatsapp"], cfg),
-        estado: "lembrete", motivo: `${passados} dia(s) útil(eis) sem recálculo`,
+        acao: "enviar", etapa: "lembrete", canais: comCanais(cobranca, canaisLembrete, cfg),
+        estado: "lembrete", motivo: `${passados} dia(s) útil(eis) sem recálculo${engajou ? " (clicou/entrou no portal: só e-mail)" : ""}`,
       };
     }
     return { acao: "aguardar", estado, proxima_acao_em: somarDiasUteis(desde, cfg.dias_lembrete), motivo: "aguardando o cliente" };
@@ -480,6 +488,7 @@ const ROTULO_ESTADO = {
   aguardando_regeracao: "Recalculou — conferindo pagamento",
   cobranca_1: "Cobrança 1 (e-mail)",
   cobranca_2: "Cobrança 2 (WhatsApp)",
+  respondeu: "Cliente respondeu — atendimento humano",
   escalado: "Escalado ao escritório",
   quitado: "Quitado",
   encerrado: "Encerrado",
