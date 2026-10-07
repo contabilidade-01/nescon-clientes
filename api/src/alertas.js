@@ -9,11 +9,13 @@
  * sem depender dele.
  */
 const { funcionarioRealSql, funcionarioFeriasSql, ehProLabore } = require("./payrollRoles");
-const { OBRIGACOES, obrigacao, ehObrigacaoValida, obrigacoesQueVencemEm } = require("./obrigacoes");
+const { OBRIGACOES, obrigacao, ehObrigacaoValida } = require("./obrigacoes");
 const {
   decidirAutomaticas,
   sugerirPorEntregas,
   textoDaEvidencia,
+  itensTributariosDoDia,
+  obrigacoesSemGuia,
   montarMensagemAlerta,
 } = require("./alertasRegras");
 const { hojeSP, somarDias, ehDiaBancario, proximoDiaBancario } = require("./diasBancarios");
@@ -504,6 +506,10 @@ async function previsao(db, { data = null, simular = true, diaUtil = true } = {}
         AND doc_type IS NOT NULL AND due_date IS NOT NULL
         AND due_date >= $1::date
         AND historico IS NOT TRUE
+        -- Guia que o cliente já marcou como paga não pede mais aviso. Sem este filtro,
+        -- quem pagou adiantado ainda recebia "vence amanhã".
+        AND status IS DISTINCT FROM 'paid'
+        AND cancelado IS NOT TRUE
       ORDER BY due_date`,
     [hoje]
   );
@@ -625,7 +631,7 @@ async function previsao(db, { data = null, simular = true, diaUtil = true } = {}
       })
     );
 
-    // Guias JÁ LIBERADAS com vencimento à frente.
+    // Guias JÁ LIBERADAS, ainda não pagas, com vencimento à frente.
     //
     // É daqui que sai a data quando o documento existe. O `due_date` foi lido do
     // PRÓPRIO PDF, justamente porque o do G-Click erra (ver gclick/sync.js) — então
@@ -633,32 +639,8 @@ async function previsao(db, { data = null, simular = true, diaUtil = true } = {}
     // data no WhatsApp e outra no portal, e concluiria que o escritório se confunde.
     const proximaGuia = guiasPorEmpresa.get(e.id) || new Map();
 
-    const tributarias = codigos.filter((c) => c !== "FERIAS_LIMITE");
-    const resolvidasPorGuia = new Set();
-    for (const codigo of tributarias) {
-      const o = obrigacao(codigo);
-      const tipo = (o?.docTypes || []).find((t) => proximaGuia.has(t));
-      if (!tipo) continue;
-      const venc = proximaGuia.get(tipo);
-      // A guia existe: ela decide o dia do aviso, e o catálogo não palpita por cima.
-      resolvidasPorGuia.add(codigo);
-      if (venc !== somarDias(hoje, o.avisarDiasAntes ?? 1)) continue;
-      itens.push({ codigo, nome: o.nome, observacao: null, vencimento: venc, temGuiaNoPortal: true });
-    }
-
-    // O resto sai pelo catálogo: obrigação sem guia liberada e o salário, que nunca tem.
-    const pendentes = tributarias.filter((c) => !resolvidasPorGuia.has(c));
-    const antecedencias = new Set(pendentes.map((c) => obrigacao(c)?.avisarDiasAntes ?? 1));
-    for (const dias of antecedencias) {
-      const alvo = somarDias(hoje, dias);
-      const doDia = pendentes.filter((c) => (obrigacao(c)?.avisarDiasAntes ?? 1) === dias);
-      for (const v of obrigacoesQueVencemEm(alvo, doDia)) {
-        // `semGuia`: a obrigação tem documento, mas ele não está no portal. O cliente
-        // precisa saber disso na própria mensagem — senão vai procurar e não achar.
-        const semGuia = (obrigacao(v.codigo)?.docTypes || []).length > 0;
-        itens.push({ ...v, vencimento: alvo, temGuiaNoPortal: false, semGuia });
-      }
-    }
+    // Tributo com guia só entra se a guia está no portal; o salário sai pelo catálogo.
+    itens.push(...itensTributariosDoDia({ codigos, proximaGuia, hoje }));
     if (!itens.length) continue;
 
     // Para férias, a chave de duplicidade inclui os nomes dos funcionários alertados,
@@ -714,9 +696,9 @@ async function previsao(db, { data = null, simular = true, diaUtil = true } = {}
  * Guias que vencem em breve e AINDA ESTÃO RETIDAS.
  *
  * Este é o alerta do escritório, não do cliente — e provavelmente o mais valioso dos
- * dois. Documento entra retido e só o clique da liberação torna visível; se ninguém
- * liberou até a véspera, o cliente recebe "vence amanhã" e encontra o portal vazio.
- * Aqui a lista aparece a tempo de liberar.
+ * dois. Documento entra retido e só o clique da liberação torna visível; guia retida
+ * não conta para o aviso ao cliente, então se ninguém liberar até a véspera o cliente
+ * fica sem o "vence amanhã". Aqui a lista aparece a tempo de liberar.
  */
 async function guiasRetidas(db, { dias = 7, hoje = null } = {}) {
   const ref = hoje || hojeSP();
@@ -726,6 +708,9 @@ async function guiasRetidas(db, { dias = 7, hoje = null } = {}) {
        FROM deliverables d
        JOIN companies c ON c.id = d.company_id
       WHERE d.released_at IS NULL
+        AND d.historico IS NOT TRUE
+        AND c.arquivada IS NOT TRUE
+        AND c.excluida IS NOT TRUE
         AND d.due_date IS NOT NULL
         AND d.due_date >= $1::date
         AND d.due_date <= ($1::date + $2::int)
@@ -738,6 +723,69 @@ async function guiasRetidas(db, { dias = 7, hoje = null } = {}) {
     total: rows.length,
     vence_amanha: rows.filter((r) => r.due_date === somarDias(ref, 1)).length,
     itens: rows,
+  };
+}
+
+/**
+ * Obrigações marcadas que vencem em breve e NÃO TÊM GUIA no portal.
+ *
+ * Desde que o aviso ao cliente passou a exigir a guia (ver itensTributariosDoDia), quem
+ * fica sem guia fica sem aviso. Esta lista é a contrapartida: o escritório vê a tempo de
+ * anexar a guia, ou confirma que no mês não há nada a pagar (Simples sem faturamento,
+ * empresa sem folha).
+ */
+async function guiasFaltando(db, { dias = 7, hoje = null } = {}) {
+  const ref = hoje || hojeSP();
+  const { rows: empresas } = await db.query(
+    `SELECT c.id, c.name,
+            array_agg(o.obrigacao) AS obrigacoes
+       FROM companies c
+       JOIN company_obligations o ON o.company_id = c.id AND o.ativo IS TRUE
+      WHERE c.alertas_ativos IS TRUE
+        AND c.avisos_gerais_ativos IS NOT FALSE
+        AND c.arquivada IS NOT TRUE
+        AND c.excluida IS NOT TRUE
+      GROUP BY c.id
+      ORDER BY c.name`
+  );
+
+  // Guias do mês corrente e do seguinte, liberadas ou não: retida não "falta", ela
+  // aparece na lista de retidas.
+  const { rows: guias } = await db.query(
+    `SELECT company_id, doc_type,
+            COALESCE(to_char(due_date, 'YYYY-MM'), left(competencia, 7)) AS mes
+       FROM deliverables
+      WHERE doc_type IS NOT NULL
+        AND historico IS NOT TRUE
+        AND cancelado IS NOT TRUE
+        AND COALESCE(to_char(due_date, 'YYYY-MM'), left(competencia, 7))
+            BETWEEN to_char($1::date, 'YYYY-MM') AND to_char($1::date + interval '1 month', 'YYYY-MM')`,
+    [ref]
+  );
+  const guiasPorEmpresa = new Map();
+  for (const g of guias) {
+    if (!guiasPorEmpresa.has(g.company_id)) guiasPorEmpresa.set(g.company_id, []);
+    guiasPorEmpresa.get(g.company_id).push(g);
+  }
+
+  const itens = [];
+  for (const e of empresas) {
+    const faltando = obrigacoesSemGuia({
+      codigos: e.obrigacoes || [],
+      guias: guiasPorEmpresa.get(e.id) || [],
+      hoje: ref,
+      dias,
+    });
+    for (const f of faltando) itens.push({ company_id: e.id, empresa: e.name, ...f });
+  }
+  itens.sort((a, b) => a.vencimento.localeCompare(b.vencimento) || a.empresa.localeCompare(b.empresa));
+
+  return {
+    referencia: ref,
+    dias,
+    total: itens.length,
+    vence_amanha: itens.filter((i) => i.vencimento === somarDias(ref, 1)).length,
+    itens,
   };
 }
 
@@ -973,6 +1021,7 @@ module.exports = {
   feriasPorAvisar,
   projecaoFerias,
   guiasRetidas,
+  guiasFaltando,
   registrarFalha,
   falhasRecentes,
   dashboardFalhas,

@@ -126,7 +126,9 @@ router.post("/guias", async (req, res) => {
   // A competência pedida tem de estar no espelho da PRÓPRIA empresa: o cliente só gera
   // guia do que a Receita mostra para ele.
   const p = await ultimaPendencia(db, empresa.id);
-  const conhecida = (p?.debitos || []).some((d) => d && d.valido && d.periodo_aaaamm === pa && String(d.tipo).toUpperCase() === tipo);
+  const conhecida = (p?.debitos || []).some(
+    (d) => regras.vaiParaCliente(d) && d.periodo_aaaamm === pa && String(d.tipo).toUpperCase() === tipo
+  );
   if (!conhecida) {
     return res.status(400).json({ error: "Esta competência não consta no seu relatório da Receita. Fale com o escritório." });
   }

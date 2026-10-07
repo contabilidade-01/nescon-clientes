@@ -471,6 +471,11 @@ const AlertasPage = () => {
     queryFn: () => api.alertas.retidos(7),
   });
 
+  const faltando = useQuery({
+    queryKey: ["alertas", "faltando"],
+    queryFn: () => api.alertas.faltando(7),
+  });
+
   const dashboard = useQuery({
     queryKey: ["alertas", "dashboard"],
     queryFn: () => api.alertas.dashboard(),
@@ -905,30 +910,65 @@ const AlertasPage = () => {
             </CardContent>
           </Card>
 
-          {/* Antes de qualquer coisa: o que vai ser cobrado e ainda não está no ar.
-              Liberar aqui evita o cliente receber o aviso e achar o portal vazio. */}
-          {(retidos.data?.total ?? 0) > 0 && (
+          {/* Antes de qualquer coisa: o que vence em 7 dias e o cliente ainda não vê.
+              Sem guia liberada no portal o cliente não recebe o aviso de vencimento,
+              então cada linha aqui é um cliente que vai ficar sem lembrete. */}
+          {((faltando.data?.total ?? 0) > 0 || (retidos.data?.total ?? 0) > 0) && (
             <Card className="border-amber-500/50">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">
-                  {retidos.data?.total} guia(s) vencem em 7 dias e ainda estão retidas
-                </CardTitle>
+                <CardTitle className="text-base">Conferir antes do aviso: vencimentos dos próximos 7 dias</CardTitle>
                 <CardDescription>
-                  {retidos.data?.vence_amanha
-                    ? `${retidos.data.vence_amanha} vence(m) amanhã — o alerta sai hoje e o cliente não vai encontrar o documento.`
-                    : "O cliente ainda não consegue ver estes documentos."}
+                  O cliente só recebe o lembrete de FGTS, INSS ou Simples quando a guia está liberada no portal.
+                  {(faltando.data?.vence_amanha ?? 0) + (retidos.data?.vence_amanha ?? 0) > 0 &&
+                    ` ${(faltando.data?.vence_amanha ?? 0) + (retidos.data?.vence_amanha ?? 0)} vence(m) amanhã e o aviso de hoje não vai sair.`}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-1">
-                {retidos.data?.itens.slice(0, 12).map((g) => (
-                  <div key={g.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-1.5 text-sm last:border-0">
-                    <span className="min-w-0 truncate">
-                      <span className="font-medium">{g.empresa}</span>{" "}
-                      <span className="text-muted-foreground">· {g.title}</span>
-                    </span>
-                    <Badge variant="outline">{formatarData(g.due_date)}</Badge>
+              <CardContent className="space-y-4">
+                {(faltando.data?.total ?? 0) > 0 && (
+                  <div>
+                    <p className="mb-1 text-sm font-semibold">
+                      Sem guia no portal ({faltando.data?.total})
+                    </p>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      Anexe a guia, ou ignore se no mês não há o que pagar (ex.: Simples sem faturamento).
+                    </p>
+                    {faltando.data?.itens.slice(0, 20).map((g) => (
+                      <div
+                        key={`${g.company_id}-${g.codigo}-${g.vencimento}`}
+                        className="flex flex-wrap items-center justify-between gap-2 border-b py-1.5 text-sm last:border-0"
+                      >
+                        <span className="min-w-0 truncate">
+                          <span className="font-medium">{g.empresa}</span>{" "}
+                          <span className="text-muted-foreground">· {g.nome}</span>
+                        </span>
+                        <Badge variant="outline">{formatarData(g.vencimento)}</Badge>
+                      </div>
+                    ))}
+                    {(faltando.data?.total ?? 0) > 20 && (
+                      <p className="pt-1 text-xs text-muted-foreground">e mais {(faltando.data?.total ?? 0) - 20}.</p>
+                    )}
                   </div>
-                ))}
+                )}
+                {(retidos.data?.total ?? 0) > 0 && (
+                  <div>
+                    <p className="mb-1 text-sm font-semibold">Retidas, ainda não liberadas ({retidos.data?.total})</p>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      A guia existe mas o cliente ainda não consegue ver.
+                    </p>
+                    {retidos.data?.itens.slice(0, 20).map((g) => (
+                      <div key={g.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-1.5 text-sm last:border-0">
+                        <span className="min-w-0 truncate">
+                          <span className="font-medium">{g.empresa}</span>{" "}
+                          <span className="text-muted-foreground">· {g.title}</span>
+                        </span>
+                        <Badge variant="outline">{formatarData(g.due_date)}</Badge>
+                      </div>
+                    ))}
+                    {(retidos.data?.total ?? 0) > 20 && (
+                      <p className="pt-1 text-xs text-muted-foreground">e mais {(retidos.data?.total ?? 0) - 20}.</p>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

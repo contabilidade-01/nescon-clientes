@@ -13,6 +13,8 @@ import { describe, it, expect } from "vitest";
 import {
   cnpjChave,
   debitosCobraveis,
+  debitosAVencer,
+  vaiParaCliente,
   totalCobravel,
   espelhoDaEmpresa,
   deveAbrirCobranca,
@@ -31,6 +33,8 @@ const debitoAtraso = {
 const debitoAVencer = { ...debitoAtraso, periodo_apuracao: "09/2026", periodo_aaaamm: "202609", data_vencimento: "2026-10-20", saldo_devedor_total: 300, situacao: "A ANALISAR-A VENCER", em_atraso: false };
 const fantasma = { ...debitoAtraso, periodo_apuracao: "01/0001", periodo_aaaamm: null, data_vencimento: null, saldo_devedor_total: 0, valido: false, motivos: ["valor zerado"], em_atraso: false };
 const inss = { ...debitoAtraso, tipo: "INSS", receita: "1138-01 - CP-SEGURADOS", periodo_apuracao: "06/2026", periodo_aaaamm: "202606", data_vencimento: "2026-07-20", saldo_devedor_total: 1200, guia: "DCTFWEB", recalculo_disponivel: false };
+
+const maed = { ...debitoAtraso, tipo: "MAED", receita: "2203-01 - MAED", periodo_apuracao: "03/2026", periodo_aaaamm: "202603", data_vencimento: "2026-04-30", saldo_devedor_total: 200, guia: "DARF" };
 
 const empresaEcac = {
   cnpj: "11.222.333/0001-81", razao_social: "ALFA", ativo: true,
@@ -65,6 +69,36 @@ describe("junção e leitura", () => {
     expect(deveAbrirCobranca(espelhoDaEmpresa({ ...empresaEcac, relatorio_recente: false }))).toBe(false);
     expect(deveAbrirCobranca(espelhoDaEmpresa({ ...empresaEcac, debitos: [debitoAVencer, fantasma] }))).toBe(false);
     expect(espelhoDaEmpresa({ ...empresaEcac, relatorio: null })).toBeNull();
+  });
+});
+
+describe("MAED não vai para o cliente", () => {
+  it("fica fora dos cobráveis, do total e dos a vencer", () => {
+    expect(debitosCobraveis([debitoAtraso, maed]).map((d) => d.tipo)).toEqual(["SN"]);
+    expect(totalCobravel([debitoAtraso, maed])).toBe(515.5);
+    expect(debitosAVencer([{ ...maed, em_atraso: false }])).toEqual([]);
+  });
+
+  it("também quando vem como OUTROS com MAED na receita", () => {
+    expect(vaiParaCliente({ ...maed, tipo: "OUTROS" })).toBe(false);
+    expect(vaiParaCliente(inss)).toBe(true);
+  });
+
+  it("empresa só com MAED em atraso não abre cobrança", () => {
+    const e = espelhoDaEmpresa({ ...empresaEcac, debitos: [maed, maed] })!;
+    expect(e.qtd_atraso).toBe(0);
+    expect(deveAbrirCobranca(e)).toBe(false);
+  });
+
+  it("a mensagem não cita a MAED", () => {
+    const m = montarMensagem({
+      etapa: "notificado",
+      empresa: { name: "OJOTA" },
+      debitos: [debitoAtraso, maed],
+      relatorio_data: "2026-10-02",
+      escritorio: { nome: "Nescon" },
+    });
+    expect(JSON.stringify(m)).not.toMatch(/MAED|Multa por atraso/);
   });
 });
 
