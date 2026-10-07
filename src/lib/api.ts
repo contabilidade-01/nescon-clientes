@@ -1705,6 +1705,7 @@ export const api = {
         pdf_base64?: string;
         tipo?: "contrato" | "aditivo";
         contrato_pai_id?: string | null;
+        proposta_id?: string | null;
       }) =>
         request<import("@/lib/contratoModelo").ContratoDetalhe>("/admin/contratos", {
           method: "POST",
@@ -1790,8 +1791,37 @@ export const api = {
     },
 
     /** Propostas comerciais (assistente + formulário, catálogo de serviços, PDF). */
+    onboarding: {
+      list: () => request<import("@/lib/onboardingModelo").OnboardingResumo[]>("/admin/onboarding"),
+      get: (id: string) => request<import("@/lib/onboardingModelo").OnboardingDetalhe>(`/admin/onboarding/${id}`),
+      /** Cria à mão: por contrato, proposta, empresa ou só com os dados informados. */
+      create: (body: {
+        contrato_id?: string;
+        proposta_id?: string;
+        company_id?: string;
+        modelo_id?: string;
+        enviar?: boolean;
+        dados?: Record<string, unknown>;
+      }) =>
+        request<{ id: string; criado: boolean }>("/admin/onboarding", { method: "POST", body: JSON.stringify(body) }),
+      reenviar: (id: string) =>
+        request<{ enviado: boolean; link: string | null }>(`/admin/onboarding/${id}/reenviar`, { method: "POST" }),
+      revisar: (arquivoId: string, body: { status: "aprovado" | "reprovado"; observacao?: string }) =>
+        request<{ status: string }>(`/admin/onboarding/arquivos/${arquivoId}`, { method: "PATCH", body: JSON.stringify(body) }),
+      fetchArquivo: (arquivoId: string) => requestBlob(`/admin/onboarding/arquivos/${arquivoId}/file`),
+      modelos: () => request<import("@/lib/onboardingModelo").OnboardingModelo[]>("/admin/onboarding/modelos"),
+    },
     propostas: {
       config: () => request<{ ia: boolean; smtp: boolean }>("/admin/propostas/config"),
+      /** Cadastro da proposta já no formato do contrato (e contratos que ela gerou). */
+      dadosContrato: (id: string) =>
+        request<{
+          proposta_id: string;
+          titulo: string;
+          company_id: string | null;
+          dados: Record<string, Record<string, unknown>>;
+          contratos: Array<{ id: string; titulo: string; status: string; onboarding_id: string | null; onboarding_status: string | null }>;
+        }>(`/admin/propostas/${id}/dados-contrato`),
       tabela: () => request<{ padroes: import("@/lib/contratoModelo").PadraoHonorario[] }>("/admin/propostas/tabela"),
       catalogo: () => request<{ catalogo: Partial<import("@/lib/propostaModelo").CatalogoProposta> | null }>("/admin/propostas/catalogo"),
       salvarCatalogo: (catalogo: import("@/lib/propostaModelo").CatalogoProposta | null) =>
@@ -2763,6 +2793,23 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ ferramenta }),
       }).catch(() => undefined),
+  },
+
+  /** Link público do cliente novo (sem login): roteiro de primeiros passos e envio de documentos. */
+  onboarding: {
+    get: (token: string) =>
+      publicRequest<import("@/lib/onboardingModelo").OnboardingCliente>(`/onboarding/public/${encodeURIComponent(token)}`),
+    enviar: async (token: string, itemId: string, files: File[]) => {
+      const form = new FormData();
+      for (const f of files) form.append("arquivos", f);
+      const res = await fetch(
+        `${API_BASE}/onboarding/public/${encodeURIComponent(token)}/itens/${encodeURIComponent(itemId)}/arquivos`,
+        { method: "POST", body: form }
+      );
+      const data = await parseResponseJson<import("@/lib/onboardingModelo").OnboardingCliente & { error?: string }>(res);
+      if (!res.ok) throw new Error(data.error || "Falha no envio");
+      return data as import("@/lib/onboardingModelo").OnboardingCliente;
+    },
   },
 
   admissoes: {

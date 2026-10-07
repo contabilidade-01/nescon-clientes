@@ -167,6 +167,10 @@ export type ContratoResumo = {
   tipo: "contrato" | "aditivo";
   contrato_pai_id: string | null;
   aditivo_numero: number | null;
+  /** Proposta de que o contrato nasceu (cadeia proposta → contrato → onboarding). */
+  proposta_id?: string | null;
+  onboarding_id?: string | null;
+  onboarding_status?: string | null;
   status: ContratoStatus;
   tem_pdf: boolean;
   tem_pdf_assinado: boolean;

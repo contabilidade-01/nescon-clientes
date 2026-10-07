@@ -4,6 +4,7 @@ import {
   BellRing,
   Bot,
   Briefcase,
+  ClipboardList,
   Building2,
   CalendarCheck,
   CalendarClock,
@@ -85,6 +86,7 @@ export const SETORES: Setor[] = [
     items: [
       { to: "/admin/propostas", label: "Propostas", icon: FileText, area: "empresas" },
       { to: "/admin/contratos", label: "Contratos", icon: FileSignature, area: "empresas" },
+      { to: "/admin/onboarding", label: "Onboarding", icon: ClipboardList, area: "empresas" },
       {
         to: "/admin/clientes-gclick",
         label: "Clientes do G-Click",

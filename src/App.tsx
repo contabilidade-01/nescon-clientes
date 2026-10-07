@@ -19,6 +19,8 @@ import SalaryAdhocPage from "./pages/SalaryAdhocPage.tsx";
 import CertificatesPage from "./pages/CertificatesPage.tsx";
 import VisaoGeralPage from "./pages/admin/VisaoGeralPage.tsx";
 import HubPage from "./pages/admin/HubPage.tsx";
+import OnboardingPage from "./pages/admin/OnboardingPage.tsx";
+import OnboardingPublicoPage from "./pages/OnboardingPublicoPage.tsx";
 import EmpresasPage from "./pages/admin/EmpresasPage.tsx";
 import GruposPage from "./pages/admin/GruposPage.tsx";
 import ClientesGclickPage from "./pages/admin/ClientesGclickPage.tsx";
@@ -170,11 +172,13 @@ const AppRoutes = () => (
     <Route path="/reset-password" element={<ResetPasswordPage />} />
     {/* Link do WhatsApp: sem login, identificado por token opaco */}
     <Route path="/entrega/:token" element={<EntregaPublicaPage />} />
+    <Route path="/onboarding/:token" element={<OnboardingPublicoPage />} />
     {/* Calculadora pública de custo de contratação — sem login */}
     <Route path="/calculadora-custo" element={<CalculadoraCustoPage />} />
     {/* Ficha de admissão — pública; se houver sessão de empresa, pré-preenche */}
     <Route path="/admissao" element={<AdmissaoPage />} />
     {/* Painel do escritório: uma página por área, com menu lateral retrátil (AdminLayout) */}
+    <Route path="/admin/onboarding" element={<AdminAreaRoute area="empresas"><OnboardingPage /></AdminAreaRoute>} />
     <Route path="/admin/hub" element={<AdminOnlyRoute><HubPage /></AdminOnlyRoute>} />
     <Route path="/admin" element={<AdminOnlyRoute><VisaoGeralPage /></AdminOnlyRoute>} />
     <Route path="/admin/empresas" element={<AdminAreaRoute area="empresas"><EmpresasPage /></AdminAreaRoute>} />

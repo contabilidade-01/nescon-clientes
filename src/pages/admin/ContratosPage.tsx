@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -6,6 +7,7 @@ import {
   Copy,
   CopyPlus,
   Download,
+  ClipboardList,
   ExternalLink,
   FilePlus2,
   FileSignature,
@@ -194,6 +196,7 @@ function ListaContratos({
   onAditivo: (id: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const lista = useQuery({ queryKey: ["admin-contratos"], queryFn: () => api.admin.contratos.list() });
   const config = useQuery({ queryKey: ["admin-contratos", "config"], queryFn: () => api.admin.contratos.config() });
 
@@ -313,6 +316,16 @@ function ListaContratos({
                             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                           </Button>
                         ) : null}
+                        {c.tipo === "contrato" ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            title={c.onboarding_id ? "Ver o onboarding deste contrato" : "Criar onboarding deste contrato"}
+                            onClick={() => navigate(c.onboarding_id ? "/admin/onboarding" : `/admin/onboarding?contrato=${c.id}`)}
+                          >
+                            <ClipboardList className={`h-4 w-4 ${c.onboarding_id ? "text-emerald-600" : ""}`} />
+                          </Button>
+                        ) : null}
                         {c.status === "assinado" ? (
                           <Button size="sm" variant="ghost" title="Criar aditivo" onClick={() => onAditivo(c.contrato_pai_id || c.id)}>
                             <FilePlus2 className="h-4 w-4" />
@@ -358,11 +371,14 @@ function ListaContratos({
 function Editor({
   id,
   aditivoDe,
+  propostaId,
   onVoltar,
   onAbrir,
   onAditivo,
 }: {
   id: string | null;
+  /** Proposta de origem: o contrato novo nasce com o cadastro dela (e guarda o vínculo). */
+  propostaId?: string;
   /** Id de um contrato assinado: abre o editor já como aditivo novo desse contrato. */
   aditivoDe?: string;
   onVoltar: () => void;
@@ -370,6 +386,7 @@ function Editor({
   onAditivo: (id: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const empresas = useAdminCompanies();
   const config = useQuery({ queryKey: ["admin-contratos", "config"], queryFn: () => api.admin.contratos.config() });
   const tabela = useQuery({ queryKey: ["admin-contratos", "tabela"], queryFn: () => api.admin.contratos.tabela(), retry: false });
@@ -395,6 +412,7 @@ function Editor({
   const [dados, setDados] = useState<ContratoDados>(() => dadosPadrao());
   const [aditivo, setAditivo] = useState<AditivoMeta | null>(null);
   const [padroesAplicados, setPadroesAplicados] = useState(false);
+  const [propostaAplicada, setPropostaAplicada] = useState<string | null>(null);
   const [detalhe, setDetalhe] = useState<ContratoDetalhe | null>(null);
   const [gerando, setGerando] = useState(false);
   const [dialogAssinatura, setDialogAssinatura] = useState(false);
@@ -407,6 +425,20 @@ function Editor({
     setDados((d) => mesclarDados(d, padroes.data.padroes));
     setPadroesAplicados(true);
   }, [id, aditivoDe, padroes.data, padroesAplicados]);
+
+  // Contrato nascido de uma proposta: o cadastro dela entra DEPOIS dos padrões do escritório,
+  // para o que o cliente já disse prevalecer sobre o padrão genérico.
+  const daProposta = useQuery({
+    queryKey: ["admin-propostas", "dados-contrato", propostaId],
+    queryFn: () => api.admin.propostas.dadosContrato(propostaId as string),
+    enabled: Boolean(propostaId) && !id && !aditivoDe,
+  });
+  useEffect(() => {
+    if (!daProposta.data || !padroesAplicados || propostaAplicada === daProposta.data.proposta_id) return;
+    setDados((d) => mesclarDados(d, daProposta.data.dados as never));
+    if (daProposta.data.company_id) setCompanyId(daProposta.data.company_id);
+    setPropostaAplicada(daProposta.data.proposta_id);
+  }, [daProposta.data, padroesAplicados, propostaAplicada]);
 
   useEffect(() => {
     if (!existente.data) return;
@@ -497,6 +529,7 @@ function Editor({
           dados: adObj ?? dados,
           pdf_base64: enviado ? undefined : pdfParaBase64(pdf),
           ...(adObj ? { tipo: "aditivo" as const, contrato_pai_id: adObj.paiId } : {}),
+          ...(!contratoId && propostaId ? { proposta_id: propostaId } : {}),
         };
         return contratoId ? api.admin.contratos.update(contratoId, body) : api.admin.contratos.create(body);
       } finally {
@@ -598,6 +631,16 @@ function Editor({
             title={config.data?.ia ? "Conversar com o assistente de IA" : "Configure a chave da Claude (ANTHROPIC_API_KEY ou Configurações › IA)"}
           >
             <Sparkles className="h-4 w-4 mr-1" /> Assistente IA
+          </Button>
+        ) : null}
+        {contratoId && !ehAditivo ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(detalhe?.onboarding_id ? "/admin/onboarding" : `/admin/onboarding?contrato=${contratoId}`)}
+            title="Primeiros passos do cliente: documentos, prazos e canais"
+          >
+            <ClipboardList className="h-4 w-4 mr-1" /> {detalhe?.onboarding_id ? "Ver onboarding" : "Criar onboarding"}
           </Button>
         ) : null}
         {contratoId && !ehAditivo ? (
@@ -1047,7 +1090,12 @@ function DialogAssinatura({
 
 // ---------------------------------------------------------------------------
 export default function ContratosPage() {
-  const [modo, setModo] = useState<{ tela: "lista" } | { tela: "editor"; id: string | null; aditivoDe?: string }>({ tela: "lista" });
+  // ?proposta=ID (botão "Gerar contrato" na proposta) abre o editor já com o cadastro dela.
+  const [params, setParams] = useSearchParams();
+  const daPropostaId = params.get("proposta") || undefined;
+  const [modo, setModo] = useState<{ tela: "lista" } | { tela: "editor"; id: string | null; aditivoDe?: string; propostaId?: string }>(
+    daPropostaId ? { tela: "editor", id: null, propostaId: daPropostaId } : { tela: "lista" }
+  );
   const [aba, setAba] = useState("contratos");
   const [rapido, setRapido] = useState(false);
   return (
@@ -1057,10 +1105,14 @@ export default function ContratosPage() {
     >
       {modo.tela === "editor" ? (
         <Editor
-          key={modo.id || modo.aditivoDe || "novo"}
+          key={modo.id || modo.aditivoDe || modo.propostaId || "novo"}
           id={modo.id}
           aditivoDe={modo.aditivoDe}
-          onVoltar={() => setModo({ tela: "lista" })}
+          propostaId={modo.propostaId}
+          onVoltar={() => {
+            if (params.get("proposta")) setParams({}, { replace: true });
+            setModo({ tela: "lista" });
+          }}
           onAbrir={(id) => setModo({ tela: "editor", id })}
           onAditivo={(id) => setModo({ tela: "editor", id: null, aditivoDe: id })}
         />

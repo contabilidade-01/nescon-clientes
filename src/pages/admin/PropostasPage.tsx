@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, Copy, Download, Loader2, Mail, Plus, Printer, Save, Trash2, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ClipboardList, Copy, Download, FileSignature, Loader2, Mail, Plus, Printer, Save, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { ContratoPreview } from "@/components/ContratoPreview";
 import { AssistentePropostas } from "@/components/propostas/AssistentePropostas";
@@ -206,6 +207,7 @@ function Lista({ onAbrir, onNova }: { onAbrir: (id: string) => void; onNova: () 
 // ---------------------------------------------------------------------------
 function Editor({ id, catalogo, onVoltar }: { id: string | null; catalogo: CatalogoProposta; onVoltar: () => void }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const empresas = useAdminCompanies();
   const config = useQuery({ queryKey: ["admin-propostas", "config"], queryFn: () => api.admin.propostas.config() });
   const tabela = useQuery({ queryKey: ["admin-propostas", "tabela"], queryFn: () => api.admin.propostas.tabela(), retry: false });
@@ -398,6 +400,19 @@ function Editor({ id, catalogo, onVoltar }: { id: string | null; catalogo: Catal
       {travada ? (
         <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 print:hidden">
           Proposta aceita — não pode mais ser alterada. Para mudar condições, crie uma nova.
+        </div>
+      ) : null}
+      {propostaId && !sujo ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm print:hidden">
+          <span className="text-muted-foreground">
+            {travada ? "Próximo passo:" : "Já quer adiantar?"}
+          </span>
+          <Button size="sm" variant={travada ? "default" : "outline"} onClick={() => navigate(`/admin/contratos?proposta=${propostaId}`)}>
+            <FileSignature className="mr-1 h-4 w-4" /> Gerar contrato com estes dados
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => navigate(`/admin/onboarding?proposta=${propostaId}`)}>
+            <ClipboardList className="mr-1 h-4 w-4" /> Criar onboarding
+          </Button>
         </div>
       ) : null}
 
