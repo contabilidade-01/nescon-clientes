@@ -1,0 +1,50 @@
+[
+  {
+    "nome": "MEI — modelo simplificado",
+    "descricao": "Contrato curto para MEI. O valor é combinado caso a caso.",
+    "criterios": { "enquadramento": "mei" },
+    "dados": { "objeto": { "modelo": "mei", "enquadramento": "mei", "funcionariosIncluidos": 1 } }
+  },
+  {
+    "nome": "Serviços · Simples · baixa complexidade",
+    "descricao": "Faixa de serviços: R$ 280.",
+    "criterios": { "enquadramento": "simples", "tipoEmpresa": "servico", "complexidade": "baixa" },
+    "dados": { "objeto": { "modelo": "completo", "enquadramento": "simples", "tipoEmpresa": "servico", "complexidade": "baixa" }, "honorarios": { "valorMensal": 280 } }
+  },
+  {
+    "nome": "Serviços · Simples · média complexidade",
+    "descricao": "Faixa de serviços: R$ 315.",
+    "criterios": { "enquadramento": "simples", "tipoEmpresa": "servico", "complexidade": "media" },
+    "dados": { "objeto": { "modelo": "completo", "enquadramento": "simples", "tipoEmpresa": "servico", "complexidade": "media" }, "honorarios": { "valorMensal": 315 } }
+  },
+  {
+    "nome": "Serviços · Simples · alta complexidade",
+    "descricao": "Faixa de serviços: R$ 350.",
+    "criterios": { "enquadramento": "simples", "tipoEmpresa": "servico", "complexidade": "alta" },
+    "dados": { "objeto": { "modelo": "completo", "enquadramento": "simples", "tipoEmpresa": "servico", "complexidade": "alta" }, "honorarios": { "valorMensal": 350 } }
+  },
+  {
+    "nome": "Comércio · Simples · baixa complexidade",
+    "descricao": "Faixa de comércio: R$ 350.",
+    "criterios": { "enquadramento": "simples", "tipoEmpresa": "comercio", "complexidade": "baixa" },
+    "dados": { "objeto": { "modelo": "completo", "enquadramento": "simples", "tipoEmpresa": "comercio", "complexidade": "baixa" }, "honorarios": { "valorMensal": 350 } }
+  },
+  {
+    "nome": "Comércio · Simples · média complexidade",
+    "descricao": "Faixa de comércio: R$ 450.",
+    "criterios": { "enquadramento": "simples", "tipoEmpresa": "comercio", "complexidade": "media" },
+    "dados": { "objeto": { "modelo": "completo", "enquadramento": "simples", "tipoEmpresa": "comercio", "complexidade": "media" }, "honorarios": { "valorMensal": 450 } }
+  },
+  {
+    "nome": "Comércio · Simples · alta complexidade",
+    "descricao": "Faixa de comércio: R$ 550.",
+    "criterios": { "enquadramento": "simples", "tipoEmpresa": "comercio", "complexidade": "alta" },
+    "dados": { "objeto": { "modelo": "completo", "enquadramento": "simples", "tipoEmpresa": "comercio", "complexidade": "alta" }, "honorarios": { "valorMensal": 550 } }
+  },
+  {
+    "nome": "Indústria · Simples · média complexidade",
+    "descricao": "Segue a faixa de comércio até existir tabela própria: R$ 450.",
+    "criterios": { "enquadramento": "simples", "tipoEmpresa": "industria", "complexidade": "media" },
+    "dados": { "objeto": { "modelo": "completo", "enquadramento": "simples", "tipoEmpresa": "industria", "complexidade": "media" }, "honorarios": { "valorMensal": 450 } }
+  }
+]

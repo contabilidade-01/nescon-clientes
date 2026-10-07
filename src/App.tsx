@@ -46,6 +46,8 @@ import AcessosPage from "./pages/admin/AcessosPage.tsx";
 import FeriasUploadLotePage from "./pages/admin/FeriasUploadLotePage.tsx";
 import FeriasUrgenciaPage from "./pages/admin/FeriasUrgenciaPage.tsx";
 import EnviarAcessoPage from "./pages/admin/EnviarAcessoPage.tsx";
+import ContratosPage from "./pages/admin/ContratosPage.tsx";
+import PropostasPage from "./pages/admin/PropostasPage.tsx";
 import GuiasFiscaisPage from "./pages/GuiasFiscaisPage.tsx";
 import ImpostosPendentesPage from "./pages/ImpostosPendentesPage.tsx";
 import ImpostosEcacPage from "./pages/admin/ImpostosEcacPage.tsx";
@@ -200,6 +202,8 @@ const AppRoutes = () => (
     <Route path="/admin/ferias-lote" element={<AdminAreaRoute area="funcionarios"><FeriasUploadLotePage /></AdminAreaRoute>} />
     <Route path="/admin/ferias-urgencia" element={<AdminAreaRoute area="funcionarios"><FeriasUrgenciaPage /></AdminAreaRoute>} />
     <Route path="/admin/enviar-acesso" element={<AdminAreaRoute area="empresas"><EnviarAcessoPage /></AdminAreaRoute>} />
+    <Route path="/admin/contratos" element={<AdminAreaRoute area="empresas"><ContratosPage /></AdminAreaRoute>} />
+    <Route path="/admin/propostas" element={<AdminAreaRoute area="empresas"><PropostasPage /></AdminAreaRoute>} />
     {/* Única tela liberada enquanto a senha for a inicial */}
     <Route path="/alterar-senha" element={<LoggedInRoute><AlterarSenhaPage /></LoggedInRoute>} />
     <Route path="/" element={<CompanyOnlyRoute><Index /></CompanyOnlyRoute>} />

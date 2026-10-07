@@ -66,6 +66,7 @@ e cada rota é uma página em `src/pages/admin/`:
 |------|-----------|
 | `/admin` | Visão geral: números do escritório, licenças que exigem atenção e consentimentos LGPD. Cada cartão leva à área correspondente. |
 | `/admin/empresas` | Cadastro de CNPJ, razão social, contactos, permissões por ferramenta e importações da empresa. |
+| `/admin/contratos` | Contratos de prestação de serviços: cadastro prévio por empresa, padrões do escritório, modelos completo e MEI, prévia/impressão, PDF no portal do cliente e assinatura eletrônica (ZapSign). Ver [docs/CONTRATOS.md](docs/CONTRATOS.md) e [docs/CONTRATOS-HISTORICO.md](docs/CONTRATOS-HISTORICO.md). |
 | `/admin/funcionarios` | Quadro de pessoal, cadastro em massa pelo extrato e **avisos de saída da folha**. |
 | `/admin/entregas` | Entregas por empresa (liberadas × retidas), documentos de DP e atestados. |
 | `/admin/licencas` | Licenças e marcação estabelecida × não estabelecida (ver abaixo). |

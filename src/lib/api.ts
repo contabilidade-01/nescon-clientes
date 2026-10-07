@@ -1668,6 +1668,162 @@ export const api = {
         }>;
       }>(`/admin/honorarios-folha?desde=${encodeURIComponent(desde)}`),
 
+    /** Contratos de prestação de serviços (modelo preenchido na tela + ZapSign). */
+    contratos: {
+      config: () =>
+        request<{
+          zapsign: boolean;
+          ia: boolean;
+          sandbox: boolean;
+          smtp: boolean;
+          webhook_url: string | null;
+          webhook_secret_definido: boolean;
+        }>("/admin/contratos/config"),
+      list: () => request<import("@/lib/contratoModelo").ContratoResumo[]>("/admin/contratos"),
+      get: (id: string) => request<import("@/lib/contratoModelo").ContratoDetalhe>(`/admin/contratos/${id}`),
+      create: (body: {
+        company_id: string | null;
+        titulo: string;
+        dados: unknown;
+        pdf_base64?: string;
+        tipo?: "contrato" | "aditivo";
+        contrato_pai_id?: string | null;
+      }) =>
+        request<import("@/lib/contratoModelo").ContratoDetalhe>("/admin/contratos", {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+      update: (
+        id: string,
+        body: {
+          company_id: string | null;
+          titulo: string;
+          dados: unknown;
+          pdf_base64?: string;
+        },
+      ) =>
+        request<import("@/lib/contratoModelo").ContratoDetalhe>(`/admin/contratos/${id}`, {
+          method: "PUT",
+          body: JSON.stringify(body),
+        }),
+      remove: (id: string) => request<{ ok: boolean }>(`/admin/contratos/${id}`, { method: "DELETE" }),
+      enviarAssinatura: (
+        id: string,
+        body: { signatarios: import("@/lib/contratoModelo").ContratoSigner[]; whatsapp: boolean; prazo_dias: number },
+      ) =>
+        request<import("@/lib/contratoModelo").ContratoDetalhe>(`/admin/contratos/${id}/enviar-assinatura`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+      sincronizar: (id: string) =>
+        request<import("@/lib/contratoModelo").ContratoDetalhe>(`/admin/contratos/${id}/sincronizar`, { method: "POST" }),
+      fetchPdf: (id: string, assinado = false) => requestBlob(`/admin/contratos/${id}/pdf${assinado ? "?assinado=1" : ""}`),
+      /** Tabela de honorários-padrão do portal (Atualização de Honorários), para sugerir o valor. */
+      tabela: () => request<{ padroes: import("@/lib/contratoModelo").PadraoHonorario[] }>("/admin/contratos/tabela"),
+      /** Padrões do escritório (contratada, regras, faixas) para contratos novos. */
+      padroes: () => request<{ padroes: import("@/lib/contratoModelo").ContratoParcial }>("/admin/contratos/padroes"),
+      salvarPadroes: (padroes: import("@/lib/contratoModelo").ContratoParcial) =>
+        request<{ padroes: import("@/lib/contratoModelo").ContratoParcial }>("/admin/contratos/padroes", {
+          method: "PUT",
+          body: JSON.stringify({ padroes }),
+        }),
+      /** Cadastro prévio por empresa. */
+      cadastros: () => request<import("@/lib/contratoModelo").ContratoCadastroResumo[]>("/admin/contratos/cadastros"),
+      cadastro: (companyId: string) =>
+        request<{ company_id: string; dados: import("@/lib/contratoModelo").ContratoParcial | null; updated_at: string | null }>(
+          `/admin/contratos/cadastros/${companyId}`,
+        ),
+      /** Perfis de honorário. */
+      presets: () => request<import("@/lib/contratoCampos").ContratoPreset[]>("/admin/contratos/presets"),
+      criarPreset: (p: Omit<import("@/lib/contratoCampos").ContratoPreset, "id">) =>
+        request<import("@/lib/contratoCampos").ContratoPreset>("/admin/contratos/presets", { method: "POST", body: JSON.stringify(p) }),
+      atualizarPreset: (id: string, p: Omit<import("@/lib/contratoCampos").ContratoPreset, "id">) =>
+        request<import("@/lib/contratoCampos").ContratoPreset>(`/admin/contratos/presets/${id}`, { method: "PUT", body: JSON.stringify(p) }),
+      excluirPreset: (id: string) => request<{ ok: boolean }>(`/admin/contratos/presets/${id}`, { method: "DELETE" }),
+      /** Base de um aditivo: contrato original assinado + aditivos assinados aplicados. */
+      condicoes: (id: string) =>
+        request<{
+          pai: { id: string; titulo: string; company_id: string | null; company_name: string | null; assinado_em: string | null };
+          base: import("@/lib/contratoModelo").ContratoDados;
+          proximo_numero: number;
+          aditivo_em_aberto: boolean;
+        }>(`/admin/contratos/${id}/condicoes`),
+      /** Agente de IA: devolve campos a preencher (nunca texto de cláusula). */
+      assistente: (body: {
+        modo: "contrato" | "aditivo";
+        mensagens: Array<{ role: "user" | "assistant"; content: string }>;
+        campos: unknown[];
+        estado: Record<string, unknown>;
+        perfis?: unknown[];
+        contexto?: Record<string, unknown>;
+      }) =>
+        request<{
+          mensagem: string;
+          perfil_id: string | null;
+          atualizacoes: Record<string, unknown>;
+          faltando: string[];
+          pronto: boolean;
+          modelo: string;
+        }>("/admin/contratos/assistente", { method: "POST", body: JSON.stringify(body) }),
+      salvarCadastro: (companyId: string, dados: import("@/lib/contratoModelo").ContratoParcial) =>
+        request<{ company_id: string; dados: import("@/lib/contratoModelo").ContratoParcial; updated_at: string }>(
+          `/admin/contratos/cadastros/${companyId}`,
+          { method: "PUT", body: JSON.stringify({ dados }) },
+        ),
+    },
+
+    /** Propostas comerciais (assistente + formulário, catálogo de serviços, PDF). */
+    propostas: {
+      config: () => request<{ ia: boolean; smtp: boolean }>("/admin/propostas/config"),
+      tabela: () => request<{ padroes: import("@/lib/contratoModelo").PadraoHonorario[] }>("/admin/propostas/tabela"),
+      catalogo: () => request<{ catalogo: Partial<import("@/lib/propostaModelo").CatalogoProposta> | null }>("/admin/propostas/catalogo"),
+      salvarCatalogo: (catalogo: import("@/lib/propostaModelo").CatalogoProposta | null) =>
+        request<{ catalogo: Partial<import("@/lib/propostaModelo").CatalogoProposta> | null }>("/admin/propostas/catalogo", {
+          method: "PUT",
+          body: JSON.stringify({ catalogo }),
+        }),
+      assistente: (body: {
+        mensagens: Array<{ role: "user" | "assistant"; content: string }>;
+        catalogo: unknown;
+        estado: unknown;
+      }) =>
+        request<{ mensagem: string; patch: import("@/lib/propostaModelo").PatchProposta; faltando: string[]; pronta: boolean; modelo: string }>(
+          "/admin/propostas/assistente",
+          { method: "POST", body: JSON.stringify(body) },
+        ),
+      list: () => request<import("@/lib/propostaModelo").PropostaResumo[]>("/admin/propostas"),
+      get: (id: string) => request<import("@/lib/propostaModelo").PropostaDetalhe>(`/admin/propostas/${id}`),
+      create: (body: {
+        company_id: string | null;
+        titulo: string;
+        dados: import("@/lib/propostaModelo").PropostaDados;
+        pdf_base64?: string;
+        publicar_portal?: boolean;
+        total_unico: number;
+        total_mensal: number;
+        validade_ate: string | null;
+      }) => request<import("@/lib/propostaModelo").PropostaDetalhe>("/admin/propostas", { method: "POST", body: JSON.stringify(body) }),
+      update: (
+        id: string,
+        body: {
+          company_id: string | null;
+          titulo: string;
+          dados: import("@/lib/propostaModelo").PropostaDados;
+          pdf_base64?: string;
+          publicar_portal?: boolean;
+          total_unico: number;
+          total_mensal: number;
+          validade_ate: string | null;
+        },
+      ) => request<import("@/lib/propostaModelo").PropostaDetalhe>(`/admin/propostas/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+      remove: (id: string) => request<{ ok: boolean }>(`/admin/propostas/${id}`, { method: "DELETE" }),
+      status: (id: string, status: "enviada" | "aceita" | "recusada" | "salva") =>
+        request<import("@/lib/propostaModelo").PropostaDetalhe>(`/admin/propostas/${id}/status`, { method: "POST", body: JSON.stringify({ status }) }),
+      enviarEmail: (id: string, body: { para: string[]; mensagem?: string }) =>
+        request<import("@/lib/propostaModelo").PropostaDetalhe>(`/admin/propostas/${id}/enviar-email`, { method: "POST", body: JSON.stringify(body) }),
+      fetchPdf: (id: string) => requestBlob(`/admin/propostas/${id}/pdf`),
+    },
+
     /** Painel Atualização de Honorários (rentabilidade / reforma / reajuste). */
     honorariosAtualizacao: () =>
       request<{

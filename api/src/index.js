@@ -36,6 +36,8 @@ const { ensureWhatsappDpSchema } = require("./ensureWhatsappDpSchema");
 const { ensureDpDocsSchema } = require("./ensureDpDocsSchema");
 const { ensureCircularSchema } = require("./ensureCircularSchema");
 const { ensureEcacSchema } = require("./ensureEcacSchema");
+const { ensureContratosSchema } = require("./ensureContratosSchema");
+const { ensurePropostasSchema } = require("./ensurePropostasSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -109,6 +111,10 @@ app.use("/api/admin/acompanhamentos", require("./routes/monthlyFollow"));
 app.use("/api/admin/honorarios-atualizacao", require("./routes/honorariosAtualizacao"));
 // Cobrança de pendências do e-CAC (painel). Antes de /api/admin: rota mais específica.
 app.use("/api/admin/ecac", require("./routes/adminEcac"));
+const contratosRoutes = require("./routes/contratos");
+app.use("/api/admin/contratos", contratosRoutes.adminRouter);
+app.use("/api/contratos/zapsign/webhook", contratosRoutes.webhookRouter);
+app.use("/api/admin/propostas", require("./routes/propostas").adminRouter);
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/chat", require("./routes/chat"));
 app.use("/api/employees", require("./routes/employees"));
@@ -177,8 +183,10 @@ async function start() {
         ? "[auth] segredo dos tokens GERADO nesta subida e guardado na instalação."
         : `[auth] segredo dos tokens: ${seg.origem}.`
     );
-    await ensureEmployeePayrollFields(db);
+    // ensureExtratoAutoSchema cria companies.extrato_processado_id, que
+    // ensureEmployeePayrollFields atualiza: precisa vir antes (banco limpo).
     await ensureExtratoAutoSchema(db);
+    await ensureEmployeePayrollFields(db);
     await ensureVacationSchema(db);
     await ensureEngagementSchema(db);
     await ensureAlertasSchema(db);
@@ -197,6 +205,8 @@ async function start() {
     await ensureDpDocsSchema(db);
     await ensureCircularSchema(db);
     await ensureEcacSchema(db);
+    await ensureContratosSchema(db);
+    await ensurePropostasSchema(db);
     // Circular que estava enviando quando a API caiu volta como "pausada" para retomar.
     await require("./circular").recuperarNoArranque(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).

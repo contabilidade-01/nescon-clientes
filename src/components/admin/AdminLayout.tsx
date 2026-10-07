@@ -28,6 +28,7 @@ import {
   Receipt,
   RefreshCw,
   Scale,
+  FileSignature,
   Send,
   ShieldCheck,
   Upload,
@@ -86,6 +87,8 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { to: "/admin/empresas", label: "Empresas", icon: Building2, area: "empresas" },
       { to: "/admin/grupos", label: "Grupos de empresas", icon: Network, area: "empresas" },
+      { to: "/admin/propostas", label: "Propostas", icon: FileText, area: "empresas" },
+      { to: "/admin/contratos", label: "Contratos", icon: FileSignature, area: "empresas" },
       {
         to: "/admin/enviar-acesso",
         label: "Enviar acesso (WhatsApp)",

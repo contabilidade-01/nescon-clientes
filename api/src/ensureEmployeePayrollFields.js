@@ -45,6 +45,11 @@ async function ensureEmployeePayrollFields(db) {
     // TAMBÉM força para TODAS as empresas que tiverem pelo menos 1 employee ativo sem
     // vínculo E sem cargo — esses são os que o backfill acima não consegue resolver, e
     // só o parser relendo o PDF (que detecta `Contr:`) resolve.
+    // A coluna nasce em ensureExtratoAutoSchema, que historicamente rodava DEPOIS desta
+    // rotina: em instalação antiga ela já existia no volume, em banco limpo (só o
+    // db/init.sql) o UPDATE abaixo quebrava o arranque com 42703. Garantir aqui torna
+    // a rotina independente da ordem de chamada.
+    await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS extrato_processado_id UUID;`);
     const { rowCount } = await db.query(`
       UPDATE companies SET extrato_processado_id = NULL
        WHERE id IN (

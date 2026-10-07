@@ -1,0 +1,87 @@
+{
+  "titulo": "Contrato de prestação de serviços contábeis — BQRB OTICAS LTDA",
+  "empresa_nome_prefixo": "BQRB",
+  "dados": {
+    "contratante": {
+      "razao": "BQRB OTICAS LTDA",
+      "tipoSocietario": "sociedade empresária limitada, empresa de pequeno porte",
+      "cnpj": "68.972.725/0001-85",
+      "nire": "3528070238-7",
+      "endereco": "Rua Capitão Cassiano Ricardo de Toledo, nº 191, Loja 36, Chácara Urbana, CEP 13201-840, Jundiaí/SP",
+      "email": "belquintiliano@gmail.com",
+      "telefone": "(19) 99782-4321",
+      "repNome": "MARIA ISABEL QUEIROZ CARO QUINTILIANO",
+      "repQualificacao": "brasileira, empresária, casada",
+      "repCpf": "350.247.168-17",
+      "repEndereco": "Avenida Antonio Frederico Ozanan, nº 9600, Jardim Shangai, CEP 13214-206, Jundiaí/SP",
+      "repPoderes": "com poderes de administração individual conforme a cláusula 7ª do contrato social registrado na JUCESP em 04/09/2026"
+    },
+    "contratada": {
+      "razao": "NESCON SERVICOS EMPRESARIAIS LTDA",
+      "cnpj": "35.736.034/0001-23",
+      "endereco": "Rua Ponta Grossa, nº 266, Cidade Soberana, CEP 07161-330, Guarulhos/SP",
+      "crcOrg": "",
+      "email": "",
+      "telefone": "",
+      "repNome": "JEANDSON NASCIMENTO SANTOS",
+      "repCargo": "sócio-administrador",
+      "respTecnico": "JEANDSON NASCIMENTO SANTOS",
+      "crcRt": "CRC 1SP322779"
+    },
+    "objeto": {
+      "modelo": "completo",
+      "enquadramento": "simples",
+      "tipoEmpresa": "comercio",
+      "complexidade": "alta",
+      "regimeTributario": "Simples Nacional",
+      "funcionariosIncluidos": 3,
+      "balancetes": "semestral"
+    },
+    "prazos": {
+      "diaVariaveisFolha": "2",
+      "horarioAtendimento": "das 9h às 18h",
+      "diasGuias": 5,
+      "diaDocsFinanceiros": 5,
+      "prazoRespostaDiasUteis": 1,
+      "transicaoDiasUteis": 10,
+      "balancoDias": 30
+    },
+    "honorarios": {
+      "valorMensal": 550,
+      "vencimentoDia": 15,
+      "faturamentoLimite": 150000,
+      "valorFuncAdicional": 70,
+      "decimoTerceiro": true,
+      "competenciaReferencia": "seguinte",
+      "primeiraCobranca": "2026-10-15",
+      "meioPagamento": "boleto bancário ou Pix",
+      "multaPct": 2,
+      "jurosPct": 1,
+      "retroativoPct": 50,
+      "recalculoGuiaValor": 15,
+      "faixaAdicionalValor": 100,
+      "faixaPasso": 50000,
+      "decimoParcela1": "25/11",
+      "decimoParcela2": "18/12",
+      "reajusteIndice": "IPCA (IBGE)",
+      "retroativoDias": 90,
+      "inadimplenciaDias": 10
+    },
+    "vigencia": {
+      "dataInicio": "2026-09-04",
+      "avisoPrevioDias": 60,
+      "foro": "Jundiaí/SP",
+      "correcaoDias": 10,
+      "multaAvisoMensalidades": 2,
+      "multaInfracaoMensalidades": 1
+    },
+    "assinatura": {
+      "cidade": "Jundiaí/SP",
+      "data": "",
+      "testemunha1Nome": "",
+      "testemunha1Cpf": "",
+      "testemunha2Nome": "",
+      "testemunha2Cpf": ""
+    }
+  }
+}
