@@ -6,6 +6,7 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 const { enviarTexto } = require("../uazapi");
+const guiasMei = require("../guiasMei");
 
 const INTERNAL_TOKEN = process.env.INTERNAL_API_TOKEN || "";
 
@@ -38,6 +39,51 @@ router.get("/empresas-contatos", authInterno, async (_req, res) => {
   } catch (err) {
     console.error("[INTERNO] erro ao listar contatos:", err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/interno/empresa-vinculo?cnpj=
+ * A empresa existe aqui e tem WhatsApp válido? Não devolve número nem e-mail.
+ */
+router.get("/empresa-vinculo", authInterno, async (req, res) => {
+  try {
+    res.json(await guiasMei.vinculo(db, req.query.cnpj));
+  } catch (err) {
+    console.error("[INTERNO] vínculo:", err.message);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/**
+ * POST /api/interno/guia-mei
+ * Recebe o PDF de uma guia MEI (DAS ou parcelamento) e envia pelo WhatsApp com anexo,
+ * dentro das regras de janela, teto/hora e opt-out. Idempotente por external_ref.
+ * Body: { cnpj, tipo: "DAS_MEI"|"PARCELAMENTO_MEI", competencia: "AAAAMM",
+ *         vencimento?: "AAAAMMDD", valor?, external_ref, pdf_base64, forcar? }
+ * Resposta: { ok, status: enviada|na_fila|falhou|sem_whatsapp|ignorada|sem_cadastro, motivo }
+ */
+router.post("/guia-mei", authInterno, async (req, res) => {
+  const v = guiasMei.validarPedido(req.body);
+  if (v.erro) return res.status(400).json({ ok: false, status: "invalido", motivo: v.erro });
+  try {
+    const r = await guiasMei.receberGuia(db, v.dados);
+    const { http, ...corpo } = r;
+    res.status(http).json(corpo);
+  } catch (err) {
+    console.error("[INTERNO] guia-mei:", err.message);
+    res.status(500).json({ ok: false, status: "falhou", motivo: "Erro interno" });
+  }
+});
+
+/** GET /api/interno/guia-mei/status?refs=a,b,c — situação dos envios (painel). */
+router.get("/guia-mei/status", authInterno, async (req, res) => {
+  try {
+    const refs = String(req.query.refs || "").split(",").map((r) => r.trim()).filter(Boolean);
+    res.json({ envios: await guiasMei.statusPorRefs(db, refs) });
+  } catch (err) {
+    console.error("[INTERNO] status guia-mei:", err.message);
+    res.status(500).json({ error: "Erro interno" });
   }
 });
 

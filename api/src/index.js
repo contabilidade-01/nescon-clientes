@@ -36,6 +36,7 @@ const { ensureWhatsappDpSchema } = require("./ensureWhatsappDpSchema");
 const { ensureDpDocsSchema } = require("./ensureDpDocsSchema");
 const { ensureCircularSchema } = require("./ensureCircularSchema");
 const { ensureEcacSchema } = require("./ensureEcacSchema");
+const { ensureGuiasMeiSchema } = require("./ensureGuiasMeiSchema");
 const { ensureContratosSchema } = require("./ensureContratosSchema");
 const { ensurePropostasSchema } = require("./ensurePropostasSchema");
 const { ensureOnboardingSchema } = require("./ensureOnboardingSchema");
@@ -210,6 +211,7 @@ async function start() {
     await ensureDpDocsSchema(db);
     await ensureCircularSchema(db);
     await ensureEcacSchema(db);
+    await ensureGuiasMeiSchema(db);
     await ensureContratosSchema(db);
     await ensurePropostasSchema(db);
     await ensureOnboardingSchema(db);
