@@ -38,6 +38,7 @@ const { ensureCircularSchema } = require("./ensureCircularSchema");
 const { ensureEcacSchema } = require("./ensureEcacSchema");
 const { ensureContratosSchema } = require("./ensureContratosSchema");
 const { ensurePropostasSchema } = require("./ensurePropostasSchema");
+const { ensureOnboardingSchema } = require("./ensureOnboardingSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -207,6 +208,7 @@ async function start() {
     await ensureEcacSchema(db);
     await ensureContratosSchema(db);
     await ensurePropostasSchema(db);
+    await ensureOnboardingSchema(db);
     // Circular que estava enviando quando a API caiu volta como "pausada" para retomar.
     await require("./circular").recuperarNoArranque(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).

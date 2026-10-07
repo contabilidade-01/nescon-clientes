@@ -1,0 +1,217 @@
+[
+  {
+    "nome": "Padrão — Simples Nacional (completo)",
+    "descricao": "Modelo base para empresa do Simples com contábil, fiscal e, se houver funcionários, pessoal.",
+    "regras": { "enquadramento": ["simples"] },
+    "blocos": [
+      {
+        "tipo": "boas_vindas",
+        "titulo": "Bem-vindo à Nescon",
+        "descricao": "Este roteiro mostra, passo a passo, o que enviar, até quando e por onde. Cada item abaixo tem prazo e o canal de envio; você acompanha tudo por este link."
+      },
+      {
+        "tipo": "etapa",
+        "titulo": "Confirme seus dados de contato",
+        "descricao": "Confira o e-mail e o WhatsApp cadastrados no contrato. É por eles que enviamos guias e avisos."
+      },
+      {
+        "tipo": "documento",
+        "titulo": "Contrato social e última alteração",
+        "descricao": "Contrato social consolidado e a alteração mais recente (ou requerimento de empresário).",
+        "formatos": ["pdf"],
+        "comoEnviar": "Envie por este link, no botão do item.",
+        "prazo": { "ref": "assinatura", "dias": 3, "uteis": true }
+      },
+      {
+        "tipo": "documento",
+        "titulo": "Cartão CNPJ e certificado digital (e-CNPJ A1)",
+        "descricao": "Cartão CNPJ atualizado. Se a empresa já tem certificado digital A1, envie o arquivo; se não tiver, avise e orientamos a emissão.",
+        "obrigatorio": false,
+        "formatos": ["pdf", "pfx"],
+        "comoEnviar": "A senha do certificado deve ser combinada por telefone, nunca por e-mail.",
+        "prazo": { "ref": "assinatura", "dias": 5, "uteis": true }
+      },
+      {
+        "tipo": "documento",
+        "titulo": "Extratos bancários dos últimos 3 meses",
+        "descricao": "Extratos de todas as contas da empresa, em PDF ou OFX.",
+        "formatos": ["pdf", "ofx"],
+        "comoEnviar": "Prefira OFX: o lançamento entra mais rápido e sem erro de digitação.",
+        "condicao": { "areas": ["contabil"] },
+        "prazo": { "ref": "inicio", "dias": 5, "uteis": true }
+      },
+      {
+        "tipo": "documento",
+        "titulo": "Notas fiscais emitidas e recebidas do mês anterior",
+        "descricao": "XML das notas de serviço/venda e de compra. Se emite pelo portal da prefeitura, informe o acesso para baixarmos.",
+        "formatos": ["xml", "pdf"],
+        "condicao": { "areas": ["fiscal"] },
+        "prazo": { "ref": "inicio", "dias": 7, "uteis": true }
+      },
+      {
+        "tipo": "documento",
+        "titulo": "Cadastro dos funcionários",
+        "descricao": "Documentos de cada funcionário: RG, CPF, CTPS, comprovante de residência, título de eleitor, dados bancários e dependentes.",
+        "formatos": ["pdf", "jpg", "png"],
+        "condicao": { "comFuncionarios": true },
+        "prazo": { "ref": "inicio", "dias": 5, "uteis": true }
+      },
+      {
+        "tipo": "prazo_recorrente",
+        "titulo": "Variáveis da folha",
+        "descricao": "Faltas, horas extras, vales e admissões/demissões do mês.",
+        "regra": "Todo mês, até o dia {{prazos.diaVariaveisFolha}}.",
+        "condicao": { "comFuncionarios": true }
+      },
+      {
+        "tipo": "prazo_recorrente",
+        "titulo": "Documentos financeiros do mês",
+        "descricao": "Extratos, notas e comprovantes do mês fechado.",
+        "regra": "Todo mês, até o dia {{prazos.diaDocsFinanceiros}}.",
+        "condicao": { "areas": ["contabil"] }
+      },
+      {
+        "tipo": "prazo_recorrente",
+        "titulo": "Quando você recebe as guias",
+        "descricao": "Guias de impostos e folha chegam pelo portal e por WhatsApp.",
+        "regra": "{{prazos.diasGuias}}"
+      },
+      {
+        "tipo": "contato",
+        "titulo": "Fale com a gente",
+        "descricao": "Atendimento em {{prazos.horarioAtendimento}}. Respondemos em até {{prazos.prazoRespostaDiasUteis}} dia(s) útil(eis).",
+        "contato": "Use o chat do portal ou o WhatsApp do escritório."
+      },
+      {
+        "tipo": "marco",
+        "titulo": "Primeira entrega: guias do primeiro mês",
+        "descricao": "Com os documentos acima aprovados, enviamos as primeiras guias e o primeiro fechamento.",
+        "prazo": { "ref": "inicio", "dias": 30 }
+      }
+    ]
+  },
+  {
+    "nome": "MEI",
+    "descricao": "Roteiro enxuto para microempreendedor individual.",
+    "regras": { "enquadramento": ["mei"] },
+    "blocos": [
+      {
+        "tipo": "boas_vindas",
+        "titulo": "Bem-vindo à Nescon",
+        "descricao": "Poucos passos: enviar seus dados, e a gente cuida da declaração anual e da guia mensal (DAS)."
+      },
+      {
+        "tipo": "documento",
+        "titulo": "Cartão CNPJ e documento com foto",
+        "descricao": "Cartão CNPJ do MEI e RG ou CNH.",
+        "formatos": ["pdf", "jpg", "png"],
+        "prazo": { "ref": "assinatura", "dias": 3, "uteis": true }
+      },
+      {
+        "tipo": "documento",
+        "titulo": "Faturamento mensal",
+        "descricao": "Relatório de receitas do mês (modelo simples, se não tiver controle próprio).",
+        "formatos": ["pdf", "xlsx"],
+        "prazo": { "ref": "inicio", "dias": 7, "uteis": true }
+      },
+      {
+        "tipo": "prazo_recorrente",
+        "titulo": "Guia do MEI (DAS)",
+        "descricao": "Vence todo dia 20.",
+        "regra": "{{prazos.diasGuias}}"
+      },
+      {
+        "tipo": "contato",
+        "titulo": "Fale com a gente",
+        "descricao": "Atendimento em {{prazos.horarioAtendimento}}.",
+        "contato": "Use o chat do portal ou o WhatsApp do escritório."
+      }
+    ]
+  },
+  {
+    "nome": "Lucro Presumido / Real",
+    "descricao": "Mais documentos fiscais e fechamento mensal com balancete.",
+    "regras": { "enquadramento": ["presumido", "real"] },
+    "blocos": [
+      {
+        "tipo": "boas_vindas",
+        "titulo": "Bem-vindo à Nescon",
+        "descricao": "Roteiro de implantação com contabilidade, fiscal e, se for o caso, pessoal. Cada documento tem prazo e canal."
+      },
+      {
+        "tipo": "documento",
+        "titulo": "Contrato social, alterações e cartão CNPJ",
+        "descricao": "Contrato social consolidado, alterações e cartão CNPJ.",
+        "formatos": ["pdf"],
+        "prazo": { "ref": "assinatura", "dias": 3, "uteis": true }
+      },
+      {
+        "tipo": "documento",
+        "titulo": "Balancete e balanço do último exercício",
+        "descricao": "Demonstrações do ano anterior e plano de contas, se houver contabilidade anterior.",
+        "formatos": ["pdf", "xlsx"],
+        "obrigatorio": false,
+        "condicao": { "areas": ["contabil"] },
+        "prazo": { "ref": "assinatura", "dias": 7, "uteis": true }
+      },
+      {
+        "tipo": "documento",
+        "titulo": "Extratos bancários e notas dos últimos 3 meses",
+        "descricao": "Extratos (OFX preferencial) e XML das notas de entrada e saída.",
+        "formatos": ["ofx", "pdf", "xml"],
+        "prazo": { "ref": "inicio", "dias": 7, "uteis": true }
+      },
+      {
+        "tipo": "documento",
+        "titulo": "Cadastro dos funcionários",
+        "descricao": "RG, CPF, CTPS, comprovante de residência, dados bancários e dependentes.",
+        "formatos": ["pdf", "jpg", "png"],
+        "condicao": { "comFuncionarios": true },
+        "prazo": { "ref": "inicio", "dias": 5, "uteis": true }
+      },
+      {
+        "tipo": "prazo_recorrente",
+        "titulo": "Documentos financeiros do mês",
+        "descricao": "Extratos, notas e comprovantes do mês fechado.",
+        "regra": "Todo mês, até o dia {{prazos.diaDocsFinanceiros}}."
+      },
+      {
+        "tipo": "marco",
+        "titulo": "Primeiro balancete",
+        "descricao": "Entregamos o primeiro balancete {{objeto.balancetes}} com os documentos aprovados.",
+        "prazo": { "ref": "inicio", "dias": 45 }
+      },
+      {
+        "tipo": "contato",
+        "titulo": "Fale com a gente",
+        "descricao": "Atendimento em {{prazos.horarioAtendimento}}.",
+        "contato": "Use o chat do portal ou o WhatsApp do escritório."
+      }
+    ]
+  },
+  {
+    "nome": "Padrão geral (qualquer contrato)",
+    "descricao": "Usado quando nenhum modelo mais específico se aplica.",
+    "regras": {},
+    "blocos": [
+      {
+        "tipo": "boas_vindas",
+        "titulo": "Bem-vindo à Nescon",
+        "descricao": "Vamos começar: abaixo estão os documentos e prazos da sua implantação."
+      },
+      {
+        "tipo": "documento",
+        "titulo": "Documentos da empresa",
+        "descricao": "Contrato social, cartão CNPJ e documento do responsável.",
+        "formatos": ["pdf", "jpg", "png"],
+        "prazo": { "ref": "assinatura", "dias": 5, "uteis": true }
+      },
+      {
+        "tipo": "contato",
+        "titulo": "Fale com a gente",
+        "descricao": "Atendimento em {{prazos.horarioAtendimento}}.",
+        "contato": "Use o chat do portal ou o WhatsApp do escritório."
+      }
+    ]
+  }
+]
