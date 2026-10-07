@@ -20,6 +20,8 @@ import CertificatesPage from "./pages/CertificatesPage.tsx";
 import VisaoGeralPage from "./pages/admin/VisaoGeralPage.tsx";
 import HubPage from "./pages/admin/HubPage.tsx";
 import OnboardingPage from "./pages/admin/OnboardingPage.tsx";
+import OnboardingModelosPage from "./pages/admin/OnboardingModelosPage.tsx";
+import PrimeirosPassosPage from "./pages/PrimeirosPassosPage.tsx";
 import OnboardingPublicoPage from "./pages/OnboardingPublicoPage.tsx";
 import EmpresasPage from "./pages/admin/EmpresasPage.tsx";
 import GruposPage from "./pages/admin/GruposPage.tsx";
@@ -179,6 +181,7 @@ const AppRoutes = () => (
     <Route path="/admissao" element={<AdmissaoPage />} />
     {/* Painel do escritório: uma página por área, com menu lateral retrátil (AdminLayout) */}
     <Route path="/admin/onboarding" element={<AdminAreaRoute area="empresas"><OnboardingPage /></AdminAreaRoute>} />
+    <Route path="/admin/onboarding/modelos" element={<AdminAreaRoute area="empresas"><OnboardingModelosPage /></AdminAreaRoute>} />
     <Route path="/admin/hub" element={<AdminOnlyRoute><HubPage /></AdminOnlyRoute>} />
     <Route path="/admin" element={<AdminOnlyRoute><VisaoGeralPage /></AdminOnlyRoute>} />
     <Route path="/admin/empresas" element={<AdminAreaRoute area="empresas"><EmpresasPage /></AdminAreaRoute>} />
@@ -216,6 +219,7 @@ const AppRoutes = () => (
     {/* Única tela liberada enquanto a senha for a inicial */}
     <Route path="/alterar-senha" element={<LoggedInRoute><AlterarSenhaPage /></LoggedInRoute>} />
     <Route path="/" element={<CompanyOnlyRoute><Index /></CompanyOnlyRoute>} />
+    <Route path="/primeiros-passos" element={<CompanyOnlyRoute><PrimeirosPassosPage /></CompanyOnlyRoute>} />
     <Route path="/suspensao" element={<CompanyToolRoute tool="suspension"><SuspensionPage /></CompanyToolRoute>} />
     <Route path="/advertencia" element={<CompanyToolRoute tool="warning"><WarningPage /></CompanyToolRoute>} />
     <Route path="/historico" element={<HistoryAccessRoute><HistoryPage /></HistoryAccessRoute>} />

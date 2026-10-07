@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, Copy, Download, ExternalLink, Loader2, Mail, Plus, XCircle } from "lucide-react";
+import { AlertTriangle, BellRing, CheckCircle2, Copy, Download, ExternalLink, LayoutTemplate, Loader2, Mail, Plus, XCircle } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import {
   ORIGEM_LABEL,
@@ -353,6 +354,67 @@ function NovoOnboarding({ aberto, inicial, onFechar, onCriado }: { aberto: boole
   );
 }
 
+/**
+ * Lembretes automáticos de prazo: e-mail ao cliente 2 dias antes, no dia e 1, 3 e 7 dias
+ * depois do vencimento de cada documento obrigatório. Nasce desligado.
+ */
+function PainelLembretes() {
+  const queryClient = useQueryClient();
+  const q = useQuery({ queryKey: ["admin-onboarding", "lembretes"], queryFn: () => api.admin.onboarding.lembretes() });
+  const definir = useMutation({
+    mutationFn: (ativo: boolean) => api.admin.onboarding.definirLembretes(ativo),
+    onSuccess: (r) => {
+      queryClient.setQueryData(["admin-onboarding", "lembretes"], r);
+      toast.success(r.ativo ? "Lembretes automáticos ligados." : "Lembretes automáticos desligados.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const executar = useMutation({
+    mutationFn: (simular: boolean) => api.admin.onboarding.executarLembretes(simular),
+    onSuccess: (r, simular) => {
+      if (!r.lembretes) toast.info("Nenhum lembrete a enviar hoje.");
+      else if (simular) toast.info(`Sairiam ${r.lembretes} lembrete(s) para ${r.onboardings} cliente(s): ${r.detalhes.map((d) => d.cliente || d.email).join(", ")}.`);
+      else toast.success(`${r.enviados} e-mail(s) enviado(s)${r.falhas ? `, ${r.falhas} falha(s) (confira o SMTP e o e-mail do cliente)` : ""}.`);
+      queryClient.invalidateQueries({ queryKey: ["admin-onboarding"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Card>
+      <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
+        <div className="flex items-center gap-3">
+          <BellRing className="h-4 w-4 text-muted-foreground" />
+          <div>
+            <Label htmlFor="lembretes-auto" className="text-sm font-medium">
+              Lembretes automáticos de prazo
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              E-mail ao cliente 2 dias antes, no dia e 1, 3 e 7 dias depois do prazo, só em dia útil e no horário comercial.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" disabled={executar.isPending} onClick={() => executar.mutate(true)}>
+            Ver o que sairia hoje
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={executar.isPending}
+            onClick={() => {
+              if (window.confirm("Enviar agora os lembretes devidos hoje para os clientes?")) executar.mutate(false);
+            }}
+          >
+            Enviar agora
+          </Button>
+          <Switch id="lembretes-auto" checked={Boolean(q.data?.ativo)} disabled={q.isLoading || definir.isPending} onCheckedChange={(v) => definir.mutate(v)} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function OnboardingPage() {
   const [params, setParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -375,11 +437,17 @@ export default function OnboardingPage() {
 
   return (
     <AdminLayout title="Onboarding" description="Primeiros passos do cliente novo: o que enviar, até quando e por onde — a partir do contrato assinado ou criado à mão.">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button asChild variant="outline">
+          <Link to="/admin/onboarding/modelos">
+            <LayoutTemplate className="mr-1 h-4 w-4" /> Modelos
+          </Link>
+        </Button>
         <Button onClick={() => setNovo(true)}>
           <Plus className="mr-1 h-4 w-4" /> Novo onboarding
         </Button>
       </div>
+      <PainelLembretes />
 
       {lista.isLoading ? (
         <Loader2 className="mx-auto h-5 w-5 animate-spin" />

@@ -193,6 +193,117 @@ function itensAtrasados(itens, arquivosPorItem, hoje) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Validação do que vem do construtor (arrastar e soltar) e do agente de IA
+// ---------------------------------------------------------------------------
+
+const ENQUADRAMENTOS = ["mei", "simples", "presumido", "real"];
+const TIPOS_EMPRESA = ["servico", "comercio", "industria"];
+
+function texto(v, max) {
+  return typeof v === "string" ? v.trim().slice(0, max) : "";
+}
+
+/** `regras`/`condicao` limpas: só os quatro critérios conhecidos, com valores da lista. */
+function sanitizarRegras(r) {
+  if (!r || typeof r !== "object" || Array.isArray(r)) return {};
+  const out = {};
+  const areas = lista(r.areas).filter((a) => AREAS.includes(a));
+  if (areas.length) out.areas = [...new Set(areas)];
+  const enq = lista(r.enquadramento).filter((e) => ENQUADRAMENTOS.includes(e));
+  if (enq.length) out.enquadramento = [...new Set(enq)];
+  const tipo = lista(r.tipoEmpresa).filter((t) => TIPOS_EMPRESA.includes(t));
+  if (tipo.length) out.tipoEmpresa = [...new Set(tipo)];
+  if (typeof r.comFuncionarios === "boolean") out.comFuncionarios = r.comFuncionarios;
+  return out;
+}
+
+function sanitizarPrazo(p) {
+  if (!p || typeof p !== "object") return undefined;
+  return {
+    ref: p.ref === "inicio" ? "inicio" : "assinatura",
+    dias: Math.max(0, Math.min(365, Math.trunc(Number(p.dias) || 0))),
+    uteis: Boolean(p.uteis),
+  };
+}
+
+/**
+ * Um bloco limpo, ou null se o tipo for desconhecido. Descarta campo que o tipo não usa
+ * (a IA ou um JSON colado à mão não deve gravar lixo que o cliente depois veria).
+ */
+function sanitizarBloco(b) {
+  if (!b || typeof b !== "object" || !TIPOS_BLOCO.includes(b.tipo)) return null;
+  const out = { tipo: b.tipo, titulo: texto(b.titulo, 160), descricao: texto(b.descricao, 1200) };
+  if (b.tipo === "documento") {
+    out.obrigatorio = b.obrigatorio !== false;
+    out.formatos = lista(b.formatos)
+      .map((f) => String(f).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8))
+      .filter(Boolean)
+      .slice(0, 8);
+    out.comoEnviar = texto(b.comoEnviar, 400);
+    const url = texto(b.exemploUrl, 500);
+    if (/^https?:\/\//i.test(url)) out.exemploUrl = url;
+  }
+  if (b.tipo === "documento" || b.tipo === "marco") {
+    const prazo = sanitizarPrazo(b.prazo);
+    if (prazo) out.prazo = prazo;
+  }
+  if (b.tipo === "prazo_recorrente") out.regra = texto(b.regra, 400);
+  if (b.tipo === "contato") out.contato = texto(b.contato, 400);
+  const cond = sanitizarRegras(b.condicao);
+  if (Object.keys(cond).length) out.condicao = cond;
+  return out;
+}
+
+/** Lista de blocos limpa (até 80); bloco inválido é descartado e contado em `descartados`. */
+function sanitizarBlocos(blocos) {
+  const entrada = Array.isArray(blocos) ? blocos.slice(0, 80) : [];
+  const ok = entrada.map(sanitizarBloco).filter(Boolean);
+  return { blocos: ok, descartados: entrada.length - ok.length };
+}
+
+// ---------------------------------------------------------------------------
+// Lembretes de prazo
+// ---------------------------------------------------------------------------
+
+/**
+ * Marcos do lembrete, em dias em relação ao prazo: 2 dias antes, no dia, e 1/3/7 dias
+ * depois. Para de insistir depois de uma semana de atraso — daí em diante é com o escritório.
+ */
+const MARCOS_LEMBRETE = [-2, 0, 1, 3, 7];
+
+function diasEntre(deISO, ateISO) {
+  const a = Date.parse(`${deISO}T00:00:00Z`);
+  const b = Date.parse(`${ateISO}T00:00:00Z`);
+  return Math.round((b - a) / 86400000);
+}
+
+/**
+ * Documentos obrigatórios que merecem lembrete HOJE. Só conta o que falta de verdade: item
+ * enviado (em análise) ou aprovado não é cobrado; reprovado é, porque o cliente precisa
+ * reenviar. De cada item sai no máximo UM lembrete — o do marco mais recente já atingido —,
+ * e só se esse marco ainda não foi enviado (`jaEnviados`: conjunto de "itemId:marco").
+ * Assim, depois de um fim de semana ou de o agendador ficar fora, o cliente recebe um aviso,
+ * não uma fila de avisos atrasados.
+ * @returns {Array<{ item: object, marco: number, dias: number, chave: string }>}
+ */
+function lembretesDevidos(itens, arquivosPorItem, hoje, jaEnviados = new Set()) {
+  const st = arquivosPorItem || {};
+  const saida = [];
+  for (const item of itens || []) {
+    if (item.tipo !== "documento" || !item.obrigatorio || !ehDataISO(item.prazoData)) continue;
+    if (st[item.id] === "aprovado" || st[item.id] === "enviado") continue;
+    const dias = diasEntre(item.prazoData, hoje);
+    const atingidos = MARCOS_LEMBRETE.filter((m) => m <= dias);
+    if (!atingidos.length) continue;
+    const marco = Math.max(...atingidos);
+    const chave = `${item.id}:${marco}`;
+    if (jaEnviados.has(chave)) continue;
+    saida.push({ item, marco, dias, chave });
+  }
+  return saida;
+}
+
 module.exports = {
   TIPOS_BLOCO,
   areasDoContrato,
@@ -205,4 +316,9 @@ module.exports = {
   resolverItens,
   calcularStatus,
   itensAtrasados,
+  sanitizarRegras,
+  sanitizarBloco,
+  sanitizarBlocos,
+  MARCOS_LEMBRETE,
+  lembretesDevidos,
 };

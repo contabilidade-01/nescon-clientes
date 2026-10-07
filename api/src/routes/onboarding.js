@@ -2,11 +2,15 @@ const fs = require("fs");
 const path = require("path");
 const express = require("express");
 const db = require("../db");
-const { authMiddleware } = require("../middleware/auth");
+const { authMiddleware, requireCompanyUser } = require("../middleware/auth");
 const { requireArea } = require("../middleware/adminArea");
 const { validateUUID } = require("../middleware/validate");
 const { uploadAny, resolveUploadPath, removeUploadFile } = require("../uploads");
-const { TIPOS_BLOCO, itensAtrasados } = require("../onboardingRegras");
+const { itensAtrasados, sanitizarBlocos, sanitizarRegras } = require("../onboardingRegras");
+const { getBoolSetting, setSetting } = require("../appSettings");
+const { conversarModelo, lerConhecimento, CONHECIMENTO_PADRAO, CHAVE_CONHECIMENTO, LIMITE_CONHECIMENTO } = require("../onboardingIa");
+const { enviarLembretes, CHAVE_LEMBRETES } = require("../onboardingLembretes");
+const { obterChaveApi } = require("../iaProvider");
 const { hojeSP } = require("../diasBancarios");
 const {
   linkDoOnboarding,
@@ -96,12 +100,14 @@ publicRouter.get("/:token", rateLimitPublic, async (req, res) => {
   }
 });
 
-publicRouter.post("/:token/itens/:itemId/arquivos", rateLimitPublic, uploadAny.any(), async (req, res) => {
+/**
+ * Grava os arquivos enviados para um item e devolve a visão atualizada do cliente. Usado pelo
+ * link público e pelo portal logado: as duas portas fazem exatamente a mesma coisa.
+ */
+async function receberEnvio(req, res, onb) {
   const arquivos = req.files || [];
   const descartar = () => arquivos.forEach((f) => removeUploadFile(f.filename));
   try {
-    const onb = await porToken(req, res);
-    if (!onb) return descartar();
     const item = (onb.itens || []).find((i) => i.id === req.params.itemId);
     if (!item || item.tipo !== "documento") {
       descartar();
@@ -132,6 +138,60 @@ publicRouter.post("/:token/itens/:itemId/arquivos", rateLimitPublic, uploadAny.a
   } catch (err) {
     descartar();
     console.error("[onboarding] upload", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+}
+
+publicRouter.post("/:token/itens/:itemId/arquivos", rateLimitPublic, uploadAny.any(), async (req, res) => {
+  try {
+    const onb = await porToken(req, res);
+    if (!onb) return (req.files || []).forEach((f) => removeUploadFile(f.filename));
+    await receberEnvio(req, res, onb);
+  } catch (err) {
+    (req.files || []).forEach((f) => removeUploadFile(f.filename));
+    console.error("[onboarding] upload", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Portal logado — o cliente que já entrou vê os mesmos passos, sem precisar do link do e-mail
+// ---------------------------------------------------------------------------
+const portalRouter = express.Router();
+portalRouter.use(authMiddleware);
+portalRouter.use(requireCompanyUser);
+
+/** O onboarding da empresa logada: o que ainda está em andamento primeiro, senão o mais recente. */
+async function onboardingDaEmpresa(companyId) {
+  const { rows } = await db.query(
+    `SELECT * FROM onboardings WHERE company_id = $1
+      ORDER BY (status <> 'concluido') DESC, created_at DESC LIMIT 1`,
+    [companyId]
+  );
+  return rows[0] || null;
+}
+
+portalRouter.get("/", async (req, res) => {
+  try {
+    const onb = await onboardingDaEmpresa(req.company.id);
+    res.json({ onboarding: onb ? await visaoDoCliente(onb) : null });
+  } catch (err) {
+    console.error("[onboarding] portal", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+portalRouter.post("/itens/:itemId/arquivos", uploadAny.any(), async (req, res) => {
+  try {
+    const onb = await onboardingDaEmpresa(req.company.id);
+    if (!onb) {
+      (req.files || []).forEach((f) => removeUploadFile(f.filename));
+      return res.status(404).json({ error: "Nenhum onboarding para a sua empresa" });
+    }
+    await receberEnvio(req, res, onb);
+  } catch (err) {
+    (req.files || []).forEach((f) => removeUploadFile(f.filename));
+    console.error("[onboarding] portal upload", err);
     res.status(500).json({ error: "Erro interno" });
   }
 });
@@ -260,13 +320,13 @@ function validarModelo(b) {
   const nome = String(b?.nome || "").trim();
   if (!nome) return { erro: "Informe o nome do modelo" };
   if (!Array.isArray(b.blocos) || b.blocos.length > 80) return { erro: "Blocos inválidos" };
-  if (b.blocos.some((x) => !x || !TIPOS_BLOCO.includes(x.tipo))) return { erro: "Há bloco de tipo desconhecido" };
-  const regras = b.regras && typeof b.regras === "object" && !Array.isArray(b.regras) ? b.regras : {};
+  const { blocos, descartados } = sanitizarBlocos(b.blocos);
+  if (descartados) return { erro: "Há bloco de tipo desconhecido" };
   return {
     nome: nome.slice(0, 120),
     descricao: String(b.descricao || "").slice(0, 500),
-    regras,
-    blocos: b.blocos,
+    regras: sanitizarRegras(b.regras),
+    blocos,
     ativo: b.ativo !== false,
   };
 }
@@ -299,6 +359,77 @@ adminRouter.delete("/modelos/:id", async (req, res) => {
   if (!validateUUID(req.params.id)) return res.status(400).json({ error: "ID inválido" });
   await db.query(`DELETE FROM onboarding_modelos WHERE id = $1`, [req.params.id]);
   res.json({ ok: true });
+});
+
+// --- Agente de IA: entrevista e monta o modelo -----------------------------------------
+adminRouter.get("/ia/config", async (_req, res) => {
+  try {
+    res.json({
+      ia: Boolean(await obterChaveApi("claude", db)),
+      conhecimento: await lerConhecimento(db),
+      conhecimento_padrao: CONHECIMENTO_PADRAO,
+      limite: LIMITE_CONHECIMENTO,
+    });
+  } catch (err) {
+    console.error("[onboarding] ia config", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+adminRouter.put("/ia/conhecimento", async (req, res) => {
+  try {
+    const texto = req.body?.conhecimento;
+    if (typeof texto !== "string") return res.status(400).json({ error: "Informe o texto da base de conhecimento" });
+    if (texto.length > LIMITE_CONHECIMENTO) {
+      return res.status(413).json({ error: `Base grande demais (máximo ${LIMITE_CONHECIMENTO} caracteres)` });
+    }
+    await setSetting(db, CHAVE_CONHECIMENTO, texto);
+    res.json({ conhecimento: texto });
+  } catch (err) {
+    console.error("[onboarding] ia conhecimento", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+adminRouter.post("/ia/assistente", async (req, res) => {
+  try {
+    const { mensagens, modelo } = req.body || {};
+    if (JSON.stringify(modelo || {}).length > 60_000) return res.status(413).json({ error: "Modelo grande demais para o agente" });
+    res.json(await conversarModelo(db, { mensagens, modelo }));
+  } catch (err) {
+    if (!err.status) console.error("[onboarding] ia assistente", err);
+    res.status(err.status || 500).json({ error: err.status ? err.message : "Erro interno" });
+  }
+});
+
+// --- Lembretes automáticos de prazo -------------------------------------------------------
+adminRouter.get("/lembretes", async (_req, res) => {
+  try {
+    res.json({ ativo: await getBoolSetting(db, CHAVE_LEMBRETES, false) });
+  } catch (err) {
+    console.error("[onboarding] lembretes", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+adminRouter.put("/lembretes", async (req, res) => {
+  try {
+    await setSetting(db, CHAVE_LEMBRETES, req.body?.ativo ? "true" : "false");
+    res.json({ ativo: Boolean(req.body?.ativo) });
+  } catch (err) {
+    console.error("[onboarding] lembretes", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/** Roda agora. `simular: true` só lista o que sairia, sem mandar nem marcar como enviado. */
+adminRouter.post("/lembretes/executar", async (req, res) => {
+  try {
+    res.json(await enviarLembretes(db, { simular: Boolean(req.body?.simular) }));
+  } catch (err) {
+    console.error("[onboarding] lembretes executar", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
 });
 
 adminRouter.get("/:id", async (req, res) => {
@@ -375,4 +506,4 @@ adminRouter.get("/arquivos/:arquivoId/file", async (req, res) => {
   }
 });
 
-module.exports = { adminRouter, publicRouter };
+module.exports = { adminRouter, publicRouter, portalRouter };

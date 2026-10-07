@@ -1810,6 +1810,33 @@ export const api = {
         request<{ status: string }>(`/admin/onboarding/arquivos/${arquivoId}`, { method: "PATCH", body: JSON.stringify(body) }),
       fetchArquivo: (arquivoId: string) => requestBlob(`/admin/onboarding/arquivos/${arquivoId}/file`),
       modelos: () => request<import("@/lib/onboardingModelo").OnboardingModelo[]>("/admin/onboarding/modelos"),
+      salvarModelo: (id: string | null, body: import("@/lib/onboardingModelo").ModeloEntrada) =>
+        request<import("@/lib/onboardingModelo").OnboardingModelo>(id ? `/admin/onboarding/modelos/${id}` : "/admin/onboarding/modelos", {
+          method: id ? "PUT" : "POST",
+          body: JSON.stringify(body),
+        }),
+      excluirModelo: (id: string) => request<{ ok: boolean }>(`/admin/onboarding/modelos/${id}`, { method: "DELETE" }),
+      /** Agente de IA: entrevista e devolve o modelo (já sanitizado pelo servidor). */
+      assistente: (body: {
+        mensagens: Array<{ role: "user" | "assistant"; content: string }>;
+        modelo: import("@/lib/onboardingModelo").ModeloEntrada;
+      }) =>
+        request<import("@/lib/onboardingModelo").RespostaAgente>("/admin/onboarding/ia/assistente", {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+      iaConfig: () =>
+        request<{ ia: boolean; conhecimento: string; conhecimento_padrao: string; limite: number }>("/admin/onboarding/ia/config"),
+      salvarConhecimento: (conhecimento: string) =>
+        request<{ conhecimento: string }>("/admin/onboarding/ia/conhecimento", { method: "PUT", body: JSON.stringify({ conhecimento }) }),
+      lembretes: () => request<{ ativo: boolean }>("/admin/onboarding/lembretes"),
+      definirLembretes: (ativo: boolean) =>
+        request<{ ativo: boolean }>("/admin/onboarding/lembretes", { method: "PUT", body: JSON.stringify({ ativo }) }),
+      executarLembretes: (simular: boolean) =>
+        request<import("@/lib/onboardingModelo").ResultadoLembretes>("/admin/onboarding/lembretes/executar", {
+          method: "POST",
+          body: JSON.stringify({ simular }),
+        }),
     },
     propostas: {
       config: () => request<{ ia: boolean; smtp: boolean }>("/admin/propostas/config"),
@@ -2806,6 +2833,21 @@ export const api = {
         `${API_BASE}/onboarding/public/${encodeURIComponent(token)}/itens/${encodeURIComponent(itemId)}/arquivos`,
         { method: "POST", body: form }
       );
+      const data = await parseResponseJson<import("@/lib/onboardingModelo").OnboardingCliente & { error?: string }>(res);
+      if (!res.ok) throw new Error(data.error || "Falha no envio");
+      return data as import("@/lib/onboardingModelo").OnboardingCliente;
+    },
+    /** Portal logado: o onboarding da empresa que entrou (null se não houver). */
+    portal: () => request<{ onboarding: import("@/lib/onboardingModelo").OnboardingCliente | null }>("/onboarding/portal"),
+    enviarPortal: async (itemId: string, files: File[]) => {
+      const form = new FormData();
+      for (const f of files) form.append("arquivos", f);
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/onboarding/portal/itens/${encodeURIComponent(itemId)}/arquivos`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
       const data = await parseResponseJson<import("@/lib/onboardingModelo").OnboardingCliente & { error?: string }>(res);
       if (!res.ok) throw new Error(data.error || "Falha no envio");
       return data as import("@/lib/onboardingModelo").OnboardingCliente;

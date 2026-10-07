@@ -119,6 +119,7 @@ app.use("/api/admin/propostas", require("./routes/propostas").adminRouter);
 const onboardingRoutes = require("./routes/onboarding");
 app.use("/api/admin/onboarding", onboardingRoutes.adminRouter);
 app.use("/api/onboarding/public", onboardingRoutes.publicRouter);
+app.use("/api/onboarding/portal", onboardingRoutes.portalRouter);
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/chat", require("./routes/chat"));
 app.use("/api/employees", require("./routes/employees"));
@@ -255,6 +256,8 @@ async function start() {
     // Pendências do e-CAC: importação mensal do central-ecac e cobrança amigável por
     // e-mail/WhatsApp. Importação e envio nascem DESLIGADOS (tela Impostos e-CAC).
     require("./ecacCobranca").iniciarAgendadorEcac(db);
+    // Lembretes de prazo do onboarding (e-mail). Nasce DESLIGADO: liga na tela Onboarding.
+    require("./onboardingLembretes").iniciarAgendadorLembretes(db);
   } catch (err) {
     console.error("Startup DB tasks:", err.message);
     throw err;

@@ -178,6 +178,16 @@ const Index = () => {
   });
   const naoLidasChat = chatUnread?.count ?? 0;
 
+  // Primeiros passos do cliente novo: enquanto houver onboarding em aberto, aparece na porta de
+  // entrada, com o que falta enviar. Concluído some.
+  const { data: onboarding } = useQuery({
+    queryKey: ["onboarding-portal"],
+    queryFn: () => api.onboarding.portal(),
+    enabled: !!company,
+    retry: false,
+  });
+  const passos = onboarding?.onboarding && onboarding.onboarding.status !== "concluido" ? onboarding.onboarding : null;
+
   const visibleItems = MENU_ITEMS.filter((item) => {
     if (company && !isToolAllowed(company.toolAccess, item.tool)) return false;
     // Férias só para quem tem funcionário celetista: empresa só com pró-labore não
@@ -296,6 +306,20 @@ const Index = () => {
             </div>
           </div>
         </section>
+
+        {passos && (
+          <section aria-label="Primeiros passos" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Seus primeiros passos na Nescon</p>
+              <p className="text-xs text-muted-foreground">
+                {passos.progresso.enviados} de {passos.progresso.total} documentos enviados. Veja o que falta e até quando.
+              </p>
+            </div>
+            <Button size="sm" onClick={() => navigate("/primeiros-passos")}>
+              Ver o que falta
+            </Button>
+          </section>
+        )}
 
         {/* Ações Rápidas de RH — Prioridade no Topo */}
         {(isToolAllowed(company?.toolAccess, "warning") || isToolAllowed(company?.toolAccess, "suspension")) && (
