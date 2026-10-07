@@ -498,6 +498,14 @@ function iniciarAgendadorAlertas(db) {
         console.error("[docNotify] drenar fila:", err.message);
       }
 
+      // Guias MEI (DAS/parcelamento) que ficaram na fila por horário ou teto/hora.
+      try {
+        const g = await require("./guiasMei").drenarGuiasMei(db);
+        if (g.enviados) console.log(`[guiasMei] fila: ${g.enviados} guia(s) enviada(s).`);
+      } catch (err) {
+        console.error("[guiasMei] drenar fila:", err.message);
+      }
+
       // Agradecimento por pagamento de honorário. Roda TODO ciclo (como a fila), FORA do
       // gate de envio automático: agradecer não depende de a cobrança estar ligada. Só a
       // chave própria e a janela diurna barram; a coluna de dedup impede repetição. Require
