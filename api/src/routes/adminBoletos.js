@@ -13,6 +13,8 @@ const numeroWpp = require("../whatsappNumero");
 const { enviarDocumento } = require("../uazapi");
 const cora = require("../cora");
 const { hojeSP } = require("../diasBancarios");
+const coraSync = require("../coraSync");
+const { competenciaValida, competenciaAtual, conferirClientesSemBoleto } = require("../clientesSemBoleto");
 const { urlPdfFresca } = require("../boletoPdf");
 const { lerConfig } = require("../alertasConfig");
 const {
@@ -58,6 +60,23 @@ router.get("/cora/boletos", requireArea("sincronizacao"), async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/**
+ * GET /admin/cora/clientes-sem-boleto?competencia=YYYY-MM — empresas ativas sem boleto
+ * Cora na competência (padrão: mês atual). Ver clientesSemBoleto.js.
+ */
+router.get("/cora/clientes-sem-boleto", requireArea("sincronizacao"), async (req, res) => {
+  const competencia = req.query.competencia || competenciaAtual();
+  if (!competenciaValida(competencia)) return res.status(400).json({ error: "competencia deve ser YYYY-MM" });
+  try {
+    const r = await conferirClientesSemBoleto(db, competencia);
+    // Data da última sync: a conferência só enxerga o que a Cora já trouxe para o portal.
+    res.json({ ...r, sync_em: coraSync.ultimaExecucao()?.em || null });
+  } catch (err) {
+    console.error("[admin] clientes sem boleto:", err.message);
+    res.status(500).json({ error: "Erro ao conferir clientes sem boleto" });
   }
 });
 

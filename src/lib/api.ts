@@ -858,6 +858,28 @@ export interface AlertProjecaoFerias {
   }>;
 }
 
+export type ClienteSemBoleto = {
+  id: string;
+  name: string;
+  cnpj: string;
+  matriz_id: string | null;
+  matriz_nome: string | null;
+  /** Importação de boletos ligada para a empresa (desligada = a sync nem procura). */
+  boletos_ativo: boolean;
+  honorario_cobranca_ativo: boolean;
+  gclick_status: string | null;
+};
+
+export type ClientesSemBoletoResposta = {
+  competencia: string;
+  total_ativas: number;
+  com_boleto: number;
+  sem_boleto: ClienteSemBoleto[];
+  /** Filiais sem boleto próprio cuja matriz teve boleto no mês. */
+  cobertas_pela_matriz: ClienteSemBoleto[];
+  sync_em: string | null;
+};
+
 export const api = {
   auth: {
     login: (login: string, password: string) =>
@@ -2220,6 +2242,11 @@ export const api = {
           vencimentos: string[];
         }>;
       }>("/admin/cora/boletos-sem-cadastro"),
+    /** Empresas ativas sem boleto Cora na competência (YYYY-MM; padrão: mês atual). */
+    clientesSemBoleto: (competencia?: string) =>
+      request<ClientesSemBoletoResposta>(
+        `/admin/cora/clientes-sem-boleto${competencia ? `?competencia=${encodeURIComponent(competencia)}` : ""}`
+      ),
     /** Lista empresas com info de boletos Cora. */
     coraEmpresas: () =>
       request<Array<{

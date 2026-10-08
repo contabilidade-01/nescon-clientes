@@ -35,6 +35,7 @@ import PainelFolhaPage from "./pages/admin/FolhaPage.tsx";
 import LgpdPage from "./pages/admin/LgpdPage.tsx";
 import SincronizacaoPage from "./pages/admin/SincronizacaoPage.tsx";
 import BoletosCoraPage from "./pages/admin/BoletosCoraPage.tsx";
+import ClientesSemBoletoPage from "./pages/admin/ClientesSemBoletoPage.tsx";
 import AtendimentosPage from "./pages/admin/AtendimentosPage.tsx";
 import MensagensPage from "./pages/MensagensPage.tsx";
 import UsuariosPage from "./pages/admin/UsuariosPage.tsx";
@@ -198,6 +199,7 @@ const AppRoutes = () => (
     <Route path="/admin/lgpd" element={<AdminAreaRoute area="lgpd"><LgpdPage /></AdminAreaRoute>} />
     <Route path="/admin/sincronizacao" element={<AdminAreaRoute area="sincronizacao"><SincronizacaoPage /></AdminAreaRoute>} />
     <Route path="/admin/boletos-cora" element={<AdminAreaRoute area="sincronizacao"><BoletosCoraPage /></AdminAreaRoute>} />
+    <Route path="/admin/clientes-sem-boleto" element={<AdminAreaRoute area="sincronizacao"><ClientesSemBoletoPage /></AdminAreaRoute>} />
     <Route path="/admin/atendimentos" element={<AdminAreaRoute area="atendimento"><AtendimentosPage /></AdminAreaRoute>} />
     <Route path="/admin/usuarios" element={<OwnerOnlyRoute><UsuariosPage /></OwnerOnlyRoute>} />
     <Route path="/admin/doc-upload" element={<AdminAreaRoute area="entregas"><DocumentUploadPage /></AdminAreaRoute>} />
