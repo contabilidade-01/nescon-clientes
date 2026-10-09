@@ -117,10 +117,15 @@ function vaiParaCliente(d) {
   return true;
 }
 
-/** Só o que pode ir para o cliente: válido e em atraso, do mais antigo ao mais novo. */
+/**
+ * Só o que pode ir para o cliente: válido, em atraso e com saldo em aberto (> 0) no
+ * relatório, do mais antigo ao mais novo. Saldo zerado não é pendência: o central-ecac
+ * aceita como válido um débito com valor original e saldo 0, e ele não pode virar linha
+ * de cobrança.
+ */
 function debitosCobraveis(debitos) {
   return (Array.isArray(debitos) ? debitos : [])
-    .filter((d) => vaiParaCliente(d) && d.em_atraso)
+    .filter((d) => vaiParaCliente(d) && d.em_atraso && Number(d.saldo_devedor_total) > 0)
     .sort((a, b) => String(a.data_vencimento || "").localeCompare(String(b.data_vencimento || "")));
 }
 
@@ -162,6 +167,14 @@ function deveAbrirCobranca(espelho) {
   return Boolean(espelho && espelho.relatorio_recente && espelho.qtd_atraso > 0);
 }
 
+/** Etapas cuja mensagem é a lista de débitos: sem débito cobrável, não há o que enviar. */
+const ETAPAS_COM_DEBITOS = new Set(["notificado", "lembrete", "cobranca_1", "cobranca_2"]);
+
+/** Quantos débitos cobráveis há numa linha do espelho, recontando pelas regras de HOJE. */
+function qtdCobravel(pendencia) {
+  return debitosCobraveis(pendencia?.debitos || []).length;
+}
+
 // ------------------------------------------------------------------ máquina de estados
 
 function podeCanal(cobranca, canal, cfg) {
@@ -178,6 +191,10 @@ function comCanais(cobranca, canais, cfg) {
  *   cobranca        { estado, estado_desde 'YYYY-MM-DD', relatorio_id, regeracoes, emails,
  *                     whatsapps, regeracao_pedida_em 'YYYY-MM-DD'|null, proxima_acao_em }
  *   pendenciaAtual  espelho mais novo da empresa { relatorio_id, qtd_atraso } (ou null)
+ *   qtdCobravelCobranca  débitos cobráveis no relatório da PRÓPRIA cobrança, recontados
+ *                   agora (null = não informado). 0 encerra sem mensagem: a cobrança foi
+ *                   aberta com algo que hoje não vai para o cliente (ex.: só MAED, antes
+ *                   de a regra existir) e não há o que lembrar.
  *   recalculou      true se o cliente gerou guia DEPOIS de `estado_desde`
  *   engajou         true se o cliente clicou no link ou entrou no portal neste ciclo —
  *                   o lembrete vai só por e-mail (WhatsApp fica para quem não deu sinal)
@@ -185,9 +202,9 @@ function comCanais(cobranca, canais, cfg) {
  *   cfg             CFG_PADRAO (parcial permitido)
  *
  * Saída: { acao, etapa?, canais?, estado, proxima_acao_em?, motivo }
- *   acao ∈ nada | enviar | agendar_regeracao | consultar | escalar | aguardar
+ *   acao ∈ nada | encerrar | enviar | agendar_regeracao | consultar | escalar | aguardar
  */
-function decidir({ cobranca, pendenciaAtual = null, recalculou = false, engajou = false, hoje, cfg: cfgParcial = {} }) {
+function decidir({ cobranca, pendenciaAtual = null, qtdCobravelCobranca = null, recalculou = false, engajou = false, hoje, cfg: cfgParcial = {} }) {
   const cfg = { ...CFG_PADRAO, ...(cfgParcial || {}) };
   const estado = cobranca.estado || "aberta";
   const desde = cobranca.estado_desde || hoje;
@@ -195,6 +212,11 @@ function decidir({ cobranca, pendenciaAtual = null, recalculou = false, engajou 
 
   if (ESTADOS_TERMINAIS.has(estado)) {
     return { acao: "nada", estado, motivo: "cobrança encerrada" };
+  }
+  // Nunca houve o que cobrar (pelas regras de hoje): fecha calado — nem lembrete, nem
+  // "tudo certo" para quem não devia nada.
+  if (qtdCobravelCobranca !== null && Number(qtdCobravelCobranca) === 0) {
+    return { acao: "encerrar", estado: "encerrado", motivo: "relatório da cobrança sem débito em aberto — nada a cobrar" };
   }
   // O cliente respondeu no WhatsApp: gente atende, o automático cala até o escritório
   // retomar. Relatório novo sem débito ainda encerra (regra 1, abaixo).
@@ -527,8 +549,10 @@ module.exports = {
   somarDiasUteis,
   proximoDiaUtil,
   TIPOS_FORA_DO_CLIENTE,
+  ETAPAS_COM_DEBITOS,
   vaiParaCliente,
   debitosCobraveis,
+  qtdCobravel,
   debitosAVencer,
   totalCobravel,
   espelhoDaEmpresa,
