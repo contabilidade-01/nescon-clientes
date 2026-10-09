@@ -107,6 +107,44 @@ function mudou(atual, c) {
   );
 }
 
+function rotulo(c) {
+  return c ? `${c.nome || "sem nome"}${c.cnpj ? ` (${c.cnpj})` : ""}` : null;
+}
+
+/**
+ * Função PURA: transforma cada cadastro que o G-Click não devolveu numa frase que diz
+ * ao escritório QUAL cliente consertar lá.
+ *
+ * O G-Click não entrega o cadastro com defeito, então ele é localizado por dois lados:
+ * os vizinhos na listagem (`anterior`/`proximo`, lidos pelo client) e quem está no
+ * espelho mas não veio agora — se o cliente já tinha sido importado antes de quebrar,
+ * é ele. Só cabe palpite quando o número de sumidos é igual ao de ignorados; com mais
+ * sumidos, pode ser cliente apagado no G-Click e a lista vira só "possíveis".
+ */
+function descreverIgnorados({ ignorados = [], espelho = new Map(), clientes = [] }) {
+  if (!ignorados.length) return { detalhes: [], sumidos: [] };
+  const vieram = new Set(clientes.map((c) => c.cnpj));
+  const sumidos = [...espelho.values()]
+    .filter((r) => !vieram.has(r.cnpj))
+    .map((r) => ({ nome: r.nome || null, cnpj: r.cnpj }));
+
+  const detalhes = ignorados.map((x) => {
+    const partes = [String(x.erro || "").replace(/^G-Click \/clientes: HTTP \d+ — /, "")];
+    const ant = rotulo(x.anterior);
+    const prox = rotulo(x.proximo);
+    if (ant && prox) partes.push(`Na lista de clientes do G-Click, fica entre ${ant} e ${prox}.`);
+    else if (ant) partes.push(`Na lista de clientes do G-Click, vem logo depois de ${ant}.`);
+    else if (prox) partes.push(`Na lista de clientes do G-Click, vem logo antes de ${prox}.`);
+    if (sumidos.length && sumidos.length === ignorados.length) {
+      partes.push(`Provável: ${sumidos.map(rotulo).join(", ")}.`);
+    } else if (sumidos.length && sumidos.length <= 5) {
+      partes.push(`Possíveis: ${sumidos.map(rotulo).join(", ")}.`);
+    }
+    return partes.join(" ");
+  });
+  return { detalhes, sumidos };
+}
+
 let emExecucao = false;
 let ultimoResultado = null;
 
@@ -190,6 +228,13 @@ async function sincronizarClientes({ alertaSoAtivos = null } = {}) {
       await db.query("UPDATE companies SET gclick_status = $1 WHERE id = $2", [s.status, s.companyId]);
     }
 
+    const { detalhes: ignoradosDetalhe, sumidos } = descreverIgnorados({
+      ignorados: brutos.ignorados || [],
+      espelho,
+      clientes,
+    });
+    if (ignoradosDetalhe.length) console.warn("[sync clientes] ignorados:", ignoradosDetalhe.join(" | "));
+
     ultimoResultado = {
       ok: true,
       clientes: clientes.length,
@@ -198,7 +243,8 @@ async function sincronizarClientes({ alertaSoAtivos = null } = {}) {
       alertas,
       // Cadastros que o G-Click não conseguiu devolver (defeito do lado de lá).
       ignorados: (brutos.ignorados || []).length,
-      ignorados_detalhe: (brutos.ignorados || []).map((x) => x.erro),
+      ignorados_detalhe: ignoradosDetalhe,
+      ignorados_sumidos: sumidos,
       segundos: Math.round((Date.now() - inicio) / 1000),
       em: new Date().toISOString(),
     };
@@ -222,6 +268,7 @@ module.exports = {
   CHAVE_SO_ATIVOS,
   alertaSoAtivosAtual,
   decidirEventos,
+  descreverIgnorados,
   sincronizarClientes,
   estaRodando,
   ultimaExecucao,
