@@ -24,7 +24,7 @@ const { enviarComRetry, sobOTeto, marcarEnviado, calcularBackoff } = require("./
 const { isSmtpConfigured, createTransport, getPublicAppUrl } = require("./mailer");
 const { dentroDaJanela, ehDiaUtil } = require("./janelaEnvio");
 const { minutosSP } = require("./diasBancarios");
-const { montarMensagem, debitosCobraveis } = require("./ecacRegras");
+const { montarMensagem, debitosCobraveis, ETAPAS_COM_DEBITOS } = require("./ecacRegras");
 
 const MAX_TENTATIVAS = 5;
 
@@ -102,6 +102,12 @@ async function registrarEEnviar({ db, cobranca, empresa, pendencia, etapa, canai
   const resultados = [];
   const bloqueio = motivoBloqueio(empresa);
   const debitos = debitosCobraveis(pendencia?.debitos || []);
+
+  // Aviso/lembrete/cobrança SEM débito sairia com a tabela vazia: não manda nada, por
+  // canal nenhum (vale também para o reenvio manual do painel).
+  if (ETAPAS_COM_DEBITOS.has(etapa) && debitos.length === 0) {
+    return canais.map((canal) => ({ canal, status: "ignorado", motivo: "sem débito em aberto no relatório" }));
+  }
 
   for (const canal of canais) {
     const tok = token();

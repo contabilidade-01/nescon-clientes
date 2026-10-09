@@ -160,6 +160,7 @@ async function passo(db, cobranca, cfg, hoje) {
   const pendenciaAtual = await pend.ultimaPendencia(db, cobranca.company_id);
   const recalculou = await recalculouDesde(db, cobranca.company_id, cobranca.estado_desde_iso);
   const engajou = await engajouDesde(db, cobranca);
+  const pendenciaDaCobranca = await pendenciaPorId(db, cobranca.pendencia_id);
 
   const decisao = regras.decidir({
     cobranca: {
@@ -172,7 +173,9 @@ async function passo(db, cobranca, cfg, hoje) {
       regeracao_pedida_em: cobranca.regeracao_pedida_iso,
       proxima_acao_em: cobranca.proxima_acao_iso,
     },
-    pendenciaAtual: pendenciaAtual ? { relatorio_id: pendenciaAtual.relatorio_id, qtd_atraso: pendenciaAtual.qtd_atraso } : null,
+    // qtd_atraso recontado: o gravado no espelho pode ser de antes de uma regra nova
+    pendenciaAtual: pendenciaAtual ? { relatorio_id: pendenciaAtual.relatorio_id, qtd_atraso: regras.qtdCobravel(pendenciaAtual) } : null,
+    qtdCobravelCobranca: pendenciaDaCobranca ? regras.qtdCobravel(pendenciaDaCobranca) : null,
     recalculou,
     engajou,
     hoje,
@@ -187,6 +190,10 @@ async function passo(db, cobranca, cfg, hoje) {
   switch (decisao.acao) {
     case "nada":
       return { id: cobranca.id, acao: "nada" };
+
+    case "encerrar":
+      await mudarEstado(db, cobranca, "encerrado", { encerrado_motivo: decisao.motivo });
+      return { id: cobranca.id, acao: "encerrar", motivo: decisao.motivo };
 
     case "aguardar":
       await registrarProxima(cobranca.estado, decisao.proxima_acao_em);
@@ -244,7 +251,7 @@ async function passo(db, cobranca, cfg, hoje) {
 
     case "escalar": {
       await mudarEstado(db, cobranca, "escalado", { encerrado_motivo: decisao.motivo });
-      const pendencia = await pendenciaPorId(db, cobranca.pendencia_id);
+      const pendencia = pendenciaDaCobranca;
       const debitos = regras.debitosCobraveis(pendencia?.debitos || []);
       const texto = [
         `Cobrança do e-CAC sem retorno: ${empresa?.name || cobranca.company_id}`,
@@ -260,7 +267,7 @@ async function passo(db, cobranca, cfg, hoje) {
     case "enviar": {
       const etapa = decisao.etapa;
       const canais = decisao.canais || [];
-      const pendencia = await pendenciaPorId(db, cobranca.pendencia_id);
+      const pendencia = pendenciaDaCobranca;
 
       // Relatório novo com o débito: a cobrança passa a apontar para ele (é ele que
       // aparece na mensagem e no portal).
