@@ -88,6 +88,12 @@ async function getToolAccessForGroup(db, grupoIds) {
         }
       }
     }
+    // Ferramentas que nascem desligadas (ex.: `escalas`) seguem o contrário: ligadas no
+    // grupo se o escritório ligou em QUALQUER empresa dele (normalmente a matriz).
+    for (const key of Object.keys(DEFAULT_TOOL_ACCESS)) {
+      if (DEFAULT_TOOL_ACCESS[key] !== false) continue;
+      agregado[key] = rows.some((r) => r.tool_access && r.tool_access[key] === true);
+    }
     return agregado;
   } catch (err) {
     if (err.code !== PG_UNDEFINED_COLUMN) throw err;

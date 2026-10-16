@@ -1,5 +1,5 @@
 /** Lista de funcionários (GET) é usada por várias telas; exige ao menos uma destas ativa. */
-const EMPLOYEE_LIST_TOOLS = ["employees", "suspension", "warning", "chatbot", "certificates"];
+const EMPLOYEE_LIST_TOOLS = ["employees", "suspension", "warning", "chatbot", "certificates", "escalas"];
 
 function requireCompanyTool(toolKey) {
   return (req, res, next) => {

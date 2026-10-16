@@ -16,6 +16,8 @@ export const COMPANY_TOOL_KEYS = [
   "employees",
   "certificates",
   "history",
+  // Planejador de escalas (fim da 6x1)
+  "escalas",
 ] as const;
 
 export type CompanyToolKey = (typeof COMPANY_TOOL_KEYS)[number];
@@ -82,6 +84,11 @@ export const COMPANY_TOOL_LABELS: Record<
     group: "dp",
   },
   history: { title: "Histórico", description: "Documentos emitidos", group: "dp" },
+  escalas: {
+    title: "Escalas de trabalho",
+    description: "Planejar escalas e folgas no fim da 6x1",
+    group: "dp",
+  },
   chat: {
     title: "Mensagens",
     description: "Fale diretamente com o escritório",
@@ -89,9 +96,15 @@ export const COMPANY_TOOL_LABELS: Record<
   },
 };
 
+/**
+ * Ferramentas que nascem DESLIGADAS: só aparecem ao cliente depois que o escritório
+ * liga na empresa. Espelho de api/src/companyTools.js (escalas: false).
+ */
+const OPT_IN_TOOLS: ReadonlySet<CompanyToolKey> = new Set(["escalas"]);
+
 export function defaultToolAccess(): CompanyToolAccess {
   return COMPANY_TOOL_KEYS.reduce((acc, key) => {
-    acc[key] = true;
+    acc[key] = !OPT_IN_TOOLS.has(key);
     return acc;
   }, {} as CompanyToolAccess);
 }
@@ -109,6 +122,6 @@ export function mergeClientToolAccess(raw: unknown): CompanyToolAccess {
 }
 
 export function isToolAllowed(access: CompanyToolAccess | undefined, key: CompanyToolKey): boolean {
-  if (!access) return true;
+  if (!access) return !OPT_IN_TOOLS.has(key);
   return Boolean(access[key]);
 }

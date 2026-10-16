@@ -51,6 +51,7 @@ import HonorariosAtualizacaoPage from "./pages/admin/HonorariosAtualizacaoPage.t
 import AcessosPage from "./pages/admin/AcessosPage.tsx";
 import FeriasUploadLotePage from "./pages/admin/FeriasUploadLotePage.tsx";
 import FeriasUrgenciaPage from "./pages/admin/FeriasUrgenciaPage.tsx";
+import EscalasAdminPage from "./pages/admin/EscalasPage.tsx";
 import EnviarAcessoPage from "./pages/admin/EnviarAcessoPage.tsx";
 import ContratosPage from "./pages/admin/ContratosPage.tsx";
 import PropostasPage from "./pages/admin/PropostasPage.tsx";
@@ -66,6 +67,7 @@ import FeriasPage from "./pages/FeriasPage.tsx";
 import ProximosPagamentosPage from "./pages/ProximosPagamentosPage.tsx";
 import EntregaPublicaPage from "./pages/EntregaPublicaPage.tsx";
 import CalculadoraCustoPage from "./pages/CalculadoraCustoPage.tsx";
+import EscalasPage from "./pages/EscalasPage.tsx";
 import AdmissaoPage from "./pages/AdmissaoPage.tsx";
 import AdmissoesAdminPage from "./pages/admin/AdmissoesPage.tsx";
 import AcompanhamentosPage from "./pages/admin/AcompanhamentosPage.tsx";
@@ -195,6 +197,7 @@ const AppRoutes = () => (
     <Route path="/admin/licencas" element={<AdminAreaRoute area="licencas"><LicencasPage /></AdminAreaRoute>} />
     <Route path="/admin/taxas-anuais" element={<AdminAreaRoute area="taxas_anuais"><TaxasAnuaisPage /></AdminAreaRoute>} />
     <Route path="/admin/folha" element={<AdminAreaRoute area="funcionarios"><PainelFolhaPage /></AdminAreaRoute>} />
+    <Route path="/admin/escalas" element={<AdminAreaRoute area="funcionarios"><EscalasAdminPage /></AdminAreaRoute>} />
     <Route path="/admin/alertas" element={<AdminAreaRoute area="alertas"><AlertasPage /></AdminAreaRoute>} />
     <Route path="/admin/lgpd" element={<AdminAreaRoute area="lgpd"><LgpdPage /></AdminAreaRoute>} />
     <Route path="/admin/sincronizacao" element={<AdminAreaRoute area="sincronizacao"><SincronizacaoPage /></AdminAreaRoute>} />
@@ -226,6 +229,7 @@ const AppRoutes = () => (
     <Route path="/advertencia" element={<CompanyToolRoute tool="warning"><WarningPage /></CompanyToolRoute>} />
     <Route path="/historico" element={<HistoryAccessRoute><HistoryPage /></HistoryAccessRoute>} />
     <Route path="/funcionarios" element={<CompanyToolRoute tool="employees"><EmployeesPage /></CompanyToolRoute>} />
+    <Route path="/escalas" element={<CompanyToolRoute tool="escalas"><EscalasPage /></CompanyToolRoute>} />
     <Route path="/chatbot" element={<CompanyToolRoute tool="chatbot"><ChatbotPage /></CompanyToolRoute>} />
     <Route path="/salario-avulso" element={<CompanyToolRoute tool="salary_adhoc"><SalaryAdhocPage /></CompanyToolRoute>} />
     <Route path="/atestados" element={<CompanyToolRoute tool="certificates"><CertificatesPage /></CompanyToolRoute>} />

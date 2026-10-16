@@ -21,6 +21,9 @@ const DEFAULT_TOOL_ACCESS = {
   employees: true,
   certificates: true,
   history: true,
+  // Planejador de escalas (fim da 6x1). Nasce DESLIGADO: o escritório simula pelo painel
+  // e só libera ao cliente quando decidir (ver docs/PLANO-ESCALA-6X1.md).
+  escalas: false,
 };
 
 /**
@@ -43,6 +46,7 @@ const PORTAL_ONLY_TOOL_ACCESS = {
   employees: false,
   certificates: false,
   history: false,
+  escalas: false,
 };
 
 function mergeToolAccess(raw) {
