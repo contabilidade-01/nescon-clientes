@@ -2,7 +2,7 @@
  * Motor de regras do planejador de escalas (EC 141/2026 + CLT).
  *
  * Datas conferidas no calendário: 18/10/2026 é domingo; a semana de 13/12/2026 termina
- * no sábado 19/12, já dentro da etapa 1 (15/12/2026).
+ * no sábado 19/12, já dentro da etapa 1 (16/12/2026).
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -28,11 +28,13 @@ const regras = (os: { regra: string }[]) => [...new Set(os.map((o) => o.regra))]
 
 describe("vigências da EC 141/2026", () => {
   it("troca 44h → 42h → 40h nas datas de transição", () => {
-    expect(vigenciaEm("2026-12-14").limiteSemanalHoras).toBe(44);
-    expect(vigenciaEm("2026-12-15").limiteSemanalHoras).toBe(42);
-    expect(vigenciaEm("2026-12-15").repousosSemanais).toBe(2);
-    expect(vigenciaEm("2027-12-14").limiteSemanalHoras).toBe(42);
-    expect(vigenciaEm("2027-12-15").limiteSemanalHoras).toBe(40);
+    // 2 meses e 1 ano contados da publicação no DOU (16/10/2026), arts. 6º e 10 da EC.
+    expect(vigenciaEm("2026-12-15").limiteSemanalHoras).toBe(44);
+    expect(vigenciaEm("2026-12-15").repousosSemanais).toBe(1);
+    expect(vigenciaEm("2026-12-16").limiteSemanalHoras).toBe(42);
+    expect(vigenciaEm("2026-12-16").repousosSemanais).toBe(2);
+    expect(vigenciaEm("2027-12-15").limiteSemanalHoras).toBe(42);
+    expect(vigenciaEm("2027-12-16").limiteSemanalHoras).toBe(40);
   });
 });
 
@@ -171,3 +173,35 @@ function addDias(iso: string, n: number): string {
   const [a, m, d] = iso.split("-").map(Number);
   return new Date(Date.UTC(a, m - 1, d + n)).toISOString().slice(0, 10);
 }
+
+describe("texto promulgado da EC 141/2026", () => {
+  const T7: Turno = { entrada: "08:00", saida: "16:00", intervaloMin: 60 };
+  const ACORDO: PerfilJornada = { segmento: "outro", temAcordoColetivo: true };
+
+  it("com acordo, a média de folgas é do mês-calendário (art. 7º, § 2º)", () => {
+    // Março/2027 (31 dias): exige 8 folgas. 6x1 com folga no domingo dá 4 -> erro.
+    const pouca = gerarDias(escala6x1(T7), "2027-03-01", "2027-03-31");
+    const e = erros(pouca, ACORDO).filter((o) => o.regra === "REPOUSO_SEMANAL");
+    expect(e.map((o) => o.data)).toEqual(["2027-03-01"]);
+  });
+
+  it("um 5x2 comum passa mesmo em mês de 30 dias com 8 folgas", () => {
+    const dias = gerarDias(escala5x2(T7), "2027-11-01", "2027-11-30");
+    expect(dias.filter((d) => !d.turno)).toHaveLength(8);
+    expect(erros(dias, ACORDO)).toEqual([]);
+  });
+
+  it("na etapa 1, com acordo, 8h24 por dia não é hora extra (art. 7º da EC)", () => {
+    const t: Turno = { entrada: "08:00", saida: "17:24", intervaloMin: 60 };
+    const dia: DiaEscala[] = [{ data: "2027-03-03", turno: t }];
+    expect(validarEscala(dia, ACORDO).ocorrencias).toEqual([]);
+    expect(regras(validarEscala(dia, OUTRO).ocorrencias)).toEqual(["HORA_EXTRA"]);
+    // Na etapa 2 a ampliação acaba.
+    expect(regras(validarEscala([{ data: "2028-03-01", turno: t }], ACORDO).ocorrencias)).toEqual(["HORA_EXTRA"]);
+  });
+
+  it("hipersuficiente sai das regras de horas desde a publicação", () => {
+    const dias = gerarDias(escala6x1(T8), "2026-10-18", "2026-11-14"); // 48h, antes da etapa 1
+    expect(erros(dias, { ...OUTRO, hipersuficiente: true })).toEqual([]);
+  });
+});

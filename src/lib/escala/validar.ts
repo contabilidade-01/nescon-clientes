@@ -14,7 +14,7 @@
  */
 import { diaDaSemana, diasEntre, hhmmParaMin, inicioDaSemana, somarDias } from "./datas";
 import { DiaEscala, duracaoBrutaMin, minutosTrabalhados } from "./modelos";
-import { CLT, PerfilJornada, SEGMENTOS, VIGENCIAS, vigenciaEm } from "./regras";
+import { CLT, PUBLICACAO_EC, PerfilJornada, SEGMENTOS, VIGENCIAS, vigenciaEm } from "./regras";
 
 export type Gravidade = "erro" | "atencao";
 
@@ -55,8 +55,8 @@ export interface ResultadoValidacao {
 
 const H = 60;
 
-/** Datas da emenda: a partir daqui o empregado hipersuficiente sai das regras de horas. */
-const INICIO_EC = VIGENCIAS[1].inicio;
+/** Etapa 1: com acordo coletivo, a jornada diária pode subir para distribuir as 42h. */
+const ETAPA1 = VIGENCIAS[1];
 
 export function validarEscala(
   diasEntrada: DiaEscala[],
@@ -70,7 +70,8 @@ export function validarEscala(
 
   const seg = SEGMENTOS[perfil.segmento];
   const r12 = Boolean(perfil.regime12x36);
-  const isentoDeHoras = (data: string) => Boolean(perfil.hipersuficiente) && data >= INICIO_EC;
+  // Art. 8º da EC vale desde a publicação (art. 10, II), não só a partir da etapa 1.
+  const isentoDeHoras = (data: string) => Boolean(perfil.hipersuficiente) && data >= PUBLICACAO_EC;
 
   // --- Regras do dia -----------------------------------------------------------------
   for (const { data, turno } of dias) {
@@ -79,7 +80,11 @@ export function validarEscala(
     const bruta = duracaoBrutaMin(turno);
 
     if (!isentoDeHoras(data)) {
-      const base = r12 ? CLT.plantao12x36Horas * H : CLT.limiteDiarioHoras * H;
+      // Art. 7º da EC: até a etapa 2, convenção pode ampliar o dia para distribuir as 42h
+      // em 5 dias (8h24) sem que isso conte como hora extra.
+      const v = vigenciaEm(data);
+      const ampliado = perfil.temAcordoColetivo && v === ETAPA1 ? (v.limiteSemanalHoras * H) / 5 : 0;
+      const base = r12 ? CLT.plantao12x36Horas * H : Math.max(CLT.limiteDiarioHoras * H, ampliado);
       const teto = r12 ? base : base + CLT.maxHorasExtrasDia * H;
       if (trab > teto) {
         add(data, "JORNADA_DIARIA", "erro", `${fmtH(trab)} trabalhadas; o máximo no dia é ${fmtH(teto)}.`);
@@ -201,21 +206,47 @@ export function validarEscala(
     for (const [mes, ss] of porMes) {
       const n = ss.length;
       const limite = ss.reduce((a, s) => a + s.limiteHoras, 0) / n;
-      const exigidos = ss.reduce((a, s) => a + s.repousosExigidos, 0) / n;
       const horas = ss.reduce((a, s) => a + s.horas, 0) / n;
-      const folgas = ss.reduce((a, s) => a + s.folgas, 0) / n;
       const ultimaSemana = somarDias(ss[n - 1].inicio, 6);
       if (!isentoDeHoras(ultimaSemana) && horas > limite + 1e-9) {
         add(ss[0].inicio, "LIMITE_SEMANAL", "erro", `Média de ${fmtH(horas * H)} por semana em ${mes}; o limite é ${limite}h mesmo com compensação.`);
       }
-      if (folgas + 1e-9 < exigidos) {
-        add(ss[0].inicio, "REPOUSO_SEMANAL", "erro", `Média de ${folgas.toFixed(1)} folga(s) por semana em ${mes}; são exigidas ${exigidos} mesmo com compensação.`);
+    }
+
+    // Repousos com compensação (art. 7º, § 2º): média de 2 por semana DENTRO DO
+    // MÊS-CALENDÁRIO. Só confere mês que a escala cobre inteiro. O "pelo menos 1 folga por
+    // semana de trabalho" é a regra DIAS_SEGUIDOS, que vale sempre. Arredonda para baixo:
+    // num mês de 30 dias um 5x2 comum tem 8 folgas (média 1,87) e não pode virar erro.
+    const diasPorMes = new Map<string, DiaEscala[]>();
+    for (const d of dias) {
+      const m = d.data.slice(0, 7);
+      if (!diasPorMes.has(m)) diasPorMes.set(m, []);
+      diasPorMes.get(m)!.push(d);
+    }
+    for (const [mes, ds] of diasPorMes) {
+      const total = diasNoMes(mes);
+      if (ds.length !== total) continue;
+      const repousos = vigenciaEm(ds[total - 1].data).repousosSemanais;
+      const exigidas = Math.floor((repousos * total) / 7 + 1e-9);
+      const folgas = ds.filter((d) => !d.turno).length;
+      if (folgas < exigidas) {
+        add(
+          `${mes}-01`,
+          "REPOUSO_SEMANAL",
+          "erro",
+          `${folgas} folga(s) no mês ${mes.slice(5)}/${mes.slice(0, 4)}; com compensação a média exige ${exigidas} (${repousos} por semana).`,
+        );
       }
     }
   }
 
   ocorrencias.sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
   return { ocorrencias, semanas };
+}
+
+function diasNoMes(mes: string): number {
+  const [a, m] = mes.split("-").map(Number);
+  return new Date(Date.UTC(a, m, 0)).getUTCDate();
 }
 
 function fmtH(min: number): string {

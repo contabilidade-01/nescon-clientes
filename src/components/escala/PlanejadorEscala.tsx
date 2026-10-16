@@ -533,8 +533,9 @@ export function PlanejadorEscala({
       />
 
       <p className="text-xs text-muted-foreground">
-        As regras da EC 141/2026 seguem o divulgado na promulgação (16/10/2026) e serão conferidas com o texto publicado
-        no Diário Oficial.
+        Regras conforme o texto da EC 141/2026 publicado no DOU de 16/10/2026: 42h e duas folgas a partir de
+        16/12/2026, 40h a partir de 16/12/2027. O domingo é preferencial; o mínimo de domingos segue a lei de cada
+        segmento.
       </p>
 
       {editando && (

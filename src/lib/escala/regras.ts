@@ -1,17 +1,18 @@
 /**
  * Regras de jornada que o planejador de escalas aplica — EC 141/2026 (fim da 6x1) + CLT.
  *
- * A emenda foi promulgada em 16/10/2026, mas o texto ainda não saiu no Diário Oficial
- * e as matérias divergem em detalhes. Por isso TODO número que vem da emenda mora aqui,
- * numa tabela por vigência: quando o texto oficial sair, corrige-se esta tabela e o
- * resto do motor não muda.
+ * Fonte: texto promulgado (autógrafo da Câmara de 27/05/2026, aprovado sem mudança pelo
+ * Senado em 14/10/2026), publicado no DOU de 16/10/2026. Todo número da emenda mora
+ * aqui, numa tabela por vigência; se algo mudar, corrige-se esta tabela e o motor não muda.
  *
- * Vigências (datas contadas da promulgação; conferir com o DOU):
- *  - até 14/12/2026: regra antiga — 44h semanais, 1 repouso semanal.
- *  - a partir de 15/12/2026 (promulgação + 60 dias): 42h semanais, 2 repousos semanais.
- *  - a partir de 15/12/2027 (etapa 1 + 12 meses): 40h semanais, 2 repousos semanais.
+ * Vigências (prazos em MESES contados da publicação, 16/10/2026):
+ *  - até 15/12/2026: regra antiga — 44h semanais, 1 repouso semanal.
+ *  - a partir de 16/12/2026: 42h semanais (art. 6º, I) e 2 repousos semanais
+ *    (art. 7º, XV, que entra em vigor em 2 meses — art. 10, I).
+ *  - a partir de 16/12/2027: 40h semanais (art. 6º, II: 1 ano após a etapa 1).
  *
- * O limite diário de 8h (CF art. 7º, XIII) não muda com a emenda.
+ * O limite diário de 8h (art. 7º, XIII) não muda. O domingo é só PREFERENCIAL (XV): a
+ * emenda não fixa mínimo de domingos — o mínimo segue da lei comum (ver SEGMENTOS).
  */
 
 export type Segmento = "construcao_civil" | "restaurante" | "comercio" | "outro";
@@ -25,10 +26,13 @@ export interface Vigencia {
   repousosSemanais: number;
 }
 
+/** Publicação da EC 141/2026 no DOU. Os prazos da emenda contam daqui. */
+export const PUBLICACAO_EC = "2026-10-16";
+
 export const VIGENCIAS: Vigencia[] = [
   { inicio: "1988-10-05", nome: "Regra anterior (CLT, 44h)", limiteSemanalHoras: 44, repousosSemanais: 1 },
-  { inicio: "2026-12-15", nome: "EC 141/2026 — etapa 1 (42h)", limiteSemanalHoras: 42, repousosSemanais: 2 },
-  { inicio: "2027-12-15", nome: "EC 141/2026 — etapa 2 (40h)", limiteSemanalHoras: 40, repousosSemanais: 2 },
+  { inicio: "2026-12-16", nome: "EC 141/2026 — etapa 1 (42h)", limiteSemanalHoras: 42, repousosSemanais: 2 },
+  { inicio: "2027-12-16", nome: "EC 141/2026 — etapa 2 (40h)", limiteSemanalHoras: 40, repousosSemanais: 2 },
 ];
 
 /** Regra em vigor numa data 'YYYY-MM-DD' (datas ISO ordenam como texto). */
@@ -79,8 +83,10 @@ export const SEGMENTOS: Record<Segmento, RegraSegmento> = {
 export interface PerfilJornada {
   segmento: Segmento;
   /**
-   * Há acordo/convenção coletiva que permite compensação. Com ele, os repousos e as horas
-   * são cobrados pela média do mês e o intervalo pode cair para 30min.
+   * Há acordo/convenção coletiva que permite compensação (art. 7º, XIII e § 2º). Com ele,
+   * as horas são cobradas pela média do mês, os repousos pela média de 2 por semana no
+   * mês-calendário (sem passar uma semana inteira sem folga), o intervalo pode cair para
+   * 30min e, na etapa 1, a jornada diária pode subir para distribuir as 42h (art. 7º da EC).
    */
   temAcordoColetivo: boolean;
   /**

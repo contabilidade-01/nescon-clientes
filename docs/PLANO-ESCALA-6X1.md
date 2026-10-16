@@ -39,25 +39,30 @@ Nacionais automáticos (`feriados.ts`): os fixos, Consciência Negra e Sexta-fei
 Carnaval e Corpus Christi são ponto facultativo e entram só se a empresa marcar. Os
 municipais e estaduais o cliente (ou o escritório) inclui à mão, anuais ou de um ano só.
 
-## Regras da emenda usadas (fonte: imprensa; conferir com o DOU)
+## Regras da emenda usadas (texto promulgado, DOU de 16/10/2026)
 
 | Vigência | Limite semanal | Repousos/semana |
 |---|---|---|
-| até 14/12/2026 | 44h | 1 |
-| 15/12/2026 (promulgação + 60 dias) | 42h | 2, um preferencialmente no domingo |
-| 15/12/2027 (etapa 1 + 12 meses) | 40h | 2 |
+| até 15/12/2026 | 44h | 1 |
+| 16/12/2026 (publicação + 2 meses; arts. 6º, I e 10, I) | 42h | 2, um preferencialmente no domingo |
+| 16/12/2027 (etapa 1 + 1 ano; art. 6º, II) | 40h | 2 |
 
-- Limite diário de 8h mantido. Acordo/convenção coletiva pode compensar: o motor cobra
-  horas e folgas pela média do mês e a semana isolada vira aviso.
+- Limite diário de 8h mantido (XIII). Com acordo/convenção (XIII e § 2º): horas pela
+  média das semanas do mês; folgas pela média de 2 por semana **no mês-calendário**
+  (arredondada para baixo); nunca uma semana inteira sem folga. Até a etapa 2, a
+  convenção pode ampliar o dia para distribuir as 42h (art. 7º da EC): 8h24 não é extra.
+- Domingo é só **preferencial** (XV): a emenda não fixa mínimo. O mínimo vem da lei
+  comum — comércio 1 a cada 3 semanas (Lei 10.101/2000), demais 1 a cada 7.
 - 12x36 continua permitida; acima do limite novo vira aviso de renegociação na convenção.
-- Hipersuficiente (nível superior e salário ≥ 2,5x o teto do RGPS): fora das regras de
-  horas a partir da etapa 1, mas mantém o repouso.
+- Hipersuficiente (nível superior e salário ≥ 2,5x o teto do RGPS, art. 8º): fora das
+  regras de horas desde a publicação, mas mantém o repouso.
 - Prestadoras do poder público têm prazo de 12 meses — **não se aplica à carteira**
   (decisão do Jean em 16/10/2026), por isso o motor não tem esse campo.
 - MEI/ME/EPP podem ganhar regra própria por lei complementar ainda não editada.
 
-Todos os números da emenda estão em `src/lib/escala/regras.ts` (`VIGENCIAS`). Quando o
-texto oficial sair, corrige-se só essa tabela.
+Todos os números da emenda estão em `src/lib/escala/regras.ts` (`VIGENCIAS`,
+`PUBLICACAO_EC`). Conferidos com o texto promulgado (autógrafo da Câmara de 27/05/2026,
+aprovado sem mudança pelo Senado) que o Jean anexou em 16/10/2026.
 
 ## Regras da CLT que o motor confere
 
