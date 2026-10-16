@@ -70,6 +70,11 @@ function getToken(): string | null {
   }
 }
 
+/** `?company_id=` para as rotas que o escritório usa em nome de qualquer cliente. */
+function qsEmpresa(companyId?: string): string {
+  return companyId ? `?company_id=${encodeURIComponent(companyId)}` : "";
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -1006,6 +1011,37 @@ export const api = {
         resumo: VacationResumo | null;
       }>("/ferias"),
     calendario: () => request<VacationCalendarItem[]>("/ferias/calendario"),
+  },
+
+  /**
+   * Planejador de escalas. O escritório passa `companyId`; o cliente omite (a API usa a
+   * empresa da sessão e exige a ferramenta `escalas` ligada).
+   */
+  escalas: {
+    config: (companyId?: string) =>
+      request<{ dados: unknown; atualizado_em: string | null; atualizado_por: string | null }>(
+        `/escalas/config${qsEmpresa(companyId)}`
+      ),
+    salvarConfig: (dados: unknown, companyId?: string) =>
+      request<{ atualizado_em: string }>(`/escalas/config${qsEmpresa(companyId)}`, {
+        method: "PUT",
+        body: JSON.stringify({ dados }),
+      }),
+    planos: (companyId?: string) =>
+      request<Array<{ mes: string; atualizado_em: string; atualizado_por: string | null }>>(
+        `/escalas/planos${qsEmpresa(companyId)}`
+      ),
+    plano: (mes: string, companyId?: string) =>
+      request<{ mes: string; dados: unknown; atualizado_em: string; atualizado_por: string | null } | null>(
+        `/escalas/planos/${mes}${qsEmpresa(companyId)}`
+      ),
+    salvarPlano: (mes: string, dados: unknown, companyId?: string) =>
+      request<{ mes: string; atualizado_em: string }>(`/escalas/planos/${mes}${qsEmpresa(companyId)}`, {
+        method: "PUT",
+        body: JSON.stringify({ dados }),
+      }),
+    excluirPlano: (mes: string, companyId?: string) =>
+      request<{ ok: true }>(`/escalas/planos/${mes}${qsEmpresa(companyId)}`, { method: "DELETE" }),
   },
 
   /** Licenças (funcionamento, AVCB/CLCB, vigilância sanitária). Só admin. */

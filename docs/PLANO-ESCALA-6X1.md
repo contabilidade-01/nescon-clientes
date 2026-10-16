@@ -17,9 +17,27 @@ Segmentos cobertos: construção civil, restaurantes, comércio em geral; escala
    - **Portal** `/escalas`: ferramenta `escalas`, que **nasce desligada** — o escritório
      liga em Empresas → "Escalas de trabalho" (decisão do Jean em 16/10/2026). Em grupo,
      basta ligar numa empresa (normalmente a matriz).
-3. **Simulação de contingente** — pessoas necessárias por dia e faixa, cobertura/déficit,
-   comparação escala atual × etapa 1 × etapa 2 em pessoas e custo.
-4. **Salvar e exportar** — escalas por empresa, folgas no calendário, PDF/planilha.
+3. **Simulação de contingente** — `src/lib/escala/contingente.ts` + `PainelContingente.tsx`.
+   Demanda de pessoas por dia da semana → quadro mínimo e custo (salário + FGTS 8%) em
+   cada fase (44h, 42h, 40h) e na 12x36. A grade marca em vermelho o dia sem cobertura.
+4. **Salvar** — `api/src/routes/escalas.js` (`/api/escalas`), tabelas `escala_config`
+   (segmento, acordo, bloqueio, feriados municipais, demanda) e `escala_planejamentos`
+   (uma escala por empresa e mês). Ao abrir um mês salvo, quem saiu da empresa some e
+   quem entrou ganha o modelo padrão. Falta: exportar PDF/planilha e levar folgas ao
+   calendário.
+
+### Bloqueio de jornada diária (decisão do Jean em 16/10/2026)
+
+Configurável por empresa (`src/lib/escala/bloqueio.ts`): "Só avisar", "Bloquear acima
+de 10h" (padrão: 8h + 2h extras) ou "Bloquear qualquer hora extra" (acima de 8h). Na
+12x36 o teto é o plantão de 12h. Com bloqueio, o planejador recusa a edição, o arraste
+ou o horário padrão que passe do teto, e diz por quê.
+
+### Feriados
+
+Nacionais automáticos (`feriados.ts`): os fixos, Consciência Negra e Sexta-feira Santa.
+Carnaval e Corpus Christi são ponto facultativo e entram só se a empresa marcar. Os
+municipais e estaduais o cliente (ou o escritório) inclui à mão, anuais ou de um ano só.
 
 ## Regras da emenda usadas (fonte: imprensa; conferir com o DOU)
 
@@ -48,5 +66,4 @@ acordo), interjornada de 11h (art. 66), no máximo 6 dias seguidos (art. 67), do
 folga a cada 3 semanas no comércio (Lei 10.101/2000) e a cada 7 nos demais, feriado
 trabalhado (comércio exige convenção; demais pagam em dobro ou folga compensatória).
 
-Feriados entram como parâmetro (`Set` de datas) — a tela usa `feriadosNacionais` de
-`api/src/diasBancarios.js` e o cliente pode acrescentar os municipais.
+Feriados entram no motor como parâmetro (`Set` de datas), montado por `feriadosDaEmpresa`.

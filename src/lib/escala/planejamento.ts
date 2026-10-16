@@ -5,6 +5,10 @@
  */
 import { diaDaSemana, diasEntre, inicioDaSemana, somarDias } from "./datas";
 import { DiaEscala, ModeloEscala, Turno, escala5x2, escala6x1, gerarDias } from "./modelos";
+import { MODOS_BLOQUEIO, type ModoBloqueio } from "./bloqueio";
+import { DEMANDA_VAZIA, type Demanda } from "./contingente";
+import type { FeriadoLocal } from "./feriados";
+import { SEGMENTOS, type Segmento } from "./regras";
 
 export type ModeloChave = "6x1" | "5x2" | "12x36";
 
@@ -90,4 +94,85 @@ export function trocarCelulas(
 
 export function definirCelula(ajustes: Ajustes, pessoa: string, data: string, turno: Turno | null): Ajustes {
   return { ...ajustes, [pessoa]: { ...(ajustes[pessoa] || {}), [data]: turno } };
+}
+
+/** O que vale para a empresa toda e fica salvo uma vez só (escala_config). */
+export interface ConfigEmpresa {
+  segmento: Segmento;
+  temAcordoColetivo: boolean;
+  bloqueio: ModoBloqueio;
+  incluirFacultativos: boolean;
+  feriadosLocais: FeriadoLocal[];
+  /** Pessoas necessárias por dia da semana (domingo a sábado). */
+  demanda: Demanda;
+  /** Horas trabalhadas por dia usadas na simulação de contingente. */
+  horasPorDia: number;
+  salarioMedio: number | null;
+}
+
+/** A escala de um mês (escala_planejamentos). */
+export interface PlanoMes {
+  configs: ConfigPessoa[];
+  ajustes: Ajustes;
+}
+
+export function configEmpresaPadrao(): ConfigEmpresa {
+  return {
+    segmento: "comercio",
+    temAcordoColetivo: false,
+    bloqueio: "limite_legal",
+    incluirFacultativos: false,
+    feriadosLocais: [],
+    demanda: [...DEMANDA_VAZIA] as Demanda,
+    horasPorDia: 8,
+    salarioMedio: null,
+  };
+}
+
+/** Lê o JSON salvo sem confiar na forma: o que faltar ou vier torto volta ao padrão. */
+export function normalizarConfigEmpresa(raw: unknown): ConfigEmpresa {
+  const base = configEmpresaPadrao();
+  if (!raw || typeof raw !== "object") return base;
+  const o = raw as Record<string, unknown>;
+  const segmento = typeof o.segmento === "string" && o.segmento in SEGMENTOS ? (o.segmento as Segmento) : base.segmento;
+  const bloqueio = typeof o.bloqueio === "string" && o.bloqueio in MODOS_BLOQUEIO ? (o.bloqueio as ModoBloqueio) : base.bloqueio;
+  const demanda =
+    Array.isArray(o.demanda) && o.demanda.length === 7
+      ? (o.demanda.map((n) => Math.max(0, Math.floor(Number(n) || 0))) as Demanda)
+      : base.demanda;
+  const feriadosLocais = Array.isArray(o.feriadosLocais)
+    ? o.feriadosLocais
+        .filter((f): f is FeriadoLocal => Boolean(f) && typeof (f as FeriadoLocal).data === "string")
+        .filter((f) => /^(\d{4}-)?\d{2}-\d{2}$/.test(f.data))
+        .map((f) => ({ data: f.data, nome: String(f.nome || "") }))
+    : [];
+  const horas = Number(o.horasPorDia);
+  const salario = Number(o.salarioMedio);
+  return {
+    segmento,
+    temAcordoColetivo: Boolean(o.temAcordoColetivo),
+    bloqueio,
+    incluirFacultativos: Boolean(o.incluirFacultativos),
+    feriadosLocais,
+    demanda,
+    horasPorDia: horas > 0 && horas <= 12 ? horas : base.horasPorDia,
+    salarioMedio: salario > 0 ? salario : null,
+  };
+}
+
+/**
+ * Junta a escala salva com o quadro atual: quem saiu da empresa some, quem entrou ganha
+ * o modelo padrão, vagas simuladas ficam.
+ */
+export function mesclarPlano(plano: PlanoMes | null, pessoas: Array<{ id: string; name: string }>, padrao: ModeloChave): PlanoMes {
+  const salvos = new Map((plano?.configs || []).map((c) => [c.id, c]));
+  const configs: ConfigPessoa[] = pessoas.map((p, i) => {
+    const s = salvos.get(p.id);
+    return s ? { ...s, nome: p.name } : { ...configPadrao(p.id, p.name, padrao), turma: i % 2 === 0 ? "A" : "B" };
+  });
+  for (const c of plano?.configs || []) if (c.id.startsWith("vaga-")) configs.push(c);
+  const ids = new Set(configs.map((c) => c.id));
+  const ajustes: Ajustes = {};
+  for (const [id, a] of Object.entries(plano?.ajustes || {})) if (ids.has(id)) ajustes[id] = a;
+  return { configs, ajustes };
 }

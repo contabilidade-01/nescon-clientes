@@ -3,8 +3,10 @@
  * escala, liberação por empresa e a tela montando a grade. O arrastar em si é do
  * @dnd-kit e depende de layout real; a troca é `trocarCelulas`, testada aqui.
  */
-import { describe, it, expect } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import type { ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { PlanejadorEscala } from "@/components/escala/PlanejadorEscala";
 import { feriadosTrabalhistas } from "@/lib/escala/feriados";
 import { configPadrao, diasDoMes, diasParaValidar, trocarCelulas } from "@/lib/escala/planejamento";
@@ -77,17 +79,43 @@ describe("liberação da ferramenta", () => {
   });
 });
 
+vi.mock("@/lib/api", () => ({
+  api: {
+    escalas: {
+      config: vi.fn().mockResolvedValue({ dados: null, atualizado_em: null, atualizado_por: null }),
+      planos: vi.fn().mockResolvedValue([]),
+      plano: vi.fn().mockResolvedValue(null),
+      salvarConfig: vi.fn().mockResolvedValue({}),
+      salvarPlano: vi.fn().mockResolvedValue({}),
+      excluirPlano: vi.fn().mockResolvedValue({ ok: true }),
+    },
+  },
+}));
+
+function comQuery(ui: ReactNode) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
+
+const PESSOAS = [
+  { id: "1", name: "Ana" },
+  { id: "2", name: "Bruno" },
+];
+
 describe("tela do planejador", () => {
-  it("monta a grade com as pessoas e conta quem trabalha", () => {
-    render(<PlanejadorEscala pessoas={[{ id: "1", name: "Ana" }, { id: "2", name: "Bruno" }]} />);
-    expect(screen.getAllByText("Ana").length).toBeGreaterThan(0);
+  it("monta a grade com as pessoas e conta quem trabalha", async () => {
+    comQuery(<PlanejadorEscala pessoas={PESSOAS} />);
+    await waitFor(() => expect(screen.getAllByText("Ana").length).toBeGreaterThan(0));
     expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0);
     expect(screen.getByText("Pessoas trabalhando")).toBeInTheDocument();
   });
 
-  it("acrescenta vaga simulada", () => {
-    render(<PlanejadorEscala pessoas={[]} />);
+  it("acrescenta vaga simulada e marca como não salvo", async () => {
+    const SEM: typeof PESSOAS = [];
+    comQuery(<PlanejadorEscala pessoas={SEM} />);
+    await waitFor(() => expect(screen.getByText(/ainda não foi salvo/)).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /Vaga simulada/ }));
     expect(screen.getAllByText("Vaga simulada 1").length).toBeGreaterThan(0);
+    expect(screen.getByText("Mudanças não salvas")).toBeInTheDocument();
   });
 });

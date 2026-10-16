@@ -41,6 +41,7 @@ const { ensureGuiasMeiSchema } = require("./ensureGuiasMeiSchema");
 const { ensureContratosSchema } = require("./ensureContratosSchema");
 const { ensurePropostasSchema } = require("./ensurePropostasSchema");
 const { ensureOnboardingSchema } = require("./ensureOnboardingSchema");
+const { ensureEscalasSchema } = require("./ensureEscalasSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -125,6 +126,7 @@ app.use("/api/onboarding/portal", onboardingRoutes.portalRouter);
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/chat", require("./routes/chat"));
 app.use("/api/employees", require("./routes/employees"));
+app.use("/api/escalas", require("./routes/escalas"));
 app.use("/api/admissoes", admissionsRoutes.router);
 app.use("/api/documents", require("./routes/documents"));
 app.use("/api/certificates", require("./routes/certificates"));
@@ -217,6 +219,7 @@ async function start() {
     await ensureContratosSchema(db);
     await ensurePropostasSchema(db);
     await ensureOnboardingSchema(db);
+    await ensureEscalasSchema(db);
     // Circular que estava enviando quando a API caiu volta como "pausada" para retomar.
     await require("./circular").recuperarNoArranque(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).

@@ -50,3 +50,41 @@ export function feriadosTrabalhistas(ano: number): Map<string, string> {
   out.set(paraISO(pascoa(ano) - 2 * DIA_MS), "Sexta-feira Santa");
   return out;
 }
+
+/**
+ * Pontos facultativos nacionais (Carnaval e Corpus Christi). Não são feriado por lei, mas
+ * muita prefeitura e convenção os trata como tal — a empresa escolhe se entram.
+ */
+export function pontosFacultativos(ano: number): Map<string, string> {
+  const p = pascoa(ano);
+  return new Map([
+    [paraISO(p - 48 * DIA_MS), "Carnaval (segunda)"],
+    [paraISO(p - 47 * DIA_MS), "Carnaval (terça)"],
+    [paraISO(p + 60 * DIA_MS), "Corpus Christi"],
+  ]);
+}
+
+/** Feriado municipal/estadual digitado pela empresa. */
+export interface FeriadoLocal {
+  /** 'MM-DD' repete todo ano; 'YYYY-MM-DD' vale só naquele ano. */
+  data: string;
+  nome: string;
+}
+
+/** Todos os feriados que valem para a empresa nos anos pedidos. */
+export function feriadosDaEmpresa(
+  anos: number[],
+  locais: FeriadoLocal[] = [],
+  incluirFacultativos = false,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const ano of anos) {
+    for (const [d, n] of feriadosTrabalhistas(ano)) out.set(d, n);
+    if (incluirFacultativos) for (const [d, n] of pontosFacultativos(ano)) out.set(d, n);
+    for (const f of locais) {
+      if (/^\d{2}-\d{2}$/.test(f.data)) out.set(`${ano}-${f.data}`, f.nome || "Feriado local");
+      else if (f.data.startsWith(`${ano}-`)) out.set(f.data, f.nome || "Feriado local");
+    }
+  }
+  return out;
+}
