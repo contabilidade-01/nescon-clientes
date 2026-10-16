@@ -40,6 +40,15 @@ Segmentos cobertos: construção civil, restaurantes, comércio em geral; escala
   criar erro novo (`errosNovos`), e não se salva escala com erro. A escala padrão do mês
   já nasce dentro da regra (6x1 até a emenda, 5x2 depois) e os feriados nascem de folga
   (menos na 12x36).
+- **Casa fechada** (pedido do Jean em 16/10/2026, restaurantes em 12x36): cenários
+  "Segunda a sábado" (folga no domingo + 1 dia escalonado) e "Fecha na segunda" (folga na
+  segunda + 1 dia que cai no domingo no mínimo do segmento), modelo `5x2_fechado`. A
+  empresa marca os dias em que fecha; cenário que escala gente nesses dias sai da lista.
+  O cartão "Escala de hoje" mede a escala atual (ex.: 12x36) com a mesma régua e cada
+  cenário mostra a diferença de pessoas por dia.
+- **Horário personalizado** por cenário; se passar do limite (semana ou dia), o cartão
+  fica vermelho com o motivo e não aplica. A grade tem a coluna "Maior semana", vermelha
+  quando passa do limite e âmbar quando é aviso (acordo ou 12x36).
 - Com acordo, a média mensal de folgas só é cobrada quando alguma semana do mês fica
   abaixo das 2 folgas: quem cumpre semana a semana não está compensando (fevereiro de 29
   dias cortava uma folga do rodízio).

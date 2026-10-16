@@ -15,15 +15,18 @@ import { validarEscala, type Ocorrencia } from "./validar";
  * - 6x1: só até 15/12/2026.
  * - 5x2: folgas fixas na semana.
  * - 5x2_rev: 5x2 com folgas em rodízio (o domingo de folga gira entre a equipe).
+ * - 5x2_fechado: folga fixa no dia em que a casa fecha + 1 folga escalonada; se a casa
+ *   abre no domingo, a 2ª folga cai no domingo a cada `semanasRodizio` semanas.
  * - 4x3: 4 dias de 10h, folga no domingo e em mais 2 dias (compensação, exige acordo).
  * - 12x36: plantão dia sim, dia não.
  */
-export type ModeloChave = "6x1" | "5x2" | "5x2_rev" | "4x3" | "12x36";
+export type ModeloChave = "6x1" | "5x2" | "5x2_rev" | "5x2_fechado" | "4x3" | "12x36";
 
 export const MODELOS: Record<ModeloChave, string> = {
   "6x1": "6x1",
   "5x2": "5x2 fixo",
   "5x2_rev": "5x2 rodízio",
+  "5x2_fechado": "5x2 casa fechada",
   "4x3": "4x3 (10h)",
   "12x36": "12x36",
 };
@@ -48,8 +51,13 @@ export interface ConfigPessoa {
   folgaFixa: number;
   /** 5x2 rodízio: em que semana do rodízio a pessoa começa (espalha os domingos). */
   rodizio: number;
-  /** 5x2 rodízio: de quantas em quantas semanas a folga cai no domingo (2 ou 3). */
+  /**
+   * De quantas em quantas semanas a folga cai no domingo: 2 ou 3 no 5x2 rodízio; de 1 a 7
+   * no 5x2 casa fechada (respeitando o mínimo do segmento).
+   */
   semanasRodizio: number;
+  /** 5x2 casa fechada: dia em que o estabelecimento não abre (0 = domingo, 1 = segunda…). */
+  diaFechado: number;
 }
 
 /** Ajustes manuais: pessoa -> data -> turno (null = folga). */
@@ -59,6 +67,7 @@ const HORARIOS: Record<ModeloChave, [string, string]> = {
   "6x1": ["08:00", "16:20"], // 7h20 x 6 = 44h
   "5x2": ["08:00", "17:00"], // 8h x 5 = 40h
   "5x2_rev": ["08:00", "17:00"],
+  "5x2_fechado": ["08:00", "17:00"],
   "4x3": ["07:00", "18:00"], // 10h x 4 = 40h
   "12x36": ["07:00", "19:00"],
 };
@@ -77,6 +86,7 @@ export function configPadrao(id: string, nome: string, modelo: ModeloChave = "6x
     folgaFixa: 1,
     rodizio: 0,
     semanasRodizio: 2,
+    diaFechado: 0,
   };
 }
 
@@ -92,6 +102,15 @@ export function modeloPadraoDoMes(mes: string, usa12x36 = false): ModeloChave {
 /** Próximo dia de folga do rodízio: sempre de segunda a sábado e diferente do anterior. */
 export function proximaFolga(d: number): number {
   return ((d + 2) % 6) + 1;
+}
+
+/** 2ª folga de quem tem folga fixa no dia fechado: nunca o próprio dia fechado nem o domingo. */
+export function segundaFolga(fechado: number, desejada: number): number {
+  for (let k = 0; k < 7; k++) {
+    const d = ((desejada - 1 + k) % 6) + 1;
+    if (d !== fechado) return d;
+  }
+  return 1;
 }
 
 /**
@@ -121,6 +140,18 @@ export function modeloDaPessoa(c: ConfigPessoa, mes: string): ModeloEscala {
     const n = c.semanasRodizio === 3 ? 3 : 2;
     const base = somarDias(BASE_RODIZIO, -7 * (((c.rodizio % n) + n) % n));
     return { tipo: "rotativo", nome: "5x2 rodízio", turno, semanas: semanasDoRodizio(c.folgaFixa, n), base };
+  }
+  if (c.modelo === "5x2_fechado") {
+    const fechado = c.diaFechado;
+    const outra = segundaFolga(fechado, c.folgaFixa);
+    // Fecha no domingo: a semana é sempre a mesma. Fecha em outro dia: a 2ª folga cai no
+    // domingo uma semana a cada N; como a folga do dia fechado se repete toda semana, nunca
+    // passam 6 dias seguidos.
+    if (fechado === 0) return { tipo: "semanal", nome: "5x2 casa fechada", turno, diasFolga: [0, outra] };
+    const n = Math.min(7, Math.max(1, c.semanasRodizio));
+    const semanas = Array.from({ length: n }, (_, i) => (i === 0 ? [fechado, 0] : [fechado, outra]));
+    const base = somarDias(BASE_RODIZIO, -7 * (((c.rodizio % n) + n) % n));
+    return { tipo: "rotativo", nome: "5x2 casa fechada", turno, semanas, base };
   }
   if (c.modelo === "4x3") {
     return { tipo: "semanal", nome: "4x3", turno, diasFolga: [0, c.folgaFixa, proximaFolga(c.folgaFixa)] };
@@ -169,6 +200,11 @@ export interface AvaliacaoPessoa {
   ocorrencias: Ocorrencia[];
   porDia: Map<string, "erro" | "atencao">;
   horas: number;
+  /** Semana mais carregada que toca o mês, e o limite da regra naquela semana. */
+  maiorSemana: number;
+  limiteSemana: number;
+  /** Como a validação trata a semana acima do limite: erro, aviso (acordo/12x36) ou nada. */
+  semanaAcima: "erro" | "atencao" | null;
 }
 
 export function perfilDa(c: ConfigPessoa, empresa: Pick<ConfigEmpresa, "segmento" | "temAcordoColetivo">): PerfilJornada {
@@ -193,7 +229,20 @@ export function avaliarPessoa(
   // As semanas das pontas entram na conta, mas o aviso de um dia do mês vizinho não é deste mês.
   const ocorrencias = resultado.ocorrencias.filter((o) => o.data.startsWith(mes) || !REGRAS_DO_DIA.has(o.regra));
   const horas = dias.reduce((a, d) => a + (d.turno ? minutosTrabalhados(d.turno) : 0), 0) / 60;
-  return { config: c, dias, ocorrencias, porDia, horas };
+  const semanas = resultado.semanas.filter((x) => x.completa);
+  const pior = semanas.reduce<(typeof semanas)[number] | null>((a, x) => (!a || x.horas - x.limiteHoras > a.horas - a.limiteHoras ? x : a), null);
+  const limite = ocorrencias.filter((o) => o.regra === "LIMITE_SEMANAL");
+  const semanaAcima = limite.some((o) => o.gravidade === "erro") ? "erro" : limite.length ? "atencao" : null;
+  return {
+    config: c,
+    dias,
+    ocorrencias,
+    porDia,
+    horas,
+    maiorSemana: pior?.horas ?? 0,
+    limiteSemana: pior?.limiteHoras ?? 0,
+    semanaAcima,
+  };
 }
 
 /** Identidade de cada erro, para saber se uma mudança criou erro NOVO. */
@@ -240,6 +289,8 @@ export interface ConfigEmpresa {
   atividadeDefinida: boolean;
   /** A empresa trabalha (ou quer simular) em 12x36. */
   usa12x36: boolean;
+  /** Dias da semana em que a casa não abre (0 = domingo). Cenário que escala gente neles sai da lista. */
+  diasFechados: number[];
 }
 
 /** A escala de um mês (escala_planejamentos). */
@@ -260,6 +311,7 @@ export function configEmpresaPadrao(): ConfigEmpresa {
     salarioMedio: null,
     atividadeDefinida: false,
     usa12x36: false,
+    diasFechados: [],
   };
 }
 
@@ -293,6 +345,9 @@ export function normalizarConfigEmpresa(raw: unknown): ConfigEmpresa {
     salarioMedio: salario > 0 ? salario : null,
     atividadeDefinida: Boolean(o.atividadeDefinida),
     usa12x36: Boolean(o.usa12x36),
+    diasFechados: Array.isArray(o.diasFechados)
+      ? [...new Set(o.diasFechados.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort().slice(0, 5)
+      : [],
   };
 }
 
@@ -308,7 +363,15 @@ export function normalizarConfigPessoa(raw: ConfigPessoa, padrao: ModeloChave): 
     folga6x1: dia(raw.folga6x1, 0, 0),
     folgaFixa: dia(raw.folgaFixa, 1, 1),
     rodizio: Number.isInteger(raw.rodizio) && raw.rodizio >= 0 ? raw.rodizio : 0,
-    semanasRodizio: raw.semanasRodizio === 3 ? 3 : 2,
+    semanasRodizio:
+      modelo === "5x2_fechado"
+        ? Number.isInteger(raw.semanasRodizio) && raw.semanasRodizio >= 1 && raw.semanasRodizio <= 7
+          ? raw.semanasRodizio
+          : 3
+        : raw.semanasRodizio === 3
+          ? 3
+          : 2,
+    diaFechado: dia(raw.diaFechado, 0, 0),
     folgas5x2: Array.isArray(raw.folgas5x2) ? raw.folgas5x2 : base.folgas5x2,
     turma: raw.turma === "B" ? "B" : "A",
   };

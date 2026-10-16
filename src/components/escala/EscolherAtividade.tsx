@@ -13,7 +13,34 @@ const ATIVIDADES: Array<{ id: Segmento; icone: LucideIcon; resumo: string }> = [
   { id: "outro", icone: Building2, resumo: "Escritórios, serviços e indústria. Regra geral da CLT." },
 ];
 
-export type EscolhaAtividade = { segmento: Segmento; temAcordoColetivo: boolean; usa12x36: boolean };
+export type EscolhaAtividade = { segmento: Segmento; temAcordoColetivo: boolean; usa12x36: boolean; diasFechados: number[] };
+
+const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+/** Botões dos dias em que a casa não abre. */
+export function DiasFechados({ valor, onChange }: { valor: number[]; onChange: (d: number[]) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1" role="group" aria-label="Dias em que a casa fecha">
+      {DIAS.map((n, i) => {
+        const fechado = valor.includes(i);
+        return (
+          <button
+            key={n}
+            type="button"
+            aria-pressed={fechado}
+            onClick={() => onChange(fechado ? valor.filter((d) => d !== i) : [...valor, i].sort())}
+            className={cn(
+              "h-8 w-12 rounded-md border text-xs font-medium transition",
+              fechado ? "border-destructive bg-destructive/10 text-destructive line-through" : "hover:border-primary/60",
+            )}
+          >
+            {n}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 /**
  * Primeiro passo: o cliente marca a atividade antes de simular. A atividade muda a régua
@@ -84,6 +111,14 @@ export function EscolherAtividade({
               <span className="text-xs text-muted-foreground">A escala do mês começa em 12x36, com as turmas A e B se revezando.</span>
             </span>
           </label>
+        </div>
+
+        <div className="space-y-1.5 rounded-lg border p-3">
+          <p className="text-sm font-medium">Em que dias a casa fecha?</p>
+          <p className="text-xs text-muted-foreground">
+            Marque os dias sem expediente (ex.: domingo, ou segunda no restaurante). Os cenários que põem gente nesses dias saem da lista.
+          </p>
+          <DiasFechados valor={e.diasFechados} onChange={(d) => setE({ ...e, diasFechados: d })} />
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">

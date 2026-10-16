@@ -3,7 +3,7 @@
  * todos passam pelo mesmo motor; o que tem erro não pode ser aplicado.
  */
 import { describe, it, expect } from "vitest";
-import { simularCenarios } from "@/lib/escala/cenarios";
+import { avaliarEscalaAtual, simularCenarios } from "@/lib/escala/cenarios";
 import { diaDaSemana } from "@/lib/escala/datas";
 import { feriadosDaEmpresa } from "@/lib/escala/feriados";
 import {
@@ -150,5 +150,61 @@ describe("planos salvos antes do rodízio", () => {
   it("a atividade começa em aberto e fica marcada ao salvar", () => {
     expect(normalizarConfigEmpresa(null).atividadeDefinida).toBe(false);
     expect(normalizarConfigEmpresa({ atividadeDefinida: true, usa12x36: true })).toMatchObject({ atividadeDefinida: true, usa12x36: true });
+  });
+});
+
+describe("casa fechada e horário personalizado", () => {
+  const mes = "2027-03";
+  const f = feriados(2027);
+  const restaurante = empresa("restaurante");
+
+  it("segunda a sábado: ninguém trabalha no domingo e cada dia fica com 5 de 6", () => {
+    const c = simularCenarios(PESSOAS, mes, restaurante, f).find((x) => x.id === "seg_sab")!;
+    expect(c.podeAplicar).toBe(true);
+    expect(c.mediaPorDia[0]).toBe(0);
+    // Sexta 26/03 é Sexta-feira Santa (folga de todos), então sexta fica abaixo de 5.
+    expect(c.mediaPorDia.slice(1, 5)).toEqual([5, 5, 5, 5]);
+  });
+
+  it("fecha na segunda: ninguém trabalha na segunda e o domingo respeita o mínimo do segmento", () => {
+    for (const seg of ["restaurante", "comercio"] as Segmento[]) {
+      for (const m of ["2027-01", "2027-03", "2027-06", "2028-02"]) {
+        const c = simularCenarios(PESSOAS, m, empresa(seg), feriados(Number(m.slice(0, 4)))).find((x) => x.id === "fecha_seg")!;
+        expect({ seg, m, erros: c.erros, motivos: c.motivos }).toEqual({ seg, m, erros: 0, motivos: [] });
+        expect(c.mediaPorDia[1]).toBe(0);
+      }
+    }
+  });
+
+  it("cenário que escala gente no dia fechado sai da lista", () => {
+    const r = simularCenarios(PESSOAS, mes, { ...restaurante, diasFechados: [0] }, f);
+    expect(r.find((x) => x.id === "seg_sab")!.podeAplicar).toBe(true);
+    const rod = r.find((x) => x.id === "5x2_rev2")!;
+    expect(rod.podeAplicar).toBe(false);
+    expect(rod.motivos[0]).toMatch(/domingo, dia em que a casa fecha/);
+  });
+
+  it("horário personalizado que passa do limite fica vermelho e não aplica", () => {
+    const longo = { entrada: "08:00", saida: "19:00", intervaloMin: 60 }; // 10h x 5 = 50h
+    const c = simularCenarios(PESSOAS, mes, restaurante, f, 0, { seg_sab: longo }).find((x) => x.id === "seg_sab")!;
+    expect(c.personalizado).toBe(true);
+    expect(c.podeAplicar).toBe(false);
+    expect(c.semanaAcima).toBe("erro");
+    expect(c.maiorSemana).toBeGreaterThan(c.limiteSemana);
+  });
+
+  it("horário personalizado dentro do limite aplica (restaurante 11h às 19h)", () => {
+    const t = { entrada: "11:00", saida: "19:00", intervaloMin: 30 }; // 7h30 com acordo
+    const c = simularCenarios(PESSOAS, mes, empresa("restaurante", true), f, 0, { fecha_seg: t }).find((x) => x.id === "fecha_seg")!;
+    expect(c.podeAplicar).toBe(true);
+    expect(c.configs.every((p) => p.entrada === "11:00" && p.saida === "19:00")).toBe(true);
+  });
+
+  it("a escala de hoje em 12x36 é medida para comparar com os cenários", () => {
+    const configs = PESSOAS.map((p, i) => ({ ...configPadrao(p.id, p.nome, "12x36"), turma: i % 2 ? ("B" as const) : ("A" as const) }));
+    const atual = avaliarEscalaAtual(configs, {}, mes, restaurante, f);
+    expect(atual.erros).toBe(0);
+    expect(atual.mediaPorDia.every((n) => n === 3)).toBe(true);
+    expect(atual.descricao).toMatch(/12x36/);
   });
 });

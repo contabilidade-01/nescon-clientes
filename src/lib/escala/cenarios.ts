@@ -8,15 +8,18 @@
  */
 import { motivoBloqueio, type ModoBloqueio } from "./bloqueio";
 import { diaDaSemana } from "./datas";
+import { minutosTrabalhados, type Turno } from "./modelos";
 import {
   avaliarPessoa,
   configPadrao,
   diasDoMes,
+  MODELOS,
+  type Ajustes,
   type ConfigEmpresa,
   type ConfigPessoa,
   type ModeloChave,
 } from "./planejamento";
-import { vigenciaEm } from "./regras";
+import { SEGMENTOS, vigenciaEm } from "./regras";
 
 export interface Cenario {
   id: string;
@@ -26,6 +29,9 @@ export interface Cenario {
   configs: ConfigPessoa[];
   /** Motivo de nem montar o cenário (ex.: 6x1 depois da emenda). */
   indisponivel?: string;
+  /** Horário que todos do cenário cumprem (o padrão do modelo ou o que o cliente digitou). */
+  turno: Turno;
+  personalizado: boolean;
 }
 
 export interface ResultadoCenario extends Cenario {
@@ -40,8 +46,17 @@ export interface ResultadoCenario extends Cenario {
   /** Média de horas por semana por pessoa. */
   horasSemana: number;
   domingosDeFolga: number;
+  /** Maior semana de alguém e o limite dela: passa disso, a tela pinta de vermelho. */
+  maiorSemana: number;
+  limiteSemana: number;
+  /** Horas do dia acima de 8h (hora extra) ou do teto (erro). */
+  horasDia: number;
+  /** A semana acima do limite é erro (sem acordo), aviso (acordo ou 12x36) ou não acontece. */
+  semanaAcima: "erro" | "atencao" | null;
   podeAplicar: boolean;
 }
+
+const NOMES_DIA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 
 type Pessoa = { id: string; nome: string };
 
@@ -49,17 +64,53 @@ type Pessoa = { id: string; nome: string };
  * `variacao` muda quem folga em que dia sem mudar o modelo: o botão "outra variação"
  * soma 1 e a tela recalcula.
  */
-export function montarCenarios(pessoas: Pessoa[], mes: string, empresa: Pick<ConfigEmpresa, "temAcordoColetivo">, variacao = 0): Cenario[] {
+export function montarCenarios(
+  pessoas: Pessoa[],
+  mes: string,
+  empresa: Pick<ConfigEmpresa, "temAcordoColetivo" | "segmento">,
+  variacao = 0,
+  horarios: Record<string, Turno> = {},
+): Cenario[] {
   const repousos = vigenciaEm(diasDoMes(mes).at(-1)!).repousosSemanais;
-  const cada = (modelo: ModeloChave, f: (c: ConfigPessoa, i: number) => Partial<ConfigPessoa> = () => ({})) =>
-    pessoas.map((p, i) => {
-      const c = configPadrao(p.id, p.nome, modelo);
-      return { ...c, ...f(c, i) };
-    });
   const v = Math.max(0, Math.floor(variacao));
   const espalha = (i: number) => ((i + v) % 6) + 1;
+  // Fecha num dia da semana: a 2ª folga gira pelos dias em que a casa abre (menos domingo).
+  const espalhaSem = (fechado: number, i: number) => {
+    const dias = [1, 2, 3, 4, 5, 6].filter((d) => d !== fechado);
+    return dias[(i + v) % dias.length];
+  };
+  const domingoACada = SEGMENTOS[empresa.segmento].domingoACadaSemanas;
 
-  return [
+  const base: Array<Omit<Cenario, "configs" | "turno" | "personalizado"> & { configs: (id: string) => ConfigPessoa[] }> = [];
+  const cada =
+    (modelo: ModeloChave, f: (c: ConfigPessoa, i: number) => Partial<ConfigPessoa> = () => ({})) =>
+    (id: string) =>
+      pessoas.map((p, i) => {
+        const c = configPadrao(p.id, p.nome, modelo);
+        const h = horarios[id];
+        return { ...c, ...f(c, i), ...(h ? { entrada: h.entrada, saida: h.saida, intervaloMin: h.intervaloMin } : {}) };
+      });
+
+  base.push(
+    {
+      id: "seg_sab",
+      nome: "Segunda a sábado (fecha no domingo)",
+      descricao: "Todos folgam no domingo e em mais 1 dia da semana, escalonado: a casa abre de segunda a sábado com a equipe quase inteira.",
+      modelo: "5x2_fechado",
+      configs: cada("5x2_fechado", (_, i) => ({ diaFechado: 0, folgaFixa: espalhaSem(0, i), semanasRodizio: 1 })),
+    },
+    {
+      id: "fecha_seg",
+      nome: "Fecha na segunda (abre de terça a domingo)",
+      descricao: `Todos folgam na segunda; a outra folga gira na semana e cai no domingo 1 vez a cada ${domingoACada} semanas, o mínimo de ${SEGMENTOS[empresa.segmento].nome.toLowerCase()}.`,
+      modelo: "5x2_fechado",
+      configs: cada("5x2_fechado", (_, i) => ({
+        diaFechado: 1,
+        folgaFixa: espalhaSem(1, i),
+        semanasRodizio: domingoACada,
+        rodizio: (i + v) % domingoACada,
+      })),
+    },
     {
       id: "5x2_fds",
       nome: "5x2 com fim de semana livre",
@@ -84,7 +135,7 @@ export function montarCenarios(pessoas: Pessoa[], mes: string, empresa: Pick<Con
     {
       id: "5x2_rev3",
       nome: "5x2 em rodízio (domingo a cada 3 semanas)",
-      descricao: "Mais gente no domingo: cada pessoa folga 1 domingo a cada 3, o mínimo do comércio.",
+      descricao: "Mais gente no domingo: cada pessoa folga 1 domingo a cada 3 (no comércio, é o mínimo da lei).",
       modelo: "5x2_rev",
       configs: cada("5x2_rev", (_, i) => ({ folgaFixa: espalha(i), rodizio: (i + v) % 3, semanasRodizio: 3 })),
     },
@@ -112,23 +163,49 @@ export function montarCenarios(pessoas: Pessoa[], mes: string, empresa: Pick<Con
       indisponivel:
         repousos > 1 ? "Proibida a partir de 16/12/2026: a EC 141/2026 exige duas folgas por semana." : undefined,
     },
-  ];
+  );
+
+  return base.map((c) => {
+    const configs = c.configs(c.id);
+    const p = configs[0] ?? configPadrao("x", "x", c.modelo);
+    return {
+      ...c,
+      configs,
+      turno: { entrada: p.entrada, saida: p.saida, intervaloMin: p.intervaloMin },
+      personalizado: Boolean(horarios[c.id]),
+    };
+  });
 }
+
+type EmpresaCenario = Pick<ConfigEmpresa, "segmento" | "temAcordoColetivo" | "demanda" | "bloqueio"> & { diasFechados?: number[] };
 
 export function avaliarCenario(
   cenario: Cenario,
   mes: string,
-  empresa: Pick<ConfigEmpresa, "segmento" | "temAcordoColetivo" | "demanda" | "bloqueio">,
+  empresa: EmpresaCenario,
   feriados: Set<string>,
+  ajustes: Ajustes = {},
 ): ResultadoCenario {
   const dias = diasDoMes(mes);
-  const avaliacoes = cenario.configs.map((c) => avaliarPessoa(c, mes, {}, empresa, feriados));
+  const avaliacoes = cenario.configs.map((c) => avaliarPessoa(c, mes, ajustes, empresa, feriados));
   const ocorrencias = avaliacoes.flatMap((a) => a.ocorrencias);
   const erros = ocorrencias.filter((o) => o.gravidade === "erro");
   const motivos = [...new Set(erros.map((o) => o.mensagem))];
   const bloqueio = bloqueioDoCenario(cenario.configs, empresa.bloqueio);
   if (bloqueio) motivos.unshift(bloqueio);
+  // A casa fechada não é regra da lei, mas escalar gente no dia fechado não serve.
+  const fechados = (empresa.diasFechados || []).filter((d) =>
+    avaliacoes.some((a) => a.dias.some((x) => x.turno && diaDaSemana(x.data) === d)),
+  );
+  const foraDoFuncionamento = fechados.length
+    ? `Escala gente na ${fechados.map((d) => NOMES_DIA[d]).join(" e na ")}, dia em que a casa fecha.`
+    : null;
+  if (foraDoFuncionamento) motivos.unshift(foraDoFuncionamento);
   if (cenario.indisponivel) motivos.unshift(cenario.indisponivel);
+  const pior = avaliacoes.reduce(
+    (a, x) => (x.maiorSemana - x.limiteSemana > a.maiorSemana - a.limiteSemana ? x : a),
+    avaliacoes[0] ?? { maiorSemana: 0, limiteSemana: 0 },
+  );
 
   const trabalhando = dias.map((d) => avaliacoes.filter((a) => a.dias.find((x) => x.data === d)?.turno).length);
   const soma = Array(7).fill(0);
@@ -150,12 +227,20 @@ export function avaliarCenario(
     ...cenario,
     erros: erros.length,
     avisos: ocorrencias.length - erros.length,
-    motivos: motivos.slice(0, 3),
+    motivos: motivos.slice(0, 4),
     mediaPorDia: soma.map((s, i) => (conta[i] ? s / conta[i] : 0)),
     diasDescobertos,
     horasSemana: horas / n / (dias.length / 7),
     domingosDeFolga: domingos / n,
-    podeAplicar: !cenario.indisponivel && !bloqueio && erros.length === 0 && cenario.configs.length > 0,
+    maiorSemana: pior.maiorSemana,
+    limiteSemana: pior.limiteSemana,
+    horasDia: minutosTrabalhados(cenario.turno) / 60,
+    semanaAcima: avaliacoes.some((a) => a.semanaAcima === "erro")
+      ? "erro"
+      : avaliacoes.some((a) => a.semanaAcima === "atencao")
+        ? "atencao"
+        : null,
+    podeAplicar: !cenario.indisponivel && !bloqueio && !foraDoFuncionamento && erros.length === 0 && cenario.configs.length > 0,
   };
 }
 
@@ -168,9 +253,40 @@ function bloqueioDoCenario(configs: ConfigPessoa[], modo: ModoBloqueio): string 
 export function simularCenarios(
   pessoas: Pessoa[],
   mes: string,
-  empresa: Pick<ConfigEmpresa, "segmento" | "temAcordoColetivo" | "demanda" | "bloqueio">,
+  empresa: EmpresaCenario,
   feriados: Set<string>,
   variacao = 0,
+  horarios: Record<string, Turno> = {},
 ): ResultadoCenario[] {
-  return montarCenarios(pessoas, mes, empresa, variacao).map((c) => avaliarCenario(c, mes, empresa, feriados));
+  return montarCenarios(pessoas, mes, empresa, variacao, horarios).map((c) => avaliarCenario(c, mes, empresa, feriados));
+}
+
+/**
+ * A escala que está na grade hoje, medida com a mesma régua dos cenários, para comparar
+ * (ex.: o restaurante em 12x36 contra segunda a sábado).
+ */
+export function avaliarEscalaAtual(
+  configs: ConfigPessoa[],
+  ajustes: Ajustes,
+  mes: string,
+  empresa: EmpresaCenario,
+  feriados: Set<string>,
+): ResultadoCenario {
+  const p = configs[0] ?? configPadrao("x", "x", "5x2");
+  const modelos = [...new Set(configs.map((c) => c.modelo))];
+  return avaliarCenario(
+    {
+      id: "atual",
+      nome: "Escala atual",
+      descricao: `O que está na grade agora: ${modelos.map((m) => MODELOS[m]).join(", ") || "sem ninguém"}.`,
+      modelo: p.modelo,
+      configs,
+      turno: { entrada: p.entrada, saida: p.saida, intervaloMin: p.intervaloMin },
+      personalizado: false,
+    },
+    mes,
+    empresa,
+    feriados,
+    ajustes,
+  );
 }

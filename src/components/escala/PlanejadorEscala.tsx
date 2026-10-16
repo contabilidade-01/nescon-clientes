@@ -36,14 +36,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { EscolherAtividade, type EscolhaAtividade } from "@/components/escala/EscolherAtividade";
+import { DiasFechados, EscolherAtividade, type EscolhaAtividade } from "@/components/escala/EscolherAtividade";
 import { FeriadosLocais } from "@/components/escala/FeriadosLocais";
 import { PainelCenarios } from "@/components/escala/PainelCenarios";
 import { PainelContingente } from "@/components/escala/PainelContingente";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { MODOS_BLOQUEIO, motivoBloqueio, type ModoBloqueio } from "@/lib/escala/bloqueio";
-import { simularCenarios, type ResultadoCenario } from "@/lib/escala/cenarios";
+import { avaliarEscalaAtual, simularCenarios, type ResultadoCenario } from "@/lib/escala/cenarios";
 import { diaDaSemana } from "@/lib/escala/datas";
 import { feriadosDaEmpresa } from "@/lib/escala/feriados";
 import type { Turno } from "@/lib/escala/modelos";
@@ -60,6 +60,7 @@ import {
   modeloPadraoDoMes,
   normalizarConfigEmpresa,
   proximaFolga,
+  segundaFolga,
   trocarCelulas,
   type Ajustes,
   type ConfigEmpresa,
@@ -75,7 +76,7 @@ const NOMES_DIA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", 
 /** Pares de folga do 5x2 fixo. */
 const PARES_5X2: number[][] = [[6, 0], [0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6]];
 /** O que mexe no desenho das folgas da pessoa e invalida os ajustes feitos à mão. */
-const CAMPOS_DO_MODELO: Array<keyof ConfigPessoa> = ["modelo", "folga6x1", "folgas5x2", "turma", "folgaFixa", "rodizio", "semanasRodizio"];
+const CAMPOS_DO_MODELO: Array<keyof ConfigPessoa> = ["modelo", "folga6x1", "folgas5x2", "turma", "folgaFixa", "rodizio", "semanasRodizio", "diaFechado"];
 
 function mesAtual(): string {
   const d = new Date();
@@ -132,6 +133,7 @@ export function PlanejadorEscala({
   const [aba, setAba] = useState<Aba>("cenarios");
   const [variacao, setVariacao] = useState(0);
   const [cenarioAtual, setCenarioAtual] = useState<string | null>(null);
+  const [horarios, setHorarios] = useState<Record<string, Turno>>({});
   const [trocandoAtividade, setTrocandoAtividade] = useState(false);
 
   const configQuery = useQuery({
@@ -235,10 +237,24 @@ export function PlanejadorEscala({
   const equipe = useMemo(() => configs.map((c) => ({ id: c.id, nome: c.nome })), [configs]);
   const equipeChave = equipe.map((p) => `${p.id}:${p.nome}`).join("|");
   const cenarios = useMemo(
-    () => simularCenarios(equipe, mes, cfg, feriadosSet, variacao),
+    () => simularCenarios(equipe, mes, cfg, feriadosSet, variacao, horarios),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [equipeChave, mes, feriadosSet, variacao, cfg.segmento, cfg.temAcordoColetivo, cfg.bloqueio, cfg.demanda],
+    [equipeChave, mes, feriadosSet, variacao, horarios, cfg.segmento, cfg.temAcordoColetivo, cfg.bloqueio, cfg.demanda, cfg.diasFechados],
   );
+  const escalaAtual = useMemo(
+    () => avaliarEscalaAtual(configs, ajustes, mes, cfg, feriadosSet),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [configs, ajustes, mes, feriadosSet, cfg.segmento, cfg.temAcordoColetivo, cfg.bloqueio, cfg.demanda, cfg.diasFechados],
+  );
+
+  function mudarHorario(id: string, t: Turno | null) {
+    setHorarios((h) => {
+      const novo = { ...h };
+      if (t) novo[id] = t;
+      else delete novo[id];
+      return novo;
+    });
+  }
 
   const totalErros = linhas.reduce((a, l) => a + l.ocorrencias.filter((o) => o.gravidade === "erro").length, 0);
   const totalAvisos = linhas.reduce((a, l) => a + l.ocorrencias.filter((o) => o.gravidade === "atencao").length, 0);
@@ -338,7 +354,12 @@ export function PlanejadorEscala({
 
   function confirmarAtividade(e: EscolhaAtividade) {
     const novo: ConfigEmpresa = { ...cfg, ...e, atividadeDefinida: true };
-    const mudou = !cfg.atividadeDefinida || e.segmento !== cfg.segmento || e.usa12x36 !== cfg.usa12x36 || e.temAcordoColetivo !== cfg.temAcordoColetivo;
+    const mudou =
+      !cfg.atividadeDefinida ||
+      e.segmento !== cfg.segmento ||
+      e.usa12x36 !== cfg.usa12x36 ||
+      e.temAcordoColetivo !== cfg.temAcordoColetivo ||
+      e.diasFechados.join() !== cfg.diasFechados.join();
     setCfg(novo);
     setTrocandoAtividade(false);
     if (mudou) {
@@ -373,6 +394,7 @@ export function PlanejadorEscala({
           segmento: cfg.segmento,
           temAcordoColetivo: cfg.temAcordoColetivo,
           usa12x36: cfg.atividadeDefinida ? cfg.usa12x36 : regime12x36Padrao,
+          diasFechados: cfg.diasFechados,
         }}
         salvando={salvarAtividade.isPending}
         onConfirmar={confirmarAtividade}
@@ -393,6 +415,9 @@ export function PlanejadorEscala({
               <Badge variant="secondary">{SEGMENTOS[cfg.segmento].nome}</Badge>
               <Badge variant="outline">{cfg.temAcordoColetivo ? "Com acordo coletivo" : "Sem acordo coletivo"}</Badge>
               {cfg.usa12x36 && <Badge variant="outline">Usa 12x36</Badge>}
+              {cfg.diasFechados.length > 0 && (
+                <Badge variant="outline">Fecha {cfg.diasFechados.map((d) => abrev(d)).join(", ")}</Badge>
+              )}
               <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setTrocandoAtividade(true)}>
                 <Pencil className="mr-1 h-3 w-3" /> Trocar atividade
               </Button>
@@ -506,10 +531,12 @@ export function PlanejadorEscala({
           ) : (
             <PainelCenarios
               cenarios={cenarios}
+              escalaAtual={escalaAtual}
               demanda={cfg.demanda}
-              atual={cenarioAtual}
+              emUso={cenarioAtual}
               onAplicar={aplicarCenario}
               onVariar={() => setVariacao((v) => v + 1)}
+              onHorario={mudarHorario}
             />
           )}
         </TabsContent>
@@ -553,10 +580,13 @@ export function PlanejadorEscala({
                           );
                         })}
                         <th className="p-2 text-right font-medium">Horas no mês</th>
+                        <th className="p-2 text-right font-medium" title="Semana mais carregada que toca o mês, contra o limite da regra">
+                          Maior semana
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {linhas.map(({ config: c, dias: ds, porDia, ocorrencias, horas }) => {
+                      {linhas.map(({ config: c, dias: ds, porDia, ocorrencias, horas, maiorSemana, limiteSemana, semanaAcima }) => {
                         const erros = ocorrencias.filter((o) => o.gravidade === "erro").length;
                         return (
                           <tr key={c.id} className="border-t">
@@ -588,6 +618,17 @@ export function PlanejadorEscala({
                               />
                             ))}
                             <td className="p-2 text-right tabular-nums">{horas.toFixed(1).replace(".", ",")}h</td>
+                            <td
+                              className={cn(
+                                "p-2 text-right tabular-nums",
+                                semanaAcima === "erro" && "bg-destructive/15 font-semibold text-destructive",
+                                semanaAcima === "atencao" && "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+                              )}
+                              title={`Limite: ${limiteSemana}h`}
+                            >
+                              {maiorSemana.toFixed(1).replace(".", ",")}h
+                              <span className="block text-[10px] font-normal opacity-70">de {limiteSemana}h</span>
+                            </td>
                           </tr>
                         );
                       })}
@@ -606,6 +647,7 @@ export function PlanejadorEscala({
                           );
                         })}
                         <td />
+                        <td />
                       </tr>
                       {temDemanda && (
                         <tr className="bg-muted/40">
@@ -615,6 +657,7 @@ export function PlanejadorEscala({
                               {cfg.demanda[diaDaSemana(d)]}
                             </td>
                           ))}
+                          <td />
                           <td />
                         </tr>
                       )}
@@ -651,6 +694,10 @@ export function PlanejadorEscala({
                   <Switch checked={cfg.temAcordoColetivo} onCheckedChange={(v) => mudarCfg({ temAcordoColetivo: v })} />
                   Tem acordo/convenção coletiva de compensação
                 </label>
+                <div className="space-y-1.5">
+                  <Label>Dias em que a casa fecha</Label>
+                  <DiasFechados valor={cfg.diasFechados} onChange={(d) => mudarCfg({ diasFechados: d })} />
+                </div>
                 <div className="space-y-1.5">
                   <Label>Bloqueio de jornada diária</Label>
                   <Select value={cfg.bloqueio} onValueChange={(v) => mudarCfg({ bloqueio: v as ModoBloqueio })}>
@@ -824,6 +871,56 @@ function LinhaConfig({
               </option>
             ))}
           </select>
+        )}
+        {c.modelo === "5x2_fechado" && (
+          <>
+            <select className={sel} value={c.diaFechado} onChange={(e) => onChange({ diaFechado: Number(e.target.value) })} aria-label="Dia em que a casa fecha">
+              {NOMES_DIA.map((n, i) => (
+                <option key={n} value={i}>
+                  Fecha {abrev(i)}
+                </option>
+              ))}
+            </select>
+            <select
+              className={sel}
+              value={segundaFolga(c.diaFechado, c.folgaFixa)}
+              onChange={(e) => onChange({ folgaFixa: Number(e.target.value) })}
+              aria-label="Segunda folga"
+            >
+              {[1, 2, 3, 4, 5, 6]
+                .filter((d) => d !== c.diaFechado)
+                .map((d) => (
+                  <option key={d} value={d}>
+                    + folga {abrev(d)}
+                  </option>
+                ))}
+            </select>
+            {c.diaFechado !== 0 && (
+              <>
+                <select
+                  className={sel}
+                  value={c.semanasRodizio}
+                  onChange={(e) => onChange({ semanasRodizio: Number(e.target.value), rodizio: 0 })}
+                  aria-label="Domingo de folga a cada"
+                >
+                  {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+                    <option key={n} value={n}>
+                      {n === 1 ? "Dom. toda semana" : `Dom. a cada ${n} sem.`}
+                    </option>
+                  ))}
+                </select>
+                {c.semanasRodizio > 1 && (
+                  <select className={sel} value={c.rodizio % c.semanasRodizio} onChange={(e) => onChange({ rodizio: Number(e.target.value) })} aria-label="Grupo do rodízio">
+                    {Array.from({ length: c.semanasRodizio }, (_, i) => (
+                      <option key={i} value={i}>
+                        Grupo {i + 1}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </>
+            )}
+          </>
         )}
         {(c.modelo === "5x2_rev" || c.modelo === "4x3") && (
           <select className={sel} value={c.folgaFixa} onChange={(e) => onChange({ folgaFixa: Number(e.target.value) })} aria-label="Folga da semana">
