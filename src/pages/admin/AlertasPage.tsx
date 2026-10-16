@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { api, type AlertCompanyRow, type AlertSendResult, type AlertThanksResult } from "@/lib/api";
+import { api, type AlertCompanyRow, type AlertOpConfig, type AlertSendResult, type AlertThanksResult } from "@/lib/api";
 import { validar as validarWhatsapp } from "@/lib/whatsappNumero";
 
 const ESFERA_LABEL: Record<string, string> = {
@@ -449,16 +449,7 @@ const AlertasPage = () => {
   });
 
   const salvarConfig = useMutation({
-    mutationFn: (
-      v: Partial<{
-        envio_automatico: boolean;
-        hora: number;
-        escritorio_cnpj: string;
-        escritorio_whatsapp: string;
-        boleto_dias_antes: number;
-        boleto_cobranca_dias: number[];
-      }>
-    ) => api.alertas.salvarConfig(v),
+    mutationFn: (v: Partial<AlertOpConfig>) => api.alertas.salvarConfig(v),
     onSuccess: () => {
       toast.success("Configuração salva.");
       queryClient.invalidateQueries({ queryKey: ["alertas", "config"] });

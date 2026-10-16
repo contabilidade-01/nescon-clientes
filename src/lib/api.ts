@@ -135,7 +135,7 @@ async function requestBlob(path: string): Promise<Blob> {
   return res.blob();
 }
 
-export type DeliverableCategory = "guia" | "boleto" | "folha" | "outro";
+export type DeliverableCategory = "guia" | "boleto" | "folha" | "outro" | "avulso";
 /** De quem é o cliente: do escritório ('nescon') ou pessoal do Jean ('jean'). */
 export type CarteiraCliente = "nescon" | "jean";
 export type DeliverableStatus = "pending" | "paid";
@@ -460,6 +460,10 @@ export type LoginResponse =
         must_change_password?: boolean;
         escala_12x36?: boolean;
       };
+      /** Grupo matriz/filiais: a empresa logada é a matriz? */
+      is_matriz?: boolean;
+      /** Empresas do grupo (vazio quando a empresa é independente). */
+      empresas_grupo?: Array<{ id: string; name: string; cnpj: string; is_matriz: boolean }>;
     };
 
 /** Uma obrigação do catálogo, com o vencimento do mês já calculado pelo servidor. */
@@ -2477,8 +2481,9 @@ export const api = {
         description: string | null; created_at: string;
       }>>(`/documents${q}`);
     },
+    /** Grava o documento (advertência/suspensão) no histórico; devolve a linha criada. */
     create: (data: Record<string, unknown>) =>
-      request("/documents", { method: "POST", body: JSON.stringify(data) }),
+      request<{ id: string; document_type: string; created_at: string }>("/documents", { method: "POST", body: JSON.stringify(data) }),
     delete: (id: string) =>
       request(`/documents/${id}`, { method: "DELETE" }),
     enviarEmail: async (id: string, file: Blob, filename: string) => {
@@ -2621,7 +2626,7 @@ export const api = {
         conversations: Array<{
           id: string;
           subject: string | null;
-          status: string;
+          status: "aberto" | "em_atendimento" | "resolvido";
           created_at: string;
           last_message_at: string;
           resolved_at: string | null;
@@ -2714,6 +2719,8 @@ export const api = {
           sender_name: string | null;
           body: string;
           created_at: string;
+          attachment_path?: string | null;
+          attachment_name?: string | null;
         }>;
       }>(`/admin/atendimentos/${id}/messages`),
     send: (id: string, body: string, clientMsgId?: string) =>

@@ -25,7 +25,7 @@ describe("idsDeBoleto", () => {
 });
 
 // db falso: devolve as linhas cravadas para qualquer query.
-function fakeDb(rows: any[]) {
+function fakeDb(rows: Record<string, unknown>[]) {
   return { query: async () => ({ rows }) };
 }
 
@@ -38,10 +38,10 @@ const coraOk = {
 
 describe("enviarBoletosPdf", () => {
   it("anexa o PDF com URL FRESCA da Cora (não a gravada)", async () => {
-    const enviados: any[] = [];
+    const enviados: Array<Record<string, unknown>> = [];
     const uazapi = {
       configurado: () => true,
-      enviarDocumento: async (p: any) => enviados.push(p),
+      enviarDocumento: async (p: Record<string, unknown>) => enviados.push(p),
     };
     const db = fakeDb([
       { id: UUID_A, external_ref: "cora_INV1", pdf_url: "https://cora/OLD.pdf",
@@ -49,7 +49,7 @@ describe("enviarBoletosPdf", () => {
     ]);
 
     const r = await enviarBoletosPdf(
-      db as any,
+      db,
       { companyId: "c1", obrigacoes: [`BOLETO:${UUID_A}`], numero: "5511999" },
       { cora: coraOk, uazapi }
     );
@@ -63,25 +63,25 @@ describe("enviarBoletosPdf", () => {
   });
 
   it("rotula honorário como 'Honorários'", async () => {
-    const enviados: any[] = [];
-    const uazapi = { configurado: () => true, enviarDocumento: async (p: any) => enviados.push(p) };
+    const enviados: Array<Record<string, unknown>> = [];
+    const uazapi = { configurado: () => true, enviarDocumento: async (p: Record<string, unknown>) => enviados.push(p) };
     const db = fakeDb([
       { id: UUID_A, external_ref: "cora_INV1", pdf_url: null,
         valor_centavos: null, is_honorario: true, venc: "01/08/2026", empresa: "Cliente X" },
     ]);
-    await enviarBoletosPdf(db as any, { companyId: "c1", obrigacoes: [`BOLETO:${UUID_A}`], numero: "5511" }, { cora: coraOk, uazapi });
+    await enviarBoletosPdf(db, { companyId: "c1", obrigacoes: [`BOLETO:${UUID_A}`], numero: "5511" }, { cora: coraOk, uazapi });
     expect(enviados[0].caption).toContain("Honorários");
   });
 
   it("cai para o pdf_url gravado quando a Cora não devolve URL", async () => {
-    const enviados: any[] = [];
-    const uazapi = { configurado: () => true, enviarDocumento: async (p: any) => enviados.push(p) };
+    const enviados: Array<Record<string, unknown>> = [];
+    const uazapi = { configurado: () => true, enviarDocumento: async (p: Record<string, unknown>) => enviados.push(p) };
     const coraSemUrl = { isConfigured: () => true, getInvoiceDetail: async () => ({ payment_options: {} }) };
     const db = fakeDb([
       { id: UUID_A, external_ref: "cora_INV1", pdf_url: "https://cora/STORED.pdf",
         valor_centavos: 100, is_honorario: false, venc: "20/08/2026", empresa: "ACME" },
     ]);
-    await enviarBoletosPdf(db as any, { companyId: "c1", obrigacoes: [`BOLETO:${UUID_A}`], numero: "5511" }, { cora: coraSemUrl, uazapi });
+    await enviarBoletosPdf(db, { companyId: "c1", obrigacoes: [`BOLETO:${UUID_A}`], numero: "5511" }, { cora: coraSemUrl, uazapi });
     expect(enviados[0].fileUrl).toBe("https://cora/STORED.pdf");
   });
 
@@ -94,7 +94,7 @@ describe("enviarBoletosPdf", () => {
       { id: UUID_A, external_ref: "cora_INV1", pdf_url: "https://cora/x.pdf",
         valor_centavos: 100, is_honorario: false, venc: "20/08/2026", empresa: "ACME" },
     ]);
-    const r = await enviarBoletosPdf(db as any, { companyId: "c1", obrigacoes: [`BOLETO:${UUID_A}`], numero: "5511" }, { cora: coraOk, uazapi });
+    const r = await enviarBoletosPdf(db, { companyId: "c1", obrigacoes: [`BOLETO:${UUID_A}`], numero: "5511" }, { cora: coraOk, uazapi });
     expect(r.enviados).toBe(0);
     expect(r.erros).toHaveLength(1);
   });
@@ -102,7 +102,7 @@ describe("enviarBoletosPdf", () => {
   it("sem boletos na mensagem, não toca em cora/uazapi", async () => {
     let tocou = false;
     const uazapi = { configurado: () => { tocou = true; return true; }, enviarDocumento: async () => {} };
-    const r = await enviarBoletosPdf(fakeDb([]) as any, { companyId: "c1", obrigacoes: ["DAS", "FGTS"], numero: "5511" }, { cora: coraOk, uazapi });
+    const r = await enviarBoletosPdf(fakeDb([]), { companyId: "c1", obrigacoes: ["DAS", "FGTS"], numero: "5511" }, { cora: coraOk, uazapi });
     expect(r.enviados).toBe(0);
     expect(tocou).toBe(false);
   });
@@ -115,7 +115,7 @@ describe("enviarBoletosPdf", () => {
       { id: UUID_B, external_ref: "cora_INV2", pdf_url: "u", valor_centavos: 1, is_honorario: false, venc: "20/08/2026", empresa: "A" },
     ]);
     await enviarBoletosPdf(
-      db as any,
+      db,
       { companyId: "c1", obrigacoes: [`BOLETO:${UUID_A}`, `BOLETO:${UUID_B}`], numero: "5511", marcar: () => { marcas += 1; } },
       { cora: coraOk, uazapi }
     );

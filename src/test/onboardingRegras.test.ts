@@ -80,28 +80,28 @@ describe("datas", () => {
 
 describe("resolverItens", () => {
   it("filtra blocos por condição e preenche textos do contrato", () => {
-    const modelo = seed.find((m: any) => /Simples/.test(m.nome));
+    const modelo = seed.find((m) => /Simples/.test(m.nome));
     const itens = resolverItens(modelo, simples, "2026-10-07");
-    const folha = itens.find((i: any) => i.titulo === "Variáveis da folha");
+    const folha = itens.find((i) => i.titulo === "Variáveis da folha");
     expect(folha.regra).toMatch(/^Todo mês, até o dia 20 /);
-    expect(itens.some((i: any) => /funcionários/.test(i.titulo))).toBe(true);
+    expect(itens.some((i) => /funcionários/.test(i.titulo))).toBe(true);
 
     const semFunc = { ...simples, objeto: { ...simples.objeto, areaPessoal: false, funcionariosIncluidos: 0 } };
     const itens2 = resolverItens(modelo, semFunc, "2026-10-07");
-    expect(itens2.some((i: any) => /funcionários/.test(i.titulo))).toBe(false);
-    expect(itens2.some((i: any) => i.titulo === "Variáveis da folha")).toBe(false);
+    expect(itens2.some((i) => /funcionários/.test(i.titulo))).toBe(false);
+    expect(itens2.some((i) => i.titulo === "Variáveis da folha")).toBe(false);
   });
   it("documentos têm data; ids são únicos", () => {
-    const modelo = seed.find((m: any) => /Simples/.test(m.nome));
+    const modelo = seed.find((m) => /Simples/.test(m.nome));
     const itens = resolverItens(modelo, simples, "2026-10-07");
-    const docs = itens.filter((i: any) => i.tipo === "documento");
+    const docs = itens.filter((i) => i.tipo === "documento");
     expect(docs.length).toBeGreaterThan(2);
-    expect(docs.every((d: any) => /^\d{4}-\d{2}-\d{2}$/.test(d.prazoData))).toBe(true);
-    expect(new Set(itens.map((i: any) => i.id)).size).toBe(itens.length);
+    expect(docs.every((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.prazoData))).toBe(true);
+    expect(new Set(itens.map((i) => i.id)).size).toBe(itens.length);
   });
   it("ignora tipo de bloco desconhecido", () => {
     const itens = resolverItens({ blocos: [{ tipo: "x", titulo: "a" }, { tipo: "etapa", titulo: "b" }] }, simples, "2026-10-07");
-    expect(itens.map((i: any) => i.titulo)).toEqual(["b"]);
+    expect(itens.map((i) => i.titulo)).toEqual(["b"]);
   });
   it("campo ausente some do texto em vez de virar 'undefined'", () => {
     expect(preencherTexto("dia {{prazos.nada}}!", simples)).toBe("dia !");
@@ -125,7 +125,7 @@ describe("status e atrasos", () => {
   });
   it("atrasado = obrigatório vencido sem envio; opcional não conta", () => {
     const a = itensAtrasados(itens, { "2-documento": "enviado" }, "2026-10-15");
-    expect(a.map((i: any) => i.id)).toEqual(["1-documento"]);
+    expect(a.map((i) => i.id)).toEqual(["1-documento"]);
   });
 });
 
