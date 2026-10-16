@@ -218,7 +218,7 @@ export function SalaryAdhocFlow() {
       descontosOutros: o,
     });
 
-    if (!out.ok) {
+    if (out.ok === false) {
       toast.error(out.error);
       return;
     }

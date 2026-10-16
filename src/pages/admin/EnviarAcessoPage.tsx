@@ -22,7 +22,7 @@ const EnviarAcessoPage = () => {
   const { data: companies, isLoading } = useAdminCompanies();
   const queryClient = useQueryClient();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<Awaited<ReturnType<typeof api.admin.enviarAcesso>> | null>(null);
 
   const companiesComWhatsApp = useMemo(() => {
     return (companies || []).filter((c) => c.phone);
@@ -93,14 +93,11 @@ const EnviarAcessoPage = () => {
   };
 
   return (
-    <AdminLayout>
+    <AdminLayout
+      title="Enviar Acesso por WhatsApp"
+      description="Gera senha provisória válida por 30 dias e envia via WhatsApp com instruções de acesso."
+    >
       <div className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold">Enviar Acesso por WhatsApp</h1>
-          <p className="text-sm text-muted-foreground mt-2">
-            Gera senha provisória válida por 30 dias e envia via WhatsApp com instruções de acesso.
-          </p>
-        </div>
 
         <Card>
           <CardHeader>
@@ -215,8 +212,8 @@ const EnviarAcessoPage = () => {
                   <h3 className="font-medium text-sm mb-2">✓ Enviados com sucesso:</h3>
                   <ul className="text-sm space-y-1 text-muted-foreground">
                     {result.resultados
-                      .filter((r: any) => r.status === "enviado")
-                      .map((r: any) => (
+                      .filter((r) => r.status === "enviado")
+                      .map((r) => (
                         <li key={r.id}>• {r.name}</li>
                       ))}
                   </ul>
@@ -226,7 +223,7 @@ const EnviarAcessoPage = () => {
                 <div>
                   <h3 className="font-medium text-sm mb-2 text-amber-700">✗ Erros:</h3>
                   <ul className="text-sm space-y-1 text-amber-600">
-                    {result.erros.map((e: any) => (
+                    {result.erros.map((e) => (
                       <li key={e.id}>
                         • {e.name}: {e.erro}
                       </li>

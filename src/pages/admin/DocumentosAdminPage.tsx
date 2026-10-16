@@ -64,14 +64,8 @@ const DocumentosAdminPage = () => {
   });
 
   return (
-    <AdminLayout>
+    <AdminLayout title="Documentos" description="Todos os documentos por empresa, tipo e período.">
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">Documentos</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Todos os documentos por empresa, tipo e período.
-          </p>
-        </div>
 
         <Card>
           <CardHeader className="pb-3">

@@ -50,6 +50,6 @@ describe("da proposta ao roteiro de onboarding", () => {
     const modelo = escolherModelo(dados, seed);
     expect(modelo.nome).toMatch(/Simples/);
     const itens = resolverItens(modelo, dados, "2026-10-07");
-    expect(itens.filter((i: any) => i.tipo === "documento").every((i: any) => i.prazoData)).toBe(true);
+    expect(itens.filter((i) => i.tipo === "documento").every((i) => i.prazoData)).toBe(true);
   });
 });

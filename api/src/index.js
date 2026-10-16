@@ -30,6 +30,7 @@ const { ensureChatSchema } = require("./ensureChatSchema");
 const { ensureArquivamentoSchema } = require("./ensureArquivamentoSchema");
 const { ensureAcessosSchema } = require("./ensureAcessosSchema");
 const { ensureCompanyMatriz } = require("./ensureCompanyMatriz");
+const { ensureCarteiraSchema } = require("./ensureCarteiraSchema");
 const { ensureAdmissionSchema } = require("./ensureAdmissionSchema");
 const { ensureMonthlyFollowSchema } = require("./ensureMonthlyFollowSchema");
 const { ensureWhatsappDpSchema } = require("./ensureWhatsappDpSchema");
@@ -205,6 +206,7 @@ async function start() {
     await ensureHonorarioAtualizacaoSchema(db);
     await ensureAcessosSchema(db);
     await ensureCompanyMatriz(db);
+    await ensureCarteiraSchema(db);
     await ensureAdmissionSchema(db);
     await ensureMonthlyFollowSchema(db);
     await ensureWhatsappDpSchema(db);

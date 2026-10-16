@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { ArrowLeft, KeyRound, Mail, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,12 +15,6 @@ const AlterarSenhaPage = () => {
   const navigate = useNavigate();
   const { company, admin, login, logout } = useAuth();
 
-  // Se for um admin personificando a empresa, ignoramos a obrigatoriedade de troca de senha
-  // e redirecionamos para o portal da empresa normalmente.
-  if (company?.isAdminPersonified) {
-    navigate("/");
-    return null;
-  }
   // Vale para os dois: empresa com senha = CNPJ, e usuário do painel com senha
   // definida pelo dono.
   const obrigatorio = Boolean(company?.mustChangePassword || admin?.mustChangePassword);
@@ -49,6 +43,11 @@ const AlterarSenhaPage = () => {
     onSuccess: (r) => toast.success(r.message),
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // Se for um admin personificando a empresa, ignoramos a obrigatoriedade de troca de senha
+  // e redirecionamos para o portal da empresa normalmente. Depois dos hooks: retorno
+  // antecipado antes deles muda a ordem dos hooks entre renderizações.
+  if (company?.isAdminPersonified) return <Navigate to="/" replace />;
 
   const curta = nova.length > 0 && nova.length < 8;
   const divergem = confirma.length > 0 && nova !== confirma;

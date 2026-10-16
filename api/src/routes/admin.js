@@ -6,6 +6,7 @@ const { requireArea, requireOwner } = require("../middleware/adminArea");
 const { validateUUID, validateEmailFormat, validateString, validateCNPJ } = require("../middleware/validate");
 const { mergeToolAccess } = require("../companyTools");
 const { listCompanies, insertCompanyRow, PG_UNDEFINED_COLUMN } = require("../toolAccessDb");
+const { CARTEIRAS } = require("../ensureCarteiraSchema");
 const { importEmployeesForCompany } = require("../employeeImport");
 const { parseExtratoEmployees } = require("../extratoEmployees");
 const { resolveUploadPath, uploadPdf, removeUploadFile } = require("../uploads");
@@ -379,6 +380,17 @@ router.patch("/companies/:id", requireArea("empresas"), async (req, res) => {
       vals.push(e);
     }
 
+    // Carteira: cliente do escritório ('nescon') ou pessoal do Jean ('jean'). Decide se
+    // o boleto Cora dele entra na gestão financeira do escritório (FinanceHub).
+    if (Object.prototype.hasOwnProperty.call(req.body, "carteira")) {
+      const c = req.body.carteira;
+      if (!CARTEIRAS.includes(c)) {
+        return res.status(400).json({ error: `carteira deve ser ${CARTEIRAS.join(" ou ")}` });
+      }
+      sets.push(`carteira = $${i++}`);
+      vals.push(c);
+    }
+
     if (Object.prototype.hasOwnProperty.call(req.body, "tool_access")) {
       const ta = req.body.tool_access;
       if (ta === null || typeof ta !== "object" || Array.isArray(ta)) {
@@ -390,7 +402,7 @@ router.patch("/companies/:id", requireArea("empresas"), async (req, res) => {
 
     if (!sets.length) {
       return res.status(400).json({
-        error: "Envie ao menos um campo: name, contact_email, phone ou tool_access",
+        error: "Envie ao menos um campo: name, contact_email, phone, carteira ou tool_access",
       });
     }
 
@@ -404,7 +416,7 @@ router.patch("/companies/:id", requireArea("empresas"), async (req, res) => {
       let rowCount;
       try {
         const r = await client.query(
-          `${sqlBase} RETURNING id, name, cnpj, contact_email, phone, tool_access, created_at`,
+          `${sqlBase} RETURNING id, name, cnpj, contact_email, phone, tool_access, carteira, created_at`,
           vals
         );
         rows = r.rows;
@@ -539,7 +551,7 @@ router.get("/cora/boletos-sem-cadastro", requireArea("sincronizacao"), async (_r
 router.get("/cora/empresas", requireArea("sincronizacao"), async (_req, res) => {
   try {
     const { rows } = await db.query(`
-      SELECT c.id, c.name, c.cnpj,
+      SELECT c.id, c.name, c.cnpj, c.carteira,
              COALESCE(c.tool_access->>'boletos', 'true') AS boletos_ativo,
              COUNT(d.id) FILTER (WHERE d.source = 'cora') AS total_boletos,
              MAX(d.created_at) FILTER (WHERE d.source = 'cora') AS ultimo_importado

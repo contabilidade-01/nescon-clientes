@@ -138,6 +138,6 @@ export async function downloadAdmissionPdf(p: Payload): Promise<void> {
   doc.text("Nescon Contabilidade • CNPJ 35.736.034/0001-23", pageW / 2, pageH - 10, { align: "center" });
   doc.text("Valores e dados informados pelo solicitante — conferência do DP.", pageW / 2, pageH - 6, { align: "center" });
 
-  const safe = (d.nome || "funcionario").replace(/\s+/g, "_").replace(/[^\w\-]/gi, "");
+  const safe = (d.nome || "funcionario").replace(/\s+/g, "_").replace(/[^\w-]/gi, "");
   doc.save(`ficha_admissao_${safe}.pdf`);
 }

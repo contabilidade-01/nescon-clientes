@@ -32,13 +32,36 @@ router.get("/empresas-contatos", authInterno, async (_req, res) => {
     const { rows } = await db.query(
       `SELECT cnpj, contact_email, phone
        FROM companies
-       WHERE active IS TRUE
-         AND cnpj IS NOT NULL`
+       WHERE arquivada IS NOT TRUE AND excluida IS NOT TRUE
+         AND cnpj IS NOT NULL AND cnpj <> ''`
     );
     res.json(rows);
   } catch (err) {
     console.error("[INTERNO] erro ao listar contatos:", err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/interno/clientes-carteira
+ * Todos os clientes com a carteira de cada um ('nescon' = escritório, 'jean' =
+ * pessoal). Usado pela gestão financeira do escritório (FinanceHub) para saber
+ * quais boletos Cora entram nas transações e para manter o cadastro de clientes.
+ * Arquivadas e excluídas vêm junto (marcadas): um boleto antigo ainda pode ser pago.
+ */
+router.get("/clientes-carteira", authInterno, async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT cnpj, name AS nome, contact_email AS email, COALESCE(whatsapp, phone) AS telefone,
+              carteira, (arquivada IS TRUE OR excluida IS TRUE) AS inativo
+         FROM companies
+        WHERE cnpj IS NOT NULL AND cnpj <> ''
+        ORDER BY name`
+    );
+    res.json({ gerado_em: new Date().toISOString(), clientes: rows });
+  } catch (err) {
+    console.error("[INTERNO] clientes-carteira:", err.message);
+    res.status(500).json({ error: "Erro interno" });
   }
 });
 
@@ -103,8 +126,8 @@ router.post("/notificar-whatsapp", authInterno, async (req, res) => {
   let phone;
   try {
     const { rows } = await db.query(
-      "SELECT phone FROM companies WHERE cnpj = $1 AND active IS TRUE LIMIT 1",
-      [cnpj]
+      "SELECT phone FROM companies WHERE cnpj = $1 AND arquivada IS NOT TRUE AND excluida IS NOT TRUE LIMIT 1",
+      [String(cnpj).replace(/\D/g, "")]
     );
     if (!rows.length || !rows[0].phone) {
       return res.json({ ok: false, motivo: "Telefone não cadastrado ou empresa inativa" });
