@@ -26,6 +26,24 @@ Segmentos cobertos: construção civil, restaurantes, comércio em geral; escala
    quem entrou ganha o modelo padrão. Falta: exportar PDF/planilha e levar folgas ao
    calendário.
 
+### Atividade, cenários e regras travadas (pedido do Jean em 16/10/2026)
+
+- **Atividade antes de simular** (`EscolherAtividade.tsx`): o cliente marca a atividade
+  (comércio, restaurante, construção, outro), se tem acordo coletivo e se usa 12x36. Fica
+  salvo em `escala_config` (`atividadeDefinida`, `usa12x36`).
+- **Cenários** (`src/lib/escala/cenarios.ts` + `PainelCenarios.tsx`): 5x2 com fim de
+  semana livre, 5x2 domingo+segunda, 5x2 em rodízio com domingo a cada 2 ou 3 semanas,
+  4x3 de 10h (só com acordo), 12x36 em duas turmas e 6x1 (só até 15/12/2026). Cada um
+  passa pelo motor; só o que fica sem erro pode ser aplicado. "Outra variação" gira quem
+  folga em que dia sem sair da regra.
+- **Rígido nas regras**: arrastar, editar dia, trocar modelo ou horário só passa se não
+  criar erro novo (`errosNovos`), e não se salva escala com erro. A escala padrão do mês
+  já nasce dentro da regra (6x1 até a emenda, 5x2 depois) e os feriados nascem de folga
+  (menos na 12x36).
+- Com acordo, a média mensal de folgas só é cobrada quando alguma semana do mês fica
+  abaixo das 2 folgas: quem cumpre semana a semana não está compensando (fevereiro de 29
+  dias cortava uma folga do rodízio).
+
 ### Bloqueio de jornada diária (decisão do Jean em 16/10/2026)
 
 Configurável por empresa (`src/lib/escala/bloqueio.ts`): "Só avisar", "Bloquear acima

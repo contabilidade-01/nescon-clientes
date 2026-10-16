@@ -36,6 +36,19 @@ export type ModeloEscala =
       turnoPorDia?: Partial<Record<number, Turno>>;
     }
   | {
+      /**
+       * Folgas que mudam de semana para semana e se repetem (rodízio de folgas): cada
+       * item de `semanas` são os dias de folga daquela semana. É o que deixa o domingo
+       * de folga cair para cada pessoa a cada N semanas sem parar a loja no domingo.
+       */
+      tipo: "rotativo";
+      nome: string;
+      turno: Turno;
+      semanas: number[][];
+      /** Domingo em que a pessoa está na 1ª semana do rodízio. */
+      base: string;
+    }
+  | {
       tipo: "ciclo";
       nome: string;
       /** Um item por dia do ciclo; null = folga. */
@@ -93,6 +106,12 @@ function turnoDoDia(modelo: ModeloEscala, data: string): Turno | null {
     const dow = diaDaSemana(data);
     if (modelo.diasFolga.includes(dow)) return null;
     return modelo.turnoPorDia?.[dow] ?? modelo.turno;
+  }
+  if (modelo.tipo === "rotativo") {
+    const n = modelo.semanas.length;
+    const semana = Math.floor(diasEntre(modelo.base, data) / 7);
+    const folgas = modelo.semanas[((semana % n) + n) % n];
+    return folgas.includes(diaDaSemana(data)) ? null : modelo.turno;
   }
   const n = modelo.ciclo.length;
   const pos = ((diasEntre(modelo.base, data) % n) + n) % n;

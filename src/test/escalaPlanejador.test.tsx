@@ -3,7 +3,7 @@
  * escala, liberação por empresa e a tela montando a grade. O arrastar em si é do
  * @dnd-kit e depende de layout real; a troca é `trocarCelulas`, testada aqui.
  */
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -79,13 +79,18 @@ describe("liberação da ferramenta", () => {
   });
 });
 
+const mockApi = vi.hoisted(() => ({
+  config: vi.fn(),
+  salvarConfig: vi.fn(),
+}));
+
 vi.mock("@/lib/api", () => ({
   api: {
     escalas: {
-      config: vi.fn().mockResolvedValue({ dados: null, atualizado_em: null, atualizado_por: null }),
+      config: mockApi.config,
       planos: vi.fn().mockResolvedValue([]),
       plano: vi.fn().mockResolvedValue(null),
-      salvarConfig: vi.fn().mockResolvedValue({}),
+      salvarConfig: mockApi.salvarConfig,
       salvarPlano: vi.fn().mockResolvedValue({}),
       excluirPlano: vi.fn().mockResolvedValue({ ok: true }),
     },
@@ -103,19 +108,42 @@ const PESSOAS = [
 ];
 
 describe("tela do planejador", () => {
-  it("monta a grade com as pessoas e conta quem trabalha", async () => {
-    comQuery(<PlanejadorEscala pessoas={PESSOAS} />);
-    await waitFor(() => expect(screen.getAllByText("Ana").length).toBeGreaterThan(0));
-    expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0);
-    expect(screen.getByText("Pessoas trabalhando")).toBeInTheDocument();
+  beforeEach(() => {
+    mockApi.config.mockResolvedValue({ dados: null, atualizado_em: null, atualizado_por: null });
+    mockApi.salvarConfig.mockReset().mockResolvedValue({});
   });
 
-  it("acrescenta vaga simulada e marca como não salvo", async () => {
+  it("pede a atividade antes de simular e salva a escolha", async () => {
+    comQuery(<PlanejadorEscala pessoas={PESSOAS} />);
+    await waitFor(() => expect(screen.getByText("Qual é a atividade da empresa?")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("radio", { name: /Restaurante/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Começar simulação/ }));
+    await waitFor(() => expect(screen.getByText("Cenários para o mês")).toBeInTheDocument());
+    expect(mockApi.salvarConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ segmento: "restaurante", atividadeDefinida: true }),
+      undefined,
+    );
+  });
+
+  it("aplica um cenário e monta a grade com as pessoas", async () => {
+    mockApi.config.mockResolvedValue({ dados: { segmento: "comercio", atividadeDefinida: true }, atualizado_em: null, atualizado_por: null });
+    comQuery(<PlanejadorEscala pessoas={PESSOAS} />);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /Usar este cenário/ }).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole("button", { name: /Usar este cenário/ })[0]);
+    await waitFor(() => expect(screen.getByText("Pessoas trabalhando")).toBeInTheDocument());
+    expect(screen.getAllByText("Ana").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0);
+    expect(screen.getByText("Mudanças não salvas")).toBeInTheDocument();
+  });
+
+  it("sem funcionários, acrescenta vaga simulada", async () => {
+    mockApi.config.mockResolvedValue({ dados: { segmento: "outro", atividadeDefinida: true }, atualizado_em: null, atualizado_por: null });
     const SEM: typeof PESSOAS = [];
     comQuery(<PlanejadorEscala pessoas={SEM} />);
     await waitFor(() => expect(screen.getByText(/ainda não foi salvo/)).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /Vaga simulada/ }));
-    expect(screen.getAllByText("Vaga simulada 1").length).toBeGreaterThan(0);
     expect(screen.getByText("Mudanças não salvas")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: /Usar este cenário/ })[0]);
+    await waitFor(() => expect(screen.getAllByText("Vaga simulada 1").length).toBeGreaterThan(0));
   });
 });

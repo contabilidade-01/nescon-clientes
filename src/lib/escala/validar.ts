@@ -226,6 +226,12 @@ export function validarEscala(
     for (const [mes, ds] of diasPorMes) {
       const total = diasNoMes(mes);
       if (ds.length !== total) continue;
+      // Quem cumpre as folgas semana a semana não está usando a compensação: a borda do
+      // mês pode cortar uma folga (fevereiro de 29 dias) sem haver semana com folga a menos.
+      const compensa = semanas.some(
+        (s) => s.completa && s.folgas < s.repousosExigidos && (s.inicio.startsWith(mes) || somarDias(s.inicio, 6).startsWith(mes)),
+      );
+      if (!compensa) continue;
       const repousos = vigenciaEm(ds[total - 1].data).repousosSemanais;
       const exigidas = Math.floor((repousos * total) / 7 + 1e-9);
       const folgas = ds.filter((d) => !d.turno).length;
