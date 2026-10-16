@@ -7,6 +7,8 @@ import { avaliarEscalaAtual, simularCenarios } from "@/lib/escala/cenarios";
 import { diaDaSemana } from "@/lib/escala/datas";
 import { feriadosDaEmpresa } from "@/lib/escala/feriados";
 import {
+  ajustesEmLote,
+  aplicarLote,
   avaliarPessoa,
   configPadrao,
   definirCelula,
@@ -206,5 +208,47 @@ describe("casa fechada e horário personalizado", () => {
     expect(atual.erros).toBe(0);
     expect(atual.mediaPorDia.every((n) => n === 3)).toBe(true);
     expect(atual.descricao).toMatch(/12x36/);
+  });
+});
+
+describe("edição em lote", () => {
+  const f = feriados(2027);
+  const cfg = empresa("comercio");
+  const t = { entrada: "09:00", saida: "17:00", intervaloMin: 60 };
+
+  it("aplica folga, horário e volta ao modelo em vários dias", () => {
+    let aj = ajustesEmLote({}, ["2027-03-01", "2027-03-02"], { tipo: "horario", turno: t });
+    expect(aj).toEqual({ "2027-03-01": t, "2027-03-02": t });
+    aj = ajustesEmLote(aj, ["2027-03-02"], { tipo: "folga" });
+    expect(aj["2027-03-02"]).toBeNull();
+    expect(ajustesEmLote(aj, ["2027-03-01", "2027-03-02"], { tipo: "modelo" })).toEqual({});
+  });
+
+  it("muda o horário de várias pessoas de uma vez", () => {
+    const configs = PESSOAS.slice(0, 3).map((p) => configPadrao(p.id, p.nome, "5x2"));
+    const datas = ["2027-03-01", "2027-03-02", "2027-03-03"];
+    const r = aplicarLote(configs, {}, ["0", "1", "2"], (c, aj) => ({ config: c, ajustes: ajustesEmLote(aj, datas, { tipo: "horario", turno: t }) }), "2027-03", cfg, f);
+    expect(r.aceitos).toEqual(["0", "1", "2"]);
+    expect(r.recusados).toEqual([]);
+    expect(Object.keys(r.ajustes)).toHaveLength(3);
+  });
+
+  it("recusa só quem ficaria fora da regra e aplica nos outros", () => {
+    // P0 folga sáb+dom, P1 folga dom+seg. Trabalhar no sábado 06/03 tira a 2ª folga só da P0.
+    const configs = [
+      { ...configPadrao("0", "P0", "5x2"), folgas5x2: [6, 0] },
+      { ...configPadrao("1", "P1", "5x2"), folgas5x2: [0, 1] },
+    ];
+    const r = aplicarLote(configs, {}, ["0", "1"], (c, aj) => ({ config: c, ajustes: ajustesEmLote(aj, ["2027-03-06"], { tipo: "horario", turno: t }) }), "2027-03", cfg, f);
+    expect(r.aceitos).toEqual(["1"]);
+    expect(r.recusados.map((x) => x.nome)).toEqual(["P0"]);
+    expect(r.recusados[0].motivo).toMatch(/semana|folga/);
+    expect(r.ajustes["0"]).toBeUndefined();
+  });
+
+  it("troca o modelo de várias pessoas", () => {
+    const configs = PESSOAS.slice(0, 2).map((p) => configPadrao(p.id, p.nome, "12x36"));
+    const r = aplicarLote(configs, {}, ["0", "1"], (c) => ({ config: { ...c, ...configPadrao(c.id, c.nome, "5x2") }, ajustes: {} }), "2027-03", cfg, f);
+    expect(r.configs.every((c) => c.modelo === "5x2")).toBe(true);
   });
 });

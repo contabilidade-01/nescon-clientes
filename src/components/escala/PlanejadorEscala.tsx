@@ -36,6 +36,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BarraLote, type AtalhoDias } from "@/components/escala/BarraLote";
 import { DiasFechados, EscolherAtividade, type EscolhaAtividade } from "@/components/escala/EscolherAtividade";
 import { FeriadosLocais } from "@/components/escala/FeriadosLocais";
 import { PainelCenarios } from "@/components/escala/PainelCenarios";
@@ -50,6 +51,9 @@ import type { Turno } from "@/lib/escala/modelos";
 import {
   MODELOS,
   REGRAS_DO_DIA,
+  ajustesEmLote,
+  aplicarLote,
+  type AcaoDia,
   avaliarPessoa,
   configEmpresaPadrao,
   configPadrao,
@@ -134,6 +138,9 @@ export function PlanejadorEscala({
   const [variacao, setVariacao] = useState(0);
   const [cenarioAtual, setCenarioAtual] = useState<string | null>(null);
   const [horarios, setHorarios] = useState<Record<string, Turno>>({});
+  // Edição em lote: pessoas e dias marcados.
+  const [selPessoas, setSelPessoas] = useState<Set<string>>(new Set());
+  const [selDias, setSelDias] = useState<Set<string>>(new Set());
   const [trocandoAtividade, setTrocandoAtividade] = useState(false);
 
   const configQuery = useQuery({
@@ -217,6 +224,8 @@ export function PlanejadorEscala({
   }
 
   const dias = useMemo(() => diasDoMes(mes), [mes]);
+  // Os dias marcados são do mês aberto; trocar de mês desmarca.
+  useEffect(() => setSelDias(new Set()), [mes]);
   const ultimoDia = dias[dias.length - 1];
   const vigencia = vigenciaEm(ultimoDia);
 
@@ -330,6 +339,91 @@ export function PlanejadorEscala({
       configs.map((c) => (c.id === id ? nova : c)),
       mudouModelo ? { ...ajustes, [id]: {} } : ajustes,
       [id],
+    );
+  }
+
+  function alternar<T>(set: Set<T>, v: T): Set<T> {
+    const n = new Set(set);
+    if (n.has(v)) n.delete(v);
+    else n.add(v);
+    return n;
+  }
+
+  function atalhoDias(a: AtalhoDias) {
+    if (a === "limpar") return setSelDias(new Set());
+    const filtro = (d: string) => {
+      const dow = diaDaSemana(d);
+      if (a === "uteis") return dow >= 1 && dow <= 5;
+      if (a === "sabados") return dow === 6;
+      if (a === "domingos") return dow === 0;
+      return true;
+    };
+    setSelDias(new Set(dias.filter(filtro)));
+  }
+
+  /** Aplica a edição em lote pessoa a pessoa, com a trava das regras, e diz quem ficou de fora. */
+  function aplicarEmLote(ids: string[], mudar: Parameters<typeof aplicarLote>[3], rotulo: string) {
+    const r = aplicarLote(configs, ajustes, ids, mudar, mes, cfg, feriadosSet);
+    if (r.aceitos.length) {
+      setConfigs(r.configs);
+      setAjustes(r.ajustes);
+      setAlterado(true);
+      setCenarioAtual(null);
+      toast.success(`${rotulo}: aplicado a ${r.aceitos.length} pessoa(s).`);
+    }
+    if (r.recusados.length) {
+      toast.error(`Recusado para ${r.recusados.length} pessoa(s): ficariam fora da regra.`, {
+        description: r.recusados
+          .slice(0, 4)
+          .map((x) => `${x.nome}: ${x.motivo}`)
+          .join(" "),
+        duration: 10000,
+      });
+    }
+  }
+
+  function loteDias(acao: AcaoDia) {
+    const datas = [...selDias].sort();
+    if (!datas.length) return toast.error("Marque os dias clicando no cabeçalho da grade.");
+    const ids = selPessoas.size ? configs.filter((c) => selPessoas.has(c.id)).map((c) => c.id) : configs.map((c) => c.id);
+    if (acao.tipo === "horario") {
+      for (const id of ids) if (!liberado(id, acao.turno)) return;
+    }
+    const rotulo = acao.tipo === "folga" ? "Folga" : acao.tipo === "horario" ? `Horário ${acao.turno.entrada}–${acao.turno.saida}` : "Volta ao modelo";
+    // Trocar o horário mexe só nos dias em que a pessoa trabalha: folga continua folga.
+    const trabalhados = (id: string) => {
+      const ds = linhas.find((l) => l.config.id === id)?.dias || [];
+      return datas.filter((d) => ds.find((x) => x.data === d)?.turno);
+    };
+    aplicarEmLote(
+      ids,
+      (c, aj) => ({ config: c, ajustes: ajustesEmLote(aj, acao.tipo === "horario" ? trabalhados(c.id) : datas, acao) }),
+      rotulo,
+    );
+  }
+
+  function lotePessoas(patch: Partial<ConfigPessoa>) {
+    const ids = configs.filter((c) => selPessoas.has(c.id)).map((c) => c.id);
+    if (!ids.length) return toast.error("Marque as pessoas na caixa ao lado do nome.");
+    const mudaModelo = CAMPOS_DO_MODELO.some((k) => k in patch);
+    for (const id of ids) {
+      const c = configs.find((x) => x.id === id)!;
+      const n = { ...c, ...patch };
+      const motivo = motivoBloqueio({ entrada: n.entrada, saida: n.saida, intervaloMin: n.intervaloMin }, cfg.bloqueio, n.modelo === "12x36");
+      if (motivo) return toast.error(`${c.nome}: ${motivo}`);
+    }
+    // Trocando o modelo de várias pessoas, espalha folgas e turmas para não folgarem todas juntas.
+    const posicao = new Map(ids.map((id, i) => [id, i]));
+    aplicarEmLote(
+      ids,
+      (c, aj) => {
+        const i = posicao.get(c.id) ?? 0;
+        const espalha: Partial<ConfigPessoa> = mudaModelo
+          ? { folgaFixa: (i % 6) + 1, rodizio: i, turma: i % 2 ? "B" : "A", diaFechado: c.diaFechado }
+          : {};
+        return { config: { ...c, ...espalha, ...patch }, ajustes: mudaModelo ? {} : aj };
+      },
+      patch.modelo ? `Modelo ${MODELOS[patch.modelo]}` : `Horário padrão ${patch.entrada}–${patch.saida}`,
     );
   }
 
@@ -547,9 +641,23 @@ export function PlanejadorEscala({
               <Plus className="mr-1 h-4 w-4" /> Vaga simulada
             </Button>
             <p className="text-xs text-muted-foreground">
-              Arraste uma célula sobre outra para trocar (mesma pessoa move a folga; outra pessoa troca o turno). Clique para editar o dia.
+              Arraste uma célula sobre outra para trocar (mesma pessoa move a folga; outra pessoa troca o turno). Clique para editar o dia; clique no
+              cabeçalho do dia para marcar vários.
             </p>
           </div>
+
+          {configs.length > 0 && (
+            <BarraLote
+              pessoas={selPessoas.size}
+              totalPessoas={configs.length}
+              dias={selDias.size}
+              repousos={vigencia.repousosSemanais}
+              onAtalho={atalhoDias}
+              onLimparPessoas={() => setSelPessoas(new Set())}
+              onDias={loteDias}
+              onPessoas={lotePessoas}
+            />
+          )}
 
           {configs.length === 0 ? (
             <SemEquipe onVaga={adicionarVaga} />
@@ -560,17 +668,29 @@ export function PlanejadorEscala({
                   <table className="w-max border-collapse text-xs">
                     <thead>
                       <tr>
-                        <th className="sticky left-0 z-10 min-w-[280px] bg-card p-2 text-left font-medium">Pessoa e modelo</th>
+                        <th className="sticky left-0 z-10 min-w-[280px] bg-card p-2 text-left font-medium">
+                          <label className="flex items-center gap-2">
+                            <Checkbox
+                              checked={selPessoas.size === configs.length ? true : selPessoas.size ? "indeterminate" : false}
+                              onCheckedChange={(v) => setSelPessoas(v === true ? new Set(configs.map((c) => c.id)) : new Set())}
+                              aria-label="Marcar todas as pessoas"
+                            />
+                            Pessoa e modelo
+                          </label>
+                        </th>
                         {dias.map((d) => {
                           const dow = diaDaSemana(d);
                           return (
                             <th
                               key={d}
-                              title={feriados.get(d) || NOMES_DIA[dow]}
+                              title={`${feriados.get(d) || NOMES_DIA[dow]} · clique para marcar o dia`}
+                              aria-pressed={selDias.has(d)}
+                              onClick={() => setSelDias((s) => alternar(s, d))}
                               className={cn(
-                                "w-11 p-1 text-center font-normal",
+                                "w-11 cursor-pointer select-none rounded-t p-1 text-center font-normal hover:bg-primary/10",
                                 dow === 0 && "border-l",
                                 (dow === 0 || feriados.has(d)) && "text-primary font-semibold",
+                                selDias.has(d) && "bg-primary text-primary-foreground hover:bg-primary/90",
                               )}
                             >
                               <div>{DIAS_SEMANA[dow]}</div>
@@ -595,6 +715,8 @@ export function PlanejadorEscala({
                                 c={c}
                                 erros={erros}
                                 repousos={vigencia.repousosSemanais}
+                                selecionado={selPessoas.has(c.id)}
+                                onSelecionar={() => setSelPessoas((s) => alternar(s, c.id))}
                                 onChange={(p) => atualizar(c.id, p)}
                                 onRemover={
                                   c.id.startsWith("vaga-")
@@ -614,6 +736,7 @@ export function PlanejadorEscala({
                                 domingo={diaDaSemana(d.data) === 0}
                                 gravidade={porDia.get(d.data)}
                                 ajustado={Boolean(ajustes[c.id] && d.data in ajustes[c.id])}
+                                marcado={selDias.has(d.data) && (selPessoas.size === 0 || selPessoas.has(c.id))}
                                 onClick={() => setEditando({ pessoa: c, data: d.data })}
                               />
                             ))}
@@ -797,18 +920,23 @@ function LinhaConfig({
   c,
   erros,
   repousos,
+  selecionado,
+  onSelecionar,
   onChange,
   onRemover,
 }: {
   c: ConfigPessoa;
   erros: number;
   repousos: number;
+  selecionado: boolean;
+  onSelecionar: () => void;
   onChange: (p: Partial<ConfigPessoa>) => void;
   onRemover?: () => void;
 }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-1.5">
+        <Checkbox checked={selecionado} onCheckedChange={onSelecionar} aria-label={`Marcar ${c.nome}`} />
         {erros ? <XCircle className="h-3.5 w-3.5 shrink-0 text-destructive" /> : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
         <span className="truncate text-sm font-medium" title={c.nome}>
           {c.nome}
@@ -968,6 +1096,7 @@ function Celula({
   domingo,
   gravidade,
   ajustado,
+  marcado,
   onClick,
 }: {
   id: string;
@@ -975,6 +1104,7 @@ function Celula({
   domingo: boolean;
   gravidade?: "erro" | "atencao";
   ajustado: boolean;
+  marcado: boolean;
   onClick: () => void;
 }) {
   const drag = useDraggable({ id });
@@ -995,6 +1125,7 @@ function Celula({
           gravidade === "erro" && "border-destructive bg-destructive/15 text-destructive",
           gravidade === "atencao" && "border-amber-500 bg-amber-100 dark:bg-amber-950",
           drag.isDragging && "opacity-70 shadow-lg",
+          marcado && "ring-2 ring-primary ring-offset-1 ring-offset-background",
         )}
         title={turno ? `${turno.entrada}–${turno.saida} (intervalo ${turno.intervaloMin}min)` : "Folga"}
       >
