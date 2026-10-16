@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { api } from "@/lib/api";
+import { api, type CarteiraCliente } from "@/lib/api";
 import {
   COMPANY_TOOL_KEYS,
   COMPANY_TOOL_LABELS,
@@ -33,6 +33,7 @@ export function CompanyManageRow({
     gclick_status?: string | null;
     /** 12x36: suspensão conta plantões e o retorno pula a folga. */
     escala_12x36?: boolean | null;
+    carteira?: CarteiraCliente | null;
   };
 }) {
   const [name, setName] = useState(company.name);
@@ -41,6 +42,7 @@ export function CompanyManageRow({
   const [tools, setTools] = useState<CompanyToolAccess>(() => mergeClientToolAccess(company.tool_access));
   const [novaSenha, setNovaSenha] = useState("");
   const [escala12x36, setEscala12x36] = useState(Boolean(company.escala_12x36));
+  const [carteira, setCarteira] = useState<CarteiraCliente>(company.carteira ?? "nescon");
 
   useEffect(() => {
     setName(company.name);
@@ -48,7 +50,8 @@ export function CompanyManageRow({
     setPhone(company.phone ?? "");
     setTools(mergeClientToolAccess(company.tool_access));
     setEscala12x36(Boolean(company.escala_12x36));
-  }, [company.name, company.contact_email, company.phone, company.tool_access, company.escala_12x36]);
+    setCarteira(company.carteira ?? "nescon");
+  }, [company.name, company.contact_email, company.phone, company.tool_access, company.escala_12x36, company.carteira]);
 
   const queryClient = useQueryClient();
 
@@ -95,6 +98,24 @@ export function CompanyManageRow({
     },
   });
 
+  const salvarCarteira = useMutation({
+    mutationFn: (valor: CarteiraCliente) => api.admin.updateCompany(company.id, { carteira: valor }),
+    onMutate: (valor: CarteiraCliente) => {
+      const anterior = carteira;
+      setCarteira(valor);
+      return { anterior };
+    },
+    onSuccess: (_r, valor) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-cora-empresas"] });
+      toast.success(valor === "nescon" ? "Cliente marcado como do escritório (Nescon)" : "Cliente marcado como pessoal do Jean");
+    },
+    onError: (e: Error, _valor, ctx) => {
+      if (ctx) setCarteira(ctx.anterior);
+      toast.error(e.message);
+    },
+  });
+
   const alterarSenha = useMutation({
     mutationFn: () => api.admin.alterarSenhaCliente(company.id, novaSenha.trim(), false),
     onSuccess: (r) => {
@@ -117,6 +138,31 @@ export function CompanyManageRow({
           // manual, feita nos switches de ferramentas abaixo.
           <Badge variant="destructive">Inativo no G-Click</Badge>
         )}
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs font-semibold">Carteira do cliente</Label>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Carteira do cliente">
+          {([
+            ["nescon", "Nescon (escritório)"],
+            ["jean", "Pessoal do Jean"],
+          ] as const).map(([valor, rotulo]) => (
+            <Button
+              key={valor}
+              type="button"
+              size="sm"
+              role="radio"
+              aria-checked={carteira === valor}
+              variant={carteira === valor ? "default" : "outline"}
+              disabled={salvarCarteira.isPending}
+              onClick={() => carteira !== valor && salvarCarteira.mutate(valor)}
+            >
+              {rotulo}
+            </Button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Só os boletos Cora de clientes Nescon entram na gestão financeira do escritório.
+        </p>
       </div>
       <div className="space-y-1">
         <Label htmlFor={`razao-${company.id}`} className="text-xs font-semibold">

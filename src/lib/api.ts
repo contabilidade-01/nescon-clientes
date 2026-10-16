@@ -136,6 +136,8 @@ async function requestBlob(path: string): Promise<Blob> {
 }
 
 export type DeliverableCategory = "guia" | "boleto" | "folha" | "outro";
+/** De quem é o cliente: do escritório ('nescon') ou pessoal do Jean ('jean'). */
+export type CarteiraCliente = "nescon" | "jean";
 export type DeliverableStatus = "pending" | "paid";
 
 export type Deliverable = {
@@ -1527,6 +1529,8 @@ export const api = {
           matriz_id: string | null;
           /** 12x36: suspensão conta plantões e o retorno pula a folga. */
           escala_12x36: boolean | null;
+          /** De quem é o cliente: escritório (nescon) ou pessoal do Jean (jean). */
+          carteira: CarteiraCliente;
         }>
       >("/admin/companies"),
     /**
@@ -1617,6 +1621,7 @@ export const api = {
         tool_access?: CompanyToolAccessApi;
         /** 12x36: suspensão conta plantões e o retorno pula a folga. */
         escala_12x36?: boolean;
+        carteira?: CarteiraCliente;
       }
     ) =>
       request<{
@@ -2253,6 +2258,7 @@ export const api = {
         id: string;
         name: string;
         cnpj: string;
+        carteira: CarteiraCliente;
         boletos_ativo: boolean;
         total_boletos: number;
         ultimo_importado: string | null;

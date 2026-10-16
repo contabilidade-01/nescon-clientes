@@ -43,6 +43,29 @@ router.get("/empresas-contatos", authInterno, async (_req, res) => {
 });
 
 /**
+ * GET /api/interno/clientes-carteira
+ * Todos os clientes com a carteira de cada um ('nescon' = escritório, 'jean' =
+ * pessoal). Usado pela gestão financeira do escritório (FinanceHub) para saber
+ * quais boletos Cora entram nas transações e para manter o cadastro de clientes.
+ * Arquivadas e excluídas vêm junto (marcadas): um boleto antigo ainda pode ser pago.
+ */
+router.get("/clientes-carteira", authInterno, async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT cnpj, name AS nome, contact_email AS email, COALESCE(whatsapp, phone) AS telefone,
+              carteira, (arquivada IS TRUE OR excluida IS TRUE) AS inativo
+         FROM companies
+        WHERE cnpj IS NOT NULL AND cnpj <> ''
+        ORDER BY name`
+    );
+    res.json({ gerado_em: new Date().toISOString(), clientes: rows });
+  } catch (err) {
+    console.error("[INTERNO] clientes-carteira:", err.message);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/**
  * GET /api/interno/empresa-vinculo?cnpj=
  * A empresa existe aqui e tem WhatsApp válido? Não devolve número nem e-mail.
  */

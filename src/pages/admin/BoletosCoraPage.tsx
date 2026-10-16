@@ -516,7 +516,15 @@ const BoletosCoraPage = () => {
                   className="grid grid-cols-[1fr_120px_100px_80px] items-center gap-2 border-b px-4 py-2.5 text-sm last:border-0"
                 >
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{e.name}</p>
+                    <p className="truncate font-medium">
+                      {e.name}
+                      {e.carteira === "jean" && (
+                        // Cliente pessoal: o boleto dele NÃO entra no financeiro do escritório.
+                        <Badge variant="outline" className="ml-2 align-middle text-[10px]">
+                          Pessoal Jean
+                        </Badge>
+                      )}
+                    </p>
                     <p className="text-xs text-muted-foreground">{e.cnpj}</p>
                   </div>
                   <span className="text-xs">
