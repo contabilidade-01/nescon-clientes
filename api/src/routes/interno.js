@@ -32,8 +32,8 @@ router.get("/empresas-contatos", authInterno, async (_req, res) => {
     const { rows } = await db.query(
       `SELECT cnpj, contact_email, phone
        FROM companies
-       WHERE active IS TRUE
-         AND cnpj IS NOT NULL`
+       WHERE arquivada IS NOT TRUE AND excluida IS NOT TRUE
+         AND cnpj IS NOT NULL AND cnpj <> ''`
     );
     res.json(rows);
   } catch (err) {
@@ -126,8 +126,8 @@ router.post("/notificar-whatsapp", authInterno, async (req, res) => {
   let phone;
   try {
     const { rows } = await db.query(
-      "SELECT phone FROM companies WHERE cnpj = $1 AND active IS TRUE LIMIT 1",
-      [cnpj]
+      "SELECT phone FROM companies WHERE cnpj = $1 AND arquivada IS NOT TRUE AND excluida IS NOT TRUE LIMIT 1",
+      [String(cnpj).replace(/\D/g, "")]
     );
     if (!rows.length || !rows[0].phone) {
       return res.json({ ok: false, motivo: "Telefone não cadastrado ou empresa inativa" });
