@@ -395,3 +395,60 @@ export function mesclarPlano(plano: PlanoMes | null, pessoas: Array<{ id: string
   for (const [id, a] of Object.entries(plano?.ajustes || {})) if (ids.has(id)) ajustes[id] = a;
   return { configs, ajustes };
 }
+
+/** O que a edição em lote faz em cada dia escolhido: folga, um horário ou voltar ao modelo. */
+export type AcaoDia = { tipo: "folga" } | { tipo: "horario"; turno: Turno } | { tipo: "modelo" };
+
+/** Ajustes da pessoa depois de aplicar `acao` nas `datas`. */
+export function ajustesEmLote(atuais: Record<string, Turno | null>, datas: string[], acao: AcaoDia): Record<string, Turno | null> {
+  const novo = { ...atuais };
+  for (const d of datas) {
+    if (acao.tipo === "modelo") delete novo[d];
+    else novo[d] = acao.tipo === "folga" ? null : acao.turno;
+  }
+  return novo;
+}
+
+export interface ResultadoLote {
+  configs: ConfigPessoa[];
+  ajustes: Ajustes;
+  aceitos: string[];
+  /** Quem ficou de fora porque a mudança criaria erro novo, e o primeiro motivo. */
+  recusados: Array<{ id: string; nome: string; motivo: string }>;
+}
+
+/**
+ * Edição em lote com a mesma trava da grade: cada pessoa é conferida sozinha; quem
+ * ganharia erro novo fica como estava e entra em `recusados`, as outras recebem a mudança.
+ */
+export function aplicarLote(
+  configs: ConfigPessoa[],
+  ajustes: Ajustes,
+  ids: string[],
+  mudar: (c: ConfigPessoa, aj: Record<string, Turno | null>) => { config: ConfigPessoa; ajustes: Record<string, Turno | null> },
+  mes: string,
+  empresa: Pick<ConfigEmpresa, "segmento" | "temAcordoColetivo">,
+  feriados: Set<string>,
+): ResultadoLote {
+  let cs = configs;
+  let aj = ajustes;
+  const aceitos: string[] = [];
+  const recusados: ResultadoLote["recusados"] = [];
+  for (const id of ids) {
+    const c = cs.find((x) => x.id === id);
+    if (!c) continue;
+    const m = mudar(c, aj[id] || {});
+    const novosAjustes = { ...aj, [id]: m.ajustes };
+    const antes = avaliarPessoa(c, mes, aj, empresa, feriados).ocorrencias;
+    const depois = avaliarPessoa(m.config, mes, novosAjustes, empresa, feriados).ocorrencias;
+    const novos = errosNovos(antes, depois);
+    if (novos.length) {
+      recusados.push({ id, nome: c.nome, motivo: novos[0].mensagem });
+      continue;
+    }
+    cs = cs.map((x) => (x.id === id ? m.config : x));
+    aj = novosAjustes;
+    aceitos.push(id);
+  }
+  return { configs: cs, ajustes: aj, aceitos, recusados };
+}

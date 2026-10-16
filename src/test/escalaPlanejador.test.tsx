@@ -147,3 +147,20 @@ describe("tela do planejador", () => {
     await waitFor(() => expect(screen.getAllByText("Vaga simulada 1").length).toBeGreaterThan(0));
   });
 });
+
+describe("edição em lote na tela", () => {
+  beforeEach(() => {
+    mockApi.config.mockResolvedValue({ dados: { segmento: "outro", atividadeDefinida: true }, atualizado_em: null, atualizado_por: null });
+  });
+
+  it("marca dias pelo atalho e aplica folga a todos", async () => {
+    comQuery(<PlanejadorEscala pessoas={PESSOAS} />);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /Usar este cenário/ }).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole("button", { name: /Usar este cenário/ })[0]);
+    await waitFor(() => expect(screen.getByText("Edição em lote")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Sábados" }));
+    expect(screen.getByText(/[45] dia\(s\)$/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dar folga" }));
+    expect(screen.getByText("Mudanças não salvas")).toBeInTheDocument();
+  });
+});

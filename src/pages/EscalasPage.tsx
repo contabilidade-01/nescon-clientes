@@ -28,7 +28,7 @@ const EscalasPage = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="sticky top-0 z-20 border-b bg-card/80 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
+        <div className="mx-auto flex max-w-none items-center gap-3 px-4 py-3">
           <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -43,7 +43,7 @@ const EscalasPage = () => {
           </div>
         </div>
       </header>
-      <main className="flex-1 mx-auto w-full max-w-7xl p-4">
+      <main className="flex-1 mx-auto w-full max-w-none p-4">
         {isLoading ? (
           <Skeleton className="h-64 w-full" />
         ) : (
