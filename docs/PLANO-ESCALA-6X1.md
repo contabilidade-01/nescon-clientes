@@ -10,8 +10,13 @@ Segmentos cobertos: construção civil, restaurantes, comércio em geral; escala
 ## Passos
 
 1. **Motor de regras** — `src/lib/escala/` (este PR). Modelos de escala e validação.
-2. **Tela do planejador** — grade por funcionário com arrastar e soltar (`@dnd-kit` já
-   instalado), edição de horários e alertas em tempo real.
+2. **Tela do planejador** — `src/components/escala/PlanejadorEscala.tsx`. Grade do mês
+   por funcionário, arrastar e soltar (troca de folga/turno), edição de horário por dia,
+   vagas simuladas, contagem de pessoas por dia e lista do que ajustar.
+   - **Painel** `/admin/escalas` (área `funcionarios`): o escritório simula QUALQUER cliente.
+   - **Portal** `/escalas`: ferramenta `escalas`, que **nasce desligada** — o escritório
+     liga em Empresas → "Escalas de trabalho" (decisão do Jean em 16/10/2026). Em grupo,
+     basta ligar numa empresa (normalmente a matriz).
 3. **Simulação de contingente** — pessoas necessárias por dia e faixa, cobertura/déficit,
    comparação escala atual × etapa 1 × etapa 2 em pessoas e custo.
 4. **Salvar e exportar** — escalas por empresa, folgas no calendário, PDF/planilha.
