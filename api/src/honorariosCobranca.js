@@ -16,10 +16,12 @@
  * mesmo que um envio tenha escorregado num fim de semana.
  *
  * Travas herdadas do fluxo antigo, todas mantidas:
- *   - Carência de compensação: 1ª cobrança só após N dias ÚTEIS do vencimento efetivo
- *     (D+2 por padrão), para não cobrar quem pagou e o boleto ainda não compensou.
- *   - Só dias úteis (seg–sex): dívida não se cobra no fim de semana.
- *   - Checagem FRESCA na Cora antes de cada envio: pula/marca pago o que já consta pago.
+ *   - Início de cobrança (cobrancaRegras.js): vencimento em fim de semana/feriado rola
+ *     para o próximo dia bancário, espera-se a compensação (1 dia bancário) e só então a
+ *     1ª cobrança sai. Ex.: venc. sáb 10/10/2026 → paga até 13/10 → cobra em 15/10.
+ *   - Só dias bancários: dívida não se cobra em fim de semana nem feriado nacional.
+ *   - Consulta ativa na Cora antes de CADA envio, falhando fechada: só cobra o que a Cora
+ *     confirma em aberto; pago, em processamento, sem resposta → não cobra.
  *   - Subchave honorario_cobranca_ativo por empresa.
  *   - Anti-duplicação por intervalo (alert_sent_at): não reenvia antes do intervalo da fase.
  */
@@ -28,9 +30,9 @@ const cora = require("./cora");
 const uazapi = require("./uazapi");
 const numeroWpp = require("./whatsappNumero");
 const { urlPdfFresca } = require("./boletoPdf");
-const { diasUteisAposVencimento } = require("./alertas");
-const { hojeSP, minutosSP } = require("./diasBancarios");
-const { ehDiaUtil, dentroDaJanela } = require("./janelaEnvio");
+const { hojeSP, minutosSP, ehDiaBancario } = require("./diasBancarios");
+const { dentroDaJanela } = require("./janelaEnvio");
+const { liberadoParaCobrar, consultaAtivaCora, COMPENSACAO_DIAS_BANCARIOS } = require("./cobrancaRegras");
 const { lerConfig } = require("./alertasConfig");
 
 function num(v, padrao) {
@@ -38,9 +40,9 @@ function num(v, padrao) {
   return Number.isFinite(n) ? n : padrao;
 }
 
-// Cadência (env-overridable). Padrões conforme decidido: D+2 dias úteis, +3 dias na 2ª,
-// depois a cada 10 dias até cair o pagamento; troca de fase após 2 mensagens.
-const CARENCIA_DIAS_UTEIS = Math.max(0, num(process.env.HONORARIOS_CARENCIA_DIAS_UTEIS, 2));
+// Cadência (env-overridable). Padrões conforme decidido: 1ª no início de cobrança
+// (cobrancaRegras.js), +3 dias na 2ª, depois a cada 10 dias até cair o pagamento; troca de
+// fase após 2 mensagens.
 const FASE1_QTD = Math.max(1, num(process.env.HONORARIOS_FASE1_QTD, 2));
 const FASE1_INTERVALO_DIAS = Math.max(1, num(process.env.HONORARIOS_FASE1_INTERVALO_DIAS, 3));
 const FASE2_INTERVALO_DIAS = Math.max(1, num(process.env.HONORARIOS_FASE2_INTERVALO_DIAS, 10));
@@ -70,20 +72,19 @@ function faseDe(count) {
 
 /**
  * Decide se ESTE honorário deve ser cobrado agora. Função pura (sem banco): recebe o
- * estado e devolve { cobrar, fase, motivo }.
+ * estado e devolve { cobrar, fase, motivo }. A consulta ativa na Cora vem depois, só
+ * para quem passar aqui.
  *
  * @param {number} count               cobranças já enviadas
- * @param {number} diasUteisAtraso     dias úteis desde o vencimento efetivo
+ * @param {string} dueDate             vencimento do boleto 'YYYY-MM-DD'
+ * @param {string} hoje                'YYYY-MM-DD' (fuso de São Paulo)
  * @param {number} diasDesdeUltimoEnvio dias corridos desde a última cobrança (Infinity se nunca)
  */
-function decidirCobranca({ count, diasUteisAtraso, diasDesdeUltimoEnvio }) {
-  if (count === 0) {
-    // 1ª cobrança: só depois da carência de compensação.
-    if (diasUteisAtraso < CARENCIA_DIAS_UTEIS) {
-      return { cobrar: false, fase: 1, motivo: "dentro da carência de compensação" };
-    }
-    return { cobrar: true, fase: 1 };
-  }
+function decidirCobranca({ count, dueDate, hoje, diasDesdeUltimoEnvio }) {
+  // Regra 1 (vale para toda cobrança): dia bancário e a partir do início de cobrança.
+  const lib = liberadoParaCobrar(dueDate, hoje);
+  if (!lib.liberado) return { cobrar: false, fase: faseDe(count), motivo: lib.motivo };
+  if (count === 0) return { cobrar: true, fase: 1 };
   // Reenvios: respeitam o intervalo da fase ATUAL.
   const intervalo = count < FASE1_QTD ? FASE1_INTERVALO_DIAS : FASE2_INTERVALO_DIAS;
   if (diasDesdeUltimoEnvio < intervalo) {
@@ -204,12 +205,16 @@ async function cobrarHonorarios({ simular = false, agora = new Date() } = {}) {
   if (hoje < INICIO_ISO) {
     return { enviados: 0, pulados: 0, erros: [], motivo: `metodologia inicia em ${INICIO_ISO}` };
   }
-  if (!ehDiaUtil()) return { enviados: 0, pulados: 0, erros: [], motivo: "fim de semana/feriado" };
+  if (!ehDiaBancario(hoje)) return { enviados: 0, pulados: 0, erros: [], motivo: "fim de semana/feriado" };
   if (!simular && !dentroDaJanela(minutosSP(agora))) {
     return { enviados: 0, pulados: 0, erros: [], motivo: "fora da janela diurna" };
   }
   if (!simular && !uazapi.configurado()) {
     return { enviados: 0, pulados: 0, erros: [], motivo: "uazapi não configurada" };
+  }
+  // Regra 2: sem como consultar a Cora, não há cobrança — nunca se cobra às cegas.
+  if (!simular && !cora.isConfigured()) {
+    return { enviados: 0, pulados: 0, erros: [], motivo: "Cora não configurada — sem consulta ativa não há cobrança" };
   }
 
   const { rows: boletos } = await db.query(
@@ -255,9 +260,8 @@ async function cobrarHonorarios({ simular = false, agora = new Date() } = {}) {
 
   for (const b of boletos) {
     const count = Number(b.count) || 0;
-    const diasUteisAtraso = diasUteisAposVencimento(b.due_date, hoje);
     const diasDesdeUltimoEnvio = diasDesde(b.alert_sent_at, agora.getTime());
-    const decisao = decidirCobranca({ count, diasUteisAtraso, diasDesdeUltimoEnvio });
+    const decisao = decidirCobranca({ count, dueDate: b.due_date, hoje, diasDesdeUltimoEnvio });
 
     if (!decisao.cobrar) {
       pulados += 1;
@@ -265,21 +269,21 @@ async function cobrarHonorarios({ simular = false, agora = new Date() } = {}) {
       continue;
     }
 
-    // Checagem fresca na Cora: não cobrar o que já consta pago/compensado lá.
-    if (!simular) {
-      try {
-        const invoiceId = String(b.external_ref || "").replace(/^cora_/, "");
-        if (invoiceId) {
-          const detalhe = await cora.getInvoiceDetail(invoiceId);
-          if (detalhe && detalhe.status && cora.mapCoraStatusToPortal(detalhe.status) === "paid") {
-            await db.query("UPDATE deliverables SET status='paid', paid_at=now() WHERE id=$1", [b.id]);
-            pulados += 1;
-            resultados.push({ empresa: b.empresa_nome, status: "pulado", motivo: "já pago na Cora" });
-            continue;
-          }
+    // Regra 2: consulta ativa na Cora, agora, boleto a boleto. Só segue o que a Cora
+    // confirma em aberto. Na simulação também consulta (é só leitura), se houver Cora.
+    if (!simular || cora.isConfigured()) {
+      const consulta = await consultaAtivaCora(b.external_ref, cora);
+      if (!consulta.cobrar) {
+        // Só grava "pago" quando o STATUS da Cora diz pago — sinal indireto (total_paid)
+        // basta para não cobrar, mas não para mudar o portal.
+        if (!simular && cora.mapCoraStatusToPortal(consulta.status) === "paid") {
+          await db
+            .query("UPDATE deliverables SET status='paid', paid_at=COALESCE(paid_at, now()) WHERE id=$1", [b.id])
+            .catch((e) => console.error("[honorarios] marcar pago", b.id, e.message));
         }
-      } catch (e) {
-        console.error("[honorarios] checagem Cora", b.id, e.message);
+        pulados += 1;
+        resultados.push({ empresa: b.empresa_nome, status: "pulado", motivo: consulta.motivo });
+        continue;
       }
     }
 
@@ -360,7 +364,7 @@ module.exports = {
   diasDesde,
   // constantes expostas para a tela/diagnóstico
   cadencia: {
-    CARENCIA_DIAS_UTEIS,
+    COMPENSACAO_DIAS_BANCARIOS,
     FASE1_QTD,
     FASE1_INTERVALO_DIAS,
     FASE2_INTERVALO_DIAS,
