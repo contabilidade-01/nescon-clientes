@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
@@ -13,6 +13,9 @@ import { toast } from "sonner";
 import {
   AlertTriangle,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Settings2,
   CheckCircle2,
   Gavel,
   Lock,
@@ -35,6 +38,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarraLote, type AtalhoDias } from "@/components/escala/BarraLote";
 import { DiasFechados, EscolherAtividade, type EscolhaAtividade } from "@/components/escala/EscolherAtividade";
@@ -99,6 +103,11 @@ function nomeMes(mes: string) {
 function quando(iso: string | null | undefined) {
   if (!iso) return "";
   return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+/** "08:00" vira "08" na célula, para o mês caber na tela; "16:20" fica inteiro. */
+function horaCurta(hhmm: string) {
+  return hhmm.endsWith(":00") ? hhmm.slice(0, 2) + "h" : hhmm;
 }
 
 function abrev(d: number) {
@@ -269,6 +278,62 @@ export function PlanejadorEscala({
   const totalAvisos = linhas.reduce((a, l) => a + l.ocorrencias.filter((o) => o.gravidade === "atencao").length, 0);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  // Rolagem lateral da grade: setas por semana e "arrastar para o lado" pelo cabeçalho ou
+  // pelo fundo (as células continuam sendo do arrastar e soltar).
+  const gradeRef = useRef<HTMLDivElement>(null);
+  const [rolagem, setRolagem] = useState({ temMais: false, esquerda: false, direita: false });
+  const medirRolagem = useCallback(() => {
+    const el = gradeRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setRolagem({ temMais: max > 2, esquerda: el.scrollLeft > 2, direita: el.scrollLeft < max - 2 });
+  }, []);
+  useEffect(() => {
+    const el = gradeRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(medirRolagem);
+    ro.observe(el);
+    medirRolagem();
+    return () => ro.disconnect();
+  }, [aba, configs.length, mes, medirRolagem]);
+  function rolar(direcao: 1 | -1) {
+    const el = gradeRef.current;
+    if (!el) return;
+    const dia = el.querySelector<HTMLElement>("thead th:nth-child(2)")?.offsetWidth || 40;
+    el.scrollBy({ left: direcao * dia * 7, behavior: "smooth" });
+  }
+  function iniciarPan(e: React.PointerEvent<HTMLDivElement>) {
+    const el = gradeRef.current;
+    const alvo = e.target as HTMLElement;
+    if (!el || e.button !== 0 || alvo.closest("button, input, select, label, [role=checkbox], [data-sem-pan]")) return;
+    const x0 = e.clientX;
+    const s0 = el.scrollLeft;
+    let moveu = false;
+    el.style.scrollBehavior = "auto";
+    const mover = (ev: PointerEvent) => {
+      const dx = ev.clientX - x0;
+      if (Math.abs(dx) > 4) moveu = true;
+      if (moveu) {
+        el.scrollLeft = s0 - dx;
+        el.style.cursor = "grabbing";
+      }
+    };
+    const soltar = () => {
+      window.removeEventListener("pointermove", mover);
+      window.removeEventListener("pointerup", soltar);
+      el.style.scrollBehavior = "";
+      el.style.cursor = "";
+      // Arrastou: o clique que vem junto não marca o dia do cabeçalho.
+      if (moveu) {
+        const engolir = (ev: MouseEvent) => ev.stopPropagation();
+        el.addEventListener("click", engolir, { capture: true, once: true });
+        setTimeout(() => el.removeEventListener("click", engolir, { capture: true }), 0);
+      }
+    };
+    window.addEventListener("pointermove", mover);
+    window.addEventListener("pointerup", soltar);
+  }
 
   function turnoEm(pessoaId: string, data: string): Turno | null {
     return linhas.find((l) => l.config.id === pessoaId)?.dias.find((d) => d.data === data)?.turno ?? null;
@@ -663,12 +728,37 @@ export function PlanejadorEscala({
             <SemEquipe onVaga={adicionarVaga} />
           ) : (
             <Card>
-              <CardContent className="overflow-x-auto p-0">
+              <CardContent className="relative p-0">
+                {rolagem.temMais && (
+                  <div className="flex items-center justify-end gap-1 border-b px-2 py-1 text-xs text-muted-foreground">
+                    <span className="mr-auto">Arraste o cabeçalho ou o fundo da grade para o lado, ou use as setas, para ver os outros dias.</span>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => rolar(-1)} disabled={!rolagem.esquerda} aria-label="Semana anterior">
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => rolar(1)} disabled={!rolagem.direita} aria-label="Próxima semana">
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+                <div
+                  ref={gradeRef}
+                  onScroll={medirRolagem}
+                  onPointerDown={iniciarPan}
+                  className="overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:thin]"
+                >
                 <DndContext sensors={sensors} onDragEnd={aoSoltar}>
-                  <table className="w-max border-collapse text-xs">
+                  <table className="w-full min-w-[960px] table-fixed border-collapse text-xs">
+                    <colgroup>
+                      <col className="w-[190px]" />
+                      {dias.map((d) => (
+                        <col key={d} />
+                      ))}
+                      <col className="w-[58px]" />
+                      <col className="w-[62px]" />
+                    </colgroup>
                     <thead>
                       <tr>
-                        <th className="sticky left-0 z-10 min-w-[280px] bg-card p-2 text-left font-medium">
+                        <th className="sticky left-0 z-10 bg-card p-2 text-left font-medium">
                           <label className="flex items-center gap-2">
                             <Checkbox
                               checked={selPessoas.size === configs.length ? true : selPessoas.size ? "indeterminate" : false}
@@ -687,7 +777,7 @@ export function PlanejadorEscala({
                               aria-pressed={selDias.has(d)}
                               onClick={() => setSelDias((s) => alternar(s, d))}
                               className={cn(
-                                "w-11 cursor-pointer select-none rounded-t p-1 text-center font-normal hover:bg-primary/10",
+                                "cursor-pointer select-none rounded-t px-0 py-1 text-center text-[11px] font-normal hover:bg-primary/10",
                                 dow === 0 && "border-l",
                                 (dow === 0 || feriados.has(d)) && "text-primary font-semibold",
                                 selDias.has(d) && "bg-primary text-primary-foreground hover:bg-primary/90",
@@ -699,8 +789,8 @@ export function PlanejadorEscala({
                             </th>
                           );
                         })}
-                        <th className="p-2 text-right font-medium">Horas no mês</th>
-                        <th className="p-2 text-right font-medium" title="Semana mais carregada que toca o mês, contra o limite da regra">
+                        <th className="p-1 text-right text-[11px] font-medium leading-tight">Horas no mês</th>
+                        <th className="p-1 text-right text-[11px] font-medium leading-tight" title="Semana mais carregada que toca o mês, contra o limite da regra">
                           Maior semana
                         </th>
                       </tr>
@@ -710,7 +800,7 @@ export function PlanejadorEscala({
                         const erros = ocorrencias.filter((o) => o.gravidade === "erro").length;
                         return (
                           <tr key={c.id} className="border-t">
-                            <td className="sticky left-0 z-10 bg-card p-2 align-top">
+                            <td className="sticky left-0 z-10 bg-card px-2 py-1 align-middle">
                               <LinhaConfig
                                 c={c}
                                 erros={erros}
@@ -740,10 +830,10 @@ export function PlanejadorEscala({
                                 onClick={() => setEditando({ pessoa: c, data: d.data })}
                               />
                             ))}
-                            <td className="p-2 text-right tabular-nums">{horas.toFixed(1).replace(".", ",")}h</td>
+                            <td className="p-1 text-right tabular-nums">{horas.toFixed(1).replace(".", ",")}h</td>
                             <td
                               className={cn(
-                                "p-2 text-right tabular-nums",
+                                "p-1 text-right tabular-nums",
                                 semanaAcima === "erro" && "bg-destructive/15 font-semibold text-destructive",
                                 semanaAcima === "atencao" && "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
                               )}
@@ -787,6 +877,7 @@ export function PlanejadorEscala({
                     </tbody>
                   </table>
                 </DndContext>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -934,11 +1025,11 @@ function LinhaConfig({
   onRemover?: () => void;
 }) {
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-1.5">
+    <div className="space-y-1">
+      <div className="flex min-w-0 items-center gap-1.5">
         <Checkbox checked={selecionado} onCheckedChange={onSelecionar} aria-label={`Marcar ${c.nome}`} />
         {erros ? <XCircle className="h-3.5 w-3.5 shrink-0 text-destructive" /> : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
-        <span className="truncate text-sm font-medium" title={c.nome}>
+        <span className="truncate text-xs font-medium" title={c.nome}>
           {c.nome}
         </span>
         {onRemover && (
@@ -947,6 +1038,21 @@ function LinhaConfig({
           </button>
         )}
       </div>
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="flex w-full items-center gap-1 truncate rounded border border-dashed px-1.5 py-0.5 text-left text-[11px] text-muted-foreground hover:border-primary hover:text-foreground"
+            aria-label={`Configurar escala de ${c.nome}`}
+          >
+            <Settings2 className="h-3 w-3 shrink-0" />
+            <span className="truncate">
+              {MODELOS[c.modelo]} · {c.entrada}–{c.saida}
+            </span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-[380px] p-3">
+      <p className="mb-2 text-xs font-medium">Escala de {c.nome}</p>
       <div className="flex flex-wrap items-center gap-1">
         <select
           className={sel}
@@ -1086,6 +1192,8 @@ function LinhaConfig({
           </select>
         )}
       </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -1111,7 +1219,7 @@ function Celula({
   const drop = useDroppable({ id });
   const estilo = drag.transform ? { transform: `translate(${drag.transform.x}px, ${drag.transform.y}px)`, zIndex: 20 } : undefined;
   return (
-    <td ref={drop.setNodeRef} className={cn("p-0.5", domingo && "border-l", drop.isOver && "bg-primary/10")}>
+    <td ref={drop.setNodeRef} className={cn("p-px", domingo && "border-l", drop.isOver && "bg-primary/10")}>
       <button
         type="button"
         ref={drag.setNodeRef}
@@ -1120,7 +1228,7 @@ function Celula({
         {...drag.attributes}
         onClick={onClick}
         className={cn(
-          "relative flex h-10 w-10 cursor-grab flex-col items-center justify-center rounded border text-[10px] leading-tight active:cursor-grabbing",
+          "relative flex h-9 w-full min-w-0 cursor-grab flex-col items-center justify-center overflow-hidden rounded border text-[9px] leading-tight tracking-tighter tabular-nums active:cursor-grabbing",
           turno ? "bg-primary/10 border-primary/30" : "bg-muted text-muted-foreground",
           gravidade === "erro" && "border-destructive bg-destructive/15 text-destructive",
           gravidade === "atencao" && "border-amber-500 bg-amber-100 dark:bg-amber-950",
@@ -1131,8 +1239,8 @@ function Celula({
       >
         {turno ? (
           <>
-            <span>{turno.entrada}</span>
-            <span>{turno.saida}</span>
+            <span>{horaCurta(turno.entrada)}</span>
+            <span>{horaCurta(turno.saida)}</span>
           </>
         ) : (
           <span className="text-xs font-semibold">F</span>

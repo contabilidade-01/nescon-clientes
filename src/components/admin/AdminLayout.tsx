@@ -32,6 +32,7 @@ import {
 } from "@/lib/adminNav";
 import { useGclickPendencias } from "@/hooks/useGclickPendencias";
 import { GclickAlertaDialog } from "@/components/admin/GclickAlertaDialog";
+import { cn } from "@/lib/utils";
 
 /**
  * Painel do escritório dividido por setor (mapa em src/lib/adminNav.ts, o mesmo do hub).
@@ -49,10 +50,13 @@ function formatCpf(cpf?: string) {
 export function AdminLayout({
   title,
   description,
+  largo = false,
   children,
 }: {
   title: string;
   description?: string;
+  /** Usa a largura toda da tela (telas de grade, como a escala do mês). */
+  largo?: boolean;
   children: React.ReactNode;
 }) {
   const navigate = useNavigate();
@@ -194,7 +198,7 @@ export function AdminLayout({
             Sair
           </Button>
         </header>
-        <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6">
+        <div className={cn("mx-auto w-full space-y-6 px-4 py-6", largo ? "max-w-none" : "max-w-6xl")}>
           {/* Aviso de entrada: abre uma vez por sessão em qualquer página do painel. */}
           <GclickAlertaDialog />
           {children}

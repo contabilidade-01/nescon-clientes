@@ -32,6 +32,7 @@ const EscalasPage = () => {
 
   return (
     <AdminLayout
+      largo
       title="Escalas de trabalho"
       description="Simule a escala de qualquer cliente contra o fim da 6x1 (EC 141/2026) e a CLT"
     >
