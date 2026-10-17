@@ -59,6 +59,16 @@ Segmentos cobertos: construção civil, restaurantes, comércio em geral; escala
   diferença para a escala atual. Passar o mouse mostra a prévia no calendário da pessoa
   e na visão da equipe; "Usar esta" passa pela mesma trava da grade.
 
+### Datas da emenda na simulação (pedido do Jean em 17/10/2026)
+
+- A tela abre no mês da próxima etapa (dez/2026; passada, dez/2027) e os atalhos são as
+  etapas: 16/12/2026 (42h e 2 folgas) e 16/12/2027 (40h).
+- No mês da virada, a regra do mês mostra as duas fases e a grade marca o dia 16. A
+  validação já era por semana (a semana do dia 16 segue a regra nova).
+- Em dez/2026 a pessoa segue na 6x1 até o domingo 13/12 e entra no modelo novo na segunda
+  14/12 (`seisPorUmAteVirada`, ligado por padrão, desliga por pessoa): trocar no dia 16
+  deixaria a semana da virada com 1 folga e mais de 42h.
+
 ### Bloqueio de jornada diária (decisão do Jean em 16/10/2026)
 
 Configurável por empresa (`src/lib/escala/bloqueio.ts`): "Só avisar", "Bloquear acima

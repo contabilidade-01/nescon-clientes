@@ -8,7 +8,7 @@ import { DiaEscala, ModeloEscala, Turno, escala5x2, escala6x1, gerarDias, minuto
 import { MODOS_BLOQUEIO, type ModoBloqueio } from "./bloqueio";
 import { DEMANDA_VAZIA, type Demanda } from "./contingente";
 import type { FeriadoLocal } from "./feriados";
-import { SEGMENTOS, vigenciaEm, type PerfilJornada, type Segmento } from "./regras";
+import { SEGMENTOS, viradaNoMes, vigenciaEm, type PerfilJornada, type Segmento } from "./regras";
 import { validarEscala, type Ocorrencia } from "./validar";
 
 /**
@@ -58,6 +58,12 @@ export interface ConfigPessoa {
   semanasRodizio: number;
   /** 5x2 casa fechada: dia em que o estabelecimento não abre (0 = domingo, 1 = segunda…). */
   diaFechado: number;
+  /**
+   * No mês da etapa 1 (dez/2026): a pessoa segue na 6x1 (folga em `folga6x1`) até o
+   * domingo 13/12 e passa ao modelo escolhido na segunda 14/12, para a semana do dia 16
+   * já ter as 2 folgas. Nos outros meses não muda nada.
+   */
+  seisPorUmAteVirada: boolean;
 }
 
 /** Ajustes manuais: pessoa -> data -> turno (null = folga). */
@@ -87,6 +93,7 @@ export function configPadrao(id: string, nome: string, modelo: ModeloChave = "6x
     rodizio: 0,
     semanasRodizio: 2,
     diaFechado: 0,
+    seisPorUmAteVirada: true,
   };
 }
 
@@ -182,11 +189,36 @@ export function diasParaValidar(
   // Feriado nasce de folga (fora a 12x36, que já paga o feriado no plantão). Trabalhar
   // nele é escolha do cliente, feita à mão, e a validação cobra a regra do segmento.
   const folgaNoFeriado = c.modelo !== "12x36";
-  return gerarDias(modeloDaPessoa(c, mes), de, ate).map((d) => {
+  const ateVirada = diasAteAVirada(c, mes, de, ate);
+  return gerarDias(modeloDaPessoa(c, mes), de, ate).map((d, i) => {
     if (Object.prototype.hasOwnProperty.call(meus, d.data)) return { data: d.data, turno: meus[d.data] };
     if (folgaNoFeriado && feriados.has(d.data)) return { data: d.data, turno: null };
-    return d;
+    return ateVirada?.[i] ?? d;
   });
+}
+
+/**
+ * Último dia da 6x1 no mês em que passam a valer as 2 folgas: o domingo que abre a semana
+ * da etapa (13/12/2026). Essa semana já cobra 2 folgas, então o modelo novo entra na
+ * segunda (14/12) e o domingo fica com a folga da 6x1; trocar no meio da semana deixaria
+ * a semana da virada com 1 folga e mais de 42h.
+ */
+export function ultimoDiaDa6x1(viradaInicio: string): string {
+  return inicioDaSemana(viradaInicio);
+}
+
+/**
+ * No mês em que passam a valer as 2 folgas (dez/2026), os dias até `ultimoDiaDa6x1`
+ * seguem a 6x1 de 44h que a pessoa já fazia. Devolve esses dias (alinhados com
+ * `de`..`ate`), ou null quando não se aplica.
+ */
+function diasAteAVirada(c: ConfigPessoa, mes: string, de: string, ate: string): Array<DiaEscala | undefined> | null {
+  const virada = viradaNoMes(mes);
+  if (!virada || !c.seisPorUmAteVirada || c.modelo === "6x1" || c.modelo === "12x36") return null;
+  if (virada.repousosSemanais <= vigenciaEm(somarDias(virada.inicio, -1)).repousosSemanais) return null;
+  const ultimo = ultimoDiaDa6x1(virada.inicio);
+  const turno: Turno = { entrada: HORARIOS["6x1"][0], saida: HORARIOS["6x1"][1], intervaloMin: 60 };
+  return gerarDias(escala6x1(turno, c.folga6x1), de, ate).map((d) => (d.data <= ultimo ? d : undefined));
 }
 
 /** Regras que apontam um dia específico; as semanais e mensais vão só para a lista. */
@@ -374,6 +406,7 @@ export function normalizarConfigPessoa(raw: ConfigPessoa, padrao: ModeloChave): 
     diaFechado: dia(raw.diaFechado, 0, 0),
     folgas5x2: Array.isArray(raw.folgas5x2) ? raw.folgas5x2 : base.folgas5x2,
     turma: raw.turma === "B" ? "B" : "A",
+    seisPorUmAteVirada: raw.seisPorUmAteVirada !== false,
   };
 }
 

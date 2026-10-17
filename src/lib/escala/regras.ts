@@ -42,6 +42,20 @@ export function vigenciaEm(data: string): Vigencia {
   return atual;
 }
 
+/** Regra que começa no meio do mês 'YYYY-MM' (16/12/2026, 16/12/2027), ou null. */
+export function viradaNoMes(mes: string): Vigencia | null {
+  return VIGENCIAS.find((v) => v.inicio.startsWith(mes) && !v.inicio.endsWith("-01")) ?? null;
+}
+
+/**
+ * Mês em que a simulação abre: o da próxima etapa da emenda que ainda não começou
+ * (dez/2026, depois dez/2027); passadas as duas, o mês de hoje.
+ */
+export function mesInicialDaSimulacao(hoje: string): string {
+  const proxima = VIGENCIAS.find((v) => v.inicio > hoje);
+  return (proxima?.inicio ?? hoje).slice(0, 7);
+}
+
 /** Limites da CLT que valem para qualquer vigência. */
 export const CLT = {
   limiteDiarioHoras: 8,

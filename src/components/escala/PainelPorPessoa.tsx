@@ -45,6 +45,7 @@ export function PainelPorPessoa({
   linhas,
   ajustes,
   repousos,
+  viradaEm,
   foco,
   onFoco,
   onChange,
@@ -59,6 +60,7 @@ export function PainelPorPessoa({
   linhas: AvaliacaoPessoa[];
   ajustes: Ajustes;
   repousos: number;
+  viradaEm?: string;
   foco: string | null;
   onFoco: (id: string) => void;
   onChange: (id: string, patch: Partial<ConfigPessoa>) => boolean;
@@ -167,7 +169,7 @@ export function PainelPorPessoa({
               </div>
               <div className="rounded-lg border bg-muted/30 p-2">
                 <p className="mb-1.5 text-xs text-muted-foreground">Configuração de {c.nome} (só dele; o resto da equipe fica como está)</p>
-                <ControlesPessoa c={c} repousos={repousos} onChange={(p) => onChange(c.id, p)} />
+                <ControlesPessoa c={c} repousos={repousos} viradaEm={viradaEm} onChange={(p) => onChange(c.id, p)} />
               </div>
             </CardContent>
           </Card>
