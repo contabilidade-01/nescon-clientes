@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  UserRound,
   Users,
   XCircle,
 } from "lucide-react";
@@ -41,10 +42,12 @@ import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarraLote, type AtalhoDias } from "@/components/escala/BarraLote";
+import { ControlesPessoa } from "@/components/escala/ControlesPessoa";
 import { DiasFechados, EscolherAtividade, type EscolhaAtividade } from "@/components/escala/EscolherAtividade";
 import { FeriadosLocais } from "@/components/escala/FeriadosLocais";
 import { PainelCenarios } from "@/components/escala/PainelCenarios";
 import { PainelContingente } from "@/components/escala/PainelContingente";
+import { PainelPorPessoa } from "@/components/escala/PainelPorPessoa";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { MODOS_BLOQUEIO, motivoBloqueio, type ModoBloqueio } from "@/lib/escala/bloqueio";
@@ -67,13 +70,10 @@ import {
   mesclarPlano,
   modeloPadraoDoMes,
   normalizarConfigEmpresa,
-  proximaFolga,
-  segundaFolga,
   trocarCelulas,
   type Ajustes,
   type ConfigEmpresa,
   type ConfigPessoa,
-  type ModeloChave,
   type PlanoMes,
 } from "@/lib/escala/planejamento";
 import { SEGMENTOS, vigenciaEm } from "@/lib/escala/regras";
@@ -81,8 +81,6 @@ import type { Ocorrencia } from "@/lib/escala/validar";
 
 const DIAS_SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
 const NOMES_DIA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
-/** Pares de folga do 5x2 fixo. */
-const PARES_5X2: number[][] = [[6, 0], [0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6]];
 /** O que mexe no desenho das folgas da pessoa e invalida os ajustes feitos à mão. */
 const CAMPOS_DO_MODELO: Array<keyof ConfigPessoa> = ["modelo", "folga6x1", "folgas5x2", "turma", "folgaFixa", "rodizio", "semanasRodizio", "diaFechado"];
 
@@ -115,7 +113,7 @@ function abrev(d: number) {
 }
 
 type Pessoa = { id: string; name: string };
-type Aba = "cenarios" | "escala" | "contingente" | "regras";
+type Aba = "cenarios" | "escala" | "pessoa" | "contingente" | "regras";
 
 /**
  * Planejador de escalas. O escritório passa `companyId` (simula qualquer cliente); no
@@ -151,6 +149,8 @@ export function PlanejadorEscala({
   const [selPessoas, setSelPessoas] = useState<Set<string>>(new Set());
   const [selDias, setSelDias] = useState<Set<string>>(new Set());
   const [trocandoAtividade, setTrocandoAtividade] = useState(false);
+  // Simulação por funcionário: a pessoa aberta.
+  const [foco, setFoco] = useState<string | null>(null);
 
   const configQuery = useQuery({
     queryKey: ["escala-config", chave],
@@ -389,18 +389,18 @@ export function PlanejadorEscala({
     aplicarSeguro(configs, trocarCelulas(ajustes, { pessoa: pa, data: da, turno: ta }, { pessoa: pb, data: db, turno: tb }), [pa, pb]);
   }
 
-  function atualizar(id: string, patch: Partial<ConfigPessoa>) {
+  function atualizar(id: string, patch: Partial<ConfigPessoa>): boolean {
     const atual = configs.find((c) => c.id === id);
-    if (!atual) return;
+    if (!atual) return false;
     const nova = { ...atual, ...patch };
     const motivo = motivoBloqueio({ entrada: nova.entrada, saida: nova.saida, intervaloMin: nova.intervaloMin }, cfg.bloqueio, nova.modelo === "12x36");
     if (motivo) {
       toast.error(`${nova.nome}: ${motivo}`);
-      return;
+      return false;
     }
     // Mudar o desenho das folgas descarta os ajustes da pessoa: eram em cima do anterior.
     const mudouModelo = CAMPOS_DO_MODELO.some((k) => k in patch);
-    aplicarSeguro(
+    return aplicarSeguro(
       configs.map((c) => (c.id === id ? nova : c)),
       mudouModelo ? { ...ajustes, [id]: {} } : ajustes,
       [id],
@@ -676,6 +676,9 @@ export function PlanejadorEscala({
             <CalendarDays className="h-4 w-4" /> Escala do mês
             {totalErros > 0 && <span className="ml-1 rounded-full bg-destructive px-1.5 text-[10px] text-destructive-foreground">{totalErros}</span>}
           </TabsTrigger>
+          <TabsTrigger value="pessoa" className="gap-1.5">
+            <UserRound className="h-4 w-4" /> Por funcionário
+          </TabsTrigger>
           <TabsTrigger value="contingente" className="gap-1.5">
             <Users className="h-4 w-4" /> Contingente
           </TabsTrigger>
@@ -885,6 +888,28 @@ export function PlanejadorEscala({
           <ListaOcorrencias linhas={linhas.map((l) => ({ nome: l.config.nome, ocorrencias: l.ocorrencias }))} />
         </TabsContent>
 
+        <TabsContent value="pessoa" className="mt-4">
+          {configs.length === 0 ? (
+            <SemEquipe onVaga={adicionarVaga} />
+          ) : (
+            <PainelPorPessoa
+              mes={mes}
+              dias={dias}
+              empresa={cfg}
+              feriados={feriados}
+              feriadosSet={feriadosSet}
+              linhas={linhas}
+              ajustes={ajustes}
+              repousos={vigencia.repousosSemanais}
+              foco={foco}
+              onFoco={setFoco}
+              onChange={atualizar}
+              onEditarDia={(pessoa, data) => setEditando({ pessoa, data })}
+              onVaga={adicionarVaga}
+            />
+          )}
+        </TabsContent>
+
         <TabsContent value="contingente" className="mt-4">
           <PainelContingente
             demanda={cfg.demanda}
@@ -1005,8 +1030,6 @@ function SemEquipe({ onVaga }: { onVaga: () => void }) {
   );
 }
 
-const sel = "h-7 rounded border bg-background px-1";
-
 function LinhaConfig({
   c,
   erros,
@@ -1053,145 +1076,7 @@ function LinhaConfig({
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[380px] p-3">
       <p className="mb-2 text-xs font-medium">Escala de {c.nome}</p>
-      <div className="flex flex-wrap items-center gap-1">
-        <select
-          className={sel}
-          value={c.modelo}
-          onChange={(e) => {
-            const modelo = e.target.value as ModeloChave;
-            const p = configPadrao(c.id, c.nome, modelo);
-            onChange({ modelo, entrada: p.entrada, saida: p.saida });
-          }}
-          aria-label="Modelo de escala"
-        >
-          {(Object.keys(MODELOS) as ModeloChave[]).map((m) => (
-            <option key={m} value={m} disabled={m === "6x1" && repousos > 1 && c.modelo !== "6x1"}>
-              {MODELOS[m]}
-              {m === "6x1" && repousos > 1 ? " (proibida)" : ""}
-            </option>
-          ))}
-        </select>
-        <input type="time" className={sel} value={c.entrada} onChange={(e) => onChange({ entrada: e.target.value })} aria-label="Entrada" />
-        <input type="time" className={sel} value={c.saida} onChange={(e) => onChange({ saida: e.target.value })} aria-label="Saída" />
-        <input
-          type="number"
-          min={0}
-          step={15}
-          className={cn(sel, "w-14")}
-          value={c.intervaloMin}
-          onChange={(e) => onChange({ intervaloMin: Math.max(0, Number(e.target.value) || 0) })}
-          aria-label="Intervalo em minutos"
-          title="Intervalo (min)"
-        />
-        {c.modelo === "6x1" && (
-          <select className={sel} value={c.folga6x1} onChange={(e) => onChange({ folga6x1: Number(e.target.value) })} aria-label="Dia da folga">
-            {NOMES_DIA.map((n, i) => (
-              <option key={n} value={i}>
-                Folga {abrev(i)}
-              </option>
-            ))}
-          </select>
-        )}
-        {c.modelo === "5x2" && (
-          <select
-            className={sel}
-            value={c.folgas5x2.join(",")}
-            onChange={(e) => onChange({ folgas5x2: e.target.value.split(",").map(Number) })}
-            aria-label="Dias de folga"
-          >
-            {PARES_5X2.map((p) => (
-              <option key={p.join(",")} value={p.join(",")}>
-                Folga {abrev(p[0])}+{abrev(p[1])}
-              </option>
-            ))}
-          </select>
-        )}
-        {c.modelo === "5x2_fechado" && (
-          <>
-            <select className={sel} value={c.diaFechado} onChange={(e) => onChange({ diaFechado: Number(e.target.value) })} aria-label="Dia em que a casa fecha">
-              {NOMES_DIA.map((n, i) => (
-                <option key={n} value={i}>
-                  Fecha {abrev(i)}
-                </option>
-              ))}
-            </select>
-            <select
-              className={sel}
-              value={segundaFolga(c.diaFechado, c.folgaFixa)}
-              onChange={(e) => onChange({ folgaFixa: Number(e.target.value) })}
-              aria-label="Segunda folga"
-            >
-              {[1, 2, 3, 4, 5, 6]
-                .filter((d) => d !== c.diaFechado)
-                .map((d) => (
-                  <option key={d} value={d}>
-                    + folga {abrev(d)}
-                  </option>
-                ))}
-            </select>
-            {c.diaFechado !== 0 && (
-              <>
-                <select
-                  className={sel}
-                  value={c.semanasRodizio}
-                  onChange={(e) => onChange({ semanasRodizio: Number(e.target.value), rodizio: 0 })}
-                  aria-label="Domingo de folga a cada"
-                >
-                  {[1, 2, 3, 4, 5, 6, 7].map((n) => (
-                    <option key={n} value={n}>
-                      {n === 1 ? "Dom. toda semana" : `Dom. a cada ${n} sem.`}
-                    </option>
-                  ))}
-                </select>
-                {c.semanasRodizio > 1 && (
-                  <select className={sel} value={c.rodizio % c.semanasRodizio} onChange={(e) => onChange({ rodizio: Number(e.target.value) })} aria-label="Grupo do rodízio">
-                    {Array.from({ length: c.semanasRodizio }, (_, i) => (
-                      <option key={i} value={i}>
-                        Grupo {i + 1}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </>
-            )}
-          </>
-        )}
-        {(c.modelo === "5x2_rev" || c.modelo === "4x3") && (
-          <select className={sel} value={c.folgaFixa} onChange={(e) => onChange({ folgaFixa: Number(e.target.value) })} aria-label="Folga da semana">
-            {[1, 2, 3, 4, 5, 6].map((d) => (
-              <option key={d} value={d}>
-                {c.modelo === "4x3" ? `Folga dom+${abrev(d)}+${abrev(proximaFolga(d))}` : `Folga ${abrev(d)}`}
-              </option>
-            ))}
-          </select>
-        )}
-        {c.modelo === "5x2_rev" && (
-          <>
-            <select
-              className={sel}
-              value={c.semanasRodizio}
-              onChange={(e) => onChange({ semanasRodizio: Number(e.target.value), rodizio: 0 })}
-              aria-label="Domingo de folga a cada"
-            >
-              <option value={2}>Dom. a cada 2 sem.</option>
-              <option value={3}>Dom. a cada 3 sem.</option>
-            </select>
-            <select className={sel} value={c.rodizio % c.semanasRodizio} onChange={(e) => onChange({ rodizio: Number(e.target.value) })} aria-label="Grupo do rodízio">
-              {Array.from({ length: c.semanasRodizio }, (_, i) => (
-                <option key={i} value={i}>
-                  Grupo {i + 1}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
-        {c.modelo === "12x36" && (
-          <select className={sel} value={c.turma} onChange={(e) => onChange({ turma: e.target.value as "A" | "B" })} aria-label="Turma">
-            <option value="A">Turma A</option>
-            <option value="B">Turma B</option>
-          </select>
-        )}
-      </div>
+      <ControlesPessoa c={c} repousos={repousos} onChange={onChange} />
         </PopoverContent>
       </Popover>
     </div>

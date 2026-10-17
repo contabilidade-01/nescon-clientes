@@ -52,6 +52,12 @@ Segmentos cobertos: construção civil, restaurantes, comércio em geral; escala
 - Com acordo, a média mensal de folgas só é cobrada quando alguma semana do mês fica
   abaixo das 2 folgas: quem cumpre semana a semana não está compensando (fevereiro de 29
   dias cortava uma folga do rodízio).
+- **Por funcionário** (pedido do Jean em 17/10/2026, `src/lib/escala/porPessoa.ts` +
+  `PainelPorPessoa.tsx`): escolhe uma pessoa, configura só a escala dela e compara, por
+  modelo, as variações de folga que cabem na regra (as outras não aparecem), medidas
+  contra a equipe parada: média de pessoas por dia da semana, dias abaixo da demanda e
+  diferença para a escala atual. Passar o mouse mostra a prévia no calendário da pessoa
+  e na visão da equipe; "Usar esta" passa pela mesma trava da grade.
 
 ### Bloqueio de jornada diária (decisão do Jean em 16/10/2026)
 
