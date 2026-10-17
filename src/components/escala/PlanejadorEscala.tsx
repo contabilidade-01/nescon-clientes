@@ -52,7 +52,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { MODOS_BLOQUEIO, motivoBloqueio, type ModoBloqueio } from "@/lib/escala/bloqueio";
 import { avaliarEscalaAtual, simularCenarios, type ResultadoCenario } from "@/lib/escala/cenarios";
-import { diaDaSemana } from "@/lib/escala/datas";
+import { diaDaSemana, somarDias } from "@/lib/escala/datas";
 import { feriadosDaEmpresa } from "@/lib/escala/feriados";
 import type { Turno } from "@/lib/escala/modelos";
 import {
@@ -71,22 +71,32 @@ import {
   modeloPadraoDoMes,
   normalizarConfigEmpresa,
   trocarCelulas,
+  ultimoDiaDa6x1,
   type Ajustes,
   type ConfigEmpresa,
   type ConfigPessoa,
   type PlanoMes,
 } from "@/lib/escala/planejamento";
-import { SEGMENTOS, vigenciaEm } from "@/lib/escala/regras";
+import { SEGMENTOS, VIGENCIAS, mesInicialDaSimulacao, viradaNoMes, vigenciaEm } from "@/lib/escala/regras";
 import type { Ocorrencia } from "@/lib/escala/validar";
 
 const DIAS_SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
 const NOMES_DIA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 /** O que mexe no desenho das folgas da pessoa e invalida os ajustes feitos à mão. */
-const CAMPOS_DO_MODELO: Array<keyof ConfigPessoa> = ["modelo", "folga6x1", "folgas5x2", "turma", "folgaFixa", "rodizio", "semanasRodizio", "diaFechado"];
+const CAMPOS_DO_MODELO: Array<keyof ConfigPessoa> = ["modelo", "folga6x1", "seisPorUmAteVirada", "folgas5x2", "turma", "folgaFixa", "rodizio", "semanasRodizio", "diaFechado"];
 
 function mesAtual(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Abre na próxima etapa da emenda (dez/2026, depois dez/2027); passadas as duas, no mês de hoje. */
+function mesInicial(): string {
+  return mesInicialDaSimulacao(`${mesAtual()}-${String(new Date().getDate()).padStart(2, "0")}`);
+}
+
+function dataBR(iso: string) {
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 }
 
 function ddmm(iso: string) {
@@ -135,7 +145,7 @@ export function PlanejadorEscala({
 }) {
   const qc = useQueryClient();
   const chave = companyId || "minha";
-  const [mes, setMes] = useState(mesAtual);
+  const [mes, setMes] = useState(mesInicial);
   const [cfg, setCfg] = useState<ConfigEmpresa>(configEmpresaPadrao);
   const [configs, setConfigs] = useState<ConfigPessoa[]>([]);
   const [ajustes, setAjustes] = useState<Ajustes>({});
@@ -237,6 +247,10 @@ export function PlanejadorEscala({
   useEffect(() => setSelDias(new Set()), [mes]);
   const ultimoDia = dias[dias.length - 1];
   const vigencia = vigenciaEm(ultimoDia);
+  // Mês em que uma etapa da emenda começa no meio (16/12): a regra muda nesse dia.
+  const virada = viradaNoMes(mes);
+  const anterior = virada ? vigenciaEm(`${mes}-01`) : null;
+  const viradaComFolgas = Boolean(virada && anterior && virada.repousosSemanais > anterior.repousosSemanais);
 
   const feriados = useMemo(() => {
     const ano = Number(dias[0].slice(0, 4));
@@ -534,10 +548,10 @@ export function PlanejadorEscala({
     salvarAtividade.mutate(novo);
   }
 
+  // As datas da emenda: cada etapa abre no mês em que começa.
   const atalhos = [
-    { rotulo: "Mês atual", valor: mesAtual() },
-    { rotulo: "Jan/2027 (42h)", valor: "2027-01" },
-    { rotulo: "Jan/2028 (40h)", valor: "2028-01" },
+    { rotulo: "Hoje", valor: mesAtual() },
+    ...VIGENCIAS.slice(1).map((v, i) => ({ rotulo: `Etapa ${i + 1}: ${dataBR(v.inicio)} (${v.limiteSemanalHoras}h)`, valor: v.inicio.slice(0, 7) })),
   ];
   const salvos = planosQuery.data || [];
   const salvoEsteMes = salvos.find((p) => p.mes === mes);
@@ -614,11 +628,30 @@ export function PlanejadorEscala({
             <Label className="flex items-center gap-1">
               <Gavel className="h-3.5 w-3.5" /> Regra deste mês
             </Label>
-            <p className="text-sm font-medium">{vigencia.nome}</p>
-            <p className="text-xs text-muted-foreground">
-              Até {vigencia.limiteSemanalHoras}h por semana e {vigencia.repousosSemanais} folga(s) semanal(is). Domingo de folga ao menos a cada{" "}
-              {SEGMENTOS[cfg.segmento].domingoACadaSemanas} semanas.
-            </p>
+            {virada && anterior ? (
+              <>
+                <p className="text-sm">
+                  <span className="text-muted-foreground">Até {ddmm(somarDias(virada.inicio, -1))}:</span> {anterior.nome}
+                </p>
+                <p className="text-sm font-medium">
+                  <span className="font-normal text-muted-foreground">A partir de {ddmm(virada.inicio)}:</span> {virada.nome}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  A partir de {dataBR(virada.inicio)}, até {virada.limiteSemanalHoras}h por semana e {virada.repousosSemanais} folgas semanais (antes,{" "}
+                  {anterior.limiteSemanalHoras}h e {anterior.repousosSemanais}). A semana que passa pelo dia {virada.inicio.slice(8)} já segue a regra nova.
+                  {viradaComFolgas &&
+                    ` Quem estava na 6x1 segue nela até o domingo ${ddmm(ultimoDiaDa6x1(virada.inicio))} e entra no modelo novo na segunda seguinte, para essa semana já ter as 2 folgas (dá para desligar por pessoa).`}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium">{vigencia.nome}</p>
+                <p className="text-xs text-muted-foreground">
+                  Até {vigencia.limiteSemanalHoras}h por semana e {vigencia.repousosSemanais} folga(s) semanal(is). Domingo de folga ao menos a cada{" "}
+                  {SEGMENTOS[cfg.segmento].domingoACadaSemanas} semanas.
+                </p>
+              </>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label>Situação</Label>
@@ -782,6 +815,7 @@ export function PlanejadorEscala({
                               className={cn(
                                 "cursor-pointer select-none rounded-t px-0 py-1 text-center text-[11px] font-normal hover:bg-primary/10",
                                 dow === 0 && "border-l",
+                                d === virada?.inicio && "border-l-2 border-l-primary",
                                 (dow === 0 || feriados.has(d)) && "text-primary font-semibold",
                                 selDias.has(d) && "bg-primary text-primary-foreground hover:bg-primary/90",
                               )}
@@ -789,6 +823,11 @@ export function PlanejadorEscala({
                               <div>{DIAS_SEMANA[dow]}</div>
                               <div>{d.slice(8)}</div>
                               {feriados.has(d) && <div className="text-[9px]">fer.</div>}
+                              {d === virada?.inicio && (
+                                <div className="text-[9px] font-semibold text-primary" title={`${virada.nome} começa hoje`}>
+                                  EC
+                                </div>
+                              )}
                             </th>
                           );
                         })}
@@ -808,6 +847,7 @@ export function PlanejadorEscala({
                                 c={c}
                                 erros={erros}
                                 repousos={vigencia.repousosSemanais}
+                                viradaEm={viradaComFolgas ? virada?.inicio : undefined}
                                 selecionado={selPessoas.has(c.id)}
                                 onSelecionar={() => setSelPessoas((s) => alternar(s, c.id))}
                                 onChange={(p) => atualizar(c.id, p)}
@@ -827,6 +867,7 @@ export function PlanejadorEscala({
                                 id={`${c.id}|${d.data}`}
                                 turno={d.turno}
                                 domingo={diaDaSemana(d.data) === 0}
+                                virada={d.data === virada?.inicio}
                                 gravidade={porDia.get(d.data)}
                                 ajustado={Boolean(ajustes[c.id] && d.data in ajustes[c.id])}
                                 marcado={selDias.has(d.data) && (selPessoas.size === 0 || selPessoas.has(c.id))}
@@ -901,6 +942,7 @@ export function PlanejadorEscala({
               linhas={linhas}
               ajustes={ajustes}
               repousos={vigencia.repousosSemanais}
+              viradaEm={viradaComFolgas ? virada?.inicio : undefined}
               foco={foco}
               onFoco={setFoco}
               onChange={atualizar}
@@ -1038,10 +1080,12 @@ function LinhaConfig({
   onSelecionar,
   onChange,
   onRemover,
+  viradaEm,
 }: {
   c: ConfigPessoa;
   erros: number;
   repousos: number;
+  viradaEm?: string;
   selecionado: boolean;
   onSelecionar: () => void;
   onChange: (p: Partial<ConfigPessoa>) => void;
@@ -1076,7 +1120,7 @@ function LinhaConfig({
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[380px] p-3">
       <p className="mb-2 text-xs font-medium">Escala de {c.nome}</p>
-      <ControlesPessoa c={c} repousos={repousos} onChange={onChange} />
+      <ControlesPessoa c={c} repousos={repousos} viradaEm={viradaEm} onChange={onChange} />
         </PopoverContent>
       </Popover>
     </div>
@@ -1090,11 +1134,13 @@ function Celula({
   gravidade,
   ajustado,
   marcado,
+  virada,
   onClick,
 }: {
   id: string;
   turno: Turno | null;
   domingo: boolean;
+  virada?: boolean;
   gravidade?: "erro" | "atencao";
   ajustado: boolean;
   marcado: boolean;
@@ -1104,7 +1150,7 @@ function Celula({
   const drop = useDroppable({ id });
   const estilo = drag.transform ? { transform: `translate(${drag.transform.x}px, ${drag.transform.y}px)`, zIndex: 20 } : undefined;
   return (
-    <td ref={drop.setNodeRef} className={cn("p-px", domingo && "border-l", drop.isOver && "bg-primary/10")}>
+    <td ref={drop.setNodeRef} className={cn("p-px", domingo && "border-l", virada && "border-l-2 border-l-primary", drop.isOver && "bg-primary/10")}>
       <button
         type="button"
         ref={drag.setNodeRef}

@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { MODELOS, configPadrao, proximaFolga, segundaFolga, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
+import { MODELOS, configPadrao, proximaFolga, segundaFolga, ultimoDiaDa6x1, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
 import { PARES_5X2 } from "@/lib/escala/porPessoa";
 
 const NOMES_DIA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -16,12 +16,18 @@ function abrev(d: number) {
 export function ControlesPessoa({
   c,
   repousos,
+  viradaEm,
   onChange,
 }: {
   c: ConfigPessoa;
   repousos: number;
+  /** Dia em que entram as 2 folgas, quando cai neste mês: mostra a 6x1 até a véspera. */
+  viradaEm?: string;
   onChange: (p: Partial<ConfigPessoa>) => void;
 }) {
+  const transicao = viradaEm && c.modelo !== "6x1" && c.modelo !== "12x36";
+  const ultimo = viradaEm ? ultimoDiaDa6x1(viradaEm) : "";
+  const ate6x1 = ultimo ? `${ultimo.slice(8, 10)}/${ultimo.slice(5, 7)}` : "";
   return (
   <div className="flex flex-wrap items-center gap-1">
       <select
@@ -160,6 +166,23 @@ export function ControlesPessoa({
           <option value="A">Turma A</option>
           <option value="B">Turma B</option>
         </select>
+      )}
+      {transicao && (
+        <div className="flex w-full flex-wrap items-center gap-1 border-t pt-1 text-xs">
+          <label className="flex items-center gap-1">
+            <input type="checkbox" checked={c.seisPorUmAteVirada} onChange={(e) => onChange({ seisPorUmAteVirada: e.target.checked })} />
+            Até {ate6x1} segue na 6x1
+          </label>
+          {c.seisPorUmAteVirada && (
+            <select className={sel} value={c.folga6x1} onChange={(e) => onChange({ folga6x1: Number(e.target.value) })} aria-label="Folga da 6x1 até a etapa">
+              {NOMES_DIA.map((n, i) => (
+                <option key={n} value={i}>
+                  Folga {abrev(i)}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       )}
     </div>
   );
