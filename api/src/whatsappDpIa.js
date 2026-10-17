@@ -29,6 +29,7 @@ async function interpretarMensagem(db, { texto, sessao, funcionarios }) {
     `"datas_falta":[],"data":null,"conduta":null,"anuncio_trabalha":null,"confirmar":null,"cancelar":false}\n` +
     `Regras:\n` +
     `- dias só 1, 2 ou 3 (teto deste escritório; CLT art. 474 permite até 30).\n` +
+    `- dias é a quantidade DE SUSPENSÃO pedida (1 data de suspensão = 1). Quantidade de faltas, atrasos ou datas citadas no motivo NÃO é dias; na dúvida, null.\n` +
     `- Se o cliente já descreveu o fato (ex. "faltou dia 30"), isso É o motivo — preencha motivo e datas_falta.\n` +
     `- data: "hoje", "amanhã" ou dd/mm/aaaa = data do TERMO ou início da suspensão, não necessariamente o dia da falta.\n` +
     `- datas_falta: dias em que faltou/atrasou, formato dd/mm/aaaa (ano atual se faltar).\n` +

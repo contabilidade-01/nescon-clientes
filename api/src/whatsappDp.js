@@ -236,6 +236,27 @@ function lerDiasSuspensao(texto) {
   return null;
 }
 
+const DIAS_POR_EXTENSO = { um: 1, uma: 1, dois: 2, duas: 2, tres: 3 };
+
+/**
+ * Dias de suspensão ditos FORA do passo "dias" (primeira mensagem, motivo, correção).
+ * Só vale a forma "N dia(s)/plantão(ões)" — número solto ou data não é quantidade de
+ * suspensão. Sem isso, um motivo como "faltou 2 dias" ou "faltou dia 3" trocava a
+ * suspensão de 1 plantão para 2/3 depois que o calendário 12x36 já estava montado.
+ * Em mensagem que fala de falta/atraso, só conta se citar a suspensão.
+ */
+function lerDiasExplicitos(texto) {
+  const t = norm(texto);
+  const N = "([1-3]|um|uma|dois|duas|tres)\\s*(?:dias?|plantao|plantoes)\\b";
+  // "suspensão de 1 dia" / "suspender por 2 plantões" / "2 dias de suspensão"
+  const m =
+    t.match(new RegExp(`suspen\\w*(?:\\s+\\S+){0,4}?\\s+(?:de|por)\\s+${N}`)) ||
+    t.match(new RegExp(`\\b${N}\\s+de\\s+suspen`)) ||
+    (!ehFaltaOuAtraso(t) ? t.match(new RegExp(`\\b${N}`)) : null);
+  if (!m) return null;
+  return DIAS_POR_EXTENSO[m[1]] || Number(m[1]);
+}
+
 function perguntaDiasSuspensao() {
   return (
     `Quantos *dias* de suspensão?\n\n` +
@@ -253,7 +274,7 @@ function pareceFato(texto) {
   return ehFaltaOuAtraso(t) || t.length >= 25;
 }
 
-function patchDeSlots({ ia, texto, step }) {
+function patchDeSlots({ ia, texto, step, diasAtuais }) {
   const patch = {};
   const t = String(texto || "").trim();
   const iaObj = ia && typeof ia === "object" ? ia : {};
@@ -279,8 +300,13 @@ function patchDeSlots({ ia, texto, step }) {
   if (!datas.length) datas.push(...parseDatasLista(t));
   if (datas.length) patch.datasFatoBR = [...new Set(datas.map(formatBR))].join(", ");
 
-  const permitirDias = !(step === "funcionario" && soNumeroLista(t)) && step !== "conduta";
-  const diasDet = lerDiasSuspensao(t);
+  // Depois de escolhidos, os dias só mudam por correção explícita na confirmação —
+  // nunca de carona num motivo ou numa data digitada em outro passo.
+  const permitirDias =
+    step === "dias" ||
+    step === "confirma" ||
+    (!diasAtuais && step !== "conduta" && !(step === "funcionario" && soNumeroLista(t)));
+  const diasDet = step === "dias" ? lerDiasSuspensao(t) : lerDiasExplicitos(t);
   const diasIa = Number(iaObj.dias);
   if (permitirDias) {
     if (diasDet) patch.dias = diasDet;
@@ -463,7 +489,8 @@ async function perguntarProximo(phone) {
       (f.anuncioEhPlantao ? `• Dia seguinte: folga\n` : "") +
       `• Suspensão (plantão em que não trabalha): ${f.suspInicioBR}` +
       (f.suspInicioBR !== f.suspFimBR ? ` a ${f.suspFimBR}` : "") +
-      `\n• Folga seguinte e retorno ao trabalho: ${f.suspRetornoBR}\n\n`;
+      `\n• Folga: ${formatBR(addDays(new Date(f.suspFimISO), 1))}` +
+      `\n• Retorno ao trabalho: ${f.suspRetornoBR}\n\n`;
   }
   return extra12 + resumoConfirmacao(f, tema);
 }
@@ -478,7 +505,7 @@ async function tentarPreencherDaMensagem(phone, texto) {
   } catch (_) {
     ia = {};
   }
-  const slots = patchDeSlots({ ia, texto, step: sessao.step });
+  const slots = patchDeSlots({ ia, texto, step: sessao.step, diasAtuais: sessao.dados?.dias });
   if (Object.keys(slots).length) await saveSessao(phone, { dados: slots });
 
   const atual = await getSessao(phone);
@@ -783,7 +810,7 @@ async function seguirFluxo(phone, sessao, texto) {
       return "Cancelado, nada foi emitido.";
     }
 
-    const slots = patchDeSlots({ ia, texto: t, step: "confirma" });
+    const slots = patchDeSlots({ ia, texto: t, step: "confirma", diasAtuais: d0.dias });
     if (ia.funcionario_nome || ia.funcionario_numero) {
       const lista = await funcionariosDa(sessao.company_id);
       const chave = ia.funcionario_numero ? String(ia.funcionario_numero) : ia.funcionario_nome;
@@ -831,7 +858,7 @@ async function seguirFluxo(phone, sessao, texto) {
   } catch (_) {
     ia = {};
   }
-  const slots = patchDeSlots({ ia, texto: t, step });
+  const slots = patchDeSlots({ ia, texto: t, step, diasAtuais: sessao.dados?.dias });
   if (Object.keys(slots).length) await saveSessao(phone, { dados: slots });
   sessao = await getSessao(phone);
   const d = sessao.dados || {};
@@ -1045,6 +1072,8 @@ module.exports = {
   parseData,
   parseDatasLista,
   lerDiasSuspensao,
+  lerDiasExplicitos,
+  patchDeSlots,
   extrairResposta,
   calendarioSuspensao12x36,
   eh12x36PorId,
