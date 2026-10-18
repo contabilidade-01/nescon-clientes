@@ -6,7 +6,7 @@
  * ninguém saber). Por isso a regra é uma função pura, testada sem banco.
  */
 import { describe, it, expect } from "vitest";
-import { decidirEventos } from "../../api/src/gclick/clientSync.js";
+import { decidirEventos, descreverIgnorados } from "../../api/src/gclick/clientSync.js";
 import {
   inscricaoValida,
   podeVirarEmpresa,
@@ -204,5 +204,49 @@ describe("inscrição do cliente", () => {
     expect(tipoInscricao("35736034000123")).toBe("cnpj");
     expect(tipoInscricao("05140626659")).toBe("cpf");
     expect(tipoInscricao("0")).toBe("invalida");
+  });
+});
+
+describe("descreverIgnorados — qual cadastro consertar no G-Click", () => {
+  const erro =
+    "G-Click /clientes: HTTP 400 — Status complementar 'Em Carteria' não encontrado.";
+  const ignorado = {
+    posicao: 41,
+    erro,
+    anterior: { nome: "ALFA LTDA", cnpj: "11111111000111" },
+    proximo: { nome: "BETA ME", cnpj: "22222222000122" },
+  };
+
+  it("sem ignorados não diz nada", () => {
+    expect(descreverIgnorados({ ignorados: [] })).toEqual({ detalhes: [], sumidos: [] });
+  });
+
+  it("mostra a mensagem do G-Click e os vizinhos na lista", () => {
+    const { detalhes } = descreverIgnorados({ ignorados: [ignorado] });
+    expect(detalhes[0]).toBe(
+      "Status complementar 'Em Carteria' não encontrado. Na lista de clientes do G-Click, " +
+        "fica entre ALFA LTDA (11111111000111) e BETA ME (22222222000122)."
+    );
+  });
+
+  it("aponta o provável quando um cliente do espelho sumiu da listagem", () => {
+    const espelho = new Map([
+      ["11111111000111", { cnpj: "11111111000111", nome: "ALFA LTDA" }],
+      ["33333333000133", { cnpj: "33333333000133", nome: "GAMA SA" }],
+    ]);
+    const { detalhes, sumidos } = descreverIgnorados({
+      ignorados: [ignorado],
+      espelho,
+      clientes: [{ cnpj: "11111111000111" }],
+    });
+    expect(sumidos).toEqual([{ nome: "GAMA SA", cnpj: "33333333000133" }]);
+    expect(detalhes[0]).toContain("Provável: GAMA SA (33333333000133).");
+  });
+
+  it("vizinho só de um lado (fim da lista)", () => {
+    const { detalhes } = descreverIgnorados({
+      ignorados: [{ ...ignorado, proximo: null }],
+    });
+    expect(detalhes[0]).toContain("vem logo depois de ALFA LTDA (11111111000111).");
   });
 });
