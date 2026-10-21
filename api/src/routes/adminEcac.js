@@ -97,6 +97,7 @@ router.get("/cobrancas", async (req, res) => {
               cb.encerrado_em, cb.encerrado_motivo, cb.relatorio_id,
               c.id AS company_id, c.name, c.cnpj, c.contact_email, c.ecac_cobranca_ativa, c.ecac_pausado_motivo,
               c.alertas_ativos,
+              COALESCE((c.tool_access->>'impostos_ecac')::boolean, false) AS portal_liberado,
               p.qtd_atraso, p.total_atraso, p.relatorio_data,
               (SELECT count(*) FROM ecac_guias g WHERE g.cobranca_id = cb.id) AS guias,
               (SELECT max(n.clicado_em) FROM ecac_notificacoes n WHERE n.cobranca_id = cb.id) AS ultimo_clique,
@@ -122,7 +123,8 @@ router.get("/cobrancas/:id", async (req, res) => {
   if (!Number.isInteger(id)) return res.status(400).json({ error: "id inválido" });
   try {
     const { rows: cbs } = await db.query(
-      `SELECT cb.*, c.name, c.cnpj, c.contact_email, c.ecac_cobranca_ativa, c.ecac_pausado_motivo,
+      `SELECT cb.*, c.name, c.cnpj, c.contact_email, c.ecac_cobranca_ativa, c.ecac_pausado_motivo, c.alertas_ativos,
+              COALESCE((c.tool_access->>'impostos_ecac')::boolean, false) AS portal_liberado,
               p.debitos, p.omissoes, p.parcelamento, p.pgfn, p.relatorio_data, p.qtd_invalidos
          FROM ecac_cobrancas cb
          JOIN companies c ON c.id = cb.company_id
@@ -144,6 +146,7 @@ router.get("/cobrancas/:id", async (req, res) => {
       ...cb,
       rotulo: regras.ROTULO_ESTADO[cb.estado] || cb.estado,
       em_atraso: regras.debitosCobraveis(cb.debitos || []),
+      total_atraso: regras.totalCobravel(cb.debitos || []),
       invalidos: (cb.debitos || []).filter((d) => d && !d.valido),
       notificacoes,
       guias,
