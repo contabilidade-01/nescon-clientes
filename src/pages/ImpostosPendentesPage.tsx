@@ -8,11 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { api, type EcacDebito, type EcacGuia } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import { agruparDebitos, type DebitoTela } from "@/lib/ecacDebitos";
 
 const ROTULO_TIPO: Record<string, string> = {
   SN: "DAS — Simples Nacional",
   MEI: "DAS — MEI",
-  INSS: "INSS / DCTFWeb",
+  INSS: "INSS (DARF da DCTFWeb)",
   MAED: "Multa por atraso de declaração",
   IRRF: "IRRF",
   OUTROS: "Tributo federal",
@@ -54,9 +55,9 @@ function baixarBlob(blob: Blob, nome: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
-function DebitoCard({ d, onGerar, gerando }: { d: EcacDebito; onGerar: (d: EcacDebito, data: string) => void; gerando: boolean }) {
+function DebitoCard({ d, onGerar, gerando }: { d: DebitoTela; onGerar: (d: DebitoTela, data: string) => void; gerando: boolean }) {
   const [data, setData] = useState(amanhaISO());
-  const podeRecalcular = d.recalculo_disponivel && d.periodo_aaaamm;
+  const podeRecalcular = d.tipo_guia && d.recalculo_disponivel && d.periodo_aaaamm;
   return (
     <div className="rounded-lg border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -65,6 +66,9 @@ function DebitoCard({ d, onGerar, gerando }: { d: EcacDebito; onGerar: (d: EcacD
           <p className="text-sm text-muted-foreground">
             Competência {d.periodo_apuracao} · venceu em {dataBR(d.data_vencimento)}
           </p>
+          {d.codigos.length > 1 && (
+            <p className="text-xs text-muted-foreground">Uma guia com: {d.codigos.join(" + ")}</p>
+          )}
         </div>
         <div className="text-right">
           <p className="text-xs text-muted-foreground">Saldo no relatório</p>
@@ -114,9 +118,9 @@ const ImpostosPendentesPage = () => {
   });
 
   const gerar = useMutation({
-    mutationFn: ({ d, dataPagamento }: { d: EcacDebito; dataPagamento: string }) =>
+    mutationFn: ({ d, dataPagamento }: { d: DebitoTela; dataPagamento: string }) =>
       api.ecac.gerarGuia({
-        tipo: (String(d.tipo).toUpperCase() === "MEI" ? "MEI" : "SN"),
+        tipo: d.tipo_guia || "SN",
         periodo_apuracao: d.periodo_aaaamm || "",
         data_pagamento: dataPagamento,
       }),
@@ -177,11 +181,11 @@ const ImpostosPendentesPage = () => {
               <section className="space-y-2">
                 <div className="flex items-center justify-between">
                   <h2 className="flex items-center gap-2 text-sm font-semibold text-destructive">
-                    <AlertTriangle className="h-4 w-4" /> Em atraso ({data.em_atraso.length})
+                    <AlertTriangle className="h-4 w-4" /> Em atraso ({agruparDebitos(data.em_atraso).length})
                   </h2>
                   <span className="text-sm font-semibold">{brl(totalAtraso)}</span>
                 </div>
-                {data.em_atraso.map((d) => {
+                {agruparDebitos(data.em_atraso).map((d) => {
                   const chave = `${d.tipo}-${d.periodo_aaaamm}`;
                   return (
                     <DebitoCard

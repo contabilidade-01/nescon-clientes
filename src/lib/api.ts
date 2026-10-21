@@ -3029,7 +3029,7 @@ export const api = {
   ecac: {
     pendencias: (companyId?: string) =>
       request<EcacPendencias>(`/ecac/pendencias${companyId ? `?company_id=${companyId}` : ""}`),
-    gerarGuia: (dados: { tipo: "SN" | "MEI"; periodo_apuracao: string; data_pagamento?: string; company_id?: string }) =>
+    gerarGuia: (dados: { tipo: string; periodo_apuracao: string; data_pagamento?: string; company_id?: string }) =>
       request<{ ok: boolean; reuso: boolean; guia: EcacGuia; pdf_url: string }>("/ecac/guias", {
         method: "POST",
         body: JSON.stringify(dados),
@@ -3075,6 +3075,15 @@ export const api = {
       request<{ ok: boolean }>(`/admin/ecac/empresas/${companyId}/pausar`, { method: "POST", body: JSON.stringify({ motivo }) }),
     retomar: (companyId: string) =>
       request<{ ok: boolean }>(`/admin/ecac/empresas/${companyId}/retomar`, { method: "POST", body: "{}" }),
+    /** Última consulta de parcelas guardada no central-ecac — custo zero. */
+    parcelas: (companyId: string, tipo: string) =>
+      request<EcacParcelasConsulta>(`/admin/ecac/empresas/${companyId}/parcelas?tipo=${encodeURIComponent(tipo)}`),
+    /** Consulta PAGA (a do dia é reaproveitada sem custo). */
+    consultarParcelas: (companyId: string, tipo: string, forcar = false) =>
+      request<EcacParcelasConsulta>(`/admin/ecac/empresas/${companyId}/parcelas/consultar`, {
+        method: "POST",
+        body: JSON.stringify({ tipo, forcar }),
+      }),
   },
 };
 
@@ -3198,6 +3207,18 @@ export interface EcacCobrancaResumo {
   falhas: number | string;
   /** Empresa com "Impostos em aberto (e-CAC)" liberado no portal (fase de teste). */
   portal_liberado: boolean;
+}
+
+export interface EcacParcelasConsulta {
+  consultado: boolean;
+  tipo?: string;
+  rotulo?: string;
+  consultado_em?: string | null;
+  /** true = consultado hoje (nova consulta no mesmo dia é reaproveitada) */
+  hoje?: boolean;
+  reuso?: boolean;
+  parcelas: Array<{ parcela: string; valor: number | null }>;
+  mensagem?: string | null;
 }
 
 export interface EcacNotificacao {

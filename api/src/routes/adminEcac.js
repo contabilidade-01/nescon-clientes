@@ -158,6 +158,49 @@ router.get("/cobrancas/:id", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------- parcelamentos
+async function cnpjDaEmpresa(companyId) {
+  const { rows } = await db.query(`SELECT cnpj FROM companies WHERE id = $1`, [companyId]);
+  return rows[0] ? regras.cnpjChave(rows[0].cnpj) : null;
+}
+
+function erroEcac(res, err, contexto) {
+  if (err instanceof ecac.EcacRecusou) return res.status(err.status === 429 ? 429 : 409).json({ error: err.message });
+  if (err instanceof ecac.EcacNaoConfigurado) return res.status(503).json({ error: "Integração com o e-CAC não está configurada." });
+  console.error(`[ecac-admin] ${contexto}:`, err.message);
+  return res.status(502).json({ error: "central-ecac não respondeu. Tente em alguns minutos." });
+}
+
+/** GET /empresas/:companyId/parcelas?tipo=PARC_SN — última consulta guardada (custo zero). */
+router.get("/empresas/:companyId/parcelas", async (req, res) => {
+  const { companyId } = req.params;
+  if (!validateUUID(companyId)) return res.status(400).json({ error: "company_id inválido" });
+  const tipo = String(req.query.tipo || "PARC_SN").toUpperCase();
+  if (!ecac.TIPOS_PARCELA.includes(tipo)) return res.status(400).json({ error: "Tipo de parcelamento inválido" });
+  const cnpj = await cnpjDaEmpresa(companyId);
+  if (!cnpj) return res.status(400).json({ error: "Empresa sem CNPJ" });
+  try {
+    res.json(await ecac.parcelas(cnpj, tipo));
+  } catch (err) {
+    erroEcac(res, err, "parcelas");
+  }
+});
+
+/** POST /empresas/:companyId/parcelas/consultar { tipo, forcar? } — consulta PAGA (a do dia é reaproveitada). */
+router.post("/empresas/:companyId/parcelas/consultar", async (req, res) => {
+  const { companyId } = req.params;
+  if (!validateUUID(companyId)) return res.status(400).json({ error: "company_id inválido" });
+  const tipo = String(req.body?.tipo || "PARC_SN").toUpperCase();
+  if (!ecac.TIPOS_PARCELA.includes(tipo)) return res.status(400).json({ error: "Tipo de parcelamento inválido" });
+  const cnpj = await cnpjDaEmpresa(companyId);
+  if (!cnpj) return res.status(400).json({ error: "Empresa sem CNPJ" });
+  try {
+    res.json(await ecac.consultarParcelas({ cnpj, tipo, forcar: Boolean(req.body?.forcar), solicitadoPor: quem(req) }));
+  } catch (err) {
+    erroEcac(res, err, "consultar parcelas");
+  }
+});
+
 router.post("/empresas/:companyId/pausar", async (req, res) => {
   const { companyId } = req.params;
   if (!validateUUID(companyId)) return res.status(400).json({ error: "company_id inválido" });
