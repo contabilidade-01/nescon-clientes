@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, Loader2, Pause, Play, RefreshCw, Send, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Download, Loader2, Mail, MessageCircle, Pause, Play, RefreshCw, Search, Send, XCircle } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { api, type EcacCobrancaResumo, type EcacConfig, type EcacDebito } from "@/lib/api";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { api, type EcacCobrancaResumo, type EcacConfig, type EcacDebito, type EcacGuia } from "@/lib/api";
 
 function brl(v: number | string | null | undefined) {
   return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -18,6 +20,9 @@ function brl(v: number | string | null | undefined) {
 
 function dataBR(iso: string | null | undefined) {
   if (!iso) return "—";
+  // Data pura (AAAA-MM-DD) não passa por Date: em UTC-3 viraria o dia anterior.
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso).slice(0, 10));
+  if (m && (String(iso).length === 10 || /T00:00:00(\.000)?Z$/.test(String(iso)))) return `${m[3]}/${m[2]}/${m[1]}`;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("pt-BR");
@@ -30,16 +35,16 @@ function dataHoraBR(iso: string | null | undefined) {
 }
 
 const COR_ESTADO: Record<string, string> = {
-  aberta: "bg-slate-100 text-slate-800",
-  notificado: "bg-blue-100 text-blue-800",
-  lembrete: "bg-amber-100 text-amber-800",
-  aguardando_regeracao: "bg-violet-100 text-violet-800",
-  cobranca_1: "bg-orange-100 text-orange-800",
-  cobranca_2: "bg-red-100 text-red-800",
-  respondeu: "bg-teal-100 text-teal-800",
-  escalado: "bg-red-200 text-red-900",
-  quitado: "bg-emerald-100 text-emerald-800",
-  encerrado: "bg-slate-100 text-slate-600",
+  aberta: "bg-slate-500/15 text-slate-600 dark:text-slate-300",
+  notificado: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+  lembrete: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  aguardando_regeracao: "bg-violet-500/15 text-violet-600 dark:text-violet-400",
+  cobranca_1: "bg-orange-500/15 text-orange-600 dark:text-orange-400",
+  cobranca_2: "bg-red-500/15 text-red-600 dark:text-red-400",
+  respondeu: "bg-teal-500/15 text-teal-600 dark:text-teal-400",
+  escalado: "bg-red-500/25 text-red-700 dark:text-red-300",
+  quitado: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+  encerrado: "bg-slate-500/10 text-slate-500",
 };
 
 function ConfigCard({ cfg }: { cfg: EcacConfig }) {
@@ -89,7 +94,7 @@ function ConfigCard({ cfg }: { cfg: EcacConfig }) {
         <div className="flex flex-wrap gap-3 text-sm">
           {cfg.integracao_configurada ? (
             central && !central.erro ? (
-              <span className="flex items-center gap-1 text-emerald-700">
+              <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 className="h-4 w-4" /> central-ecac respondendo
                 {central.limite_gasto
                   ? ` · gasto do mês ${brl(central.limite_gasto.gasto_mes)}${central.limite_gasto.sem_teto ? " (sem teto)" : ` de ${brl(central.limite_gasto.limite)}`}`
@@ -181,14 +186,14 @@ function ConfigCard({ cfg }: { cfg: EcacConfig }) {
               {cfg.ultima_importacao_resumo.com_atraso} com atraso · {cfg.ultima_importacao_resumo.abertas} cobrança(s) aberta(s)
             </p>
             {cfg.ultima_importacao_resumo.sem_cadastro.length > 0 && (
-              <p className="mt-1 text-amber-700">
+              <p className="mt-1 text-amber-600 dark:text-amber-400">
                 Sem cadastro no portal ({cfg.ultima_importacao_resumo.sem_cadastro.length}):{" "}
                 {cfg.ultima_importacao_resumo.sem_cadastro.slice(0, 8).map((s) => `${s.razao_social || ""} ${s.cnpj}`).join("; ")}
                 {cfg.ultima_importacao_resumo.sem_cadastro.length > 8 ? "…" : ""}
               </p>
             )}
             {cfg.ultima_importacao_resumo.relatorios_velhos.length > 0 && (
-              <p className="mt-1 text-amber-700">
+              <p className="mt-1 text-amber-600 dark:text-amber-400">
                 Relatório velho, não cobradas ({cfg.ultima_importacao_resumo.relatorios_velhos.length}):{" "}
                 {cfg.ultima_importacao_resumo.relatorios_velhos.slice(0, 8).map((s) => s.name).join("; ")}
               </p>
@@ -220,148 +225,383 @@ function baixarBlob(blob: Blob, nome: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
-/**
- * Escritório gera a guia atualizada de QUALQUER empresa (liberada ou não no portal).
- * Usa a mesma rota do cliente com company_id: mesmas travas lá no central-ecac
- * (reaproveita guia válida, teto mensal, limite diário) — chamada paga só quando precisa.
- */
-function GerarGuiaAdmin({ companyId, d, onGerada }: { companyId: string; d: EcacDebito; onGerada: () => void }) {
-  const [data, setData] = useState(amanhaISO());
-  const tipo = String(d.tipo).toUpperCase() === "MEI" ? "MEI" : "SN";
+function cnpjFmt(v: string | null | undefined) {
+  const d = String(v || "").replace(/\D/g, "");
+  if (d.length === 14) return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  if (d.length === 11) return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+  return v || "";
+}
+
+/** 'AAAAMMDD' ou ISO → dd/mm/aaaa */
+function dataCurta(v: string | null | undefined) {
+  if (!v) return "—";
+  const m = /^(\d{4})(\d{2})(\d{2})$/.exec(v);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : dataBR(v);
+}
+
+const ROTULO_ETAPA: Record<string, string> = {
+  aberta: "Aviso",
+  notificar: "Aviso",
+  notificado: "Aviso",
+  lembrete: "Lembrete",
+  cobranca_1: "Cobrança 1 (e-mail)",
+  cobranca_2: "Cobrança 2 (WhatsApp)",
+  consultar: "Conferir pagamento",
+  aguardando_regeracao: "Conferir pagamento",
+  escalado: "Escalar ao escritório",
+  quitado: "Agradecimento",
+};
+
+/** "cobranca_1 (envio desligado)" → { acao: "Cobrança 1 (e-mail)", obs: "envio desligado" } */
+function proximaAcao(v: string | null | undefined) {
+  if (!v) return { acao: "—", obs: "" };
+  const m = /^([^(]+?)\s*(?:\((.*)\))?$/.exec(v.trim());
+  const chave = (m?.[1] || v).trim();
+  return { acao: ROTULO_ETAPA[chave] || chave, obs: m?.[2] || "" };
+}
+
+const ROTULO_STATUS_MSG: Record<string, string> = {
+  enviado: "enviado",
+  pendente: "na fila",
+  falhou: "falhou",
+  ignorado: "ignorado",
+  duplicado: "duplicado",
+};
+
+const ROTULO_EVENTO: Record<string, string> = {
+  cobranca_aberta: "Cobrança aberta",
+  estado: "Mudou de etapa",
+  mensagem: "Mensagem",
+  link_clicado: "Cliente clicou no link",
+  pixel_aberto: "E-mail aberto",
+  guia_gerada: "Guia gerada",
+  regeracao_pedida: "Reconsulta da Receita agendada",
+  importacao: "Importação",
+};
+
+function resumoEvento(e: { tipo: string; dados: Record<string, unknown> | null }) {
+  const d = (e.dados || {}) as Record<string, unknown>;
+  if (e.tipo === "estado") {
+    const de = ROTULO_ETAPA[String(d.de)] || String(d.de ?? "");
+    const para = ROTULO_ETAPA[String(d.para)] || String(d.para ?? "");
+    return `${de} → ${para}`;
+  }
+  if (e.tipo === "mensagem") {
+    const etapa = ROTULO_ETAPA[String(d.etapa)] || String(d.etapa ?? "");
+    const res = Array.isArray(d.resultados)
+      ? (d.resultados as Array<Record<string, unknown>>)
+          .map((r) => `${r.canal}: ${ROTULO_STATUS_MSG[String(r.status)] || r.status}${r.motivo ? ` (${r.motivo})` : ""}`)
+          .join(" · ")
+      : "";
+    return `${etapa}${res ? ` — ${res}` : ""}`;
+  }
+  if (e.tipo === "link_clicado") return `${d.canal ?? ""} · ${ROTULO_ETAPA[String(d.etapa)] || d.etapa || ""}`;
+  return "";
+}
+
+function chaveGuia(tipo: string, periodo: string | null | undefined) {
+  return `${String(tipo).toUpperCase()}-${String(periodo || "").replace(/\D/g, "")}`;
+}
+
+function Stat({ rotulo, valor, destaque }: { rotulo: string; valor: React.ReactNode; destaque?: boolean }) {
+  return (
+    <div className="rounded-lg border bg-muted/30 px-3 py-2">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{rotulo}</p>
+      <p className={`text-base font-semibold ${destaque ? "text-destructive" : ""}`}>{valor}</p>
+    </div>
+  );
+}
+
+function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [dataPg, setDataPg] = useState(amanhaISO());
+  const [gerando, setGerando] = useState<string | null>(null);
+  const [etapa, setEtapa] = useState("notificado");
+  const [canal, setCanal] = useState<"email" | "whatsapp">("email");
+  const { data } = useQuery({
+    queryKey: ["admin-ecac-cobranca", id],
+    queryFn: () => api.adminEcac.cobranca(id as number),
+    enabled: id !== null,
+  });
+  useEffect(() => setDataPg(amanhaISO()), [id]);
+
+  const atualizar = () => {
+    qc.invalidateQueries({ queryKey: ["admin-ecac-cobranca", id] });
+    qc.invalidateQueries({ queryKey: ["admin-ecac-cobrancas"] });
+  };
+
+  const reenviar = useMutation({
+    mutationFn: () => api.adminEcac.reenviar(id as number, etapa, canal),
+    onSuccess: (r) => {
+      toast.success(r.resultados.map((x) => `${x.canal}: ${x.status}${x.motivo ? ` (${x.motivo})` : ""}`).join(" · "));
+      atualizar();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Escritório gera a guia de QUALQUER empresa (liberada ou não no portal). Mesma rota do
+  // cliente com company_id: mesmas travas no central-ecac (reaproveita guia válida, teto,
+  // limite diário) — chamada paga só quando precisa.
   const gerar = useMutation({
-    mutationFn: () =>
-      api.ecac.gerarGuia({ tipo, periodo_apuracao: d.periodo_aaaamm || "", data_pagamento: data, company_id: companyId }),
+    mutationFn: (d: EcacDebito) =>
+      api.ecac.gerarGuia({
+        tipo: String(d.tipo).toUpperCase() === "MEI" ? "MEI" : "SN",
+        periodo_apuracao: d.periodo_aaaamm || "",
+        data_pagamento: dataPg,
+        company_id: data?.company_id,
+      }),
     onSuccess: async (r) => {
-      toast.success(r.reuso ? "Guia já emitida — reaproveitada sem custo." : "Guia gerada.");
-      onGerada();
+      toast.success(r.reuso ? "Guia já emitida para essa data — reaproveitada sem custo." : "Guia gerada.");
+      atualizar();
       try {
-        const blob = await api.ecac.baixarGuia(r.guia.id, companyId);
+        const blob = await api.ecac.baixarGuia(r.guia.id, data?.company_id);
         baixarBlob(blob, `${r.guia.tipo}_${r.guia.periodo_apuracao}.pdf`);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Não foi possível baixar o PDF.");
       }
     },
     onError: (e: Error) => toast.error(e.message),
+    onSettled: () => setGerando(null),
   });
-  return (
-    <span className="ml-2 inline-flex items-center gap-1">
-      <Input type="date" value={data} min={amanhaISO()} onChange={(e) => setData(e.target.value)} className="h-7 w-36 text-xs" />
-      <Button size="sm" variant="outline" className="h-7" disabled={gerar.isPending || !data} onClick={() => gerar.mutate()}>
-        {gerar.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Gerar guia"}
-      </Button>
-    </span>
-  );
-}
 
-function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void }) {
-  const qc = useQueryClient();
-  const { data } = useQuery({
-    queryKey: ["admin-ecac-cobranca", id],
-    queryFn: () => api.adminEcac.cobranca(id as number),
-    enabled: id !== null,
-  });
-  const reenviar = useMutation({
-    mutationFn: ({ etapa, canal }: { etapa: string; canal: "email" | "whatsapp" }) => api.adminEcac.reenviar(id as number, etapa, canal),
-    onSuccess: (r) => {
-      toast.success(r.resultados.map((x) => `${x.canal}: ${x.status}${x.motivo ? ` (${x.motivo})` : ""}`).join(" · "));
-      qc.invalidateQueries({ queryKey: ["admin-ecac-cobranca", id] });
-      qc.invalidateQueries({ queryKey: ["admin-ecac-cobrancas"] });
-    },
+  const baixar = useMutation({
+    mutationFn: (g: EcacGuia) => api.ecac.baixarGuia(g.id, data?.company_id).then((b) => ({ b, g })),
+    onSuccess: ({ b, g }) => baixarBlob(b, `${g.tipo}_${g.periodo_apuracao}.pdf`),
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const guiaPorDebito = new Map<string, EcacGuia>();
+  for (const g of data?.guias || []) {
+    const k = chaveGuia(g.tipo, g.periodo_apuracao);
+    if (!guiaPorDebito.has(k)) guiaPorDebito.set(k, g); // lista vem da mais nova para a mais antiga
+  }
+  const prox = proximaAcao(data?.proxima_acao);
+
   return (
     <Dialog open={id !== null} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{data ? `${data.name} — ${data.rotulo}` : "Cobrança"}</DialogTitle>
+          <DialogTitle className="pr-6 leading-snug">{data ? data.name : "Cobrança"}</DialogTitle>
         </DialogHeader>
         {data && (
-          <div className="space-y-4 text-sm">
-            <p className="text-muted-foreground">
-              Ciclo {data.ciclo} · relatório de {dataBR(data.relatorio_data)} · {data.em_atraso.length} guia(s) em atraso · {brl(data.total_atraso)}
-              {data.ecac_pausado_motivo ? ` · PAUSADA: ${data.ecac_pausado_motivo}` : ""}
-            </p>
-            <div>
-              <p className="font-medium">Em atraso</p>
-              <ul className="mt-1 space-y-1">
-                {data.em_atraso.map((d, i) => (
-                  <li key={i} className="flex flex-wrap items-center">
-                    {d.tipo} {d.periodo_apuracao} · venc. {dataBR(d.data_vencimento)} · {brl(d.saldo_devedor_total)}
-                    {d.recalculo_disponivel && d.periodo_aaaamm ? (
-                      <GerarGuiaAdmin
-                        companyId={data.company_id}
-                        d={d}
-                        onGerada={() => qc.invalidateQueries({ queryKey: ["admin-ecac-cobranca", id] })}
-                      />
-                    ) : (
-                      <span className="ml-2 text-xs text-muted-foreground">(sem recálculo pela API — emitir manual)</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+          <div className="space-y-5 text-sm">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>{cnpjFmt(data.cnpj)}</span>
+              {data.contact_email && <span>· {data.contact_email}</span>}
+              <span className={`rounded px-2 py-0.5 font-medium ${COR_ESTADO[data.estado] || ""}`}>{data.rotulo}</span>
+              {data.portal_liberado ? (
+                <span className="rounded bg-emerald-500/15 px-2 py-0.5 font-medium text-emerald-600 dark:text-emerald-400">Portal liberado</span>
+              ) : (
+                <span className="rounded bg-muted px-2 py-0.5">Portal não liberado — só o escritório gera</span>
+              )}
+              {!data.ecac_cobranca_ativa && (
+                <span className="rounded bg-amber-500/15 px-2 py-0.5 font-medium text-amber-600 dark:text-amber-400">
+                  Pausada{data.ecac_pausado_motivo ? `: ${data.ecac_pausado_motivo}` : ""}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Stat rotulo="Guias em atraso" valor={data.em_atraso.length} />
+              <Stat rotulo="Total no relatório" valor={brl(data.total_atraso)} destaque={Number(data.total_atraso) > 0} />
+              <Stat rotulo="Relatório da Receita" valor={dataBR(data.relatorio_data)} />
+              <Stat
+                rotulo="Próxima ação"
+                valor={
+                  data.encerrado_em ? (
+                    <span className="text-sm">{data.encerrado_motivo || "encerrada"}</span>
+                  ) : (
+                    <span className="text-sm">
+                      {prox.acao}
+                      {data.proxima_acao_em ? ` · ${dataBR(data.proxima_acao_em)}` : ""}
+                    </span>
+                  )
+                }
+              />
+            </div>
+
+            <section className="space-y-2">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <h3 className="font-semibold">Débitos em atraso</h3>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="ecac-data-pg" className="text-xs text-muted-foreground">Data de pagamento</Label>
+                  <Input id="ecac-data-pg" type="date" value={dataPg} min={amanhaISO()} onChange={(e) => setDataPg(e.target.value)} className="h-8 w-40" />
+                </div>
+              </div>
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2">Tributo</th>
+                      <th className="px-3 py-2">Competência</th>
+                      <th className="px-3 py-2">Vencimento</th>
+                      <th className="px-3 py-2 text-right">Saldo</th>
+                      <th className="px-3 py-2 text-right">Guia</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.em_atraso.map((d, i) => {
+                      const k = chaveGuia(d.tipo, d.periodo_aaaamm);
+                      const g = guiaPorDebito.get(k);
+                      const pode = d.recalculo_disponivel && d.periodo_aaaamm;
+                      return (
+                        <tr key={i} className="border-t">
+                          <td className="px-3 py-2 font-medium">{d.tipo === "SN" ? "DAS Simples" : d.tipo === "MEI" ? "DAS MEI" : d.receita || d.tipo}</td>
+                          <td className="px-3 py-2">{d.periodo_apuracao}</td>
+                          <td className="px-3 py-2">{dataBR(d.data_vencimento)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{brl(d.saldo_devedor_total)}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center justify-end gap-2">
+                              {g && (
+                                <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" title={`Guia para pagar até ${dataCurta(g.vencimento)} · ${brl(g.valor_total)}`} onClick={() => baixar.mutate(g)}>
+                                  <Download className="mr-1 h-3.5 w-3.5" /> {dataCurta(g.vencimento)}
+                                </Button>
+                              )}
+                              {pode ? (
+                                <Button
+                                  size="sm"
+                                  variant={g ? "outline" : "default"}
+                                  className="h-7 min-w-[96px] text-xs"
+                                  disabled={gerar.isPending || !dataPg}
+                                  onClick={() => {
+                                    setGerando(k);
+                                    gerar.mutate(d);
+                                  }}
+                                >
+                                  {gerando === k ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : g ? "Gerar de novo" : "Gerar guia"}
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">emitir manualmente</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Multa e juros são atualizados até a data de pagamento. Guia já emitida para a mesma data é reaproveitada sem custo.
+              </p>
               {data.invalidos.length > 0 && (
-                <p className="mt-1 text-amber-700">
-                  {data.invalidos.length} linha(s) do relatório ignorada(s) por parecerem fantasma do leitor de PDF:{" "}
-                  {data.invalidos.map((d) => `${d.receita} ${d.periodo_apuracao} (${d.motivos.join(", ")})`).join("; ")}
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  {data.invalidos.length} linha(s) do relatório ignorada(s) por parecerem erro de leitura do PDF:{" "}
+                  {data.invalidos.map((d) => `${d.receita} ${d.periodo_apuracao}`).join("; ")}
                 </p>
               )}
-              {data.pgfn && <p className="mt-1">PGFN: {data.pgfn}</p>}
-              {data.parcelamento && <p className="mt-1">Parcelamento: {data.parcelamento}</p>}
-            </div>
-            <div>
-              <p className="font-medium">Mensagens</p>
+              {(data.parcelamento || data.pgfn) && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs">
+                  {data.parcelamento && <p>Parcelamento: {data.parcelamento}</p>}
+                  {data.pgfn && <p>PGFN: {data.pgfn}</p>}
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-2">
+              <h3 className="font-semibold">Mensagens ({data.notificacoes.length})</h3>
               {data.notificacoes.length === 0 ? (
                 <p className="text-muted-foreground">Nenhuma ainda.</p>
               ) : (
-                <ul className="mt-1 space-y-1">
-                  {data.notificacoes.map((n) => (
-                    <li key={n.id} className="rounded border p-2">
-                      <span className="font-medium">{n.etapa}</span> · {n.canal} · {n.status}
-                      {n.modo_teste ? " (teste)" : ""} · para {n.destino || "—"} · {dataHoraBR(n.enviado_em || n.criado_em)}
-                      {n.status_entrega ? ` · ${n.status_entrega}` : ""}
-                      {n.clicado_em ? ` · clicou ${dataHoraBR(n.clicado_em)}` : n.aberto_em ? ` · abriu (pixel) ${dataHoraBR(n.aberto_em)}` : ""}
-                      {n.erro ? <span className="text-destructive"> · {n.erro}</span> : null}
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/40 text-left text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2">Quando</th>
+                        <th className="px-3 py-2">Etapa</th>
+                        <th className="px-3 py-2">Canal</th>
+                        <th className="px-3 py-2">Situação</th>
+                        <th className="px-3 py-2">Retorno</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.notificacoes.map((n) => (
+                        <tr key={n.id} className="border-t" title={n.destino ? `Para ${n.destino}` : undefined}>
+                          <td className="whitespace-nowrap px-3 py-2">{dataHoraBR(n.enviado_em || n.criado_em)}</td>
+                          <td className="px-3 py-2">{ROTULO_ETAPA[n.etapa] || n.etapa}</td>
+                          <td className="px-3 py-2">{n.canal === "whatsapp" ? "WhatsApp" : "E-mail"}</td>
+                          <td className="px-3 py-2">
+                            <span className={n.status === "falhou" ? "text-destructive" : ""}>{ROTULO_STATUS_MSG[n.status] || n.status}</span>
+                            {n.modo_teste && <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px]">teste</span>}
+                            {n.erro && <div className="text-destructive">{n.erro}</div>}
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {n.clicado_em ? `clicou ${dataHoraBR(n.clicado_em)}` : n.aberto_em ? `abriu ${dataHoraBR(n.aberto_em)}` : n.status_entrega || "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="text-xs text-muted-foreground">Reenviar</span>
+                <Select value={etapa} onValueChange={setEtapa}>
+                  <SelectTrigger className="h-8 w-52"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="notificado">Aviso</SelectItem>
+                    <SelectItem value="lembrete">Lembrete</SelectItem>
+                    <SelectItem value="cobranca_1">Cobrança 1</SelectItem>
+                    <SelectItem value="cobranca_2">Cobrança 2</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={canal} onValueChange={(v) => setCanal(v as "email" | "whatsapp")}>
+                  <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="email">por e-mail</SelectItem>
+                    <SelectItem value="whatsapp">por WhatsApp</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button size="sm" variant="outline" className="h-8" disabled={reenviar.isPending} onClick={() => reenviar.mutate()}>
+                  {reenviar.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1 h-3.5 w-3.5" />} Reenviar
+                </Button>
+              </div>
+            </section>
+
+            <Collapsible>
+              <CollapsibleTrigger className="group flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
+                <ChevronDown className="h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-180" />
+                Histórico ({data.eventos.length})
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto rounded-lg border p-2 text-xs">
+                  {data.eventos.map((e) => (
+                    <li key={e.id} className="flex gap-2">
+                      <span className="shrink-0 text-muted-foreground">{dataHoraBR(e.criado_em)}</span>
+                      <span>
+                        <b className="font-medium">{ROTULO_EVENTO[e.tipo] || e.tipo}</b>
+                        {resumoEvento(e) ? ` · ${resumoEvento(e)}` : ""}
+                      </span>
                     </li>
                   ))}
                 </ul>
-              )}
-              <div className="mt-2 flex flex-wrap gap-2">
-                {(["notificado", "lembrete", "cobranca_1"] as const).map((et) => (
-                  <Button key={et} size="sm" variant="outline" disabled={reenviar.isPending} onClick={() => reenviar.mutate({ etapa: et, canal: "email" })}>
-                    Reenviar {et} (e-mail)
-                  </Button>
-                ))}
-                {(["notificado", "lembrete", "cobranca_2"] as const).map((et) => (
-                  <Button key={`${et}-w`} size="sm" variant="outline" disabled={reenviar.isPending} onClick={() => reenviar.mutate({ etapa: et, canal: "whatsapp" })}>
-                    Reenviar {et} (WhatsApp)
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="font-medium">Guias geradas ({data.guias.length})</p>
-              <ul className="mt-1 space-y-1">
-                {data.guias.map((g) => (
-                  <li key={g.id}>
-                    {g.tipo} {g.periodo_apuracao} · pagar até {g.vencimento ? dataBR(`${g.vencimento.slice(0, 4)}-${g.vencimento.slice(4, 6)}-${g.vencimento.slice(6, 8)}`) : "—"} ·{" "}
-                    {brl(g.valor_total)} · {dataHoraBR(g.criado_em)} {g.reuso ? "(reaproveitada)" : ""}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <p className="font-medium">Trilha</p>
-              <ul className="mt-1 max-h-48 space-y-1 overflow-y-auto text-xs text-muted-foreground">
-                {data.eventos.map((e) => (
-                  <li key={e.id}>
-                    {dataHoraBR(e.criado_em)} · {e.tipo} {e.dados ? JSON.stringify(e.dados).slice(0, 160) : ""}
-                  </li>
-                ))}
-              </ul>
-            </div>
+              </CollapsibleContent>
+            </Collapsible>
           </div>
         )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PausarDialog({ alvo, onClose, onConfirmar }: { alvo: EcacCobrancaResumo | null; onClose: () => void; onConfirmar: (motivo: string) => void }) {
+  const [motivo, setMotivo] = useState("");
+  useEffect(() => setMotivo(""), [alvo]);
+  return (
+    <Dialog open={alvo !== null} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Pausar cobrança</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">{alvo?.name} não recebe mais mensagens automáticas até você retomar.</p>
+        <div className="space-y-1">
+          <Label htmlFor="motivo-pausa" className="text-xs">Motivo</Label>
+          <Input id="motivo-pausa" autoFocus value={motivo} placeholder="Em negociação, parcelando, cadastro errado…" onChange={(e) => setMotivo(e.target.value)} />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => onConfirmar(motivo.trim())}>Pausar</Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -371,6 +611,8 @@ const ImpostosEcacPage = () => {
   const qc = useQueryClient();
   const [somenteAbertas, setSomenteAbertas] = useState(true);
   const [detalhe, setDetalhe] = useState<number | null>(null);
+  const [busca, setBusca] = useState("");
+  const [pausarAlvo, setPausarAlvo] = useState<EcacCobrancaResumo | null>(null);
 
   const cfg = useQuery({ queryKey: ["admin-ecac-config"], queryFn: () => api.adminEcac.config() });
   const cobrancas = useQuery({
@@ -394,6 +636,18 @@ const ImpostosEcacPage = () => {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const lista = useMemo(() => cobrancas.data || [], [cobrancas.data]);
+  const filtradas = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    if (!q) return lista;
+    const dig = q.replace(/\D/g, "");
+    return lista.filter((c) => c.name.toLowerCase().includes(q) || (dig.length >= 3 && String(c.cnpj).replace(/\D/g, "").includes(dig)));
+  }, [lista, busca]);
+  const totalGeral = useMemo(() => lista.filter((c) => !c.encerrado_em).reduce((s, c) => s + (Number(c.total_atraso) || 0), 0), [lista]);
+  const liberadas = useMemo(() => lista.filter((c) => c.portal_liberado).length, [lista]);
+  const atencao = useMemo(() => lista.filter((c) => !c.encerrado_em && (c.estado === "respondeu" || c.estado === "escalado")).length, [lista]);
+  const hojeISO = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+
   const retomar = useMutation({
     mutationFn: (c: EcacCobrancaResumo) => api.adminEcac.retomar(c.company_id),
     onSuccess: () => {
@@ -412,106 +666,144 @@ const ImpostosEcacPage = () => {
         {cfg.data ? <ConfigCard cfg={cfg.data} /> : <p className="text-sm text-muted-foreground">Carregando configuração…</p>}
 
         <Card>
-          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-            <div>
-              <CardTitle>Cobranças</CardTitle>
-              <CardDescription>Uma por empresa e ciclo. Pausar vale para a empresa (em negociação, parcelando, cadastro a corrigir).</CardDescription>
+          <CardHeader className="space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <CardTitle>Cobranças</CardTitle>
+                <CardDescription>Uma por empresa e ciclo. Clique na empresa para ver os débitos e gerar a guia.</CardDescription>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <Switch checked={somenteAbertas} onCheckedChange={setSomenteAbertas} /> só abertas
+              </label>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <Switch checked={somenteAbertas} onCheckedChange={setSomenteAbertas} /> só abertas
-            </label>
+            {lista.length > 0 && (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <Stat rotulo="Cobranças" valor={lista.length} />
+                <Stat rotulo="Total em atraso" valor={brl(totalGeral)} destaque={totalGeral > 0} />
+                <Stat rotulo="Liberadas no portal" valor={liberadas} />
+                <Stat rotulo="Precisam de você" valor={atencao} destaque={atencao > 0} />
+              </div>
+            )}
+            <div className="relative max-w-sm">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por nome ou CNPJ" className="h-9 pl-8" />
+            </div>
           </CardHeader>
           <CardContent>
             {cobrancas.isLoading ? (
               <p className="text-sm text-muted-foreground">Carregando…</p>
-            ) : !cobrancas.data?.length ? (
+            ) : !lista.length ? (
               <p className="text-sm text-muted-foreground">Nenhuma cobrança{somenteAbertas ? " aberta" : ""}. Importe a carteira para começar.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-xs text-muted-foreground">
-                      <th className="py-2 pr-2">Empresa</th>
-                      <th className="py-2 pr-2">Ciclo</th>
-                      <th className="py-2 pr-2">Estado</th>
-                      <th className="py-2 pr-2 text-right">Atraso</th>
-                      <th className="py-2 pr-2">Msgs</th>
-                      <th className="py-2 pr-2">Sinais</th>
-                      <th className="py-2 pr-2">Próxima ação</th>
-                      <th className="py-2 pr-2"></th>
+                      <th className="py-2 pr-3">Empresa</th>
+                      <th className="py-2 pr-3">Situação</th>
+                      <th className="py-2 pr-3 text-right">Em atraso</th>
+                      <th className="py-2 pr-3">Contato</th>
+                      <th className="py-2 pr-3">Próxima ação</th>
+                      <th className="py-2"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {cobrancas.data.map((c) => (
-                      <tr key={c.id} className="border-b align-top">
-                        <td className="py-2 pr-2">
-                          <button className="text-left font-medium hover:underline" onClick={() => setDetalhe(c.id)}>
-                            {c.name}
-                          </button>
-                          <div className="text-xs text-muted-foreground">{c.cnpj} · {c.contact_email || "sem e-mail"}</div>
-                          {!c.ecac_cobranca_ativa && (
-                            <Badge variant="outline" className="mt-1 border-amber-400 text-amber-700">pausada{c.ecac_pausado_motivo ? `: ${c.ecac_pausado_motivo}` : ""}</Badge>
-                          )}
-                          {!c.alertas_ativos && <Badge variant="outline" className="mt-1">alertas desligados</Badge>}
-                        </td>
-                        <td className="py-2 pr-2">{c.ciclo}</td>
-                        <td className="py-2 pr-2">
-                          <span className={`rounded px-2 py-0.5 text-xs ${COR_ESTADO[c.estado] || ""}`}>{c.rotulo}</span>
-                          <div className="text-xs text-muted-foreground">desde {dataBR(c.estado_desde)}</div>
-                        </td>
-                        <td className="py-2 pr-2 text-right">
-                          {c.qtd_atraso} · {brl(c.total_atraso)}
-                        </td>
-                        <td className="py-2 pr-2 text-xs">
-                          {c.emails} e-mail · {c.whatsapps} wpp
-                          {Number(c.falhas) > 0 && <div className="text-destructive">{c.falhas} falha(s)</div>}
-                        </td>
-                        <td className="py-2 pr-2 text-xs">
-                          {c.ultimo_clique ? `clicou ${dataBR(c.ultimo_clique)}` : c.ultima_abertura ? `abriu ${dataBR(c.ultima_abertura)}` : "—"}
-                          {Number(c.guias) > 0 && <div>{c.guias} guia(s) gerada(s)</div>}
-                          {c.regeracoes > 0 && <div>{c.regeracoes} regeração(ões)</div>}
-                        </td>
-                        <td className="py-2 pr-2 text-xs">
-                          {c.encerrado_em ? c.encerrado_motivo || "encerrada" : `${c.proxima_acao || "—"} ${c.proxima_acao_em ? dataBR(c.proxima_acao_em) : ""}`}
-                        </td>
-                        <td className="py-2 pr-2">
-                          {c.estado === "respondeu" && !c.encerrado_em && (
-                            <Button size="sm" variant="outline" className="mr-1" title="Cliente respondeu no WhatsApp; retomar as mensagens automáticas" onClick={() => retomarCobranca.mutate(c)}>
-                              Retomar cobrança
-                            </Button>
-                          )}
-                          {c.ecac_cobranca_ativa ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              title="Pausar cobrança desta empresa"
-                              onClick={() => {
-                                const motivo = window.prompt("Motivo da pausa (em negociação, parcelando, cadastro errado…):", "");
-                                if (motivo !== null) pausar.mutate({ c, motivo });
-                              }}
-                            >
-                              <Pause className="h-4 w-4" />
-                            </Button>
-                          ) : (
-                            <Button size="sm" variant="ghost" title="Retomar" onClick={() => retomar.mutate(c)}>
-                              <Play className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {filtradas.map((c) => {
+                      const prox = proximaAcao(c.proxima_acao);
+                      const vencida = !c.encerrado_em && c.proxima_acao_em && c.proxima_acao_em.slice(0, 10) <= hojeISO;
+                      return (
+                        <tr key={c.id} className="cursor-pointer border-b align-top transition-colors hover:bg-muted/40" onClick={() => setDetalhe(c.id)}>
+                          <td className="py-3 pr-3">
+                            <p className="font-medium leading-tight">{c.name}</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {cnpjFmt(c.cnpj)} · {c.contact_email || "sem e-mail"}
+                            </p>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {c.portal_liberado && (
+                                <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">portal liberado</span>
+                              )}
+                              {!c.ecac_cobranca_ativa && (
+                                <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                                  pausada{c.ecac_pausado_motivo ? `: ${c.ecac_pausado_motivo}` : ""}
+                                </span>
+                              )}
+                              {!c.alertas_ativos && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px]">alertas desligados</span>}
+                            </div>
+                          </td>
+                          <td className="py-3 pr-3">
+                            <span className={`whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium ${COR_ESTADO[c.estado] || ""}`}>{c.rotulo}</span>
+                            <p className="mt-1 text-xs text-muted-foreground">desde {dataBR(c.estado_desde)} · ciclo {c.ciclo}</p>
+                          </td>
+                          <td className="py-3 pr-3 text-right">
+                            <p className="font-semibold tabular-nums">{brl(c.total_atraso)}</p>
+                            <p className="text-xs text-muted-foreground">{c.qtd_atraso} guia(s)</p>
+                          </td>
+                          <td className="whitespace-nowrap py-3 pr-3 text-xs">
+                            <p className="flex items-center gap-2">
+                              <span className="flex items-center gap-1"><Mail className="h-3.5 w-3.5" />{c.emails}</span>
+                              <span className="flex items-center gap-1"><MessageCircle className="h-3.5 w-3.5" />{c.whatsapps}</span>
+                            </p>
+                            <p className="mt-0.5 text-muted-foreground">
+                              {c.ultimo_clique ? `clicou ${dataBR(c.ultimo_clique)}` : c.ultima_abertura ? `abriu ${dataBR(c.ultima_abertura)}` : "sem retorno"}
+                            </p>
+                            {Number(c.falhas) > 0 && <p className="text-destructive">{c.falhas} falha(s)</p>}
+                            {Number(c.guias) > 0 && <p className="text-emerald-600 dark:text-emerald-400">{c.guias} guia(s) gerada(s)</p>}
+                          </td>
+                          <td className="py-3 pr-3 text-xs">
+                            {c.encerrado_em ? (
+                              <span className="text-muted-foreground">{c.encerrado_motivo || "encerrada"}</span>
+                            ) : (
+                              <>
+                                <p className="font-medium">{prox.acao}</p>
+                                <p className={vencida ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}>
+                                  {c.proxima_acao_em ? dataBR(c.proxima_acao_em) : "—"}
+                                  {prox.obs ? ` · ${prox.obs}` : ""}
+                                </p>
+                              </>
+                            )}
+                          </td>
+                          <td className="py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1">
+                              {c.estado === "respondeu" && !c.encerrado_em && (
+                                <Button size="sm" variant="outline" className="h-8" title="Cliente respondeu no WhatsApp; retomar as mensagens automáticas" onClick={() => retomarCobranca.mutate(c)}>
+                                  Retomar
+                                </Button>
+                              )}
+                              {c.ecac_cobranca_ativa ? (
+                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Pausar cobrança desta empresa" onClick={() => setPausarAlvo(c)}>
+                                  <Pause className="h-4 w-4" />
+                                </Button>
+                              ) : (
+                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Retomar cobrança desta empresa" onClick={() => retomar.mutate(c)}>
+                                  <Play className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
+                {filtradas.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma empresa encontrada para “{busca}”.</p>}
               </div>
             )}
             <p className="mt-3 flex items-start gap-2 text-xs text-muted-foreground">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              Escalado = aviso, lembrete e duas cobranças sem retorno: precisa de contato humano. Quitado = relatório novo sem débito.
+              Precisam de você = cliente respondeu ou escalado (aviso, lembrete e duas cobranças sem retorno). Quitado = relatório novo sem débito.
             </p>
           </CardContent>
         </Card>
       </div>
       <DetalheDialog id={detalhe} onClose={() => setDetalhe(null)} />
+      <PausarDialog
+        alvo={pausarAlvo}
+        onClose={() => setPausarAlvo(null)}
+        onConfirmar={(motivo) => {
+          if (pausarAlvo) pausar.mutate({ c: pausarAlvo, motivo });
+          setPausarAlvo(null);
+        }}
+      />
     </AdminLayout>
   );
 };

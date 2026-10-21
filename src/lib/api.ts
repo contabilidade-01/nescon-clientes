@@ -3196,6 +3196,8 @@ export interface EcacCobrancaResumo {
   ultimo_clique: string | null;
   ultima_abertura: string | null;
   falhas: number | string;
+  /** Empresa com "Impostos em aberto (e-CAC)" liberado no portal (fase de teste). */
+  portal_liberado: boolean;
 }
 
 export interface EcacNotificacao {
