@@ -235,7 +235,7 @@ const AppRoutes = () => (
     <Route path="/atestados" element={<CompanyToolRoute tool="certificates"><CertificatesPage /></CompanyToolRoute>} />
     {/* Portal do Cliente: entregas da contabilidade */}
     <Route path="/guias" element={<CompanyToolRoute tool="fiscal_guides"><GuiasFiscaisPage /></CompanyToolRoute>} />
-    <Route path="/impostos-pendentes" element={<CompanyToolRoute tool="fiscal_guides"><ImpostosPendentesPage /></CompanyToolRoute>} />
+    <Route path="/impostos-pendentes" element={<CompanyToolRoute tool="impostos_ecac"><ImpostosPendentesPage /></CompanyToolRoute>} />
     <Route path="/boletos" element={<CompanyToolRoute tool="boletos"><BoletosPage /></CompanyToolRoute>} />
     <Route path="/folha" element={<CompanyToolRoute tool="payroll_files"><FolhaPage /></CompanyToolRoute>} />
     <Route path="/custo-folha" element={<CompanyToolRoute tool="payroll_files"><CustoFolhaPage /></CompanyToolRoute>} />

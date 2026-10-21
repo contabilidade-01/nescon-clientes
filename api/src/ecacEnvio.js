@@ -50,7 +50,7 @@ function podeEnviarAgora() {
 async function carregarEmpresa(db, companyId) {
   const { rows } = await db.query(
     `SELECT c.id, c.name, c.cnpj, c.contact_email, c.alertas_ativos, c.avisos_gerais_ativos,
-            c.ecac_cobranca_ativa, c.arquivada, c.excluida, ${whatsappSql("c")} AS whatsapp
+            c.ecac_cobranca_ativa, c.tool_access, c.arquivada, c.excluida, ${whatsappSql("c")} AS whatsapp
        FROM companies c ${JOIN_ESPELHO}
       WHERE c.id = $1`,
     [companyId]
@@ -65,6 +65,10 @@ function motivoBloqueio(empresa) {
   if (empresa.alertas_ativos === false) return "alertas desligados para a empresa (chave geral)";
   if (empresa.avisos_gerais_ativos === false) return "avisos gerais desligados para a empresa";
   if (empresa.ecac_cobranca_ativa === false) return "cobrança do e-CAC pausada para a empresa";
+  // As mensagens mandam o cliente gerar a guia no portal: só vão para quem tem a tela
+  // liberada (fase de teste). As demais ficam no painel para o escritório emitir.
+  const ta = empresa.tool_access && typeof empresa.tool_access === "object" ? empresa.tool_access : {};
+  if (ta.impostos_ecac !== true) return "Impostos em aberto não liberado no portal desta empresa";
   return null;
 }
 

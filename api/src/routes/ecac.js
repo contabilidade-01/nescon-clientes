@@ -44,7 +44,8 @@ router.get("/abriu/:token.gif", async (req, res) => {
 
 // ------------------------------------------------------------- autenticadas
 router.use(authMiddleware);
-router.use(requireCompanyTool("fiscal_guides"));
+// Fase de teste: só empresas liberadas pelo escritório (admin passa direto).
+router.use(requireCompanyTool("impostos_ecac"));
 
 /** A empresa do pedido: SEMPRE a do token; admin informa company_id e a empresa vem do banco. */
 async function empresaDoPedido(req) {

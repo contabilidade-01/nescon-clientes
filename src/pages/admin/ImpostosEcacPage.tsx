@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { api, type EcacCobrancaResumo, type EcacConfig } from "@/lib/api";
+import { api, type EcacCobrancaResumo, type EcacConfig, type EcacDebito } from "@/lib/api";
 
 function brl(v: number | string | null | undefined) {
   return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -203,6 +203,56 @@ function ConfigCard({ cfg }: { cfg: EcacConfig }) {
   );
 }
 
+function amanhaISO() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function baixarBlob(blob: Blob, nome: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nome;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+/**
+ * Escritório gera a guia atualizada de QUALQUER empresa (liberada ou não no portal).
+ * Usa a mesma rota do cliente com company_id: mesmas travas lá no central-ecac
+ * (reaproveita guia válida, teto mensal, limite diário) — chamada paga só quando precisa.
+ */
+function GerarGuiaAdmin({ companyId, d, onGerada }: { companyId: string; d: EcacDebito; onGerada: () => void }) {
+  const [data, setData] = useState(amanhaISO());
+  const tipo = String(d.tipo).toUpperCase() === "MEI" ? "MEI" : "SN";
+  const gerar = useMutation({
+    mutationFn: () =>
+      api.ecac.gerarGuia({ tipo, periodo_apuracao: d.periodo_aaaamm || "", data_pagamento: data, company_id: companyId }),
+    onSuccess: async (r) => {
+      toast.success(r.reuso ? "Guia já emitida — reaproveitada sem custo." : "Guia gerada.");
+      onGerada();
+      try {
+        const blob = await api.ecac.baixarGuia(r.guia.id, companyId);
+        baixarBlob(blob, `${r.guia.tipo}_${r.guia.periodo_apuracao}.pdf`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Não foi possível baixar o PDF.");
+      }
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <span className="ml-2 inline-flex items-center gap-1">
+      <Input type="date" value={data} min={amanhaISO()} onChange={(e) => setData(e.target.value)} className="h-7 w-36 text-xs" />
+      <Button size="sm" variant="outline" className="h-7" disabled={gerar.isPending || !data} onClick={() => gerar.mutate()}>
+        {gerar.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Gerar guia"}
+      </Button>
+    </span>
+  );
+}
+
 function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void }) {
   const qc = useQueryClient();
   const { data } = useQuery({
@@ -236,8 +286,17 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
               <p className="font-medium">Em atraso</p>
               <ul className="mt-1 space-y-1">
                 {data.em_atraso.map((d, i) => (
-                  <li key={i}>
+                  <li key={i} className="flex flex-wrap items-center">
                     {d.tipo} {d.periodo_apuracao} · venc. {dataBR(d.data_vencimento)} · {brl(d.saldo_devedor_total)}
+                    {d.recalculo_disponivel && d.periodo_aaaamm ? (
+                      <GerarGuiaAdmin
+                        companyId={data.company_id}
+                        d={d}
+                        onGerada={() => qc.invalidateQueries({ queryKey: ["admin-ecac-cobranca", id] })}
+                      />
+                    ) : (
+                      <span className="ml-2 text-xs text-muted-foreground">(sem recálculo pela API — emitir manual)</span>
+                    )}
                   </li>
                 ))}
               </ul>
