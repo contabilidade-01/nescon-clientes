@@ -25,6 +25,11 @@ central-ecac (dia 25, lote pago)  ──▶  espelho ecac_pendencias (importaç�
   `max_regeracoes` por ciclo. Quem não recalculou recebe lembrete.
 * **Teto de mensagens** por canal por ciclo, janela 08–19h em dia útil, lista de
   permitidos e teto/hora do WhatsApp — os mesmos dos alertas.
+* **Fase de teste — liberação por empresa** (`tool_access.impostos_ecac`, nasce
+  desligado): só a empresa liberada em Admin → Empresas → Ferramentas vê a tela
+  "Impostos em aberto", gera a guia e recebe as mensagens de cobrança (que mandam gerar
+  a guia no portal). As demais continuam no painel `/admin/impostos-ecac`, onde o
+  escritório gera a guia de qualquer empresa (mesma rota, `company_id`, mesmas travas).
 * **Pausa por empresa** (`companies.ecac_cobranca_ativa`) para negociação, parcelamento
   ou cadastro a corrigir. Abaixo de `alertas_ativos`.
 

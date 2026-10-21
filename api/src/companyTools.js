@@ -24,6 +24,10 @@ const DEFAULT_TOOL_ACCESS = {
   // Planejador de escalas (fim da 6x1). Nasce DESLIGADO: o escritório simula pelo painel
   // e só libera ao cliente quando decidir (ver docs/PLANO-ESCALA-6X1.md).
   escalas: false,
+  // Impostos em aberto no e-CAC + guia atualizada pelo próprio cliente. Nasce DESLIGADO
+  // (fase de teste): o escritório liga por empresa. Admin gera para qualquer empresa
+  // pelo painel Impostos e-CAC (ver docs/IMPOSTOS-ECAC.md).
+  impostos_ecac: false,
 };
 
 /**
@@ -47,6 +51,7 @@ const PORTAL_ONLY_TOOL_ACCESS = {
   certificates: false,
   history: false,
   escalas: false,
+  impostos_ecac: false,
 };
 
 function mergeToolAccess(raw) {

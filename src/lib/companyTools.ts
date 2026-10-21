@@ -18,6 +18,8 @@ export const COMPANY_TOOL_KEYS = [
   "history",
   // Planejador de escalas (fim da 6x1)
   "escalas",
+  // Impostos em aberto no e-CAC (fase de teste, liberado por empresa)
+  "impostos_ecac",
 ] as const;
 
 export type CompanyToolKey = (typeof COMPANY_TOOL_KEYS)[number];
@@ -47,6 +49,11 @@ export const COMPANY_TOOL_LABELS: Record<
   fiscal_guides: {
     title: "Guias fiscais",
     description: "INSS, FGTS, Simples Nacional e demais tributos",
+    group: "financeiro",
+  },
+  impostos_ecac: {
+    title: "Impostos em aberto (e-CAC) — teste",
+    description: "Débitos da Receita e guia atualizada gerada pelo cliente (DAS Simples/MEI)",
     group: "financeiro",
   },
   boletos: {
@@ -98,9 +105,9 @@ export const COMPANY_TOOL_LABELS: Record<
 
 /**
  * Ferramentas que nascem DESLIGADAS: só aparecem ao cliente depois que o escritório
- * liga na empresa. Espelho de api/src/companyTools.js (escalas: false).
+ * liga na empresa. Espelho de api/src/companyTools.js (escalas e impostos_ecac: false).
  */
-const OPT_IN_TOOLS: ReadonlySet<CompanyToolKey> = new Set(["escalas"]);
+const OPT_IN_TOOLS: ReadonlySet<CompanyToolKey> = new Set(["escalas", "impostos_ecac"]);
 
 export function defaultToolAccess(): CompanyToolAccess {
   return COMPANY_TOOL_KEYS.reduce((acc, key) => {
