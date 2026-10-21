@@ -12,7 +12,8 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { api, type EcacCobrancaResumo, type EcacConfig, type EcacDebito, type EcacGuia } from "@/lib/api";
+import { api, type EcacCobrancaResumo, type EcacConfig, type EcacGuia } from "@/lib/api";
+import { agruparDebitos, mesAno, rotuloDebito, TIPOS_PARCELA, type DebitoTela } from "@/lib/ecacDebitos";
 
 function brl(v: number | string | null | undefined) {
   return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -343,9 +344,9 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
   // cliente com company_id: mesmas travas no central-ecac (reaproveita guia válida, teto,
   // limite diário) — chamada paga só quando precisa.
   const gerar = useMutation({
-    mutationFn: (d: EcacDebito) =>
+    mutationFn: (d: DebitoTela) =>
       api.ecac.gerarGuia({
-        tipo: String(d.tipo).toUpperCase() === "MEI" ? "MEI" : "SN",
+        tipo: d.tipo_guia || "SN",
         periodo_apuracao: d.periodo_aaaamm || "",
         data_pagamento: dataPg,
         company_id: data?.company_id,
@@ -376,6 +377,7 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
     if (!guiaPorDebito.has(k)) guiaPorDebito.set(k, g); // lista vem da mais nova para a mais antiga
   }
   const prox = proximaAcao(data?.proxima_acao);
+  const linhas = agruparDebitos(data?.em_atraso || []);
 
   return (
     <Dialog open={id !== null} onOpenChange={(o) => !o && onClose()}>
@@ -402,7 +404,7 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
             </div>
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Stat rotulo="Guias em atraso" valor={data.em_atraso.length} />
+              <Stat rotulo="Guias em atraso" valor={linhas.length} />
               <Stat rotulo="Total no relatório" valor={brl(data.total_atraso)} destaque={Number(data.total_atraso) > 0} />
               <Stat rotulo="Relatório da Receita" valor={dataBR(data.relatorio_data)} />
               <Stat
@@ -440,13 +442,18 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
                     </tr>
                   </thead>
                   <tbody>
-                    {data.em_atraso.map((d, i) => {
-                      const k = chaveGuia(d.tipo, d.periodo_aaaamm);
+                    {linhas.map((d, i) => {
+                      const k = chaveGuia(d.tipo_guia || d.tipo, d.periodo_aaaamm);
                       const g = guiaPorDebito.get(k);
-                      const pode = d.recalculo_disponivel && d.periodo_aaaamm;
+                      const pode = d.tipo_guia && d.recalculo_disponivel && d.periodo_aaaamm;
                       return (
                         <tr key={i} className="border-t">
-                          <td className="px-3 py-2 font-medium">{d.tipo === "SN" ? "DAS Simples" : d.tipo === "MEI" ? "DAS MEI" : d.receita || d.tipo}</td>
+                          <td className="px-3 py-2">
+                            <p className="font-medium">{rotuloDebito(d)}</p>
+                            {d.codigos.length > 0 && (
+                              <p className="text-xs text-muted-foreground">{d.codigos.join(" + ")}</p>
+                            )}
+                          </td>
                           <td className="px-3 py-2">{d.periodo_apuracao}</td>
                           <td className="px-3 py-2">{dataBR(d.data_vencimento)}</td>
                           <td className="px-3 py-2 text-right tabular-nums">{brl(d.saldo_devedor_total)}</td>
@@ -468,7 +475,7 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
                                     gerar.mutate(d);
                                   }}
                                 >
-                                  {gerando === k ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : g ? "Gerar de novo" : "Gerar guia"}
+                                  {gerando === k ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : g ? "Gerar de novo" : d.tipo_guia === "DCTFWEB" ? "Gerar DARF" : "Gerar guia"}
                                 </Button>
                               ) : (
                                 <span className="text-xs text-muted-foreground">emitir manualmente</span>
@@ -490,13 +497,27 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
                   {data.invalidos.map((d) => `${d.receita} ${d.periodo_apuracao}`).join("; ")}
                 </p>
               )}
-              {(data.parcelamento || data.pgfn) && (
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs">
-                  {data.parcelamento && <p>Parcelamento: {data.parcelamento}</p>}
-                  {data.pgfn && <p>PGFN: {data.pgfn}</p>}
-                </div>
-              )}
             </section>
+
+            <ParcelasSecao
+              companyId={data.company_id}
+              parcelamento={data.parcelamento}
+              guias={data.guias}
+              onGerada={atualizar}
+            />
+
+            {data.pgfn && (
+              <section className="space-y-1">
+                <h3 className="font-semibold">Dívida ativa (PGFN)</h3>
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs">
+                  <p>{data.pgfn}</p>
+                  <p className="mt-1 text-muted-foreground">
+                    A PGFN (SISPAR) não faz parte da API da Receita que o sistema usa: emita a guia no{" "}
+                    <a className="underline" href="https://www.regularize.pgfn.gov.br/" target="_blank" rel="noreferrer">Regularize</a>.
+                  </p>
+                </div>
+              </section>
+            )}
 
             <section className="space-y-2">
               <h3 className="font-semibold">Mensagens ({data.notificacoes.length})</h3>
@@ -581,6 +602,162 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Parcelas de parcelamento (Simples/MEI, PERT, RELP). Consultar é chamada paga — a do dia
+ * fica guardada no central-ecac e é reaproveitada sem custo. Emitir só aceita parcela que
+ * consta na última consulta. A Receita calcula a parcela para o mês da emissão (sem data).
+ */
+function ParcelasSecao({ companyId, parcelamento, guias, onGerada }: {
+  companyId: string;
+  parcelamento: string | null;
+  guias: EcacGuia[];
+  onGerada: () => void;
+}) {
+  const sugestao = /\bMEI\b|SIMEI/i.test(parcelamento || "") ? "PARC_MEI" : "PARC_SN";
+  const [tipo, setTipo] = useState(sugestao);
+  const [aberto, setAberto] = useState(Boolean(parcelamento));
+  const [gerando, setGerando] = useState<string | null>(null);
+  useEffect(() => {
+    setTipo(sugestao);
+    setAberto(Boolean(parcelamento));
+  }, [companyId, sugestao, parcelamento]);
+
+  const qc = useQueryClient();
+  const chave = ["admin-ecac-parcelas", companyId, tipo];
+  const consulta = useQuery({ queryKey: chave, queryFn: () => api.adminEcac.parcelas(companyId, tipo), enabled: aberto });
+  const consultar = useMutation({
+    mutationFn: (forcar: boolean) => api.adminEcac.consultarParcelas(companyId, tipo, forcar),
+    onSuccess: (r) => {
+      qc.setQueryData(chave, r);
+      toast.success(r.reuso ? "Consulta de hoje reaproveitada (sem custo)." : `${r.parcelas.length} parcela(s) disponível(is).`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const gerar = useMutation({
+    mutationFn: (parcela: string) => api.ecac.gerarGuia({ tipo, periodo_apuracao: parcela, company_id: companyId }),
+    onSuccess: async (r) => {
+      toast.success(r.reuso ? "DAS da parcela já emitido hoje — reaproveitado sem custo." : "DAS da parcela gerado.");
+      onGerada();
+      try {
+        baixarBlob(await api.ecac.baixarGuia(r.guia.id, companyId), `${tipo}_${r.guia.periodo_apuracao}.pdf`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Não foi possível baixar o PDF.");
+      }
+    },
+    onError: (e: Error) => toast.error(e.message),
+    onSettled: () => setGerando(null),
+  });
+  const baixar = useMutation({
+    mutationFn: (g: EcacGuia) => api.ecac.baixarGuia(g.id, companyId).then((b) => ({ b, g })),
+    onSuccess: ({ b, g }) => baixarBlob(b, `${g.tipo}_${g.periodo_apuracao}.pdf`),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const c = consulta.data;
+  const guiaDaParcela = (parcela: string) => guias.find((g) => chaveGuia(g.tipo, g.periodo_apuracao) === chaveGuia(tipo, parcela));
+
+  if (!aberto) {
+    return (
+      <button className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline" onClick={() => setAberto(true)}>
+        Parcelamentos da Receita (Simples/MEI, PERT, RELP)…
+      </button>
+    );
+  }
+
+  return (
+    <section className="space-y-2">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <h3 className="font-semibold">Parcelamento</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={tipo} onValueChange={setTipo}>
+            <SelectTrigger className="h-8 w-72"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {TIPOS_PARCELA.map((t) => (
+                <SelectItem key={t.valor} value={t.valor}>{t.rotulo}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {c?.consultado && c.hoje ? (
+            <Button size="sm" variant="ghost" className="h-8 text-xs" disabled={consultar.isPending} title="Nova consulta paga" onClick={() => consultar.mutate(true)}>
+              <RefreshCw className="mr-1 h-3.5 w-3.5" /> Consultar de novo
+            </Button>
+          ) : (
+            <Button size="sm" className="h-8" disabled={consultar.isPending || consulta.isLoading} onClick={() => consultar.mutate(false)}>
+              {consultar.isPending ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Search className="mr-1 h-3.5 w-3.5" />}
+              Consultar parcelas
+            </Button>
+          )}
+        </div>
+      </div>
+      {parcelamento && (
+        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs">{parcelamento}</p>
+      )}
+      {consulta.isLoading ? (
+        <p className="text-xs text-muted-foreground">Carregando…</p>
+      ) : !c?.consultado ? (
+        <p className="text-xs text-muted-foreground">
+          Ainda não consultado. A consulta é paga (cerca de R$ 0,24) e fica valendo o dia todo sem novo custo.
+        </p>
+      ) : (
+        <>
+          <p className="text-xs text-muted-foreground">
+            Consultado em {dataHoraBR(c.consultado_em)}{c.hoje ? "" : " — consulte de novo para ver a situação de hoje"}.
+            {c.mensagem ? ` Receita: ${c.mensagem}` : ""}
+          </p>
+          {c.parcelas.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma parcela para emitir neste tipo. Se o relatório mostra parcelamento, tente PERT ou RELP.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2">Parcela</th>
+                    <th className="px-3 py-2 text-right">Valor</th>
+                    <th className="px-3 py-2 text-right">DAS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {c.parcelas.map((p) => {
+                    const g = guiaDaParcela(p.parcela);
+                    return (
+                      <tr key={p.parcela} className="border-t">
+                        <td className="px-3 py-2 font-medium">{mesAno(p.parcela)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{p.valor != null ? brl(p.valor) : "—"}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center justify-end gap-2">
+                            {g && (
+                              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => baixar.mutate(g)}>
+                                <Download className="mr-1 h-3.5 w-3.5" /> {dataHoraBR(g.criado_em).slice(0, 10)}
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant={g ? "outline" : "default"}
+                              className="h-7 min-w-[96px] text-xs"
+                              disabled={gerar.isPending}
+                              onClick={() => {
+                                setGerando(p.parcela);
+                                gerar.mutate(p.parcela);
+                              }}
+                            >
+                              {gerando === p.parcela ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : g ? "Gerar de novo" : "Gerar DAS"}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">A Receita calcula a parcela (com juros, se atrasada) para o mês da emissão.</p>
+        </>
+      )}
+    </section>
   );
 }
 

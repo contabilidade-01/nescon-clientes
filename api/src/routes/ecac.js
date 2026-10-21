@@ -106,8 +106,13 @@ router.get("/pendencias", async (req, res) => {
 });
 
 /**
- * POST /api/ecac/guias  { tipo: 'SN'|'MEI', periodo_apuracao: 'AAAAMM', data_pagamento: 'AAAA-MM-DD' }
+ * POST /api/ecac/guias  { tipo: 'SN'|'MEI'|'DCTFWEB', periodo_apuracao: 'AAAAMM', data_pagamento: 'AAAA-MM-DD' }
  * Gera (ou reaproveita) a guia no central-ecac com o CNPJ DO TOKEN e registra o evento.
+ *
+ * DCTFWEB = débitos de INSS do relatório: UMA DARF por competência com todos os códigos
+ * (1082, 1099…), recalculada até a data de pagamento — como o e-CAC emite.
+ * Parcela de parcelamento (PARC_SN, PARC_MEI…): só o escritório; `periodo_apuracao` = parcela
+ * e o central-ecac exige que ela conste na última consulta de parcelas.
  */
 router.post("/guias", async (req, res) => {
   const { empresa, quem, erro } = await empresaDoPedido(req);
@@ -116,22 +121,26 @@ router.post("/guias", async (req, res) => {
   if (!cnpj) return res.status(400).json({ error: "Empresa sem CNPJ." });
 
   const tipo = String(req.body?.tipo || "SN").toUpperCase();
-  if (!["SN", "MEI"].includes(tipo)) {
-    return res.status(400).json({ error: "Pelo portal só é possível recalcular DAS do Simples Nacional e do MEI. Para INSS/DCTFWeb vencido, fale com o escritório." });
+  const ehParcela = ecac.TIPOS_PARCELA.includes(tipo);
+  if (!["SN", "MEI", "DCTFWEB"].includes(tipo) && !(ehParcela && req.isAdmin)) {
+    return res.status(400).json({ error: "Tipo de guia não disponível pelo portal. Fale com o escritório." });
   }
   const pa = regras.soDigitos(req.body?.periodo_apuracao);
   if (pa.length !== 6) return res.status(400).json({ error: "Competência inválida (AAAAMM)." });
-  const dataPg = String(req.body?.data_pagamento || "").slice(0, 10);
+  const dataPg = ehParcela ? "" : String(req.body?.data_pagamento || "").slice(0, 10);
   if (dataPg && !/^\d{4}-\d{2}-\d{2}$/.test(dataPg)) return res.status(400).json({ error: "Data de pagamento inválida." });
 
   // A competência pedida tem de estar no espelho da PRÓPRIA empresa: o cliente só gera
-  // guia do que a Receita mostra para ele.
-  const p = await ultimaPendencia(db, empresa.id);
-  const conhecida = (p?.debitos || []).some(
-    (d) => regras.vaiParaCliente(d) && d.periodo_aaaamm === pa && String(d.tipo).toUpperCase() === tipo
-  );
-  if (!conhecida) {
-    return res.status(400).json({ error: "Esta competência não consta no seu relatório da Receita. Fale com o escritório." });
+  // guia do que a Receita mostra para ele. (Parcela: conferida lá contra a consulta.)
+  if (!ehParcela) {
+    const tipoDebito = tipo === "DCTFWEB" ? "INSS" : tipo;
+    const p = await ultimaPendencia(db, empresa.id);
+    const conhecida = (p?.debitos || []).some(
+      (d) => regras.vaiParaCliente(d) && d.periodo_aaaamm === pa && String(d.tipo).toUpperCase() === tipoDebito
+    );
+    if (!conhecida) {
+      return res.status(400).json({ error: "Esta competência não consta no seu relatório da Receita. Fale com o escritório." });
+    }
   }
 
   try {
@@ -140,7 +149,7 @@ router.post("/guias", async (req, res) => {
       tipo,
       periodoApuracao: pa,
       dataConsolidacao: dataPg ? dataPg.replace(/-/g, "") : null,
-      origem: "portal",
+      origem: req.isAdmin ? "escritorio" : "portal",
       solicitadoPor: quem,
     });
     const guia = await cobranca.registrarGuiaGerada(db, { companyId: empresa.id, emissao: r.emissao, reuso: r.reuso, solicitadoPor: quem });

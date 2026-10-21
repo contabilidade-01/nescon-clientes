@@ -148,7 +148,27 @@ function reprocessar({ cnpj, diasUteis = 5, motivo = "recalculo_guia", origem = 
   });
 }
 
+/** Tipos de parcelamento que o central-ecac sabe consultar/emitir. */
+const TIPOS_PARCELA = ["PARC_SN", "PARC_MEI", "PERT_SN", "PERT_MEI", "RELP_SN", "RELP_MEI"];
+
+/** Última consulta de parcelas guardada lá — custo zero. */
+function parcelas(cnpj, tipo) {
+  return chamar(`/parcelas/${soDigitos(cnpj)}?tipo=${encodeURIComponent(tipo)}`, { timeoutMs: 15000 });
+}
+
+/** Consulta PAGA (a do dia é reaproveitada lá, sem custo). */
+function consultarParcelas({ cnpj, tipo, forcar = false, solicitadoPor = null }) {
+  return chamar("/parcelas/consultar", {
+    metodo: "POST",
+    timeoutMs: 90000,
+    corpo: { cnpj: soDigitos(cnpj), tipo, forcar: Boolean(forcar), solicitado_por: solicitadoPor },
+  });
+}
+
 module.exports = {
+  TIPOS_PARCELA,
+  parcelas,
+  consultarParcelas,
   configurado,
   ping,
   pendencias,
