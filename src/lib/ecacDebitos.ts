@@ -10,6 +10,13 @@ export interface DebitoTela extends EcacDebito {
   tipo_guia: "SN" | "MEI" | "DCTFWEB" | null;
   /** Códigos de receita somados nesta linha (só INSS agrupado). */
   codigos: string[];
+  /**
+   * Se o portal oferece "Gerar guia/DARF". Derivado do TIPO + competência — NÃO do
+   * `recalculo_disponivel` gravado no espelho: o espelho importado antes de o central-ecac
+   * liberar a DARF da DCTFWeb (INSS) guardou `false` e só mudaria com reimportação.
+   * O backend confere de novo (competência no espelho da própria empresa).
+   */
+  pode_gerar: boolean;
 }
 
 export function tipoGuia(d: EcacDebito): DebitoTela["tipo_guia"] {
@@ -17,6 +24,20 @@ export function tipoGuia(d: EcacDebito): DebitoTela["tipo_guia"] {
   if (t === "SN" || t === "MEI") return t;
   if (t === "INSS") return "DCTFWEB";
   return null;
+}
+
+/** Competência AAAAMM que a emissão aceita: mês 01–12 (DCTFWeb também 13 = 13º salário). */
+export function competenciaValida(aaaamm: string | null | undefined, tipo: DebitoTela["tipo_guia"]): boolean {
+  const m = /^(\d{4})(\d{2})$/.exec(String(aaaamm || ""));
+  if (!m) return false;
+  const mes = Number(m[2]);
+  return (mes >= 1 && mes <= 12) || (mes === 13 && tipo === "DCTFWEB");
+}
+
+/** Regra única de "pode gerar a guia pelo portal" — usada pelas três telas. */
+export function podeGerar(d: Pick<EcacDebito, "tipo" | "periodo_aaaamm">): boolean {
+  const tg = tipoGuia(d as EcacDebito);
+  return tg !== null && competenciaValida(d.periodo_aaaamm, tg);
 }
 
 export function agruparDebitos(debitos: EcacDebito[]): DebitoTela[] {
@@ -33,15 +54,14 @@ export function agruparDebitos(debitos: EcacDebito[]): DebitoTela[] {
         if (d.data_vencimento && (!atual.data_vencimento || d.data_vencimento < atual.data_vencimento)) {
           atual.data_vencimento = d.data_vencimento;
         }
-        atual.recalculo_disponivel = atual.recalculo_disponivel || d.recalculo_disponivel;
         continue;
       }
-      const novo: DebitoTela = { ...d, tipo_guia: tg, codigos: [d.receita] };
+      const novo: DebitoTela = { ...d, tipo_guia: tg, codigos: [d.receita], pode_gerar: podeGerar(d) };
       inss.set(d.periodo_aaaamm, novo);
       saida.push(novo);
       continue;
     }
-    saida.push({ ...d, tipo_guia: tg, codigos: [] });
+    saida.push({ ...d, tipo_guia: tg, codigos: [], pode_gerar: podeGerar(d) });
   }
   return saida;
 }

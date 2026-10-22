@@ -454,7 +454,7 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
                     {linhas.map((d, i) => {
                       const k = chaveGuia(d.tipo_guia || d.tipo, d.periodo_aaaamm);
                       const g = guiaPorDebito.get(k);
-                      const pode = d.tipo_guia && d.recalculo_disponivel && d.periodo_aaaamm;
+                      const pode = d.pode_gerar;
                       return (
                         <tr key={i} className="border-t">
                           <td className="px-3 py-2">

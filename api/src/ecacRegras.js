@@ -117,6 +117,20 @@ function vaiParaCliente(d) {
   return true;
 }
 
+/** Guia que o central-ecac emite por tipo de débito (espelha GUIA_POR_TIPO de lá). */
+const GUIA_POR_TIPO = Object.freeze({ SN: "SN", MEI: "MEI", INSS: "DCTFWEB" });
+
+/**
+ * `guia`/`recalculo_disponivel` recalculados pelo TIPO na hora de servir. O espelho guarda
+ * o JSON do dia da importação: o de 02/10 tem INSS com `recalculo_disponivel: false`
+ * (antes do desvio 19), e a tela mostraria "emitir manualmente" até reimportar.
+ */
+function normalizarDebito(d) {
+  if (!d) return d;
+  const guia = GUIA_POR_TIPO[String(d.tipo || "").toUpperCase()] || null;
+  return { ...d, guia, recalculo_disponivel: Boolean(guia) };
+}
+
 /**
  * Só o que pode ir para o cliente: válido, em atraso e com saldo em aberto (> 0) no
  * relatório, do mais antigo ao mais novo. Saldo zerado não é pendência: o central-ecac
@@ -126,12 +140,14 @@ function vaiParaCliente(d) {
 function debitosCobraveis(debitos) {
   return (Array.isArray(debitos) ? debitos : [])
     .filter((d) => vaiParaCliente(d) && d.em_atraso && Number(d.saldo_devedor_total) > 0)
+    .map(normalizarDebito)
     .sort((a, b) => String(a.data_vencimento || "").localeCompare(String(b.data_vencimento || "")));
 }
 
 function debitosAVencer(debitos) {
   return (Array.isArray(debitos) ? debitos : [])
     .filter((d) => vaiParaCliente(d) && !d.em_atraso)
+    .map(normalizarDebito)
     .sort((a, b) => String(a.data_vencimento || "").localeCompare(String(b.data_vencimento || "")));
 }
 
@@ -551,6 +567,8 @@ module.exports = {
   TIPOS_FORA_DO_CLIENTE,
   ETAPAS_COM_DEBITOS,
   vaiParaCliente,
+  GUIA_POR_TIPO,
+  normalizarDebito,
   debitosCobraveis,
   qtdCobravel,
   debitosAVencer,

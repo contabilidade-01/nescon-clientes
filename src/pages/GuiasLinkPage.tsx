@@ -142,7 +142,7 @@ const GuiasLinkPage = () => {
                     </Card>
                     {atraso.map((d) => {
                       const chave = `${d.tipo_guia}-${d.periodo_aaaamm}`;
-                      const pode = d.tipo_guia && d.recalculo_disponivel && d.periodo_aaaamm;
+                      const pode = d.pode_gerar;
                       return (
                         <Card key={chave + d.receita}>
                           <CardContent className="space-y-3 p-4">
