@@ -2655,6 +2655,26 @@ export const api = {
     },
   },
 
+  /** Tela de guias SEM SENHA (link do WhatsApp/e-mail) — escopo só guias da empresa. */
+  acesso: {
+    get: (token: string) => publicRequest<AcessoGuias>(`/acesso/${encodeURIComponent(token)}`),
+    gerar: (token: string, dados: { tipo: string; periodo_apuracao: string; data_pagamento?: string }) =>
+      publicRequest<{ ok: boolean; reuso: boolean; guia: EcacGuia }>(`/acesso/${encodeURIComponent(token)}/guias`, {
+        method: "POST",
+        body: JSON.stringify(dados),
+      }),
+    baixar: async (token: string, guiaId: number) => {
+      const res = await fetch(`${API_BASE}/acesso/${encodeURIComponent(token)}/guias/${guiaId}/pdf`);
+      if (!res.ok) {
+        const data = (await parseResponseJson<{ error?: string }>(res).catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      return res.blob();
+    },
+    /** Arquivo de guia do mês (rota pública de deliverables). */
+    arquivoUrl: (caminho: string) => `${API_BASE}${caminho.replace(/^\/api/, "")}`,
+  },
+
   /** Chat / Atendimento — lado do cliente. */
   chat: {
     conversations: () =>
@@ -3070,6 +3090,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ etapa, canal }),
       }),
+    revogarLinks: (companyId: string) =>
+      request<{ ok: boolean; revogados: number }>(`/admin/ecac/empresas/${companyId}/links/revogar`, { method: "POST", body: "{}" }),
     retomarCobranca: (id: number) => request<{ ok: boolean }>(`/admin/ecac/cobrancas/${id}/retomar`, { method: "POST", body: "{}" }),
     pausar: (companyId: string, motivo: string) =>
       request<{ ok: boolean }>(`/admin/ecac/empresas/${companyId}/pausar`, { method: "POST", body: JSON.stringify({ motivo }) }),
@@ -3249,6 +3271,34 @@ export interface EcacCobrancaDetalhe extends Omit<EcacCobrancaResumo, "guias"> {
   notificacoes: EcacNotificacao[];
   guias: EcacGuia[];
   eventos: Array<{ id: number; tipo: string; dados: Record<string, unknown> | null; criado_em: string }>;
+  links?: Array<{ id: number; origem: string; criado_em: string; expira_em: string; revogado_em: string | null; acessos: number; ultimo_acesso_em: string | null }>;
+}
+
+export interface AcessoGuias {
+  empresa: { name: string };
+  origem: "mensal" | "cobranca";
+  expira_em: string;
+  contato_whatsapp: string | null;
+  guias_mes: Array<{
+    doc_type: string | null;
+    title: string;
+    competencia: string | null;
+    due_date: string | null;
+    status: string;
+    arquivo_url: string;
+    /** venceu (e não está marcada como paga) */
+    vencida?: boolean;
+    /** só em vencida: em_aberto (consta no relatório da Receita) | sem_registro | sem_info */
+    situacao?: "em_aberto" | "sem_registro" | "sem_info";
+    debitos?: EcacDebito[];
+  }>;
+  /** pode gerar guia atualizada pelo link (cobrança ou empresa liberada no teste) */
+  recalculo_liberado?: boolean;
+  relatorio_data?: string | null;
+  em_atraso?: EcacDebito[];
+  guias_geradas?: EcacGuia[];
+  parcelamento?: string | null;
+  aviso_valores?: string;
 }
 
 export type CircularStatus = "rascunho" | "enviando" | "pausada" | "concluida";

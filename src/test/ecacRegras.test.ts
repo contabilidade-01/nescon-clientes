@@ -84,6 +84,12 @@ describe("MAED não vai para o cliente", () => {
     expect(vaiParaCliente(inss)).toBe(true);
   });
 
+  it("espelho antigo (INSS com recalculo_disponivel=false) sai normalizado pelo tipo", () => {
+    const [srv] = debitosCobraveis([{ ...inss, data_vencimento: "2026-07-20", em_atraso: true, valido: true, guia: null }]);
+    expect(srv.guia).toBe("DCTFWEB");
+    expect(srv.recalculo_disponivel).toBe(true);
+  });
+
   it("empresa só com MAED em atraso não abre cobrança", () => {
     const e = espelhoDaEmpresa({ ...empresaEcac, debitos: [maed, maed] })!;
     expect(e.qtd_atraso).toBe(0);

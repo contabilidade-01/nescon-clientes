@@ -14,6 +14,7 @@ const numeroWpp = require("./whatsappNumero");
 const { whatsappSql, JOIN_ESPELHO } = require("./alertas");
 const { enviarComRetry, sobOTeto, marcarEnviado } = require("./alertasEnvio");
 const { hojeSP, somarDias, minutosSP } = require("./diasBancarios");
+const acessoLinks = require("./acessoLinks");
 
 // Janela em que o aviso de documento pode sair NA HORA (horário comercial de Brasília).
 // Fora dela, o aviso é agendado para as 07:50 do DIA SEGUINTE — de propósito antes das
@@ -45,7 +46,7 @@ function mesclarDocumentos(...listas) {
   const mapa = new Map();
   for (const d of listas.flat()) {
     if (!d || !d.title) continue;
-    mapa.set(`${d.title}|${d.competencia ?? ""}`, { title: d.title, competencia: d.competencia ?? null });
+    mapa.set(`${d.title}|${d.competencia ?? ""}`, { title: d.title, competencia: d.competencia ?? null, guia: Boolean(d.guia) });
   }
   return [...mapa.values()];
 }
@@ -78,13 +79,28 @@ async function enfileirarDocNotify(db, companyId, documentos, enviarDia) {
   }
 }
 
-function montarTexto(nomeEmpresa, documentos) {
+/**
+ * Texto do aviso. Com guia (DAS, INSS, FGTS, parcelamento) e `linkGuias`, o link abre a
+ * tela de guias SEM SENHA (ver acessoLinks.js); folha e demais documentos continuam no
+ * portal, que pede login.
+ */
+function montarTexto(nomeEmpresa, documentos, linkGuias = null) {
   const plural = documentos.length > 1;
   const linhas = documentos
     .slice(0, 8)
     .map((d) => `• ${d.title}${d.competencia ? ` (${d.competencia})` : ""}`);
   const resto = documentos.length > 8 ? [`… e mais ${documentos.length - 8} documento(s).`] : [];
-  const link = portalUrl("/documentos");
+  const temGuia = documentos.some((d) => d.guia);
+  const temOutro = documentos.some((d) => !d.guia);
+  const portal = portalUrl("/documentos");
+
+  const acesso = [];
+  if (temGuia && linkGuias) {
+    acesso.push(`Baixe suas guias aqui (sem senha): ${linkGuias}`);
+    if (temOutro && portal) acesso.push(`Demais documentos no portal: ${portal}`);
+  } else if (portal) {
+    acesso.push(`Acesse: ${portal}`);
+  }
 
   return [
     `Olá! Cheg${plural ? "aram" : "ou"} novo${plural ? "s" : ""} documento${plural ? "s" : ""} no portal, ${nomeEmpresa}:`,
@@ -92,11 +108,21 @@ function montarTexto(nomeEmpresa, documentos) {
     ...linhas,
     ...resto,
     "",
-    link ? `Acesse: ${link}` : null,
+    ...acesso,
   ]
-    .filter((l) => l !== null)
     .join("\n")
     .trim();
+}
+
+/** Link sem senha das guias do mês, só se houver guia no aviso. Nunca lança. */
+async function linkDasGuias(db, companyId, documentos) {
+  if (!documentos.some((d) => d.guia)) return null;
+  try {
+    return acessoLinks.urlDoLink(await acessoLinks.obterOuCriar(db, { companyId, origem: "mensal" }));
+  } catch (err) {
+    console.error("[docNotify] link de guias:", err.message);
+    return null;
+  }
 }
 
 /**
@@ -142,7 +168,7 @@ async function notificarDocumentosNovos(db, companyId, documentos) {
       return { enviado: false, motivo: "teto de envios/hora atingido — não repete sozinho, sem fila de retry" };
     }
 
-    const texto = montarTexto(empresa.name, documentos);
+    const texto = montarTexto(empresa.name, documentos, await linkDasGuias(db, companyId, documentos));
     await enviarComRetry({ numero: v.numero, texto });
     marcarEnviado();
     return { enviado: true, numero: v.numero };
@@ -194,7 +220,8 @@ async function drenarDocNotify(db) {
     if (!sobOTeto()) break; // teto de hora: o resto fica para o próximo ciclo
 
     try {
-      await enviarComRetry({ numero: v.numero, texto: montarTexto(q.name, q.documentos) });
+      const docs = q.documentos || [];
+      await enviarComRetry({ numero: v.numero, texto: montarTexto(q.name, docs, await linkDasGuias(db, q.company_id, docs)) });
       marcarEnviado();
       enviados += 1;
       await fechar(q.id, "enviado", null);

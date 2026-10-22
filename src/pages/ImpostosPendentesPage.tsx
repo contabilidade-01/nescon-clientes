@@ -57,7 +57,7 @@ function baixarBlob(blob: Blob, nome: string) {
 
 function DebitoCard({ d, onGerar, gerando }: { d: DebitoTela; onGerar: (d: DebitoTela, data: string) => void; gerando: boolean }) {
   const [data, setData] = useState(amanhaISO());
-  const podeRecalcular = d.tipo_guia && d.recalculo_disponivel && d.periodo_aaaamm;
+  const podeRecalcular = d.pode_gerar;
   return (
     <div className="rounded-lg border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">

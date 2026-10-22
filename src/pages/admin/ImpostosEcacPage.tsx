@@ -365,6 +365,15 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
     onSettled: () => setGerando(null),
   });
 
+  const revogar = useMutation({
+    mutationFn: () => api.adminEcac.revogarLinks(data?.company_id as string),
+    onSuccess: (r) => {
+      toast.success(r.revogados ? `${r.revogados} link(s) cancelado(s).` : "Nenhum link ativo para cancelar.");
+      atualizar();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const baixar = useMutation({
     mutationFn: (g: EcacGuia) => api.ecac.baixarGuia(g.id, data?.company_id).then((b) => ({ b, g })),
     onSuccess: ({ b, g }) => baixarBlob(b, `${g.tipo}_${g.periodo_apuracao}.pdf`),
@@ -445,7 +454,7 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
                     {linhas.map((d, i) => {
                       const k = chaveGuia(d.tipo_guia || d.tipo, d.periodo_aaaamm);
                       const g = guiaPorDebito.get(k);
-                      const pode = d.tipo_guia && d.recalculo_disponivel && d.periodo_aaaamm;
+                      const pode = d.pode_gerar;
                       return (
                         <tr key={i} className="border-t">
                           <td className="px-3 py-2">
@@ -577,6 +586,46 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
                   {reenviar.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1 h-3.5 w-3.5" />} Reenviar
                 </Button>
               </div>
+            </section>
+
+            <section className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-semibold">Links sem senha</h3>
+                <Button size="sm" variant="ghost" className="h-8 text-xs" disabled={revogar.isPending || !(data.links || []).some((l) => !l.revogado_em && new Date(l.expira_em) > new Date())} onClick={() => revogar.mutate()}>
+                  <XCircle className="mr-1 h-3.5 w-3.5" /> Cancelar links ativos
+                </Button>
+              </div>
+              {(data.links || []).length === 0 ? (
+                <p className="text-xs text-muted-foreground">Nenhum link gerado ainda. O link é criado quando o cliente clica na mensagem ou recebe o aviso de guia do mês.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/40 text-left text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2">Origem</th>
+                        <th className="px-3 py-2">Criado</th>
+                        <th className="px-3 py-2">Vence</th>
+                        <th className="px-3 py-2">Acessos</th>
+                        <th className="px-3 py-2">Situação</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(data.links || []).map((l) => {
+                        const ativo = !l.revogado_em && new Date(l.expira_em) > new Date();
+                        return (
+                          <tr key={l.id} className="border-t">
+                            <td className="px-3 py-2">{l.origem === "cobranca" ? "Cobrança (recálculo)" : "Guias do mês"}</td>
+                            <td className="px-3 py-2">{dataHoraBR(l.criado_em)}</td>
+                            <td className="px-3 py-2">{dataHoraBR(l.expira_em).slice(0, 10)}</td>
+                            <td className="px-3 py-2">{l.acessos}{l.ultimo_acesso_em ? ` · último ${dataHoraBR(l.ultimo_acesso_em)}` : ""}</td>
+                            <td className="px-3 py-2">{l.revogado_em ? "cancelado" : ativo ? "ativo" : "vencido"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </section>
 
             <Collapsible>

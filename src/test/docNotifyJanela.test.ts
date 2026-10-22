@@ -45,8 +45,8 @@ describe("mesclarDocumentos — junta sem duplicar (título+competência)", () =
       { title: "", competencia: "x" },
     ];
     expect(mesclarDocumentos(a, b)).toEqual([
-      { title: "DAS", competencia: "2026-08" },
-      { title: "FGTS", competencia: "2026-08" },
+      { title: "DAS", competencia: "2026-08", guia: false },
+      { title: "FGTS", competencia: "2026-08", guia: false },
     ]);
   });
 });

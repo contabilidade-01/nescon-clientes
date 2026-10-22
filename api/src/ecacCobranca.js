@@ -366,7 +366,7 @@ async function registrarClique(db, token) {
     [token]
   );
   if (rows.length) await evento(db, rows[0].company_id, rows[0].cobranca_id, "link_clicado", { etapa: rows[0].etapa, canal: rows[0].canal });
-  return rows.length > 0;
+  return rows[0] || null; // { company_id, cobranca_id } — quem clicou abre o link sem senha
 }
 
 async function registrarAbertura(db, token) {
