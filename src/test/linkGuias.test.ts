@@ -37,3 +37,23 @@ describe("parcelamento como guia do mês", () => {
     expect(classificar("DAS Simples 09-2026.pdf").codigo).toBe("DAS");
   });
 });
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { situacaoVencida } = require("../../api/src/routes/acesso.js");
+
+describe("guia do mês vencida: situação vem do relatório da Receita", () => {
+  const das = { doc_type: "DAS", due_date: "2026-10-20" };
+  const deb = { tipo: "SN", data_vencimento: "2026-10-20", periodo_aaaamm: "202609" };
+  it("consta em atraso no relatório → em aberto (recalcula)", () => {
+    expect(situacaoVencida(das, { relatorio_data: "2026-10-26" }, [deb]).situacao).toBe("em_aberto");
+  });
+  it("relatório posterior ao vencimento sem débito → sem registro (provável pago)", () => {
+    expect(situacaoVencida(das, { relatorio_data: "2026-10-26" }, []).situacao).toBe("sem_registro");
+  });
+  it("relatório anterior ao vencimento → sem informação", () => {
+    expect(situacaoVencida(das, { relatorio_data: "2026-10-02" }, []).situacao).toBe("sem_info");
+  });
+  it("FGTS a Receita não informa → sem informação", () => {
+    expect(situacaoVencida({ doc_type: "FGTS", due_date: "2026-10-20" }, { relatorio_data: "2026-10-26" }, [deb]).situacao).toBe("sem_info");
+  });
+});

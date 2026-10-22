@@ -3279,7 +3279,21 @@ export interface AcessoGuias {
   origem: "mensal" | "cobranca";
   expira_em: string;
   contato_whatsapp: string | null;
-  guias_mes: Array<{ doc_type: string | null; title: string; competencia: string | null; due_date: string | null; status: string; arquivo_url: string }>;
+  guias_mes: Array<{
+    doc_type: string | null;
+    title: string;
+    competencia: string | null;
+    due_date: string | null;
+    status: string;
+    arquivo_url: string;
+    /** venceu (e não está marcada como paga) */
+    vencida?: boolean;
+    /** só em vencida: em_aberto (consta no relatório da Receita) | sem_registro | sem_info */
+    situacao?: "em_aberto" | "sem_registro" | "sem_info";
+    debitos?: EcacDebito[];
+  }>;
+  /** pode gerar guia atualizada pelo link (cobrança ou empresa liberada no teste) */
+  recalculo_liberado?: boolean;
   relatorio_data?: string | null;
   em_atraso?: EcacDebito[];
   guias_geradas?: EcacGuia[];

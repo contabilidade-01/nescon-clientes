@@ -6,7 +6,7 @@ import { AlertCircle, AlertTriangle, Building2, CheckCircle2, Download, FileText
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { api, type EcacGuia } from "@/lib/api";
+import { api, type AcessoGuias, type EcacGuia } from "@/lib/api";
 import { agruparDebitos, rotuloDebito, type DebitoTela } from "@/lib/ecacDebitos";
 import { competenciaLabel, dueText, dueTone, DUE_TONE_CLASS, formatDue } from "@/lib/deliverableDisplay";
 import { cn } from "@/lib/utils";
@@ -86,6 +86,76 @@ const GuiasLinkPage = () => {
   });
 
   const atraso = agruparDebitos(data?.em_atraso || []);
+
+  const falarEscritorio = data?.contato_whatsapp ? (
+    <Button asChild variant="outline" size="sm" className="w-full">
+      <a href={`https://wa.me/${data.contato_whatsapp}`} target="_blank" rel="noopener noreferrer">
+        <MessageCircle className="mr-1 h-4 w-4" /> Pedir a guia atualizada ao escritório
+      </a>
+    </Button>
+  ) : null;
+
+  /**
+   * Guia do mês vencida: não oferece a guia antiga (o banco recusa depois do vencimento).
+   * Se o relatório da Receita mostra o débito em aberto e a empresa tem o recálculo
+   * liberado, gera a guia atualizada aqui; senão, orienta a falar com o escritório.
+   */
+  const guiaVencida = (g: AcessoGuias["guias_mes"][number]) => {
+    const deb = agruparDebitos(g.debitos || [])[0];
+    if (g.situacao === "em_aberto" && deb) {
+      if (data?.origem === "cobranca") {
+        return <p className="text-sm text-muted-foreground">Venceu e consta em aberto na Receita — gere a guia atualizada em "Impostos em atraso", acima.</p>;
+      }
+      if (data?.recalculo_liberado && deb.pode_gerar) {
+        const chave = `mes-${deb.tipo_guia}-${deb.periodo_aaaamm}`;
+        return (
+          <div className="space-y-2">
+            <p className="text-sm">Venceu e consta em aberto na Receita ({brl(deb.saldo_devedor_total)} no relatório). Gere a guia atualizada:</p>
+            <Input type="date" value={dataPg} min={amanhaISO()} onChange={(e) => setDataPg(e.target.value)} aria-label="Data de pagamento" />
+            <Button
+              className="w-full"
+              size="lg"
+              disabled={gerar.isPending || !dataPg}
+              onClick={() => {
+                setGerando(chave);
+                gerar.mutate(deb);
+              }}
+            >
+              {gerando === chave ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <FileText className="mr-2 h-5 w-5" />}
+              Gerar guia para {dataBR(dataPg)}
+            </Button>
+          </div>
+        );
+      }
+      return (
+        <div className="space-y-2">
+          <p className="text-sm">Venceu e consta em aberto na Receita. Peça a guia atualizada ao escritório.</p>
+          {falarEscritorio}
+        </div>
+      );
+    }
+    if (g.situacao === "sem_registro") {
+      return (
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            Venceu. O relatório da Receita de {dataBR(String(data?.relatorio_data || "").slice(0, 10))} não mostra débito — se já pagou, está tudo certo. Se não pagou, peça a guia atualizada.
+          </p>
+          {falarEscritorio}
+        </div>
+      );
+    }
+    const fgts = String(g.doc_type || "").toUpperCase() === "FGTS";
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">
+          {fgts
+            ? "Venceu. A guia de FGTS atualizada sai pelo FGTS Digital — se ainda não pagou, peça ao escritório."
+            : "Venceu. Se ainda não pagou, peça a guia atualizada ao escritório."}
+        </p>
+        {falarEscritorio}
+      </div>
+    );
+  };
   const total = atraso.reduce((s, d) => s + (Number(d.saldo_devedor_total) || 0), 0);
 
   return (
@@ -178,21 +248,6 @@ const GuiasLinkPage = () => {
                     {data.aviso_valores && <p className="text-xs text-muted-foreground">{data.aviso_valores}</p>}
                   </>
                 )}
-                {(data.guias_geradas || []).length > 0 && (
-                  <div className="space-y-1 pt-1">
-                    <p className="text-xs font-medium text-muted-foreground">Guias que você já gerou</p>
-                    {(data.guias_geradas || []).map((g) => (
-                      <button
-                        key={g.id}
-                        className="flex w-full items-center justify-between rounded-lg border bg-card px-3 py-2 text-left text-sm hover:bg-muted/50"
-                        onClick={() => baixarGerada.mutate(g)}
-                      >
-                        <span>{g.tipo === "DCTFWEB" ? "DARF INSS" : g.tipo === "MEI" ? "DAS MEI" : "DAS"} · {g.periodo_apuracao.slice(4)}/{g.periodo_apuracao.slice(0, 4)} · pagar até {dataBR(g.vencimento)}</span>
-                        <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      </button>
-                    ))}
-                  </div>
-                )}
               </section>
             )}
 
@@ -221,16 +276,36 @@ const GuiasLinkPage = () => {
                           )}
                         </p>
                       </div>
-                      <Button asChild variant="outline" size="lg" className="w-full">
-                        <a href={api.acesso.arquivoUrl(g.arquivo_url)} target="_blank" rel="noopener noreferrer">
-                          <Download className="mr-2 h-5 w-5" /> Baixar guia
-                        </a>
-                      </Button>
+                      {!g.vencida ? (
+                        <Button asChild variant="outline" size="lg" className="w-full">
+                          <a href={api.acesso.arquivoUrl(g.arquivo_url)} target="_blank" rel="noopener noreferrer">
+                            <Download className="mr-2 h-5 w-5" /> Baixar guia
+                          </a>
+                        </Button>
+                      ) : (
+                        guiaVencida(g)
+                      )}
                     </CardContent>
                   </Card>
                 ))
               )}
             </section>
+
+            {(data.guias_geradas || []).length > 0 && (
+              <section className="space-y-1">
+                <h2 className="text-sm font-semibold">Guias que você já gerou</h2>
+                {(data.guias_geradas || []).map((g) => (
+                  <button
+                    key={g.id}
+                    className="flex w-full items-center justify-between rounded-lg border bg-card px-3 py-2 text-left text-sm hover:bg-muted/50"
+                    onClick={() => baixarGerada.mutate(g)}
+                  >
+                    <span>{g.tipo === "DCTFWEB" ? "DARF INSS" : g.tipo === "MEI" ? "DAS MEI" : "DAS"} · {g.periodo_apuracao.slice(4)}/{g.periodo_apuracao.slice(0, 4)} · pagar até {dataBR(g.vencimento)}</span>
+                    <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </button>
+                ))}
+              </section>
+            )}
 
             <div className="space-y-2 rounded-lg border bg-card p-4 text-center text-xs text-muted-foreground">
               <p>Não é a sua empresa ou ficou alguma dúvida? Fale com o escritório.</p>
