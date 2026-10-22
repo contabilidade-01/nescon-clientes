@@ -12,6 +12,8 @@
 const TIPOS = [
   { codigo: "FGTS", nome: "FGTS", matchers: "FGTS", ordem: 10, temVencimento: true },
   { codigo: "DCTF_WEB", nome: "INSS (DCTF Web)", matchers: "DCTF Web|DCTFWeb|DCTF-Web", ordem: 20, temVencimento: true },
+  // Antes do DAS: "DAS de Parcelamento" é parcela, não o DAS do mês.
+  { codigo: "PARCELAMENTO", nome: "Parcelamento", matchers: "Parcelamento|PARCSN|PARCMEI|PERT-SN|PERT SN|RELP", ordem: 30, temVencimento: true },
   { codigo: "DAS", nome: "DAS / Simples", matchers: "DAS Simples|DAS|Simples Nacional", ordem: 40, temVencimento: true },
   {
     codigo: "RECIBO_PAGTO",
@@ -49,6 +51,7 @@ const CATEGORIA_POR_TIPO = {
   FGTS: "guia",
   DCTF_WEB: "guia",
   DAS: "guia",
+  PARCELAMENTO: "guia",
   RECIBO_PAGTO: "folha",
   EXTRATO_FOLHA: "folha",
 };

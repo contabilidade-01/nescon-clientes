@@ -57,6 +57,7 @@ import ContratosPage from "./pages/admin/ContratosPage.tsx";
 import PropostasPage from "./pages/admin/PropostasPage.tsx";
 import GuiasFiscaisPage from "./pages/GuiasFiscaisPage.tsx";
 import ImpostosPendentesPage from "./pages/ImpostosPendentesPage.tsx";
+import GuiasLinkPage from "./pages/GuiasLinkPage.tsx";
 import ImpostosEcacPage from "./pages/admin/ImpostosEcacPage.tsx";
 import BoletosPage from "./pages/BoletosPage.tsx";
 import FolhaPage from "./pages/FolhaPage.tsx";
@@ -177,6 +178,8 @@ const AppRoutes = () => (
     <Route path="/reset-password" element={<ResetPasswordPage />} />
     {/* Link do WhatsApp: sem login, identificado por token opaco */}
     <Route path="/entrega/:token" element={<EntregaPublicaPage />} />
+    {/* Guias sem senha (link do WhatsApp/e-mail): escopo só guias da empresa */}
+    <Route path="/g/:token" element={<GuiasLinkPage />} />
     <Route path="/onboarding/:token" element={<OnboardingPublicoPage />} />
     {/* Calculadora pública de custo de contratação — sem login */}
     <Route path="/calculadora-custo" element={<CalculadoraCustoPage />} />

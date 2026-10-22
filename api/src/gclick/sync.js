@@ -332,7 +332,7 @@ async function sincronizar({
             // IRRF, INSS-GPS, ICMS, ISS, DARF avulso... — entra calado.
             if (avisaDocumentoNovo(r.docType, r.title)) {
               if (!novosPorEmpresa.has(companyId)) novosPorEmpresa.set(companyId, []);
-              novosPorEmpresa.get(companyId).push({ title: r.title, competencia: r.competencia });
+              novosPorEmpresa.get(companyId).push({ title: r.title, competencia: r.competencia, guia: categoriaDe(r.docType) === "guia" });
             }
           } else if (r.status === "atualizado") total.atualizados++;
           else if (r.status === "sem-mudanca") total.semMudanca++;

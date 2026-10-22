@@ -38,6 +38,7 @@ const { ensureDpDocsSchema } = require("./ensureDpDocsSchema");
 const { ensureCircularSchema } = require("./ensureCircularSchema");
 const { ensureEcacSchema } = require("./ensureEcacSchema");
 const { ensureGuiasMeiSchema } = require("./ensureGuiasMeiSchema");
+const { ensureAcessoLinksSchema } = require("./ensureAcessoLinksSchema");
 const { ensureContratosSchema } = require("./ensureContratosSchema");
 const { ensurePropostasSchema } = require("./ensurePropostasSchema");
 const { ensureOnboardingSchema } = require("./ensureOnboardingSchema");
@@ -149,6 +150,8 @@ app.use("/api/portal", require("./routes/portal"));
 // Impostos pendentes no e-CAC (portal do cliente) + rastreio público de link/pixel.
 // O CNPJ enviado ao central-ecac é SEMPRE o do token — ver routes/ecac.js.
 app.use("/api/ecac", require("./routes/ecac"));
+// Tela de guias SEM SENHA (link do WhatsApp/e-mail): escopo só guias — ver routes/acesso.js.
+app.use("/api/acesso", require("./routes/acesso"));
 app.use("/api/whatsapp", require("./routes/whatsappWebhook"));
 // Download público (token opaco) dos termos emitidos pelo assistente do WhatsApp.
 app.use("/api/dp-docs", require("./routes/dpDocs"));
@@ -216,6 +219,7 @@ async function start() {
     await ensureCircularSchema(db);
     await ensureEcacSchema(db);
     await ensureGuiasMeiSchema(db);
+    await ensureAcessoLinksSchema(db);
     await ensureContratosSchema(db);
     await ensurePropostasSchema(db);
     await ensureOnboardingSchema(db);

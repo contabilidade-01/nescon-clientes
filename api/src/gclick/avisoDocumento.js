@@ -13,7 +13,7 @@
  * anterior não pegava o IRRF; a allowlist pega tudo o que não for explicitamente liberado.
  *
  * Avisam:
- *   - Núcleo:  FGTS, DAS, INSS via DCTF Web
+ *   - Núcleo:  FGTS, DAS, INSS via DCTF Web, parcela de parcelamento
  *   - Folha:   recibo de pagamento, extrato da folha
  *   - Programação de Férias (não tem doc_type — reconhecida pelo título)
  * Boletos (Cora) avisam por caminho próprio (coraSync), fora deste filtro.
@@ -22,6 +22,7 @@ const DOC_TYPE_QUE_AVISA = new Set([
   "FGTS",
   "DAS",
   "DCTF_WEB",
+  "PARCELAMENTO",
   "RECIBO_PAGTO",
   "EXTRATO_FOLHA",
 ]);

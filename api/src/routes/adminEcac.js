@@ -16,6 +16,7 @@ const { lerConfig, salvarConfig } = require("../ecacConfig");
 const cobranca = require("../ecacCobranca");
 const envio = require("../ecacEnvio");
 const regras = require("../ecacRegras");
+const acessoLinks = require("../acessoLinks");
 
 router.use(authMiddleware);
 router.use(requireArea("alertas"));
@@ -142,6 +143,7 @@ router.get("/cobrancas/:id", async (req, res) => {
     );
     const { rows: guias } = await db.query(`SELECT * FROM ecac_guias WHERE cobranca_id = $1 ORDER BY criado_em DESC`, [id]);
     const { rows: eventos } = await db.query(`SELECT * FROM ecac_eventos WHERE cobranca_id = $1 ORDER BY criado_em DESC LIMIT 100`, [id]);
+    const links = await acessoLinks.listarDaEmpresa(db, cb.company_id);
     res.json({
       ...cb,
       rotulo: regras.ROTULO_ESTADO[cb.estado] || cb.estado,
@@ -151,6 +153,7 @@ router.get("/cobrancas/:id", async (req, res) => {
       notificacoes,
       guias,
       eventos,
+      links,
     });
   } catch (err) {
     console.error("[ecac-admin] cobrança:", err.message);
@@ -198,6 +201,18 @@ router.post("/empresas/:companyId/parcelas/consultar", async (req, res) => {
     res.json(await ecac.consultarParcelas({ cnpj, tipo, forcar: Boolean(req.body?.forcar), solicitadoPor: quem(req) }));
   } catch (err) {
     erroEcac(res, err, "consultar parcelas");
+  }
+});
+
+/** POST /empresas/:companyId/links/revogar — cancela os links sem senha ainda válidos. */
+router.post("/empresas/:companyId/links/revogar", async (req, res) => {
+  const { companyId } = req.params;
+  if (!validateUUID(companyId)) return res.status(400).json({ error: "company_id inválido" });
+  try {
+    res.json({ ok: true, revogados: await acessoLinks.revogarDaEmpresa(db, companyId, quem(req)) });
+  } catch (err) {
+    console.error("[ecac-admin] revogar links:", err.message);
+    res.status(500).json({ error: "Erro ao cancelar os links" });
   }
 });
 

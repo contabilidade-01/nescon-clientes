@@ -54,12 +54,13 @@ describe("ehProgramacaoFerias — tolerante a ordem e encoding", () => {
     expect(ehProgramacaoFerias("")).toBe(false);
   });
 
-  it("a allowlist de doc_type é exatamente núcleo + folha", () => {
+  it("a allowlist de doc_type é exatamente núcleo (com parcelamento) + folha", () => {
     expect([...DOC_TYPE_QUE_AVISA].sort()).toEqual([
       "DAS",
       "DCTF_WEB",
       "EXTRATO_FOLHA",
       "FGTS",
+      "PARCELAMENTO",
       "RECIBO_PAGTO",
     ]);
   });
