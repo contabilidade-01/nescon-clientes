@@ -5,6 +5,26 @@ emite guia e cobra o custo SERPRO. **Este portal** é o dono do cliente: contato
 opt-out, janela de envio, lista de números permitidos, histórico e a máquina de estados
 da cobrança. Nenhuma mensagem sai do central-ecac; nenhum contato é copiado para lá.
 
+## Revisão de 22/10/2026 (desvio 20) — alerta ao cliente é MANUAL
+
+* O motor (importação, etapas aviso → lembrete → cobranças) continua, mas **toda mensagem
+  automática vai só para o escritório** (e para a pessoa da equipe configurada na tela),
+  como lembrete. `modo_teste` é fixo em `true`; a chave antiga é ignorada. O link dessas
+  mensagens leva ao painel (clique do escritório não conta como clique do cliente).
+* **Confirmar pendências** (opcional, por empresa, no detalhe): `POST /api/admin/ecac/empresas/:id/confirmar`
+  → central-ecac refaz o relatório de situação fiscal NA HORA (~R$ 0,32; 2/dia; um por vez).
+  O painel acompanha em `GET .../confirmacao`; quando chega, o espelho é reimportado (custo
+  zero) e as cobranças abertas passam a usar o relatório confirmado.
+* **Enviar alerta ao cliente** (permissão `ecac_alerta_cliente`, o dono sempre tem):
+  `POST /api/admin/ecac/cobrancas/:id/alertar {canais}` — WhatsApp/e-mail com o texto do
+  aviso e um link sem senha **novo, válido por 7 dias** (`ecac_notificacoes.acesso_token`),
+  registrado com quem enviou (etapa `alerta-N`). Se o relatório não foi confirmado hoje, a
+  tela avisa antes; enviar mesmo assim é permitido.
+* **Guias do mês** (G-Click) seguem automáticas: "Chegou a guia no portal" com nome e
+  vencimento de cada guia e "Clique aqui para baixar o DAS, o INSS (DCTFWeb) e o FGTS".
+  O link vale até o vencimento mais distante + 7 dias; depois do vencimento a tela segue a
+  regra do relatório da Receita (recálculo só para empresa liberada no teste).
+
 ## Fluxo
 
 ```

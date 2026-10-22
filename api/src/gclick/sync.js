@@ -191,7 +191,7 @@ async function gravarGuia(guia, companyId, { historico = false } = {}) {
      crypto.randomBytes(24).toString("hex"), guia.respondidaEm || "",
      String(guia.atividadeId || ""), guia.numVersoes || 1, historico]
   );
-  return { status: "criado", title: titulo, competencia: guia.competencia || null, docType };
+  return { status: "criado", title: titulo, competencia: guia.competencia || null, docType, dueDate: dueDate || null };
 }
 
 /**
@@ -332,7 +332,10 @@ async function sincronizar({
             // IRRF, INSS-GPS, ICMS, ISS, DARF avulso... — entra calado.
             if (avisaDocumentoNovo(r.docType, r.title)) {
               if (!novosPorEmpresa.has(companyId)) novosPorEmpresa.set(companyId, []);
-              novosPorEmpresa.get(companyId).push({ title: r.title, competencia: r.competencia, guia: categoriaDe(r.docType) === "guia" });
+              novosPorEmpresa.get(companyId).push({
+                title: r.title, competencia: r.competencia, guia: categoriaDe(r.docType) === "guia",
+                docType: r.docType || null, vencimento: r.dueDate ? String(r.dueDate).slice(0, 10) : null,
+              });
             }
           } else if (r.status === "atualizado") total.atualizados++;
           else if (r.status === "sem-mudanca") total.semMudanca++;

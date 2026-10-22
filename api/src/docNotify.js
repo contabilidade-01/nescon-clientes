@@ -46,7 +46,13 @@ function mesclarDocumentos(...listas) {
   const mapa = new Map();
   for (const d of listas.flat()) {
     if (!d || !d.title) continue;
-    mapa.set(`${d.title}|${d.competencia ?? ""}`, { title: d.title, competencia: d.competencia ?? null, guia: Boolean(d.guia) });
+    mapa.set(`${d.title}|${d.competencia ?? ""}`, {
+      title: d.title,
+      competencia: d.competencia ?? null,
+      guia: Boolean(d.guia),
+      ...(d.docType ? { docType: d.docType } : {}),
+      ...(d.vencimento ? { vencimento: d.vencimento } : {}),
+    });
   }
   return [...mapa.values()];
 }
@@ -79,46 +85,78 @@ async function enfileirarDocNotify(db, companyId, documentos, enviarDia) {
   }
 }
 
+/** Nome de cada guia na mensagem (o cliente reconhece por estes nomes). */
+const NOME_GUIA = {
+  DAS: "DAS — Simples Nacional",
+  DCTF_WEB: "INSS (DCTFWeb)",
+  FGTS: "FGTS",
+  PARCELAMENTO: "Parcelamento",
+};
+const NOME_CURTO = { DAS: "o DAS", DCTF_WEB: "o INSS (DCTFWeb)", FGTS: "o FGTS", PARCELAMENTO: "a parcela" };
+
+function dataCurta(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+  return m ? `${m[3]}/${m[2]}` : null;
+}
+
+function juntarComE(itens) {
+  if (itens.length <= 1) return itens.join("");
+  return `${itens.slice(0, -1).join(", ")} e ${itens[itens.length - 1]}`;
+}
+
 /**
- * Texto do aviso. Com guia (DAS, INSS, FGTS, parcelamento) e `linkGuias`, o link abre a
- * tela de guias SEM SENHA (ver acessoLinks.js); folha e demais documentos continuam no
- * portal, que pede login.
+ * Texto do aviso. Com guia (DAS, INSS/DCTFWeb, FGTS, parcelamento) e `linkGuias`, cada guia
+ * aparece com o vencimento e o link abre a tela de guias (sem login — ver acessoLinks.js).
+ * Folha e demais documentos continuam no portal, que pede login.
  */
 function montarTexto(nomeEmpresa, documentos, linkGuias = null) {
-  const plural = documentos.length > 1;
-  const linhas = documentos
-    .slice(0, 8)
-    .map((d) => `• ${d.title}${d.competencia ? ` (${d.competencia})` : ""}`);
-  const resto = documentos.length > 8 ? [`… e mais ${documentos.length - 8} documento(s).`] : [];
-  const temGuia = documentos.some((d) => d.guia);
-  const temOutro = documentos.some((d) => !d.guia);
+  const guias = documentos.filter((d) => d.guia);
+  const outros = documentos.filter((d) => !d.guia);
   const portal = portalUrl("/documentos");
+  const linha = (d) => {
+    const nome = (d.docType && NOME_GUIA[d.docType]) || d.title;
+    const venc = dataCurta(d.vencimento);
+    // Sem a competência: a do G-Click é o mês de PAGAMENTO e confundiria (DAS de setembro
+    // apareceria como "outubro"). O vencimento é o que o cliente precisa.
+    return `• ${nome}${venc ? ` — vence ${venc}` : d.competencia ? ` (${d.competencia})` : ""}`;
+  };
+  const lista = [...guias.map(linha), ...outros.map((d) => `• ${d.title}${d.competencia ? ` (${d.competencia})` : ""}`)];
+  const linhas = lista.slice(0, 8);
+  const resto = lista.length > 8 ? [`… e mais ${lista.length - 8} documento(s).`] : [];
+
+  let abertura;
+  if (guias.length && !outros.length) abertura = `Olá! Cheg${guias.length > 1 ? "aram as guias" : "ou a guia"} no portal, ${nomeEmpresa}:`;
+  else {
+    const plural = documentos.length > 1;
+    abertura = `Olá! Cheg${plural ? "aram" : "ou"} novo${plural ? "s" : ""} documento${plural ? "s" : ""} no portal, ${nomeEmpresa}:`;
+  }
 
   const acesso = [];
-  if (temGuia && linkGuias) {
-    acesso.push(`Baixe suas guias aqui (sem senha): ${linkGuias}`);
-    if (temOutro && portal) acesso.push(`Demais documentos no portal: ${portal}`);
+  if (guias.length && linkGuias) {
+    const tipos = [...new Set(guias.map((d) => d.docType).filter((t) => NOME_CURTO[t]))].map((t) => NOME_CURTO[t]);
+    acesso.push(`Clique aqui para baixar ${tipos.length ? juntarComE(tipos) : "as guias"}: ${linkGuias}`);
+    if (outros.length && portal) acesso.push(`Demais documentos no portal: ${portal}`);
   } else if (portal) {
     acesso.push(`Acesse: ${portal}`);
   }
 
-  return [
-    `Olá! Cheg${plural ? "aram" : "ou"} novo${plural ? "s" : ""} documento${plural ? "s" : ""} no portal, ${nomeEmpresa}:`,
-    "",
-    ...linhas,
-    ...resto,
-    "",
-    ...acesso,
-  ]
-    .join("\n")
-    .trim();
+  return [abertura, "", ...linhas, ...resto, "", ...acesso].join("\n").trim();
 }
 
-/** Link sem senha das guias do mês, só se houver guia no aviso. Nunca lança. */
+/**
+ * Link das guias do mês, só se houver guia no aviso. Vale até o vencimento mais distante
+ * + 7 dias (depois do vencimento a tela orienta o recálculo); mínimo 7 dias. Nunca lança.
+ */
 async function linkDasGuias(db, companyId, documentos) {
-  if (!documentos.some((d) => d.guia)) return null;
+  const guias = documentos.filter((d) => d.guia);
+  if (!guias.length) return null;
   try {
-    return acessoLinks.urlDoLink(await acessoLinks.obterOuCriar(db, { companyId, origem: "mensal" }));
+    const hoje = new Date(`${hojeSP()}T12:00:00Z`).getTime();
+    const ultimoVenc = guias
+      .map((d) => (d.vencimento ? new Date(`${d.vencimento}T12:00:00Z`).getTime() : 0))
+      .reduce((a, b) => Math.max(a, b), 0);
+    const dias = Math.max(7, Math.ceil((ultimoVenc - hoje) / 86400000) + 7);
+    return acessoLinks.urlDoLink(await acessoLinks.obterOuCriar(db, { companyId, origem: "mensal", dias }));
   } catch (err) {
     console.error("[docNotify] link de guias:", err.message);
     return null;

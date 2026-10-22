@@ -87,8 +87,8 @@ function ConfigCard({ cfg }: { cfg: EcacConfig }) {
       <CardHeader>
         <CardTitle>Configuração</CardTitle>
         <CardDescription>
-          Importação e envio nascem desligados. Em <b>modo teste</b> toda mensagem vai para o e-mail/WhatsApp do escritório
-          com o nome da empresa no assunto — é assim que se confere o texto antes de liberar.
+          As mensagens automáticas vão <b>só para o escritório</b> (e para a pessoa da equipe abaixo), como lembrete.
+          O cliente só recebe quando alguém com permissão clica em <b>Enviar alerta ao cliente</b> no detalhe da cobrança.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -113,18 +113,14 @@ function ConfigCard({ cfg }: { cfg: EcacConfig }) {
           )}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <label className="flex items-center justify-between rounded-lg border p-3 text-sm">
             <span>Importar todo mês</span>
             <Switch checked={v("importacao_ativa")} onCheckedChange={(c) => setForm((f) => ({ ...f, importacao_ativa: c }))} />
           </label>
           <label className="flex items-center justify-between rounded-lg border p-3 text-sm">
-            <span>Enviar mensagens</span>
+            <span>Lembretes ao escritório</span>
             <Switch checked={v("envio_ativo")} onCheckedChange={(c) => setForm((f) => ({ ...f, envio_ativo: c }))} />
-          </label>
-          <label className="flex items-center justify-between rounded-lg border p-3 text-sm">
-            <span>Modo teste (só escritório)</span>
-            <Switch checked={v("modo_teste")} onCheckedChange={(c) => setForm((f) => ({ ...f, modo_teste: c }))} />
           </label>
         </div>
 
@@ -157,8 +153,16 @@ function ConfigCard({ cfg }: { cfg: EcacConfig }) {
             <Input id="cfg-nome" value={String(v("escritorio_nome") || "")} onChange={(e) => setForm((f) => ({ ...f, escritorio_nome: e.target.value }))} />
           </div>
           <div>
-            <Label htmlFor="cfg-email" className="text-xs">E-mail do escritório (modo teste e escaladas)</Label>
+            <Label htmlFor="cfg-email" className="text-xs">E-mail do escritório (lembretes e escaladas)</Label>
             <Input id="cfg-email" type="email" value={String(v("escritorio_email") || "")} onChange={(e) => setForm((f) => ({ ...f, escritorio_email: e.target.value }))} />
+          </div>
+          <div>
+            <Label htmlFor="cfg-eq-wpp" className="text-xs">WhatsApp da pessoa da equipe que acompanha (com DDD)</Label>
+            <Input id="cfg-eq-wpp" inputMode="tel" placeholder="5511999999999" value={String(v("equipe_whatsapp") || "")} onChange={(e) => setForm((f) => ({ ...f, equipe_whatsapp: e.target.value }))} />
+          </div>
+          <div>
+            <Label htmlFor="cfg-eq-email" className="text-xs">E-mail da pessoa da equipe</Label>
+            <Input id="cfg-eq-email" type="email" value={String(v("equipe_email") || "")} onChange={(e) => setForm((f) => ({ ...f, equipe_email: e.target.value }))} />
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
@@ -431,6 +435,15 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
               />
             </div>
 
+            <AlertaClienteSecao
+              cobrancaId={data.id}
+              companyId={data.company_id}
+              relatorioData={data.relatorio_data}
+              podeAlertar={Boolean(data.pode_alertar)}
+              temDebito={linhas.length > 0}
+              onAtualizar={atualizar}
+            />
+
             <section className="space-y-2">
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <h3 className="font-semibold">Débitos em atraso</h3>
@@ -548,11 +561,14 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
                       {data.notificacoes.map((n) => (
                         <tr key={n.id} className="border-t" title={n.destino ? `Para ${n.destino}` : undefined}>
                           <td className="whitespace-nowrap px-3 py-2">{dataHoraBR(n.enviado_em || n.criado_em)}</td>
-                          <td className="px-3 py-2">{ROTULO_ETAPA[n.etapa] || n.etapa}</td>
+                          <td className="px-3 py-2">
+                            {n.etapa.startsWith("alerta") ? <b className="font-medium text-primary">Alerta ao cliente</b> : ROTULO_ETAPA[n.etapa] || n.etapa}
+                            {n.enviado_por && <div className="text-[10px] text-muted-foreground">por {n.enviado_por.replace(/^admin:/, "")}</div>}
+                          </td>
                           <td className="px-3 py-2">{n.canal === "whatsapp" ? "WhatsApp" : "E-mail"}</td>
                           <td className="px-3 py-2">
                             <span className={n.status === "falhou" ? "text-destructive" : ""}>{ROTULO_STATUS_MSG[n.status] || n.status}</span>
-                            {n.modo_teste && <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px]">teste</span>}
+                            {n.modo_teste && <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px]">escritório</span>}
                             {n.erro && <div className="text-destructive">{n.erro}</div>}
                           </td>
                           <td className="px-3 py-2 text-muted-foreground">
@@ -565,7 +581,7 @@ function DetalheDialog({ id, onClose }: { id: number | null; onClose: () => void
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                <span className="text-xs text-muted-foreground">Reenviar</span>
+                <span className="text-xs text-muted-foreground">Reenviar lembrete ao escritório</span>
                 <Select value={etapa} onValueChange={setEtapa}>
                   <SelectTrigger className="h-8 w-52"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -806,6 +822,124 @@ function ParcelasSecao({ companyId, parcelamento, guias, onGerada }: {
           <p className="text-xs text-muted-foreground">A Receita calcula a parcela (com juros, se atrasada) para o mês da emissão.</p>
         </>
       )}
+    </section>
+  );
+}
+
+/**
+ * Confirmar pendências (opcional, pago) e Enviar alerta ao cliente (permissão própria).
+ * O alerta é o ÚNICO caminho de mensagem de impostos em atraso ao cliente; leva um link
+ * sem senha novo, válido por 7 dias.
+ */
+function AlertaClienteSecao({ cobrancaId, companyId, relatorioData, podeAlertar, temDebito, onAtualizar }: {
+  cobrancaId: number;
+  companyId: string;
+  relatorioData: string | null;
+  podeAlertar: boolean;
+  temDebito: boolean;
+  onAtualizar: () => void;
+}) {
+  const qc = useQueryClient();
+  const [wpp, setWpp] = useState(true);
+  const [email, setEmail] = useState(true);
+  const [avisoAntigo, setAvisoAntigo] = useState(false);
+  useEffect(() => setAvisoAntigo(false), [cobrancaId]);
+
+  const chave = ["admin-ecac-confirmacao", companyId];
+  const conf = useQuery({
+    queryKey: chave,
+    queryFn: () => api.adminEcac.confirmacao(companyId),
+    // enquanto a Receita gera o relatório, acompanha a cada 5 s
+    refetchInterval: (q) => (q.state.data?.status === "em_andamento" ? 5000 : false),
+  });
+  useEffect(() => {
+    if (conf.data?.importado) {
+      toast.success("Relatório da Receita confirmado — débitos atualizados.");
+      onAtualizar();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conf.data?.importado, conf.data?.relatorio_id]);
+
+  const confirmar = useMutation({
+    mutationFn: () => api.adminEcac.confirmar(companyId),
+    onSuccess: (r) => {
+      qc.setQueryData(chave, r);
+      toast.success(r.reuso ? "Já há uma confirmação em andamento." : "Pedido enviado à Receita. Leva de 1 a 3 minutos.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const alertar = useMutation({
+    mutationFn: () => api.adminEcac.alertar(cobrancaId, [...(wpp ? ["whatsapp" as const] : []), ...(email ? ["email" as const] : [])]),
+    onSuccess: (r) => {
+      setAvisoAntigo(false);
+      const txt = r.resultados.map((x) => `${x.canal === "email" ? "e-mail" : "WhatsApp"}: ${x.status}${x.motivo ? ` (${x.motivo})` : ""}`).join(" · ");
+      if (r.resultados.some((x) => x.status === "enviado")) toast.success(`Alerta enviado — link vale ${r.validade_dias} dias. ${txt}`);
+      else toast.error(txt);
+      onAtualizar();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const c = conf.data;
+  const hojeISO = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+  const confirmadoHoje = c?.status === "concluida" && c.concluido_em
+    ? new Date(c.concluido_em).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }) === hojeISO
+    : false;
+  const emAndamento = c?.status === "em_andamento";
+
+  const enviar = () => {
+    if (!confirmadoHoje && !avisoAntigo) {
+      setAvisoAntigo(true);
+      return;
+    }
+    alertar.mutate();
+  };
+
+  return (
+    <section className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs">
+          {emAndamento ? (
+            <span className="flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Consultando a Receita…</span>
+          ) : confirmadoHoje ? (
+            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Confirmado na Receita hoje às {new Date(c!.concluido_em as string).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">
+              Relatório da Receita de {dataBR(relatorioData)}
+              {c?.status === "erro" ? ` · última confirmação falhou: ${c.mensagem}` : ""}
+            </span>
+          )}
+        </div>
+        <Button size="sm" variant="outline" className="h-8" disabled={confirmar.isPending || emAndamento} onClick={() => confirmar.mutate()} title="Pede à Receita o relatório de situação fiscal agora (cerca de R$ 0,32)">
+          <RefreshCw className="mr-1 h-3.5 w-3.5" /> Confirmar pendências
+        </Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-1.5 text-sm"><Switch checked={wpp} onCheckedChange={setWpp} /> WhatsApp</label>
+        <label className="flex items-center gap-1.5 text-sm"><Switch checked={email} onCheckedChange={setEmail} /> E-mail</label>
+        <Button
+          size="sm"
+          className="h-8"
+          disabled={!podeAlertar || !temDebito || alertar.isPending || emAndamento || (!wpp && !email)}
+          title={!podeAlertar ? "Sem permissão para enviar alerta ao cliente" : !temDebito ? "Sem débito em aberto" : "Envia ao cliente o link para gerar/recalcular as guias (vale 7 dias)"}
+          onClick={enviar}
+        >
+          {alertar.isPending ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1 h-3.5 w-3.5" />}
+          {avisoAntigo ? "Enviar mesmo assim" : "Enviar alerta ao cliente"}
+        </Button>
+        {avisoAntigo && (
+          <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setAvisoAntigo(false)}>Cancelar</Button>
+        )}
+      </div>
+      {avisoAntigo && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          O relatório é de {dataBR(relatorioData)} e não foi confirmado hoje. Se quiser, clique em Confirmar pendências antes; ou envie mesmo assim.
+        </p>
+      )}
+      {!podeAlertar && <p className="text-xs text-muted-foreground">Você não tem a permissão "Enviar alerta de impostos ao cliente".</p>}
     </section>
   );
 }
