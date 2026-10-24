@@ -3090,6 +3090,14 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ etapa, canal }),
       }),
+    confirmar: (companyId: string) =>
+      request<EcacConfirmacao>(`/admin/ecac/empresas/${companyId}/confirmar`, { method: "POST", body: "{}" }),
+    confirmacao: (companyId: string) => request<EcacConfirmacao>(`/admin/ecac/empresas/${companyId}/confirmacao`),
+    alertar: (cobrancaId: number, canais: Array<"whatsapp" | "email">) =>
+      request<{ ok: boolean; validade_dias: number; resultados: Array<{ canal: string; status: string; motivo?: string }> }>(
+        `/admin/ecac/cobrancas/${cobrancaId}/alertar`,
+        { method: "POST", body: JSON.stringify({ canais }) }
+      ),
     revogarLinks: (companyId: string) =>
       request<{ ok: boolean; revogados: number }>(`/admin/ecac/empresas/${companyId}/links/revogar`, { method: "POST", body: "{}" }),
     retomarCobranca: (id: number) => request<{ ok: boolean }>(`/admin/ecac/cobrancas/${id}/retomar`, { method: "POST", body: "{}" }),
@@ -3174,6 +3182,9 @@ export interface EcacConfig {
   escritorio_nome: string;
   escritorio_email: string;
   escritorio_whatsapp: string;
+  /** pessoa da equipe que recebe cópia dos lembretes do escritório */
+  equipe_whatsapp: string;
+  equipe_email: string;
   integracao_configurada: boolean;
   central_ecac: { success?: boolean; agora?: string; limite_gasto?: { limite: number; gasto_mes: number; restante: number | null; sem_teto: boolean }; erro?: string } | null;
   estados: Record<string, string>;
@@ -3231,6 +3242,21 @@ export interface EcacCobrancaResumo {
   portal_liberado: boolean;
 }
 
+export interface EcacConfirmacao {
+  existe: boolean;
+  id?: number;
+  status?: "em_andamento" | "concluida" | "erro";
+  iniciado_em?: string;
+  concluido_em?: string | null;
+  mensagem?: string | null;
+  relatorio_id?: number | null;
+  relatorio_data?: string | null;
+  solicitado_por?: string | null;
+  reuso?: boolean;
+  /** o portal reimportou o espelho com o relatório confirmado */
+  importado?: boolean;
+}
+
 export interface EcacParcelasConsulta {
   consultado: boolean;
   tipo?: string;
@@ -3260,6 +3286,8 @@ export interface EcacNotificacao {
   modo_teste: boolean;
   criado_em: string;
   enviado_em: string | null;
+  /** alerta manual ao cliente: quem enviou */
+  enviado_por?: string | null;
 }
 
 export interface EcacCobrancaDetalhe extends Omit<EcacCobrancaResumo, "guias"> {
@@ -3271,6 +3299,8 @@ export interface EcacCobrancaDetalhe extends Omit<EcacCobrancaResumo, "guias"> {
   notificacoes: EcacNotificacao[];
   guias: EcacGuia[];
   eventos: Array<{ id: number; tipo: string; dados: Record<string, unknown> | null; criado_em: string }>;
+  /** quem está vendo pode enviar o alerta ao cliente (permissão própria) */
+  pode_alertar?: boolean;
   links?: Array<{ id: number; origem: string; criado_em: string; expira_em: string; revogado_em: string | null; acessos: number; ultimo_acesso_em: string | null }>;
 }
 

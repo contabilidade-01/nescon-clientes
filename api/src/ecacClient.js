@@ -165,7 +165,23 @@ function consultarParcelas({ cnpj, tipo, forcar = false, solicitadoPor = null })
   });
 }
 
+/** Confirmar pendências: relatório de situação fiscal NA HORA (pago; roda lá em segundo plano). */
+function confirmarSituacao({ cnpj, solicitadoPor = null }) {
+  return chamar("/situacao/confirmar", {
+    metodo: "POST",
+    timeoutMs: 30000,
+    corpo: { cnpj: soDigitos(cnpj), solicitado_por: solicitadoPor },
+  });
+}
+
+/** Status da última confirmação (custo zero). */
+function confirmacaoSituacao(cnpj) {
+  return chamar(`/situacao/${soDigitos(cnpj)}/confirmacao`, { timeoutMs: 15000 });
+}
+
 module.exports = {
+  confirmarSituacao,
+  confirmacaoSituacao,
   TIPOS_PARCELA,
   parcelas,
   consultarParcelas,
