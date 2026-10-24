@@ -1,7 +1,7 @@
 /**
  * Cobrança de honorários em 2 fases (motor próprio).
  *
- * Cobre a régua nova: 1ª cobrança só após carência de compensação (D+2 dias úteis),
+ * Cobre a régua nova: 1ª cobrança só no início de cobrança (prazo rolado + 1 dia de compensação),
  * 2ª cobrança +3 dias (fase 1, firme), depois a cada 10 dias (fase 2, empática) até pagar.
  * A metodologia só vale a partir de set/2026 (testado via a constante exposta).
  */
@@ -28,31 +28,48 @@ describe("faseDe (fase por contagem de mensagens)", () => {
 });
 
 describe("decidirCobranca — cadência", () => {
-  it("1ª cobrança respeita a carência de compensação (D+2 dias úteis)", () => {
-    expect(decidirCobranca({ count: 0, diasUteisAtraso: 1, diasDesdeUltimoEnvio: Infinity }).cobrar).toBe(false);
-    const ok = decidirCobranca({ count: 0, diasUteisAtraso: 2, diasDesdeUltimoEnvio: Infinity });
+  // Venc. qua 02/09/2026 (dia útil): paga 02/09, compensa 03/09, cobra a partir de 04/09.
+  const due = "2026-09-02";
+
+  it("1ª cobrança só a partir do início de cobrança (prazo + 1 dia de compensação)", () => {
+    expect(decidirCobranca({ count: 0, dueDate: due, hoje: "2026-09-03", diasDesdeUltimoEnvio: Infinity }).cobrar).toBe(false);
+    const ok = decidirCobranca({ count: 0, dueDate: due, hoje: "2026-09-04", diasDesdeUltimoEnvio: Infinity });
     expect(ok.cobrar).toBe(true);
     expect(ok.fase).toBe(1);
   });
 
   it("2ª cobrança (fase 1) só depois de 3 dias da 1ª", () => {
-    expect(decidirCobranca({ count: 1, diasUteisAtraso: 5, diasDesdeUltimoEnvio: 2 }).cobrar).toBe(false);
-    const ok = decidirCobranca({ count: 1, diasUteisAtraso: 5, diasDesdeUltimoEnvio: 3 });
+    expect(decidirCobranca({ count: 1, dueDate: due, hoje: "2026-09-09", diasDesdeUltimoEnvio: 2 }).cobrar).toBe(false);
+    const ok = decidirCobranca({ count: 1, dueDate: due, hoje: "2026-09-09", diasDesdeUltimoEnvio: 3 });
     expect(ok.cobrar).toBe(true);
     expect(ok.fase).toBe(1);
   });
 
   it("da 3ª em diante (fase 2) só a cada 10 dias", () => {
-    expect(decidirCobranca({ count: 2, diasUteisAtraso: 20, diasDesdeUltimoEnvio: 9 }).cobrar).toBe(false);
-    const ok = decidirCobranca({ count: 2, diasUteisAtraso: 20, diasDesdeUltimoEnvio: 10 });
+    expect(decidirCobranca({ count: 2, dueDate: due, hoje: "2026-09-30", diasDesdeUltimoEnvio: 9 }).cobrar).toBe(false);
+    const ok = decidirCobranca({ count: 2, dueDate: due, hoje: "2026-09-30", diasDesdeUltimoEnvio: 10 });
     expect(ok.cobrar).toBe(true);
     expect(ok.fase).toBe(2);
   });
 
   it("continua na fase 2 indefinidamente (4ª, 5ª… a cada 10 dias)", () => {
-    const ok = decidirCobranca({ count: 5, diasUteisAtraso: 60, diasDesdeUltimoEnvio: 10 });
+    const ok = decidirCobranca({ count: 5, dueDate: due, hoje: "2026-11-03", diasDesdeUltimoEnvio: 10 });
     expect(ok.cobrar).toBe(true);
     expect(ok.fase).toBe(2);
+  });
+
+  it("nenhuma cobrança (nem reenvio) sai em feriado nacional de dia de semana", () => {
+    // seg 12/10/2026: N. Sra. Aparecida
+    const r = decidirCobranca({ count: 3, dueDate: due, hoje: "2026-10-12", diasDesdeUltimoEnvio: 30 });
+    expect(r.cobrar).toBe(false);
+    expect(r.motivo).toContain("feriado");
+  });
+
+  it("caso real: venc. sáb 10/10/2026 só cobra a partir de qui 15/10", () => {
+    for (const hoje of ["2026-10-13", "2026-10-14"]) {
+      expect(decidirCobranca({ count: 0, dueDate: "2026-10-10", hoje, diasDesdeUltimoEnvio: Infinity }).cobrar).toBe(false);
+    }
+    expect(decidirCobranca({ count: 0, dueDate: "2026-10-10", hoje: "2026-10-15", diasDesdeUltimoEnvio: Infinity }).cobrar).toBe(true);
   });
 });
 

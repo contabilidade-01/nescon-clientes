@@ -12,7 +12,8 @@ const { validateUUID } = require("../middleware/validate");
 const numeroWpp = require("../whatsappNumero");
 const { enviarDocumento } = require("../uazapi");
 const cora = require("../cora");
-const { hojeSP } = require("../diasBancarios");
+const { hojeSP, ehDiaBancario } = require("../diasBancarios");
+const { liberadoParaCobrar, consultaAtivaCora } = require("../cobrancaRegras");
 const coraSync = require("../coraSync");
 const { competenciaValida, competenciaAtual, conferirClientesSemBoleto } = require("../clientesSemBoleto");
 const { urlPdfFresca } = require("../boletoPdf");
@@ -170,6 +171,17 @@ router.post("/cora/boletos/:id/enviar-whatsapp", requireArea("sincronizacao"), a
     // de honorário (a fase vem da contagem de cobranças já enviadas, igual ao automático);
     // se ainda vai vencer, manda o lembrete de vencimento.
     const vencido = boleto.due_date && boleto.due_date < hoje;
+    // Regras de ouro também no envio manual (cobrancaRegras.js): antes de mandar
+    // qualquer coisa, consulta ativa na Cora — boleto pago/em processamento/sem resposta
+    // não é enviado. E boleto vencido só vira cobrança a partir do início de cobrança.
+    const consulta = await consultaAtivaCora(boleto.external_ref, cora);
+    if (!consulta.cobrar) {
+      return res.status(409).json({ error: `Não enviado: ${consulta.motivo}.` });
+    }
+    if (vencido) {
+      const lib = liberadoParaCobrar(boleto.due_date, hoje);
+      if (!lib.liberado) return res.status(409).json({ error: `Não enviado: ${lib.motivo}.` });
+    }
     let texto;
     if (vencido) {
       const diasAtraso = Math.floor((Date.now() - new Date(boleto.due_date).getTime()) / 86400000);
@@ -219,7 +231,9 @@ router.post("/cora/boletos/:id/enviar-whatsapp", requireArea("sincronizacao"), a
  *
  * Proteções:
  * - Trava de 48h: não envia se já cobrou o mesmo boleto nas últimas 48h (anti-duplicação)
- * - Dia da semana: só segunda a sexta (recusa no fim de semana)
+ * - Só dia bancário: recusa fim de semana e feriado nacional
+ * - Início de cobrança e consulta ativa na Cora (cobrancaRegras.js): boleto ainda no
+ *   prazo de pagamento/compensação, pago, em processamento ou sem resposta da Cora não sai
  * - is_honorario: NUNCA cobra guia fiscal — só boletos explicitamente marcados
  * - Subchave honorario_cobranca_ativo por empresa: respeita
  *
@@ -231,12 +245,15 @@ router.post("/cora/boletos/:id/enviar-whatsapp", requireArea("sincronizacao"), a
 router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req, res) => {
   const { company_id, boleto_id, ignorar_48h } = req.body || {};
 
-  // Horário: só segunda a sexta. 0=dom, 6=sáb.
-  const diaSemana = new Date().getDay();
-  if (diaSemana === 0 || diaSemana === 6) {
+  // Só em dia bancário (seg–sex sem feriado nacional), no fuso de São Paulo.
+  const hoje = hojeSP();
+  if (!ehDiaBancario(hoje)) {
     return res.status(400).json({
-      error: "Cobrança de honorários só é enviada de segunda a sexta. Tente novamente no próximo dia útil.",
+      error: "Cobrança de honorários só é enviada em dia útil (sem fim de semana nem feriado). Tente novamente no próximo dia útil.",
     });
+  }
+  if (!cora.isConfigured()) {
+    return res.status(400).json({ error: "Cora não configurada: sem a consulta ativa na Cora a cobrança não é enviada." });
   }
 
   try {
@@ -272,7 +289,7 @@ router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req
           AND d.cancelado IS NOT TRUE
           AND d.released_at IS NOT NULL
           AND d.due_date IS NOT NULL
-          AND d.due_date < CURRENT_DATE
+          AND d.due_date < $${params.length + 1}::date
           -- Respeitar a subchave por empresa + cliente inativo não é cobrado nem no manual
           AND c.honorario_cobranca_ativo IS NOT FALSE
           AND c.arquivada IS NOT TRUE
@@ -280,7 +297,7 @@ router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req
           ${trava48h}
           ${filtro}
         ORDER BY d.due_date ASC`,
-      params
+      [...params, hoje]
     );
 
     if (!boletos.length) {
@@ -297,21 +314,23 @@ router.post("/honorarios/cobrar-agora", requireArea("sincronizacao"), async (req
     const contatoCobranca = numeroWpp.formatar(cfgCobranca.escritorio_whatsapp || "");
 
     for (const b of boletos) {
-      // Checagem fresca na Cora: não cobrar o que já consta pago/compensado lá, mesmo que
-      // o banco local ainda diga pendente (sync de 6h pode estar defasado). Best-effort —
-      // se a Cora não responder, segue com o status do banco.
-      try {
-        const invoiceId = String(b.external_ref || "").replace(/^cora_/, "");
-        if (invoiceId) {
-          const detalhe = await cora.getInvoiceDetail(invoiceId);
-          if (detalhe && detalhe.status && cora.mapCoraStatusToPortal(detalhe.status) === "paid") {
-            await db.query("UPDATE deliverables SET status='paid', paid_at=now() WHERE id=$1", [b.id]);
-            erros.push({ empresa: b.empresa_nome, motivo: "Já consta pago na Cora — não cobrado" });
-            continue;
-          }
+      // Regra 1: início de cobrança (prazo de pagamento rolado + compensação).
+      const lib = liberadoParaCobrar(b.due_date, hoje);
+      if (!lib.liberado) {
+        erros.push({ empresa: b.empresa_nome, motivo: `Não cobrado: ${lib.motivo}` });
+        continue;
+      }
+      // Regra 2: consulta ativa na Cora, falhando fechada — só cobra o que a Cora confirma
+      // em aberto. Antes era best-effort: Cora sem resposta deixava a cobrança sair.
+      const consulta = await consultaAtivaCora(b.external_ref, cora);
+      if (!consulta.cobrar) {
+        if (cora.mapCoraStatusToPortal(consulta.status) === "paid") {
+          await db
+            .query("UPDATE deliverables SET status='paid', paid_at=COALESCE(paid_at, now()) WHERE id=$1", [b.id])
+            .catch((e) => console.error("[admin] cobrar honorarios: marcar pago", b.id, e.message));
         }
-      } catch (e) {
-        console.error("[admin] cobrar honorarios: checagem Cora", b.id, e.message);
+        erros.push({ empresa: b.empresa_nome, motivo: `Não cobrado: ${consulta.motivo}` });
+        continue;
       }
 
       const v = numeroWpp.validar(b.whatsapp);
