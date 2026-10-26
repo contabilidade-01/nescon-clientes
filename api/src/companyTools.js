@@ -28,6 +28,9 @@ const DEFAULT_TOOL_ACCESS = {
   // (fase de teste): o escritório liga por empresa. Admin gera para qualquer empresa
   // pelo painel Impostos e-CAC (ver docs/IMPOSTOS-ECAC.md).
   impostos_ecac: false,
+  // Simulador de regime no Simples (IBS/CBS por dentro ou por fora). Nasce DESLIGADO: o
+  // escritório simula pelo painel e libera por empresa (ver docs/PLANO-SIMULADOR-REGIME.md).
+  regime_tributario: false,
 };
 
 /**
@@ -52,6 +55,7 @@ const PORTAL_ONLY_TOOL_ACCESS = {
   history: false,
   escalas: false,
   impostos_ecac: false,
+  regime_tributario: false,
 };
 
 function mergeToolAccess(raw) {

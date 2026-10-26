@@ -1044,6 +1044,22 @@ export const api = {
       request<{ ok: true }>(`/escalas/planos/${mes}${qsEmpresa(companyId)}`, { method: "DELETE" }),
   },
 
+  /**
+   * Simulador de regime no Simples (IBS/CBS). O escritório passa `companyId`; o cliente
+   * omite (a API usa a empresa da sessão e exige a ferramenta `regime_tributario` ligada).
+   */
+  regime: {
+    carregar: (companyId?: string) =>
+      request<{ dados: unknown; atualizado_em: string | null; atualizado_por: string | null }>(
+        `/regime${qsEmpresa(companyId)}`
+      ),
+    salvar: (dados: unknown, companyId?: string) =>
+      request<{ atualizado_em: string; atualizado_por: string | null }>(`/regime${qsEmpresa(companyId)}`, {
+        method: "PUT",
+        body: JSON.stringify({ dados }),
+      }),
+  },
+
   /** Licenças (funcionamento, AVCB/CLCB, vigilância sanitária). Só admin. */
   licencas: {
     overview: () => request<LicenseOverview>("/licencas/overview"),
