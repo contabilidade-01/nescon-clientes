@@ -1589,6 +1589,21 @@ export const api = {
           carteira: CarteiraCliente;
         }>
       >("/admin/companies"),
+    /** Empresas ativas com os contatos e o endereço (do cadastro de contrato), para o Excel. */
+    companiesExportacao: () =>
+      request<
+        Array<{
+          name: string;
+          cnpj: string;
+          phone: string | null;
+          whatsapp: string | null;
+          email: string | null;
+          /** Só existe quando a empresa tem cadastro de contrato preenchido. */
+          endereco: string | null;
+          carteira: CarteiraCliente;
+          gclick_status: string | null;
+        }>
+      >("/admin/companies/exportacao"),
     /**
      * Vincula/desvincula a empresa a um grupo. `matriz_id` = id da empresa-âncora do
      * grupo, ou null para deixar independente. Entrar em qualquer empresa do grupo passa
