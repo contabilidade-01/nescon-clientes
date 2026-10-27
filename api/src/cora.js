@@ -84,7 +84,12 @@ function makeHTTPSRequest(options, postData = null) {
             }
             resolve(response);
           } else {
-            reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+            // statusCode/headers no erro: a fila abaixo precisa deles para reconhecer o 429
+            // e ler o Retry-After.
+            const err = new Error(`HTTP ${res.statusCode}: ${data}`);
+            err.statusCode = res.statusCode;
+            err.headers = res.headers;
+            reject(err);
           }
         } catch (error) {
           reject(error);
@@ -102,6 +107,117 @@ function makeHTTPSRequest(options, postData = null) {
     }
     req.end();
   });
+}
+
+/*
+ * Fila única de requisições à Cora.
+ *
+ * A sync dispara a listagem de ~100 empresas (4 em paralelo) e, para cada boleto, o
+ * detalhe; logo depois vêm a reconciliação, a conferência sem cadastro e a checagem da
+ * cobrança. Tudo saía sem freio e a Cora respondia HTTP 429 (limite de requisições) para
+ * quase tudo: em 27/10/2026 a sync terminou em 6 s com 94 erros e a cobrança do dia rodou
+ * sem a consulta na Cora. Agora toda chamada passa por aqui: no máximo CORA_MAX_PARALELO
+ * ao mesmo tempo, CORA_INTERVALO_MS entre uma saída e outra e, se mesmo assim vier 429
+ * (ou 503), a fila INTEIRA pausa pelo Retry-After (ou backoff exponencial) e a chamada é
+ * repetida até CORA_TENTATIVAS vezes.
+ */
+const CORA_MAX_PARALELO = Number(process.env.CORA_MAX_PARALELO) || 2;
+const CORA_INTERVALO_MS = Number(process.env.CORA_INTERVALO_MS ?? 250);
+const CORA_TENTATIVAS = Number(process.env.CORA_TENTATIVAS ?? 4);
+const ESPERA_MAX_MS = 60000;
+
+/**
+ * Quanto esperar antes de repetir. Respeita o Retry-After (segundos ou data HTTP); sem
+ * ele, 1 s, 2 s, 4 s... com um pouco de folga aleatória para os paralelos não voltarem
+ * juntos. Função pura (o `aleatorio` é injetável para teste).
+ */
+function esperaParaRepetir(retryAfter, tentativa, agora = Date.now(), aleatorio = Math.random) {
+  if (retryAfter != null && retryAfter !== "") {
+    const seg = Number(retryAfter);
+    if (Number.isFinite(seg) && seg >= 0) return Math.min(seg * 1000, ESPERA_MAX_MS);
+    const data = Date.parse(retryAfter);
+    if (!Number.isNaN(data)) return Math.min(Math.max(data - agora, 0), ESPERA_MAX_MS);
+  }
+  const base = 1000 * 2 ** tentativa;
+  return Math.min(base + Math.floor(aleatorio() * 500), ESPERA_MAX_MS);
+}
+
+function ehLimite(err) {
+  return err && (err.statusCode === 429 || err.statusCode === 503);
+}
+
+/**
+ * Cria a fila. Exposta (com dependências injetáveis) só para o teste; o módulo usa uma
+ * instância única, compartilhada por todos os chamadores.
+ */
+function criarFila({
+  maxParalelo = CORA_MAX_PARALELO,
+  intervaloMs = CORA_INTERVALO_MS,
+  tentativas = CORA_TENTATIVAS,
+  dormir = (ms) => new Promise((r) => setTimeout(r, ms)),
+  log = console.warn,
+} = {}) {
+  let ativos = 0;
+  let proximaSaida = 0;
+  let pausaAte = 0;
+  let timer = null;
+  const aguardando = [];
+
+  function bombear() {
+    if (timer) return;
+    while (ativos < maxParalelo && aguardando.length) {
+      const agora = Date.now();
+      const livre = Math.max(proximaSaida, pausaAte);
+      if (agora < livre) {
+        timer = setTimeout(() => {
+          timer = null;
+          bombear();
+        }, livre - agora);
+        return;
+      }
+      ativos++;
+      proximaSaida = agora + intervaloMs;
+      aguardando.shift()();
+    }
+  }
+
+  function vez() {
+    return new Promise((resolve) => {
+      aguardando.push(resolve);
+      bombear();
+    });
+  }
+
+  function liberar() {
+    ativos--;
+    bombear();
+  }
+
+  return async function executar(fn) {
+    for (let tentativa = 0; ; tentativa++) {
+      await vez();
+      let espera = 0;
+      try {
+        return await fn();
+      } catch (err) {
+        if (!ehLimite(err) || tentativa >= tentativas) throw err;
+        espera = esperaParaRepetir(err.headers?.["retry-after"], tentativa);
+        // Pausa a fila toda: quem está esperando também bateria no limite.
+        pausaAte = Math.max(pausaAte, Date.now() + espera);
+        log(`[cora] HTTP ${err.statusCode}: aguardando ${Math.ceil(espera / 1000)}s (tentativa ${tentativa + 1}/${tentativas})`);
+      } finally {
+        liberar();
+      }
+      await dormir(espera);
+    }
+  };
+}
+
+const filaCora = criarFila();
+
+/** Toda requisição à Cora passa por aqui (limite de ritmo + repetição no 429). */
+function requisicaoCora(options, postData = null) {
+  return filaCora(() => makeHTTPSRequest(options, postData));
 }
 
 /**
@@ -137,7 +253,7 @@ async function getValidToken() {
       key: sslCertificates.key,
     };
 
-    const response = await makeHTTPSRequest(authOptions, postData);
+    const response = await requisicaoCora(authOptions, postData);
 
     // Cachear o token (1 minuto antes do vencimento)
     tokenCache.token = response.json.access_token;
@@ -183,7 +299,7 @@ async function searchInvoices(cnpj, options = {}) {
       key: sslCertificates.key,
     };
 
-    const response = await makeHTTPSRequest(requestOptions);
+    const response = await requisicaoCora(requestOptions);
     return response.json;
   } catch (error) {
     console.error(`[cora] erro ao buscar boletos para ${cnpj}:`, error.message);
@@ -213,7 +329,7 @@ async function getInvoiceDetail(invoiceId) {
       key: sslCertificates.key,
     };
 
-    const response = await makeHTTPSRequest(requestOptions);
+    const response = await requisicaoCora(requestOptions);
     return response.json;
   } catch (error) {
     console.error(`[cora] erro ao buscar detalhe do boleto ${invoiceId}:`, error.message);
@@ -306,4 +422,7 @@ module.exports = {
   isConfigured,
   loadCertificates,
   diagnostico,
+  // expostos para teste
+  criarFila,
+  esperaParaRepetir,
 };

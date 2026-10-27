@@ -9,8 +9,8 @@
  * Quem é permitido:
  * - **cliente**: número (whatsapp, phone, ou o telefone do espelho G-Click) de empresa
  *   ativa — nem arquivada nem excluída.
- * - **escritório**: ADMIN_WHATSAPP, o WhatsApp do escritório configurado nos alertas e o
- *   do backup diário. São avisos internos, não mensagem a terceiros.
+ * - **escritório**: ADMIN_WHATSAPP, o WhatsApp do escritório configurado nos alertas, o
+ *   do backup diário e o do aviso de cobrança sem resposta da Cora. São avisos internos, não mensagem a terceiros.
  *
  * Desligar em emergência: WHATSAPP_SO_CLIENTES=false no ambiente.
  */
@@ -68,6 +68,8 @@ async function carregar(db) {
   const { lerConfig } = require("./alertasConfig");
   const internos = [process.env.ADMIN_WHATSAPP || "5511948626605"];
   internos.push(await getSetting(db, "backup_diario_whatsapp").catch(() => null));
+  // Mesmo padrão de numeroAvisoCora() em honorariosCobranca.js (sem require: evita ciclo).
+  internos.push(process.env.HONORARIOS_AVISO_WHATSAPP || "5511984630568");
   internos.push((await lerConfig(db).catch(() => ({}))).escritorio_whatsapp);
   for (const n of internos) {
     const k = chaveNumero(n);
