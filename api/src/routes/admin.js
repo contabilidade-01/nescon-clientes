@@ -222,6 +222,33 @@ router.get("/companies", async (_req, res) => {
   }
 });
 
+/**
+ * Listagem para exportar em Excel: nome, CNPJ, telefone, WhatsApp, e-mail e endereço.
+ *
+ * O cadastro (`companies`) não tem endereço; ele só existe no cadastro de contrato
+ * (`contrato_cadastros.dados.contratante.endereco`). Telefone e e-mail seguem a ordem
+ * cadastro → contrato → espelho do G-Click, a mesma prioridade da tela de empresas.
+ */
+router.get("/companies/exportacao", requireArea("empresas"), async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT c.name, c.cnpj, c.whatsapp, c.carteira, c.gclick_status,
+              COALESCE(NULLIF(c.phone, ''), NULLIF(ct.dados->'contratante'->>'telefone', ''), g.phone) AS phone,
+              COALESCE(NULLIF(c.contact_email, ''), NULLIF(ct.dados->'contratante'->>'email', ''), g.email) AS email,
+              NULLIF(ct.dados->'contratante'->>'endereco', '') AS endereco
+         FROM companies c
+         LEFT JOIN gclick_clients g ON g.company_id = c.id
+         LEFT JOIN contrato_cadastros ct ON ct.company_id = c.id
+        WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
+        ORDER BY c.name`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("[companies/exportacao]", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
 function normalizePhone(val) {
   if (val === null || val === undefined || val === "") return null;
   const d = String(val).replace(/\D/g, "");
