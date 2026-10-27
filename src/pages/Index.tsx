@@ -24,6 +24,7 @@ import {
   FileWarning,
   FileX,
   CalendarRange,
+  Scale,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -82,6 +83,8 @@ const MENU_ITEMS: MenuItem[] = [
   { key: "salary_adhoc", tool: "salary_adhoc", path: "/salario-avulso", icon: Calculator },
   { key: "employees", tool: "employees", path: "/funcionarios", icon: Users },
   { key: "escalas", tool: "escalas", path: "/escalas", icon: CalendarRange },
+  { key: "regime", tool: "regime_tributario", path: "/regime", icon: Scale,
+    title: "Simulador de regime", description: "Simples puro ou IBS/CBS por fora" },
   { key: "history", tool: "history", path: "/historico", icon: History },
   { key: "chat", tool: "chat", path: "/mensagens", icon: MessageSquare,
     title: "Mensagens", description: "Fale com o escritório" },

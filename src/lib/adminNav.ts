@@ -142,6 +142,7 @@ export const SETORES: Setor[] = [
       { to: "/admin/whatsapp", label: "Conexão do WhatsApp", icon: MessageCircle, area: "alertas" },
       { to: "/admin/circular", label: "Circular (WhatsApp)", icon: Megaphone, area: "alertas" },
       { to: "/admin/impostos-ecac", label: "Impostos e-CAC (cobrança)", icon: Landmark, area: "alertas" },
+      { to: "/admin/regime", label: "Simulador de regime (IBS/CBS)", icon: Scale, area: "empresas" },
       { to: "/admin/licencas", label: "Licenças", icon: ShieldCheck, area: "licencas" },
       { to: "/admin/taxas-anuais", label: "Taxas anuais", icon: CalendarCheck, area: "taxas_anuais" },
     ],
