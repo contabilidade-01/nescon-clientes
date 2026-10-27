@@ -132,26 +132,30 @@ async function gravarBoleto(boleto, companyId) {
     return rowCount ? "excluido" : "sem-mudanca";
   }
 
+  const { rows: existentes } = await db.query(
+    "SELECT id, status, pdf_url, cancelado FROM deliverables WHERE company_id = $1 AND external_ref = $2",
+    [companyId, externalRef]
+  );
+  const pdfGravado = existentes[0]?.pdf_url || null;
+
   // Buscar detalhe do boleto para obter a URL do PDF (não vem na listagem).
   // Só busca PDF de boletos a partir de 07/2026 — antes disso seria peso desnecessário
-  // em boletos históricos que ninguém vai abrir.
-  let pdfUrl = null;
+  // em boletos históricos que ninguém vai abrir. E boleto PAGO que já tem PDF gravado não
+  // precisa de link novo: era uma chamada por boleto em toda sync, e foi isso que estourou
+  // o limite de requisições da Cora (HTTP 429). O em aberto continua sendo renovado,
+  // porque o link do bank_slip expira e o portal redireciona para o gravado.
+  let pdfUrl = pdfGravado;
   const PDF_CORTE = "2026-07"; // competência mínima para buscar PDF
-  if (competencia && competencia >= PDF_CORTE) {
+  if (competencia && competencia >= PDF_CORTE && !(status === "paid" && pdfGravado)) {
     try {
       const detalhe = await cora.getInvoiceDetail(boleto.id);
-      pdfUrl = detalhe?.payment_options?.bank_slip?.url || null;
+      // Falha no detalhe (ex.: 429) devolve null: mantém o PDF gravado em vez de apagá-lo.
+      pdfUrl = detalhe?.payment_options?.bank_slip?.url || pdfGravado;
     } catch (err) {
       // Se falhar, segue sem PDF — o boleto ainda é útil no calendário
       console.error(`[cora] detalhe PDF ${boleto.id}:`, err.message);
     }
   }
-
-  // Tentar buscar existente
-  const { rows: existentes } = await db.query(
-    "SELECT id, status, pdf_url, cancelado FROM deliverables WHERE company_id = $1 AND external_ref = $2",
-    [companyId, externalRef]
-  );
 
   if (existentes.length) {
     const atual = existentes[0];

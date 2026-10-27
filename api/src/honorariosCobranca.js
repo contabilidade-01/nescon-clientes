@@ -271,7 +271,14 @@ async function cobrarHonorarios({ simular = false, agora = new Date() } = {}) {
         const invoiceId = String(b.external_ref || "").replace(/^cora_/, "");
         if (invoiceId) {
           const detalhe = await cora.getInvoiceDetail(invoiceId);
-          if (detalhe && detalhe.status && cora.mapCoraStatusToPortal(detalhe.status) === "paid") {
+          // Sem resposta da Cora (ex.: HTTP 429 mesmo depois das repetições) não dá para
+          // saber se já pagou: não cobra hoje. Antes seguia e cobrava às cegas.
+          if (!detalhe || !detalhe.status) {
+            pulados += 1;
+            resultados.push({ empresa: b.empresa_nome, status: "pulado", motivo: "Cora não respondeu à consulta" });
+            continue;
+          }
+          if (cora.mapCoraStatusToPortal(detalhe.status) === "paid") {
             await db.query("UPDATE deliverables SET status='paid', paid_at=now() WHERE id=$1", [b.id]);
             pulados += 1;
             resultados.push({ empresa: b.empresa_nome, status: "pulado", motivo: "já pago na Cora" });
@@ -343,7 +350,15 @@ async function cobrarHonorarios({ simular = false, agora = new Date() } = {}) {
   }
 
   if (!simular && (enviados || pulados)) {
-    console.log(`[honorarios] cobrança do dia: ${enviados} enviado(s), ${pulados} pulado(s), ${erros.length} erro(s).`);
+    // Motivos dos pulados no log: sem isto "11 pulado(s)" não dizia se era regra de
+    // cadência, número inválido ou a Cora sem responder.
+    const motivos = {};
+    for (const r of resultados) if (r.motivo) motivos[r.motivo] = (motivos[r.motivo] || 0) + 1;
+    const detalhe = Object.entries(motivos).map(([m, n]) => `${n} ${m}`).join("; ");
+    console.log(
+      `[honorarios] cobrança do dia: ${enviados} enviado(s), ${pulados} pulado(s), ${erros.length} erro(s).` +
+        (detalhe ? ` Motivos: ${detalhe}.` : "")
+    );
   }
   return { enviados, pulados, erros, resultados };
 }
