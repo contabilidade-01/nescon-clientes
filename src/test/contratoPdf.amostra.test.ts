@@ -23,6 +23,7 @@ describe("gerarContratoPdf", () => {
     // contrato da cliente sai em texto corrido: nenhum [CAMPO] nas partes
     const texto = JSON.stringify(blocos);
     expect(texto).not.toMatch(/\[(CNPJ|RAZÃO|ENDEREÇO|REPRESENTANTE|E-MAIL|REGIME|DIA E HORÁRIO|DATA DA PRIMEIRA)/);
+    expect(texto).not.toMatch(/testemunha/i);
     const out = process.env.CONTRATO_PDF_AMOSTRA;
     if (out) writeFileSync(out, Buffer.from(pdf.output("arraybuffer")));
 
