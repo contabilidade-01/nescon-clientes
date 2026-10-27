@@ -202,6 +202,8 @@ describe("aditivo", () => {
     expect(t).toContain("Permanecem inalteradas e ratificadas todas as demais cláusulas");
     expect(t).toContain("assinado em 10 de março de 2026");
     expect(t).not.toMatch(/\[[A-ZÀ-Ú ]+\]/);
+    expect(t).not.toMatch(/testemunha/i);
+    expect(t).toContain("(art. 784, § 4º, do Código de Processo Civil).");
   });
 
   it("só lista o que mudou e ignora campos não aditiváveis", () => {
