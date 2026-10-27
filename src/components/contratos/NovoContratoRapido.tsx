@@ -34,6 +34,7 @@ export function NovoContratoRapido({ aberto, onFechar, onCriado }: { aberto: boo
   const [valor, setValor] = useState<number | null>(null);
   const [vencimento, setVencimento] = useState<number | null>(null);
   const [inicio, setInicio] = useState("");
+  const [assinatura, setAssinatura] = useState("");
   const [funcionarios, setFuncionarios] = useState<number | null>(null);
   const [carregando, setCarregando] = useState(false);
 
@@ -46,6 +47,7 @@ export function NovoContratoRapido({ aberto, onFechar, onCriado }: { aberto: boo
     setValor(null);
     setVencimento(null);
     setInicio("");
+    setAssinatura("");
     setFuncionarios(null);
     api.admin.contratos
       .padroes()
@@ -113,8 +115,9 @@ export function NovoContratoRapido({ aberto, onFechar, onCriado }: { aberto: boo
       honorarios: { ...d.honorarios, valorMensal: valor ?? d.honorarios.valorMensal, vencimentoDia: vencimento ?? d.honorarios.vencimentoDia },
       objeto: { ...d.objeto, funcionariosIncluidos: funcionarios ?? d.objeto.funcionariosIncluidos },
       vigencia: { ...d.vigencia, dataInicio: inicio || d.vigencia.dataInicio },
+      assinatura: { ...d.assinatura, data: assinatura || d.assinatura.data },
     };
-  }, [camadas, valor, vencimento, funcionarios, inicio]);
+  }, [camadas, valor, vencimento, funcionarios, inicio, assinatura]);
 
   const pendentes = camposPendentes(final);
 
@@ -199,6 +202,9 @@ export function NovoContratoRapido({ aberto, onFechar, onCriado }: { aberto: boo
                   </Campo>
                   <Campo label="Empregados incluídos">
                     <Input type="number" min="0" value={final.objeto.funcionariosIncluidos} onChange={(e) => setFuncionarios(Math.max(0, Math.floor(num(e.target.value, 0))))} />
+                  </Campo>
+                  <Campo label="Data da assinatura (opcional)">
+                    <Input type="date" value={final.assinatura.data} onChange={(e) => setAssinatura(e.target.value)} />
                   </Campo>
                 </div>
                 {pendentes.length ? (

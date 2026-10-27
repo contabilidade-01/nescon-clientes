@@ -103,7 +103,6 @@ describe("montarContrato", () => {
     d.honorarios.meioPagamento = "boleto bancário ou Pix";
     d.prazos.horarioAtendimento = "das 9h às 18h";
     d.objeto.regimeTributario = "Simples Nacional";
-    d.vigencia.foro = "Jundiaí/SP";
     d.honorarios.primeiraCobranca = "2026-10-15";
     return d;
   };
@@ -112,7 +111,8 @@ describe("montarContrato", () => {
     const t = textoDe(montarContrato(base()));
     expect(t).toContain("R$ 550,00 (quinhentos e cinquenta reais)");
     expect(t).toContain("A partir do 4º empregado registrado");
-    expect(t).toContain("foro da Comarca de Jundiaí/SP");
+    expect(t).toContain("foro da Comarca de Guarulhos/SP");
+    expect(t).toContain("faturamento anual de até R$ 150.000,00 e até 3 empregados registrados");
     expect(t).toContain("60 dias");
     expect(t).toContain("primeira competência em setembro de 2026");
   });
@@ -293,10 +293,46 @@ describe("montarContrato", () => {
 
   it("campo vazio vira [CAMPO] destacado, nunca texto em branco", () => {
     const d = base();
-    d.contratada.endereco = "";
+    d.contratante.endereco = "";
     const t = textoDe(montarContrato(d));
-    expect(t).toContain("[ENDEREÇO COMPLETO DA CONTRATADA]");
-    expect(camposPendentes(d)).toContain("Endereço da contratada");
+    expect(t).toContain("[ENDEREÇO COMPLETO DA CONTRATANTE]");
+    expect(camposPendentes(d)).toContain("Endereço da contratante");
+  });
+
+  it("dados da NESCON já vêm preenchidos: endereço, faturamento, adicional, cidade e foro", () => {
+    const d = base();
+    d.contratada.endereco = "";
+    d.vigencia.foro = "Jundiaí/SP";
+    const t = textoDe(montarContrato(d));
+    expect(t).toContain("Rua Ponta Grossa, nº 266, Cidade Soberana, Guarulhos/SP, CEP 07161-330");
+    expect(t).toContain("foro da Comarca de Guarulhos/SP");
+    expect(t).toContain("Guarulhos/SP, _____ de");
+    expect(t).not.toMatch(/\[(ENDEREÇO COMPLETO DA CONTRATADA|COMARCA DO FORO|CIDADE\/UF)\]/);
+    const p = dadosPadrao();
+    expect(p.honorarios.faturamentoLimite).toBe(180000);
+    expect(p.honorarios.valorFuncAdicional).toBe(70);
+    expect(textoDe(montarContrato(p))).toContain("faturamento anual de até R$ 180.000,00");
+  });
+
+  it("sem empregados incluídos não escreve 'até 0 empregados'", () => {
+    const d = base();
+    d.objeto.funcionariosIncluidos = 0;
+    const t = textoDe(montarContrato(d));
+    expect(t).not.toMatch(/até 0 empregado/i);
+    expect(t).toContain("A partir do 1º empregado registrado");
+  });
+
+  it("sem testemunhas e sem [REPRESENTANTE]; data de assinatura vem do parâmetro", () => {
+    const d = base();
+    d.contratante.repNome = "";
+    d.assinatura.data = "2026-11-03";
+    const t = textoDe(montarContrato(d));
+    expect(t).not.toMatch(/testemunha/i);
+    expect(t).not.toContain("[REPRESENTANTE]");
+    expect(t).toContain("Guarulhos/SP, 3 de novembro de 2026.");
+    const mei = textoDe(montarContrato({ ...d, objeto: { ...d.objeto, modelo: "mei" } }));
+    expect(mei).not.toMatch(/testemunha/i);
+    expect(mei).not.toContain("[TITULAR]");
   });
 
   it("sem anexo e sem cláusula da proposta; 8.x fecha sem buraco", () => {
