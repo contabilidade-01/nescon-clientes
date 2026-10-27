@@ -335,6 +335,14 @@ describe("montarContrato", () => {
     expect(mei).not.toContain("[TITULAR]");
   });
 
+  it("transição: entregas conforme o período de responsabilidade", () => {
+    const t = textoDe(montarContrato(base()));
+    expect(t).toContain("6.4. TRANSIÇÃO.");
+    expect(t).toContain("Cada parte responde pelo período em que o contrato vigorou");
+    expect(t).toContain("as competências seguintes ficam com a CONTRATANTE ou com o novo contador");
+    expect(t).not.toContain("nunca fica desassistida");
+  });
+
   it("sem anexo e sem cláusula da proposta; 8.x fecha sem buraco", () => {
     const t = textoDe(montarContrato(base()));
     expect(t).not.toContain("Anexo");

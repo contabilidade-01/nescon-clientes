@@ -547,7 +547,7 @@ export function montarContrato(d: ContratoDados): Bloco[] {
   B.push({
     t: "par",
     texto:
-      "As partes celebram este contrato de prestação de serviços contábeis, regido pelo Código Civil e pelas normas do Conselho Federal de Contabilidade. Ele organiza a parceria com regras claras para os dois lados: o que a **CONTRATADA** garante e o que a **CONTRATANTE** precisa fazer para que tudo funcione em dia.",
+      "As partes celebram este contrato de prestação de serviços contábeis, regido pelos arts. 593 a 609 do Código Civil e pelas normas do Conselho Federal de Contabilidade, nas condições a seguir.",
   });
 
   // ---- Cláusula 1 ----
@@ -591,20 +591,20 @@ export function montarContrato(d: ContratoDados): Bloco[] {
     B.push({
       t: "alerta",
       rotulo: "ÁREAS NÃO CONTRATADAS.",
-      texto: `Este contrato abrange apenas a área ${listaE(areas.dentro)}. As obrigações da área ${listaE(areas.fora)} e as demais obrigações legais a ela ligadas ficam **fora do objeto e da responsabilidade da CONTRATADA**, permanecendo a cargo da **CONTRATANTE**. Para incluí-las no pacote de serviços, basta entrar em contato com a **CONTRATADA**, que apresenta a proposta e formaliza por aditivo.`,
+      texto: `Este contrato abrange apenas a área ${listaE(areas.dentro)}. As obrigações da área ${listaE(areas.fora)} ficam **fora do objeto e da responsabilidade da CONTRATADA**, a cargo da **CONTRATANTE**. Para incluí-las, basta entrar em contato com a **CONTRATADA**, que formaliza por aditivo.`,
     });
   }
   B.push({
     t: "barra",
     rotulo: "1.1. NÃO INCLUÍDOS.",
     texto:
-      "Custos e honorários de abertura, alteração ou encerramento de empresas, certidões, autenticação de livros, imposto de renda dos sócios, regularização de períodos anteriores, defesas administrativas complexas, perícias e demandas judiciais, laudos e programas de saúde e segurança do trabalho (a cargo de profissional habilitado contratado pela **CONTRATANTE**), controle de jornada, recrutamento, auditoria e gestão financeira. Quando solicitados, serão orçados e cobrados à parte (Cláusula 5.5).",
+      "Não estão incluídos e, quando solicitados, são orçados à parte (Cláusula 5): abertura, alteração ou encerramento de empresas; certidões e autenticação de livros; imposto de renda dos sócios; regularização de períodos anteriores; defesas administrativas complexas, perícias e ações judiciais; laudos e programas de saúde e segurança do trabalho (a cargo de profissional habilitado contratado pela **CONTRATANTE**); controle de jornada, recrutamento, auditoria e gestão financeira.",
   });
   B.push({
     t: "barra",
     rotulo: "1.2. NATUREZA DOS SERVIÇOS.",
     texto:
-      "A **CONTRATADA** atua com diligência técnica e cumpre as obrigações legais, sem garantir resultado de fiscalização, deferimento de pedidos ou economia tributária. A escrituração não é auditoria de todos os documentos, mas a **CONTRATADA** examinará inconsistências perceptíveis, pedirá esclarecimentos e recusará atos ilícitos. Não lhe cabe pagar tributos, salários ou encargos com recursos próprios.",
+      "A **CONTRATADA** atua com diligência técnica, sem garantir resultado de fiscalização, deferimento de pedidos ou economia tributária. A escrituração não é auditoria: inconsistências perceptíveis serão questionadas e atos ilícitos, recusados. A **CONTRATADA** não paga tributos, salários ou encargos com recursos próprios.",
   });
 
   // ---- Cláusula 2 ----
@@ -613,40 +613,40 @@ export function montarContrato(d: ContratoDados): Bloco[] {
     t: "clausula",
     num: "2.",
     texto:
-      "A rotina abaixo existe para que a **CONTRATANTE** nunca pague multa por atraso: recebendo a documentação nestes prazos, a **CONTRATADA** garante a entrega de todas as obrigações no prazo legal. A **CONTRATANTE** envia documentos completos, legíveis e organizados, de preferência pelo Portal do Cliente ou por meio digital, guardando os originais.",
+      "A **CONTRATANTE** envia documentos completos e legíveis nos prazos abaixo, de preferência pelo Portal do Cliente, e guarda os originais. Recebendo tudo no prazo, a **CONTRATADA** entrega todas as obrigações dentro do prazo legal.",
   });
   B.push({
     t: "lista",
     rotulos: ["FINANCEIRO", "NOTAS FISCAIS", "FOLHA", "GUIAS", "RELATÓRIOS"],
     itens: [
-      `Fluxo de caixa, extratos de todas as contas e aplicações, movimento de cartões, comprovantes de pagamentos e recebimentos e contratos de crédito: **até ${p.diaDocsFinanceiros} dias corridos após o fim do mês**.`,
+      `Extratos de todas as contas e aplicações, movimento de cartões, comprovantes de pagamentos e recebimentos e contratos de crédito: **até ${p.diaDocsFinanceiros} dias corridos após o fim do mês**.`,
       "Notas fiscais de entrada e saída, com XML, cancelamentos e devoluções: **semanalmente**; as da última semana, até o **3º dia útil do mês seguinte**.",
-      `Jornada, faltas, comissões, afastamentos e demais variáveis da folha: **até o dia ${ou(p.diaVariaveisFolha, "2")} de cada mês**, porque a folha é paga até o 5º dia útil. Admissões: comunicadas antes de o empregado começar a trabalhar, para o registro no prazo legal. Férias e desligamentos: assim que decididos, com antecedência para os prazos legais.`,
-      `Recebidos os dados no prazo, a **CONTRATADA** envia as guias **prioritariamente por e-mail**, ao endereço cadastrado, **${p.diasGuias} dias corridos antes do vencimento**, com cópia no Portal do Cliente. A **CONTRATANTE** mantém esse e-mail ativo e o acompanha, inclusive a pasta de spam: o envio ao e-mail cadastrado vale como entrega. Se a informação ou a liberação oficial ocorrer depois, a **CONTRATADA** avisa e envia a guia assim que possível.`,
+      `Variáveis da folha (jornada, faltas, comissões, afastamentos): **até o dia ${ou(p.diaVariaveisFolha, "2")} de cada mês**, pois a folha é paga até o 5º dia útil. Admissões: antes de o empregado começar a trabalhar. Férias e desligamentos: assim que decididos.`,
+      `As guias são enviadas **prioritariamente por e-mail**, ao endereço cadastrado, **${p.diasGuias} dias corridos antes do vencimento**, com cópia no Portal do Cliente; o envio ao e-mail cadastrado vale como entrega. Se a informação ou a liberação oficial atrasar, a guia é enviada assim que possível.`,
       `${balancetesTxt}; balanço e demonstrações anuais em **até ${p.balancoDias} dias** após o recebimento de todos os dados, em especial o inventário anual e a Carta de Responsabilidade da Administração.`,
     ],
   });
   B.push({
     t: "alerta",
     texto:
-      "Os prazos legais não dependem das partes. Por isso, se a documentação chegar atrasada ou incompleta, a **CONTRATADA** avisa a pendência e o risco por escrito, e a responsabilidade por eventual atraso fica com quem lhe deu causa. Retrabalho por informações alteradas depois de processadas é orçado antes de ser feito, salvo erro da **CONTRATADA**.",
+      "Documentação atrasada ou incompleta: a **CONTRATADA** avisa por escrito a pendência e o risco, e eventual multa fica com quem deu causa ao atraso. Retrabalho por informação alterada depois de processada é orçado antes, salvo erro da **CONTRATADA**.",
   });
   B.push({
     t: "barra",
     rotulo: "2.1. RETROATIVO.",
     texto:
-      `A mensalidade remunera a escrituração feita mês a mês. Se a documentação de uma competência não for enviada nos prazos acima, a **CONTRATADA** avisará a pendência e, enquanto ela durar, não responderá pelas obrigações daquela competência. Documentação entregue **com mais de ${h.retroativoDias} dias de atraso** será escriturada como serviço retroativo, cobrado à parte: ${h.retroativoPct > 0 ? `**${h.retroativoPct}% da mensalidade vigente por competência** escriturada em atraso` : "**conforme orçamento prévio** por competência escriturada em atraso"}, além da mensalidade normal, ficando multas e juros do período por conta da **CONTRATANTE**.`,
+      `Enquanto a documentação de uma competência estiver pendente, a **CONTRATADA** não responde pelas obrigações dela. Documentação entregue **com mais de ${h.retroativoDias} dias de atraso** é escriturada como serviço retroativo, cobrado à parte: ${h.retroativoPct > 0 ? `**${h.retroativoPct}% da mensalidade vigente por competência** escriturada em atraso` : "**conforme orçamento prévio** por competência escriturada em atraso"}, além da mensalidade normal. Multas e juros do período ficam com a **CONTRATANTE**.`,
   });
   B.push({
     t: "alerta",
     rotulo: "2.2. RECÁLCULO DE GUIAS.",
-    texto: `Cada guia é enviada uma vez, no prazo, e, se vencer sem pagamento, **um recálculo** é feito como cortesia. A partir do **segundo recálculo da mesma guia**, cobra-se **${brl(h.recalculoGuiaValor)} por guia** recalculada, lançado na mensalidade seguinte. Multa e juros do atraso são da **CONTRATANTE**.`,
+    texto: `Cada guia é enviada uma vez, no prazo. Vencida sem pagamento, **um recálculo** é cortesia; a partir do **segundo recálculo da mesma guia**, cobra-se **${brl(h.recalculoGuiaValor)} por guia**, na mensalidade seguinte. Multa e juros do atraso são da **CONTRATANTE**.`,
   });
   B.push({
     t: "barra",
     rotulo: "2.3. ACESSOS.",
     texto:
-      "Procurações, certificados digitais e acessos a sistemas públicos serão válidos e limitados ao necessário, preferencialmente por delegação, sem compartilhamento de senhas pessoais. A **CONTRATANTE** manterá os acessos ativos e informará de imediato intimações, revogações, alterações cadastrais e mensagens de órgãos públicos.",
+      "Procurações, certificados digitais e acessos a sistemas públicos ficam limitados ao necessário, de preferência por delegação, sem compartilhar senhas pessoais. A **CONTRATANTE** os mantém ativos e informa de imediato intimações e mensagens de órgãos públicos.",
   });
 
   // ---- Cláusula 3 ----
@@ -664,19 +664,19 @@ export function montarContrato(d: ContratoDados): Bloco[] {
   B.push({
     t: "lista",
     itens: [
-      "Executar os serviços com zelo, diligência e independência, observando a legislação e o Código de Ética Profissional do Contador (NBC PG 01), por profissionais habilitados sob a supervisão do responsável técnico.",
-      "Transmitir todas as obrigações contratadas no prazo legal sempre que receber a documentação nos prazos da Cláusula 2, guardando os comprovantes de entrega e mantendo-os acessíveis à **CONTRATANTE**.",
-      `Atender a **CONTRATANTE** por e-mail, telefone ou WhatsApp, em dias úteis, ${ou(p.horarioAtendimento, "em horário comercial")}, respondendo em até ${p.prazoRespostaDiasUteis} ${plural(p.prazoRespostaDiasUteis, "dia útil", "dias úteis")}, registrando por escrito as orientações relevantes e avisando de imediato riscos, pendências e inconsistências.`,
-      "Guardar os documentos e arquivos sob sua responsabilidade com controle de acesso e backup, respondendo por perda, extravio ou mau uso que lhe sejam imputáveis.",
-      "Arcar com suas despesas operacionais e com os encargos de seus empregados e prepostos, sem qualquer vínculo empregatício com a **CONTRATANTE**.",
-      "Não cobrar nada além do previsto neste contrato sem aprovação prévia e escrita da **CONTRATANTE**, exceto o acréscimo por empregado adicional da Cláusula 5.2.",
+      "Executar os serviços com zelo e independência, conforme a legislação e o Código de Ética Profissional do Contador (NBC PG 01), sob a supervisão do responsável técnico.",
+      "Transmitir as obrigações no prazo legal sempre que receber a documentação nos prazos da Cláusula 2, guardando os comprovantes de entrega.",
+      `Atender por e-mail, telefone ou WhatsApp, em dias úteis, ${ou(p.horarioAtendimento, "em horário comercial")}, respondendo em até ${p.prazoRespostaDiasUteis} ${plural(p.prazoRespostaDiasUteis, "dia útil", "dias úteis")} e avisando de imediato riscos e pendências.`,
+      "Guardar documentos e arquivos com controle de acesso e backup, respondendo por perda ou mau uso que lhe sejam imputáveis.",
+      "Arcar com suas despesas e com os encargos de sua equipe, sem vínculo empregatício com a **CONTRATANTE**.",
+      "Não cobrar nada além do previsto neste contrato sem aprovação escrita da **CONTRATANTE**.",
     ],
   });
   B.push({
     t: "barra",
     rotulo: "3.1. RESPONSABILIDADE.",
     texto:
-      "A **CONTRATADA** assume as multas e acréscimos causados por erro técnico, imperfeição ou atraso que lhe sejam imputáveis, apurados conforme os documentos recebidos, e faz sem custo a defesa administrativa cabível. Ficam fora dessa garantia o principal dos tributos e encargos devidos pela **CONTRATANTE**, os juros e a correção que seriam devidos de qualquer forma e as consequências de documentos falsos ou incompletos ou de conduta da **CONTRATANTE** contrária à lei ou à orientação técnica escrita. Caso fortuito e força maior excluem a responsabilidade apenas na extensão de seus efeitos comprovados.",
+      "A **CONTRATADA** paga as multas e acréscimos causados por erro ou atraso seu e faz sem custo a defesa administrativa cabível. Não responde pelo tributo principal, pelos juros e pela correção que seriam devidos de qualquer forma, nem por consequências de documentos falsos ou incompletos ou de conduta da **CONTRATANTE** contrária à lei ou à orientação escrita.",
   });
 
   // ---- Cláusula 4 ----
@@ -686,18 +686,18 @@ export function montarContrato(d: ContratoDados): Bloco[] {
     t: "lista",
     itens: [
       "Enviar documentos e informações nos prazos da Cláusula 2 e informar o faturamento real de cada competência.",
-      "Manter controles internos adequados; emitir e corrigir suas notas fiscais; controlar caixa, bancos, estoque e jornada; realizar o inventário físico anual.",
-      "Acompanhar o e-mail cadastrado, por onde chegam as guias, pagar tributos, salários e encargos nos vencimentos e avisar de imediato se alguma guia não chegar.",
-      "Seguir as orientações técnicas escritas da **CONTRATADA**, que existem para evitar multas e autuações; o que for feito contra orientação escrita fica por conta da **CONTRATANTE**.",
-      "Entregar, antes do fechamento de cada exercício, a Carta de Responsabilidade da Administração assinada por representante habilitado.",
-      "Manter atualizados contrato social, dados dos administradores e beneficiários finais, procurações e acessos.",
+      "Manter controles de caixa, bancos, estoque e jornada, emitir corretamente suas notas fiscais e fazer o inventário físico anual.",
+      "Acompanhar o e-mail cadastrado, por onde chegam as guias, pagar tributos, salários e encargos em dia e avisar se alguma guia não chegar.",
+      "Seguir as orientações técnicas escritas da **CONTRATADA**; o que for feito contra elas fica por conta da **CONTRATANTE**.",
+      "Entregar, no fechamento de cada exercício, a Carta de Responsabilidade da Administração assinada.",
+      "Manter atualizados contrato social, dados de administradores e beneficiários finais, procurações e acessos.",
     ],
   });
   B.push({
     t: "barra",
     rotulo: "4.1. DECLARAÇÕES.",
     texto:
-      "A **CONTRATANTE** declara que não realizará operações ilegais; que os documentos enviados são idôneos; que responde integralmente pelo conteúdo dos dados e arquivos encaminhados; e que não tem conhecimento de fatos que afetem as demonstrações contábeis ou a continuidade da empresa, obrigando-se a informá-los de imediato.",
+      "A **CONTRATANTE** declara que não realiza operações ilegais, que os documentos enviados são idôneos e de sua responsabilidade e que informará de imediato qualquer fato que afete as demonstrações contábeis ou a continuidade da empresa.",
   });
 
   // ---- Cláusula 5 ----
@@ -719,14 +719,14 @@ export function montarContrato(d: ContratoDados): Bloco[] {
   if (o.areaPessoal) B.push({
     t: "barra",
     rotulo: "5.2. EMPREGADOS ADICIONAIS.",
-    texto: `A partir do ${diaOrd(funcs + 1)} empregado registrado, acrescem-se **${moedaPh(h.valorFuncAdicional, "valor por empregado adicional", true)}** por empregado por mês, conforme os vínculos ativos na competência, demonstrados na cobrança. Substituição no mesmo posto não gera cobrança dupla, e pró-labore não conta como empregado.`,
+    texto: `A partir do ${diaOrd(funcs + 1)} empregado registrado, acrescem-se **${moedaPh(h.valorFuncAdicional, "valor por empregado adicional", true)}** por empregado por mês, conforme os vínculos ativos na competência. Pró-labore não conta como empregado, e substituição no mesmo posto não gera cobrança dupla.`,
   });
   let n = o.areaPessoal ? 3 : 2;
   if (h.decimoTerceiro) {
     B.push({
       t: "barra",
       rotulo: `5.${n}. 13º HONORÁRIO.`,
-      texto: `Os honorários mensais remuneram toda a rotina das Cláusulas 1 e 3 ao longo do ano: 12 folhas de pagamento, ${o.enquadramento === "simples" || o.enquadramento === "mei" ? "12 apurações e declarações mensais do Simples Nacional (PGDAS-D)" : "12 apurações e declarações mensais dos tributos"}, de janeiro a dezembro, e a escrituração contábil e fiscal de cada competência. No fim de cada ano e no início do seguinte, porém, o governo impõe declarações e obrigações anuais que fogem da rotina mensal: balanço e demonstrações do exercício, ${o.enquadramento === "simples" || o.enquadramento === "mei" ? "DEFIS (declaração anual do Simples)" : "ECD e ECF"}, informes de rendimentos e demais obrigações de fechamento e abertura do ano. Daí surge a remuneração por esses serviços, o **13º honorário**, fixo e igual ao valor-base da mensalidade (${moedaPh(h.valorMensal, "valor mensal")}, atualizado pelos reajustes), com ou sem empregados, pago em **duas parcelas iguais, com vencimentos em ${ph(h.decimoParcela1, "dia/mês")} e ${ph(h.decimoParcela2, "dia/mês")}**.`,
+      texto: `As 12 mensalidades cobrem a rotina mensal: 12 folhas, ${o.enquadramento === "simples" || o.enquadramento === "mei" ? "12 apurações e declarações mensais do Simples Nacional (PGDAS-D)" : "12 apurações e declarações mensais dos tributos"} e a escrituração de cada competência. O fechamento e a abertura de cada ano exigem obrigações anuais que fogem da rotina mensal: balanço e demonstrações do exercício, ${o.enquadramento === "simples" || o.enquadramento === "mei" ? "DEFIS (declaração anual do Simples)" : "ECD e ECF"} e informes de rendimentos. Por elas é devido o **13º honorário**, fixo e igual ao valor-base da mensalidade (${moedaPh(h.valorMensal, "valor mensal")}, atualizado pelos reajustes), com ou sem empregados, pago em **duas parcelas iguais, com vencimentos em ${ph(h.decimoParcela1, "dia/mês")} e ${ph(h.decimoParcela2, "dia/mês")}**.`,
     });
     n++;
   }
@@ -734,7 +734,7 @@ export function montarContrato(d: ContratoDados): Bloco[] {
     t: "barra",
     rotulo: `5.${n}. FATURAMENTO ACIMA DA FAIXA.`,
     texto: h.faixaAdicionalValor > 0 && h.faixaPasso > 0
-      ? `Quando o faturamento acumulado nos últimos 12 meses ultrapassar ${moedaPh(h.faturamentoLimite, "limite de faturamento")}, acrescem-se **${brl(h.faixaAdicionalValor)} à mensalidade a cada ${brl(h.faixaPasso)}, ou fração, de faturamento excedente**, a partir da competência seguinte à apuração, conforme o faturamento escriturado e demonstrado na cobrança. Mudança relevante de porte, de atividade ou de escopo poderá ser objeto de aditivo.`
+      ? `Quando o faturamento acumulado nos últimos 12 meses ultrapassar ${moedaPh(h.faturamentoLimite, "limite de faturamento")}, acrescem-se **${brl(h.faixaAdicionalValor)} à mensalidade a cada ${brl(h.faixaPasso)}, ou fração, de faturamento excedente**, a partir da competência seguinte, conforme o faturamento escriturado.`
       : `Ultrapassado o faturamento anual de ${moedaPh(h.faturamentoLimite, "limite de faturamento")}, as partes negociarão por escrito novo preço e eventual ajuste de escopo. Não há aumento automático.`,
   });
   n++;
@@ -742,20 +742,20 @@ export function montarContrato(d: ContratoDados): Bloco[] {
     t: "barra",
     rotulo: `5.${n}. SERVIÇOS EXTRAS E REEMBOLSOS.`,
     texto:
-      "Serviços não incluídos (Cláusula 1.1), a escrituração retroativa (Cláusula 2.1) e os recálculos de guias (Cláusula 2.2) serão cobrados conforme este contrato ou orçamento aprovado por escrito. Custas, taxas públicas, emolumentos, registros, livros e certificados serão reembolsados mediante autorização prévia e comprovante. As despesas operacionais ordinárias da **CONTRATADA** já integram os honorários.",
+      "Serviços não incluídos (Cláusula 1.1), retroativos (Cláusula 2.1) e recálculos de guias (Cláusula 2.2) são cobrados conforme este contrato ou orçamento aprovado por escrito. Taxas, custas e emolumentos públicos são reembolsados com autorização prévia e comprovante.",
   });
   n++;
   B.push({
     t: "barra",
     rotulo: `5.${n}. REAJUSTE.`,
     texto:
-      `Os honorários são reajustados automaticamente a cada 12 meses, contados do início da vigência, pela variação acumulada do **${ou(h.reajusteIndice, "IPCA (IBGE)")}** no período ou, na sua extinção, pelo índice oficial que o substituir, sem necessidade de aviso ou aditivo. Aumento material de volume ou complexidade dos serviços poderá justificar aditivo; simples alteração legislativa não gera acréscimo.`,
+      `Os honorários são reajustados a cada 12 meses, contados do início da vigência, pela variação acumulada do **${ou(h.reajusteIndice, "IPCA (IBGE)")}** no período (ou do índice oficial que o substituir), sem necessidade de aditivo.`,
   });
   n++;
   B.push({
     t: "alerta",
     rotulo: `5.${n}. ATRASO.`,
-    texto: `Honorários pagos após o vencimento sofrem **multa de ${h.multaPct}%** e **juros simples de ${h.jurosPct}% ao mês**, proporcionais aos dias de atraso. Nenhuma medida é tomada sem aviso: persistindo a inadimplência, a **CONTRATADA** notifica a **CONTRATANTE** para regularizar em ${h.inadimplenciaDias} dias e só depois pode suspender os serviços ou rescindir o contrato, indicando data, pendências e consequências. Livros, documentos e arquivos da **CONTRATANTE** nunca são retidos para forçar o pagamento.`,
+    texto: `Pagamento em atraso gera **multa de ${h.multaPct}%** e **juros simples de ${h.jurosPct}% ao mês**, proporcionais aos dias. Persistindo a inadimplência, a **CONTRATADA** notifica a **CONTRATANTE** para regularizar em ${h.inadimplenciaDias} dias e, só depois, pode suspender os serviços ou rescindir o contrato. Documentos da **CONTRATANTE** nunca são retidos para forçar o pagamento.`,
   });
 
   // ---- Cláusula 6 ----
@@ -770,13 +770,13 @@ export function montarContrato(d: ContratoDados): Bloco[] {
     titulo: "DATA DE INÍCIO",
     valor: inicio,
     linhas: [
-      `Primeira competência: ${mesAno(v.dataInicio) || "[MÊS/ANO]"}. A assinatura ocorre na data efetiva, sem antedatação, e ratifica as rotinas já executadas desde o início.`,
+      `Primeira competência: ${mesAno(v.dataInicio) || "[MÊS/ANO]"}. A assinatura ratifica as rotinas executadas desde o início.`,
     ],
   });
   B.push({
     t: "barra",
     rotulo: "6.1. AVISO PRÉVIO.",
-    texto: `Não há fidelidade mínima: qualquer parte pode encerrar o contrato, sem justificativa, por aviso escrito com **${v.avisoPrevioDias} dias** de antecedência, contados do recebimento comprovado. Durante o aviso, serviços e honorários continuam normalmente, para que a transição seja organizada.`,
+    texto: `Não há fidelidade mínima: qualquer parte pode encerrar o contrato por aviso escrito com **${v.avisoPrevioDias} dias** de antecedência. Durante o aviso, serviços e honorários continuam normalmente.`,
   });
   B.push({ t: "legenda", texto: "COMO FUNCIONA O ENCERRAMENTO" });
   B.push({
@@ -790,25 +790,25 @@ export function montarContrato(d: ContratoDados): Bloco[] {
   B.push({
     t: "barra",
     rotulo: "6.2. DISPENSA DO AVISO.",
-    texto: `Quem dispensar o aviso, total ou parcialmente, sem acordo ou justa causa, pagará multa compensatória proporcional aos dias suprimidos, limitada a ${v.multaAvisoMensalidades} ${plural(v.multaAvisoMensalidades, "mensalidade", "mensalidades")} (mensalidade vigente × ${v.multaAvisoMensalidades} × dias não cumpridos ÷ ${v.avisoPrevioDias}). A multa substitui os honorários do período sem serviços. A **CONTRATANTE** pode pedir encerramento imediato pagando a mensalidade integral do mês em curso, além da multa deste item.`,
+    texto: `Quem dispensar o aviso sem acordo ou justa causa paga multa proporcional aos dias não cumpridos, limitada a ${v.multaAvisoMensalidades} ${plural(v.multaAvisoMensalidades, "mensalidade", "mensalidades")} (mensalidade × ${v.multaAvisoMensalidades} × dias não cumpridos ÷ ${v.avisoPrevioDias}). A **CONTRATANTE** pode sair de imediato pagando a mensalidade do mês em curso e essa multa.`,
   });
   B.push({
     t: "barra",
     rotulo: "6.3. JUSTA CAUSA.",
     texto:
-      `Descumprimento relevante permite notificação com prazo de ${v.correcaoDias} dias corridos para correção (ou menor, se necessário para evitar perda de prazo legal); persistindo a falha, cabe rescisão por justa causa. Fraude, ilicitude ou quebra grave de sigilo autorizam a resolução imediata e motivada. A infração que causar a rescisão sujeita a parte culpada à multa de ${v.multaInfracaoMensalidades} ${plural(v.multaInfracaoMensalidades, "mensalidade vigente", "mensalidades vigentes")}, não cumulativa com a multa do item 6.2 pelo mesmo fato, sem prejuízo de indenização por prejuízo comprovado.`,
+      `Descumprimento relevante será notificado, com prazo de ${v.correcaoDias} dias corridos para correção (menor, se necessário para não perder prazo legal); persistindo a falha, cabe rescisão por justa causa. Fraude, ilicitude ou quebra grave de sigilo permitem rescisão imediata. A parte culpada paga multa de ${v.multaInfracaoMensalidades} ${plural(v.multaInfracaoMensalidades, "mensalidade vigente", "mensalidades vigentes")}, não cumulativa com a do item 6.2, sem prejuízo de indenização por dano comprovado.`,
   });
   B.push({
     t: "barra",
     rotulo: "6.4. TRANSIÇÃO.",
     texto:
-      `A **CONTRATANTE** nunca fica desassistida: encerrado o contrato, a **CONTRATADA** conclui as demonstrações e obrigações acessórias das competências sob sua responsabilidade, ainda que vençam depois do término, salvo divisão expressa no distrato, e entrega, mediante protocolo, livros, documentos, arquivos eletrônicos e declarações em até ${p.transicaoDiasUteis} dias úteis do término ou da indicação do novo contador. A entrega não depende de quitação nem da assinatura do distrato. Sistemas, licenças e métodos próprios da **CONTRATADA** não são transferidos; procurações e acessos são revogados após as obrigações remanescentes.`,
+      `Cada parte responde pelo período em que o contrato vigorou: a **CONTRATADA** entrega as obrigações das competências em que prestou os serviços, mesmo que vençam após o término; as competências seguintes ficam com a **CONTRATANTE** ou com o novo contador. Livros, documentos e arquivos são entregues mediante protocolo em até ${p.transicaoDiasUteis} dias úteis do término, sem depender de quitação. Procurações e acessos são revogados ao fim dessas entregas.`,
   });
   B.push({
     t: "barra",
     rotulo: "6.5. INSOLVÊNCIA.",
     texto:
-      "Falência, recuperação judicial ou extrajudicial, dissolução ou insolvência de qualquer das partes serão tratadas conforme a lei, sem rescisão automática; trabalhos especiais desses procedimentos exigem orçamento próprio.",
+      "Falência, recuperação judicial, dissolução ou insolvência não rescindem o contrato automaticamente; trabalhos específicos desses procedimentos são orçados à parte.",
   });
 
   // ---- Cláusula 7 ----
@@ -819,17 +819,17 @@ export function montarContrato(d: ContratoDados): Bloco[] {
       {
         titulo: "7.1. SIGILO",
         texto:
-          "Tudo o que a **CONTRATADA** recebe da **CONTRATANTE** é tratado como confidencial, inclusive após o término do contrato: documentos, números, dados de empregados e informações do negócio. O acesso é limitado à equipe que precisa dele, com registro de quem acessa. A divulgação só ocorre por dever legal, ordem de autoridade, exercício regular de direito ou autorização escrita.",
+          "Tudo o que a **CONTRATADA** recebe da **CONTRATANTE** é confidencial, inclusive após o término, e só é divulgado por dever legal, ordem de autoridade ou autorização escrita.",
       },
       {
         titulo: "7.2. PROTEÇÃO DE DADOS (LGPD)",
         texto:
-          "O tratamento de dados pessoais segue a **Lei nº 13.709/2018**. Ao tratar dados em nome da **CONTRATANTE**, a **CONTRATADA** atua como operadora, segundo instruções documentadas; nos deveres legais próprios, como controladora. A **CONTRATADA** mantém controles de acesso, backup e medidas técnicas e administrativas de segurança, comunica incidentes sem demora e, ao término, devolve ou elimina os dados, ressalvada a guarda exigida por lei.",
+          "Os dados pessoais são tratados conforme a **Lei nº 13.709/2018 (LGPD)**: a **CONTRATADA** atua como operadora nos dados tratados em nome da **CONTRATANTE** e como controladora nos seus deveres legais próprios, mantém medidas de segurança, comunica incidentes sem demora e, ao término, devolve ou elimina os dados, salvo a guarda exigida por lei.",
       },
       {
         titulo: "7.3. PREVENÇÃO À LAVAGEM DE DINHEIRO",
         texto:
-          "A **CONTRATANTE** declara ciência da **Lei nº 9.613/1998** e da **Resolução CFC nº 1.721/2024** e fornecerá dados de identificação, beneficiários finais e origem das operações. A **CONTRATADA** cumprirá os deveres de prevenção e de comunicação ao Coaf quando aplicáveis, independentemente de autorização ou aviso.",
+          "A **CONTRATANTE** declara ciência da **Lei nº 9.613/1998** e da **Resolução CFC nº 1.721/2024** e fornecerá os dados de identificação e de beneficiários finais exigidos. A **CONTRATADA** fará as comunicações ao Coaf quando a lei exigir, sem aviso prévio.",
       },
     ],
   });
@@ -840,34 +840,34 @@ export function montarContrato(d: ContratoDados): Bloco[] {
     t: "barra",
     rotulo: "8.1. ALTERAÇÕES.",
     texto:
-      "Mudanças de preço, escopo ou condições só valem por aditivo escrito, inclusive por assinatura eletrônica. Comunicações operacionais podem ocorrer pelos canais de contato indicados na identificação das partes. Silêncio não é aprovação, e acordo verbal não altera este contrato.",
+      "Mudanças de preço, escopo ou condições só valem por aditivo escrito, inclusive eletrônico. Acordo verbal ou silêncio não alteram este contrato.",
   });
   let g = 2;
   B.push({
     t: "barra",
     rotulo: `8.${g}. TOLERÂNCIA E CESSÃO.`,
     texto:
-      "Tolerância ou atraso em exigir uma obrigação não implica renúncia. Cláusula inválida não prejudica as demais. A cessão do contrato exige consentimento escrito da outra parte; a **CONTRATADA** pode contar com apoio técnico de terceiros, sob sua responsabilidade e sigilo.",
+      "Tolerância não é renúncia, e cláusula inválida não afeta as demais. A cessão do contrato exige concordância escrita da outra parte.",
   });
   g++;
   B.push({
     t: "barra",
     rotulo: `8.${g}. PODERES.`,
     texto:
-      "Os signatários declaram ter poderes para este contrato. O representante da **CONTRATANTE** assina exclusivamente em nome dela, sem garantia pessoal. Alterações posteriores de poderes serão comunicadas por escrito.",
+      "Os signatários declaram ter poderes para assinar. O representante da **CONTRATANTE** assina só em nome dela, sem garantia pessoal.",
   });
   g++;
   B.push({
     t: "barra",
     rotulo: `8.${g}. FORÇA MAIOR.`,
     texto:
-      "Caso fortuito, força maior e indisponibilidade de sistemas públicos serão comunicados e documentados, sem afastar os deveres que possam ser cumpridos por meio alternativo razoável.",
+      "Caso fortuito, força maior e falhas de sistemas públicos afastam a responsabilidade apenas na medida de seus efeitos comprovados.",
   });
   g++;
   B.push({
     t: "barra",
     rotulo: `8.${g}. FORO.`,
-    texto: `As partes buscarão solução amigável. Para as questões decorrentes deste contrato, fica eleito o **foro da Comarca de ${foro}**.`,
+    texto: `As partes buscarão solução amigável e elegem o **foro da Comarca de ${foro}** para as questões deste contrato.`,
   });
 
   // ---- Assinaturas ----
@@ -1084,7 +1084,7 @@ function montarContratoMei(d: ContratoDados): Bloco[] {
     B.push({
       t: "barra",
       rotulo: "4.1. 13º HONORÁRIO.",
-      texto: `A mensalidade remunera a rotina da Cláusula 1 ao longo do ano: 12 DAS, 12 relatórios de receitas e, havendo empregado, 12 folhas, de janeiro a dezembro. No fim de cada ano e no início do seguinte, porém, o governo impõe obrigações anuais que fogem da rotina mensal (DASN-SIMEI, 13º salário e informes do empregado, fechamento e abertura do ano). Daí surge a remuneração por esses serviços, o **13º honorário**, fixo e igual ao valor-base da mensalidade (${moedaPh(h.valorMensal, "valor mensal")}), com ou sem empregado, pago em **duas parcelas iguais, com vencimentos em ${ph(h.decimoParcela1, "dia/mês")} e ${ph(h.decimoParcela2, "dia/mês")}**.`,
+      texto: `A mensalidade cobre a rotina mensal: 12 DAS, 12 relatórios de receitas e, havendo empregado, 12 folhas. As obrigações anuais fogem da rotina mensal (DASN-SIMEI, 13º salário e informes do empregado, fechamento e abertura do ano) e são remuneradas pelo **13º honorário**, fixo e igual ao valor-base da mensalidade (${moedaPh(h.valorMensal, "valor mensal")}), com ou sem empregado, pago em **duas parcelas iguais, com vencimentos em ${ph(h.decimoParcela1, "dia/mês")} e ${ph(h.decimoParcela2, "dia/mês")}**.`,
     });
   }
   B.push({
@@ -1103,12 +1103,12 @@ function montarContratoMei(d: ContratoDados): Bloco[] {
   B.push({
     t: "barra",
     rotulo: "5.1. AVISO PRÉVIO.",
-    texto: `Não há fidelidade mínima: qualquer parte pode encerrar com aviso escrito de **${v.avisoPrevioDias} dias**. Durante o aviso os serviços e a mensalidade continuam, para a transição ser organizada. Quem dispensar o aviso sem acordo paga multa de uma mensalidade.`,
+    texto: `Não há fidelidade mínima: qualquer parte pode encerrar com aviso escrito de **${v.avisoPrevioDias} dias**, durante o qual serviços e mensalidade continuam. Quem dispensar o aviso sem acordo paga multa de uma mensalidade.`,
   });
   B.push({
     t: "barra",
     rotulo: "5.2. ENCERRAMENTO.",
-    texto: `A **CONTRATANTE** nunca fica desassistida: no encerramento, a **CONTRATADA** entrega as declarações, as guias das competências já pagas e os arquivos do MEI em até ${p.transicaoDiasUteis} dias úteis, sem condicionar a entrega a quitação. Descumprimento grave, fraude ou quebra de sigilo autorizam rescisão imediata e motivada.`,
+    texto: `Cada parte responde pelo período em que o contrato vigorou: a **CONTRATADA** entrega as declarações e guias das competências em que prestou os serviços; as seguintes ficam com a **CONTRATANTE** ou o novo contador. Os arquivos do MEI são entregues em até ${p.transicaoDiasUteis} dias úteis do término, sem depender de quitação. Descumprimento grave, fraude ou quebra de sigilo autorizam rescisão imediata.`,
   });
 
   B.push({ t: "secao", titulo: "CLÁUSULA 6  ·  SIGILO, DADOS E FORO" });
