@@ -720,7 +720,7 @@ function Editor({
               <SecaoContratante d={dados} set={set} ro={ro} />
               <SecaoHonorarios d={dados} set={set} ro={ro} />
               <SecaoRegras d={dados} set={set} ro={ro} />
-              <SecaoPrazosVigencia d={dados} set={set} ro={ro} semTestemunhas />
+              <SecaoPrazosVigencia d={dados} set={set} ro={ro} />
             </>
           ) : (
             <>

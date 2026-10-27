@@ -9,6 +9,7 @@
  * `montarAditivo` abaixo). A IA nunca escreve cláusula: ela só preenche campos daqui.
  */
 import {
+  CIDADE_PADRAO,
   COMPLEXIDADE_LABEL,
   ENQUADRAMENTO_LABEL,
   TIPO_LABEL,
@@ -104,7 +105,7 @@ export const CAMPOS: CampoDef[] = [
   // Honorários
   num("honorarios.valorMensal", "Honorário mensal", 0, 100000, { fmt: "moeda" }),
   num("honorarios.vencimentoDia", "Dia de vencimento da mensalidade", 1, 31, { inteiro: true, fmt: "dia" }),
-  num("honorarios.faturamentoLimite", "Limite de faturamento mensal", 0, 1_000_000_000, { fmt: "moeda" }),
+  num("honorarios.faturamentoLimite", "Limite de faturamento anual", 0, 1_000_000_000, { fmt: "moeda" }),
   num("honorarios.valorFuncAdicional", "Valor por empregado adicional", 0, 5000, { fmt: "moeda" }),
   c("honorarios.decimoTerceiro", "13º honorário", "bool", { boolTxt: ["cobrado", "não cobrado"] }),
   c("honorarios.decimoParcela1", "13º honorário: 1ª parcela", "texto", { padrao: "^\\d{1,2}/\\d{1,2}$", dica: "dd/mm" }),
@@ -126,7 +127,6 @@ export const CAMPOS: CampoDef[] = [
   // Vigência
   c("vigencia.dataInicio", "Data de início dos serviços", "data", { aditivavel: false }),
   num("vigencia.avisoPrevioDias", "Aviso prévio", 0, 180, { inteiro: true, fmt: "dias" }),
-  c("vigencia.foro", "Foro", "texto", { aditivavel: false }),
   num("vigencia.correcaoDias", "Justa causa: dias para corrigir", 1, 60, { inteiro: true, fmt: "dias" }),
   num("vigencia.multaAvisoMensalidades", "Multa por dispensar o aviso (limite)", 0, 12, { fmt: "mensalidades" }),
   num("vigencia.multaInfracaoMensalidades", "Multa por infração (limite)", 0, 12, { fmt: "mensalidades" }),
@@ -369,7 +369,7 @@ export type AditivoDados = {
   paiAssinadoEm: string;
   /** Condições vigentes antes deste aditivo (contrato + aditivos anteriores). */
   base: ContratoDados;
-  /** Só o que muda (mais cidade/data/testemunhas da assinatura). */
+  /** Só o que muda (mais cidade/data da assinatura). */
   novo: ContratoParcial;
   /** Data a partir da qual a alteração vale (ISO). */
   efeito: string;
@@ -539,13 +539,12 @@ export function montarAditivo(ad: AditivoDados): Bloco[] {
     t: "par",
     texto: "para firmeza e como prova de haverem ajustado, firmam este aditivo em duas vias de igual teor ou por assinatura eletrônica válida (art. 784, § 4º, do Código de Processo Civil).",
   });
-  // Foro não é aditivável: a cidade-padrão vem do contrato original, não de uma edição solta.
-  const cidade = (novo.assinatura.cidade || "").trim() || (ad.base.vigencia.foro || "").trim() || "[CIDADE/UF]";
+  const cidade = (novo.assinatura.cidade || "").trim() || CIDADE_PADRAO;
   B.push({ t: "data", texto: `${cidade}, ${novo.assinatura.data ? dataExtenso(novo.assinatura.data) : "_____ de ______________ de ______"}.` });
   B.push({
     t: "assinaturas",
     itens: [
-      { rotulo: "CONTRATANTE", nome: ph(ct.razao, "razão social da contratante"), linhas: [ph(ct.repNome, "representante"), "Representante legal"] },
+      { rotulo: "CONTRATANTE", nome: ph(ct.razao, "razão social da contratante"), linhas: [ct.repNome.trim(), "Representante legal"].filter(Boolean) },
       {
         rotulo: "CONTRATADA",
         nome: ph(cd.razao, "razão social da contratada"),

@@ -297,7 +297,7 @@ export function SecaoHonorarios({ d, set, ro, titulo }: SecProps & { titulo?: st
           <Campo label="Vencimento (dia)">
             <Input type="number" min="1" max="31" value={d.honorarios.vencimentoDia} onChange={(e) => set("honorarios", { vencimentoDia: Math.max(1, Math.min(31, num(e.target.value, 15))) })} disabled={ro} />
           </Campo>
-          <Campo label="Faturamento até (R$)">
+          <Campo label="Faturamento anual até (R$)">
             <Input type="number" step="1000" min="0" value={d.honorarios.faturamentoLimite} onChange={(e) => set("honorarios", { faturamentoLimite: num(e.target.value) })} disabled={ro} />
           </Campo>
         </div>
@@ -410,8 +410,7 @@ export function SecaoPrazosVigencia({
   set,
   ro,
   comAssinatura = true,
-  semTestemunhas = false,
-}: SecProps & { comAssinatura?: boolean; semTestemunhas?: boolean }) {
+}: SecProps & { comAssinatura?: boolean }) {
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -452,34 +451,15 @@ export function SecaoPrazosVigencia({
           </Campo>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Campo label="Foro (comarca/UF)">
-            <Input placeholder="ex.: Jundiaí/SP" value={d.vigencia.foro} onChange={(e) => set("vigencia", { foro: e.target.value })} disabled={ro} />
-          </Campo>
-          <Campo label="Cidade/UF da assinatura (vazio = foro)">
+          <Campo label="Cidade/UF da assinatura (foro: sempre Guarulhos/SP)">
             <Input value={d.assinatura.cidade} onChange={(e) => set("assinatura", { cidade: e.target.value })} disabled={ro} />
           </Campo>
-        </div>
-        {comAssinatura ? (
-          <>
-            <Campo label="Data da assinatura (vazio = em branco para preencher)">
+          {comAssinatura ? (
+            <Campo label="Data da assinatura (vazio = em branco)">
               <Input type="date" value={d.assinatura.data} onChange={(e) => set("assinatura", { data: e.target.value })} disabled={ro} />
             </Campo>
-            <div className={`grid grid-cols-2 gap-2 ${semTestemunhas ? "hidden" : ""}`}>
-              <Campo label="Testemunha 1 — nome">
-                <Input value={d.assinatura.testemunha1Nome} onChange={(e) => set("assinatura", { testemunha1Nome: e.target.value })} disabled={ro} />
-              </Campo>
-              <Campo label="CPF">
-                <Input value={d.assinatura.testemunha1Cpf} onChange={(e) => set("assinatura", { testemunha1Cpf: maskCPF(e.target.value) })} disabled={ro} />
-              </Campo>
-              <Campo label="Testemunha 2 — nome">
-                <Input value={d.assinatura.testemunha2Nome} onChange={(e) => set("assinatura", { testemunha2Nome: e.target.value })} disabled={ro} />
-              </Campo>
-              <Campo label="CPF">
-                <Input value={d.assinatura.testemunha2Cpf} onChange={(e) => set("assinatura", { testemunha2Cpf: maskCPF(e.target.value) })} disabled={ro} />
-              </Campo>
-            </div>
-          </>
-        ) : null}
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );

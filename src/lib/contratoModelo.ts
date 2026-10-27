@@ -95,6 +95,7 @@ export type ContratoDados = {
   vigencia: {
     dataInicio: string;
     avisoPrevioDias: number;
+    /** Legado: o foro do contrato é sempre CIDADE_PADRAO (Guarulhos/SP), este campo não é lido. */
     foro: string;
     /** Justa causa: prazo (dias corridos) para corrigir a falha notificada. */
     correcaoDias: number;
@@ -106,10 +107,6 @@ export type ContratoDados = {
   assinatura: {
     cidade: string;
     data: string;
-    testemunha1Nome: string;
-    testemunha1Cpf: string;
-    testemunha2Nome: string;
-    testemunha2Cpf: string;
   };
 };
 
@@ -190,10 +187,14 @@ export type ContratoDetalhe = ContratoResumo & {
   zapsign_status?: string;
 };
 
+/** Sede da NESCON: comarca do foro e cidade da assinatura são sempre aqui. */
+export const CIDADE_PADRAO = "Guarulhos/SP";
+export const ENDERECO_CONTRATADA = "Rua Ponta Grossa, nº 266, Cidade Soberana, Guarulhos/SP, CEP 07161-330";
+
 export const CONTRATADA_PADRAO: ContratoDados["contratada"] = {
   razao: "NESCON SERVICOS EMPRESARIAIS LTDA",
   cnpj: "35.736.034/0001-23",
-  endereco: "",
+  endereco: ENDERECO_CONTRATADA,
   crcOrg: "",
   email: "",
   telefone: "",
@@ -205,8 +206,9 @@ export const CONTRATADA_PADRAO: ContratoDados["contratada"] = {
 
 /**
  * Contrato novo nasce em branco: só as regras-padrão do escritório (dia 15, aviso de 60
- * dias, multa 2% + juros 1%, guias 5 dias antes) e a identificação da própria NESCON.
- * Valor, faturamento, datas e dados do cliente ficam vazios e aparecem em amarelo.
+ * dias, multa 2% + juros 1%, guias 5 dias antes, faturamento anual de até R$ 180 mil,
+ * R$ 70 por empregado adicional, foro e assinatura em Guarulhos/SP) e a identificação da
+ * própria NESCON. Valor, datas e dados do cliente ficam vazios e aparecem em amarelo.
  */
 export function dadosPadrao(): ContratoDados {
   return {
@@ -249,8 +251,8 @@ export function dadosPadrao(): ContratoDados {
     honorarios: {
       valorMensal: 0,
       vencimentoDia: 15,
-      faturamentoLimite: 0,
-      valorFuncAdicional: 0,
+      faturamentoLimite: 180000,
+      valorFuncAdicional: 70,
       decimoTerceiro: true,
       decimoParcela1: "25/11",
       decimoParcela2: "18/12",
@@ -267,14 +269,10 @@ export function dadosPadrao(): ContratoDados {
       faixaPasso: 50000,
       reajusteIndice: "IPCA (IBGE)",
     },
-    vigencia: { dataInicio: "", avisoPrevioDias: 60, foro: "", correcaoDias: 10, multaAvisoMensalidades: 2, multaInfracaoMensalidades: 1 },
+    vigencia: { dataInicio: "", avisoPrevioDias: 60, foro: CIDADE_PADRAO, correcaoDias: 10, multaAvisoMensalidades: 2, multaInfracaoMensalidades: 1 },
     assinatura: {
-      cidade: "",
+      cidade: CIDADE_PADRAO,
       data: "",
-      testemunha1Nome: "",
-      testemunha1Cpf: "",
-      testemunha2Nome: "",
-      testemunha2Cpf: "",
     },
   };
 }
@@ -450,12 +448,10 @@ export function camposPendentes(d: ContratoDados): string[] {
     [vazio(d.contratante.endereco), "Endereço da contratante"],
     [vazio(d.contratante.repNome), "Representante da contratante"],
     [vazio(d.contratante.repCpf), "CPF do representante"],
-    [vazio(d.contratada.endereco), "Endereço da contratada"],
     [!d.honorarios.valorMensal, "Honorário mensal"],
     [!d.honorarios.faturamentoLimite, "Limite de faturamento"],
     [!d.honorarios.valorFuncAdicional, "Valor por empregado adicional"],
     [vazio(d.vigencia.dataInicio), "Data de início"],
-    [vazio(d.vigencia.foro), "Foro"],
   ];
   return lista.filter(([v]) => v).map(([, r]) => r);
 }
@@ -487,7 +483,7 @@ export function montarContrato(d: ContratoDados): Bloco[] {
   const funcs = Math.max(0, Math.floor(o.funcionariosIncluidos || 0));
   const areas = areasContratadas(o);
   const inicio = fmtData(v.dataInicio) || "[DATA DE INÍCIO]";
-  const foro = ph(v.foro, "comarca do foro");
+  const foro = CIDADE_PADRAO;
   const balancetesTxt =
     o.balancetes === "mensal"
       ? "Balancetes **mensais**, até o dia 20 do mês seguinte"
@@ -539,7 +535,7 @@ export function montarContrato(d: ContratoDados): Bloco[] {
     t: "parte",
     rotulo: "CONTÁBIL",
     texto:
-      `**${ph(cd.razao, "razão social da contratada")}**, CNPJ nº ${ph(cd.cnpj, "cnpj da contratada")}, com sede na ${ph(cd.endereco, "endereço completo da contratada")}` +
+      `**${ph(cd.razao, "razão social da contratada")}**, CNPJ nº ${ph(cd.cnpj, "cnpj da contratada")}, com sede na ${ou(cd.endereco, ENDERECO_CONTRATADA)}` +
       opc(cd.crcOrg, ", organização contábil registrada no CRC sob nº ") +
       opc(cd.email, ", e-mail ") +
       opc(cd.telefone, ", telefone ") +
@@ -583,7 +579,7 @@ export function montarContrato(d: ContratoDados): Bloco[] {
         itens: [
           "**Admissões**, alterações e desligamentos; folha de salários e pró-labore; férias, 13º salário e rescisões.",
           "**Guias** de FGTS e INSS e obrigações do eSocial, FGTS Digital, EFD-Reinf e DCTFWeb.",
-          `**Orientação** sobre CLT, previdência e convenção coletiva. Até ${funcs} ${plural(funcs, "empregado incluído", "empregados incluídos")} (Cláusula 5.2).`,
+          `**Orientação** sobre CLT, previdência e convenção coletiva.${funcs > 0 ? ` Até ${funcs} ${plural(funcs, "empregado incluído", "empregados incluídos")}` : " Empregados cobrados"} (Cláusula 5.2).`,
         ],
       },
   ];
@@ -712,7 +708,7 @@ export function montarContrato(d: ContratoDados): Bloco[] {
     titulo: "HONORÁRIOS MENSAIS",
     valor: moedaPh(h.valorMensal, "valor mensal", true),
     linhas: [
-      `Vencimento todo dia ${h.vencimentoDia}. ${areas.fora.length ? `Abrange a área ${listaE(areas.dentro)}` : "Pacote único (contábil, fiscal e pessoal)"} para faturamento mensal de até ${moedaPh(h.faturamentoLimite, "limite de faturamento")}${o.areaPessoal ? ` e até ${funcs} ${plural(funcs, "empregado registrado", "empregados registrados")}` : ""}.`,
+      `Vencimento todo dia ${h.vencimentoDia}. ${areas.fora.length ? `Abrange a área ${listaE(areas.dentro)}` : "Pacote único (contábil, fiscal e pessoal)"} para faturamento anual de até ${moedaPh(h.faturamentoLimite, "limite de faturamento")}${o.areaPessoal && funcs > 0 ? ` e até ${funcs} ${plural(funcs, "empregado registrado", "empregados registrados")}` : ""}.`,
     ],
   });
   B.push({
@@ -738,8 +734,8 @@ export function montarContrato(d: ContratoDados): Bloco[] {
     t: "barra",
     rotulo: `5.${n}. FATURAMENTO ACIMA DA FAIXA.`,
     texto: h.faixaAdicionalValor > 0 && h.faixaPasso > 0
-      ? `Na competência em que o faturamento mensal ultrapassar ${moedaPh(h.faturamentoLimite, "limite de faturamento")}, acrescem-se **${brl(h.faixaAdicionalValor)} à mensalidade a cada ${brl(h.faixaPasso)}, ou fração, de faturamento excedente**, apurado pelo faturamento escriturado da própria competência e demonstrado na cobrança. Mudança relevante de porte, de atividade ou de escopo poderá ser objeto de aditivo.`
-      : `Ultrapassado o faturamento mensal de ${moedaPh(h.faturamentoLimite, "limite de faturamento")}, as partes negociarão por escrito novo preço e eventual ajuste de escopo. Não há aumento automático.`,
+      ? `Quando o faturamento acumulado nos últimos 12 meses ultrapassar ${moedaPh(h.faturamentoLimite, "limite de faturamento")}, acrescem-se **${brl(h.faixaAdicionalValor)} à mensalidade a cada ${brl(h.faixaPasso)}, ou fração, de faturamento excedente**, a partir da competência seguinte à apuração, conforme o faturamento escriturado e demonstrado na cobrança. Mudança relevante de porte, de atividade ou de escopo poderá ser objeto de aditivo.`
+      : `Ultrapassado o faturamento anual de ${moedaPh(h.faturamentoLimite, "limite de faturamento")}, as partes negociarão por escrito novo preço e eventual ajuste de escopo. Não há aumento automático.`,
   });
   n++;
   B.push({
@@ -879,11 +875,11 @@ export function montarContrato(d: ContratoDados): Bloco[] {
   B.push({
     t: "par",
     texto:
-      "para firmeza e como prova de haverem contratado, firmam este documento em duas vias de igual teor ou por assinatura eletrônica válida (art. 784, § 4º, do Código de Processo Civil), na presença das testemunhas abaixo.",
+      "para firmeza e como prova de haverem contratado, firmam este documento em duas vias de igual teor ou por assinatura eletrônica válida (art. 784, § 4º, do Código de Processo Civil).",
   });
   B.push({
     t: "data",
-    texto: `${ou(d.assinatura.cidade, ou(v.foro, "[CIDADE/UF]"))}, ${d.assinatura.data ? dataExtenso(d.assinatura.data) : "_____ de ______________ de ______"}.`,
+    texto: `${ou(d.assinatura.cidade, CIDADE_PADRAO)}, ${d.assinatura.data ? dataExtenso(d.assinatura.data) : "_____ de ______________ de ______"}.`,
   });
   B.push({
     t: "assinaturas",
@@ -891,7 +887,7 @@ export function montarContrato(d: ContratoDados): Bloco[] {
       {
         rotulo: "CONTRATANTE",
         nome: ph(ct.razao, "razão social da contratante"),
-        linhas: [ph(ct.repNome, "representante"), ct.repPoderes.toLowerCase().includes("administr") ? "Administrador(a)" : "Representante legal"],
+        linhas: [ct.repNome.trim(), ct.repPoderes.toLowerCase().includes("administr") ? "Administrador(a)" : "Representante legal"].filter(Boolean),
       },
       {
         rotulo: "CONTRATADA",
@@ -900,8 +896,6 @@ export function montarContrato(d: ContratoDados): Bloco[] {
           ? [cd.repNome.trim(), `Resp. técnico: ${ph(cd.respTecnico, "responsável técnico")} · ${ph(cd.crcRt, "crc")}`]
           : [`${ph(cd.respTecnico, "responsável técnico")} · ${ph(cd.crcRt, "crc")}`, "Responsável técnico e representante"],
       },
-      { rotulo: "TESTEMUNHA 1", nome: ou(d.assinatura.testemunha1Nome, "Nome: ______________________________"), linhas: [`CPF: ${ou(d.assinatura.testemunha1Cpf, "_____________________")}`] },
-      { rotulo: "TESTEMUNHA 2", nome: ou(d.assinatura.testemunha2Nome, "Nome: ______________________________"), linhas: [`CPF: ${ou(d.assinatura.testemunha2Cpf, "_____________________")}`] },
     ],
   });
 
@@ -979,7 +973,7 @@ function montarContratoMei(d: ContratoDados): Bloco[] {
   const ct = d.contratante;
   const cd = d.contratada;
   const inicio = fmtData(v.dataInicio) || "[DATA DE INÍCIO]";
-  const foro = ph(v.foro, "comarca do foro");
+  const foro = CIDADE_PADRAO;
   const funcs = Math.max(0, Math.floor(d.objeto.funcionariosIncluidos || 0));
 
   B.push({
@@ -1011,7 +1005,7 @@ function montarContratoMei(d: ContratoDados): Bloco[] {
     t: "parte",
     rotulo: "CONTÁBIL",
     texto:
-      `**${ph(cd.razao, "razão social da contratada")}**, CNPJ nº ${ph(cd.cnpj, "cnpj da contratada")}, com sede na ${ph(cd.endereco, "endereço completo da contratada")}` +
+      `**${ph(cd.razao, "razão social da contratada")}**, CNPJ nº ${ph(cd.cnpj, "cnpj da contratada")}, com sede na ${ou(cd.endereco, ENDERECO_CONTRATADA)}` +
       opc(cd.crcOrg, ", organização contábil registrada no CRC sob nº ") +
       opc(cd.email, ", e-mail ") +
       (cd.repNome.trim()
@@ -1129,18 +1123,16 @@ function montarContratoMei(d: ContratoDados): Bloco[] {
 
   B.push({ t: "secao", titulo: "ASSIM," });
   B.push({ t: "par", texto: "para firmeza e como prova de haverem contratado, firmam este documento em duas vias ou por assinatura eletrônica válida (art. 784, § 4º, do Código de Processo Civil)." });
-  B.push({ t: "data", texto: `${ou(d.assinatura.cidade, ou(v.foro, "[CIDADE/UF]"))}, ${d.assinatura.data ? dataExtenso(d.assinatura.data) : "_____ de ______________ de ______"}.` });
+  B.push({ t: "data", texto: `${ou(d.assinatura.cidade, CIDADE_PADRAO)}, ${d.assinatura.data ? dataExtenso(d.assinatura.data) : "_____ de ______________ de ______"}.` });
   B.push({
     t: "assinaturas",
     itens: [
-      { rotulo: "CONTRATANTE", nome: ph(ct.razao, "nome empresarial do mei"), linhas: [ph(ct.repNome, "titular"), "Titular"] },
+      { rotulo: "CONTRATANTE", nome: ph(ct.razao, "nome empresarial do mei"), linhas: [ct.repNome.trim(), "Titular"].filter(Boolean) },
       {
         rotulo: "CONTRATADA",
         nome: ph(cd.razao, "razão social da contratada"),
         linhas: cd.repNome.trim() ? [cd.repNome.trim(), `Resp. técnico: ${ph(cd.respTecnico, "responsável técnico")} · ${ph(cd.crcRt, "crc")}`] : [`${ph(cd.respTecnico, "responsável técnico")} · ${ph(cd.crcRt, "crc")}`, "Responsável técnico e representante"],
       },
-      { rotulo: "TESTEMUNHA 1", nome: ou(d.assinatura.testemunha1Nome, "Nome: ______________________________"), linhas: [`CPF: ${ou(d.assinatura.testemunha1Cpf, "_____________________")}`] },
-      { rotulo: "TESTEMUNHA 2", nome: ou(d.assinatura.testemunha2Nome, "Nome: ______________________________"), linhas: [`CPF: ${ou(d.assinatura.testemunha2Cpf, "_____________________")}`] },
     ],
   });
   return B;
