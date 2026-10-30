@@ -10,7 +10,12 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { maskCPF, maskPIS } from "@/lib/masks";
-import { parseEmployeeImportFile } from "@/lib/parseEmployeeSpreadsheet";
+import {
+  type EmployeeImportRow,
+  describeImportResult,
+  parseEmployeeImportFile,
+  toImportPayload,
+} from "@/lib/parseEmployeeSpreadsheet";
 
 const EmployeesPage = () => {
   const navigate = useNavigate();
@@ -25,8 +30,10 @@ const EmployeesPage = () => {
   const [pendingImport, setPendingImport] = useState<{
     fileName: string;
     fileCnpj: string;
-    rows: Array<{ name: string; cpf: string }>;
+    rows: EmployeeImportRow[];
+    dismissed: EmployeeImportRow[];
     skippedDismissed: number;
+    withoutCpf: number;
   } | null>(null);
 
   const { data: employees, isLoading } = useQuery({
@@ -51,7 +58,7 @@ const EmployeesPage = () => {
       setPis("");
       toast.success("Funcionário adicionado");
     },
-    onError: () => toast.error("Erro ao adicionar"),
+    onError: (e: Error) => toast.error(e.message || "Erro ao adicionar"),
   });
 
   const updateMutation = useMutation({
@@ -81,12 +88,12 @@ const EmployeesPage = () => {
   });
 
   const importMutation = useMutation({
-    mutationFn: ({ rows, fileCnpj }: { rows: Array<{ name: string; cpf: string }>; fileCnpj: string }) =>
+    mutationFn: ({ rows, fileCnpj }: { rows: ReturnType<typeof toImportPayload>; fileCnpj: string }) =>
       api.employees.import(rows, fileCnpj),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
       setPendingImport(null);
-      toast.success(`Importação concluída: ${result.inserted} inseridos, ${result.skipped} ignorados`);
+      toast.success(describeImportResult(result));
       if (result.errors.length) {
         toast.warning(`${result.errors.length} linhas com erro foram ignoradas`);
       }
@@ -110,20 +117,18 @@ const EmployeesPage = () => {
         return;
       }
 
-      const { rows, skippedDismissed, fileCnpj } = parsed;
-      if (!rows.length) {
-        if (skippedDismissed > 0) {
-          toast.error("Nenhum funcionário ativo: todas as linhas tinham data de demissão ou dados inválidos");
-        } else {
-          toast.error("Planilha sem funcionários válidos para importar");
-        }
+      const { rows, dismissed, skippedDismissed, withoutCpf, fileCnpj } = parsed;
+      if (!rows.length && !dismissed.length) {
+        toast.error("Planilha sem funcionários válidos para importar");
         return;
       }
       setPendingImport({
         fileName: file.name,
         fileCnpj,
         rows,
+        dismissed,
         skippedDismissed,
+        withoutCpf,
       });
     } catch {
       toast.error("Não foi possível ler a planilha. Use CSV ou Excel (.xls, .xlsx).");
@@ -204,13 +209,21 @@ const EmployeesPage = () => {
                 CNPJ detectado no arquivo: <strong>{formatCnpj(pendingImport.fileCnpj)}</strong> • A importar:{" "}
                 <strong>{pendingImport.rows.length}</strong>
                 {pendingImport.skippedDismissed > 0 && (
-                  <> • <span className="text-amber-600 dark:text-amber-500">{pendingImport.skippedDismissed} com demissão (não importados)</span></>
+                  <> • <span className="text-amber-600 dark:text-amber-500">{pendingImport.skippedDismissed} com demissão (inativados se estiverem cadastrados)</span></>
                 )}
               </p>
+              {pendingImport.withoutCpf > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Esta lista não traz CPF: os funcionários são reconhecidos pelo nome. Quem for novo
+                  entra com CPF pendente e é completado pela folha do escritório.
+                </p>
+              )}
               <div className="flex gap-2">
                 <Button
                   className="gap-2"
-                  onClick={() => importMutation.mutate({ rows: pendingImport.rows, fileCnpj: pendingImport.fileCnpj })}
+                  onClick={() =>
+                    importMutation.mutate({ rows: toImportPayload(pendingImport), fileCnpj: pendingImport.fileCnpj })
+                  }
                   disabled={importMutation.isPending}
                 >
                   <Upload className="h-4 w-4" />
@@ -274,9 +287,14 @@ const EmployeesPage = () => {
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-foreground truncate">{emp.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    CPF: {emp.cpf}
+                    {emp.cpf ? `CPF: ${maskCPF(emp.cpf)}` : "CPF pendente"}
                     {emp.pis && ` • PIS: ${emp.pis}`}
                   </p>
+                  {emp.origem === "cliente" && !emp.codigo && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Cadastrado por você · o escritório confirma no próximo fechamento da folha
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-1">
                   <Button variant="ghost" size="icon" onClick={() => startEdit(emp)} className="h-8 w-8">

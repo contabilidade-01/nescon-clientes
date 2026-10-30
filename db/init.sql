@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS employees (
   salario_competencia TEXT,
   -- Cargo separa funcionário de pró-labore (api/src/payrollRoles.js).
   cargo TEXT,
+  -- 'cliente' = cadastrado pelo portal, provisório até a folha confirmar
+  -- (unificação em api/src/employeeUnify.js).
+  origem TEXT NOT NULL DEFAULT 'escritorio',
+  conferido_em TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 

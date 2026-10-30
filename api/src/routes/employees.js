@@ -57,8 +57,14 @@ router.get("/", async (req, res) => {
   }
 });
 
+/**
+ * Cadastro pelo cliente, sem aprovação do escritório: quem entrou no dia 01 precisa
+ * poder receber advertência/atestado antes da folha chegar. Basta a empresa ter alguma
+ * ferramenta que usa a lista de funcionários. O cadastro nasce `origem = 'cliente'` e
+ * é unificado com o do escritório quando a folha chegar (ver employeeUnify.js).
+ */
 router.post("/", requireCompanyUser, (req, res, next) => {
-  if (!companyHasTool(req, "employees")) {
+  if (!companyHasAnyTool(req, EMPLOYEE_LIST_TOOLS)) {
     return res.status(403).json({ error: "Cadastro de funcionários não está ativo para a sua empresa." });
   }
   next();
@@ -77,9 +83,26 @@ router.post("/", requireCompanyUser, (req, res, next) => {
       return res.status(400).json({ error: "PIS inválido" });
     }
 
+    const cpfDigits = cpf.replace(/\D/g, "");
+    const { rows: existentes } = await db.query(
+      "SELECT * FROM employees WHERE company_id = $1 AND cpf = $2 ORDER BY active DESC LIMIT 1",
+      [companyId, cpfDigits]
+    );
+    if (existentes.length) {
+      if (existentes[0].active) {
+        return res.status(409).json({ error: "Já existe um funcionário ativo com este CPF", employee: existentes[0] });
+      }
+      // Recontratação: o cadastro antigo volta a valer (histórico preservado).
+      const { rows } = await db.query(
+        "UPDATE employees SET active = true, pis = COALESCE($2, pis) WHERE id = $1 RETURNING *",
+        [existentes[0].id, pis || null]
+      );
+      return res.status(200).json(rows[0]);
+    }
+
     const { rows } = await db.query(
-      "INSERT INTO employees (company_id, name, cpf, pis) VALUES ($1,$2,$3,$4) RETURNING *",
-      [companyId, name.trim(), cpf.replace(/\D/g, ""), pis || null]
+      "INSERT INTO employees (company_id, name, cpf, pis, origem) VALUES ($1,$2,$3,$4,'cliente') RETURNING *",
+      [companyId, name.trim().toUpperCase(), cpfDigits, pis || null]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -102,7 +125,9 @@ router.post("/import", requireCompanyUser, (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
-    const result = await importEmployeesForCompany(client, companyId, companyCnpj, fileCnpj, rows);
+    const result = await importEmployeesForCompany(client, companyId, companyCnpj, fileCnpj, rows, {
+      origem: "cliente",
+    });
     if (result.status !== 201) {
       await client.query("ROLLBACK");
       return res.status(result.status).json(result.body);

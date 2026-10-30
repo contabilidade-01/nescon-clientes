@@ -1,4 +1,5 @@
 const { validateCPF, validateString } = require("./middleware/validate");
+const { normalizarNome, unificarAutomatico } = require("./employeeUnify");
 
 /** "1.412,00" ou 1412 → 1412. Null quando não dá para ler ou é zero. */
 function salarioValido(v) {
@@ -26,7 +27,40 @@ async function importEmployeesForCompany(client, companyId, companyCnpj, fileCnp
 
   let inserted = 0;
   let skipped = 0;
+  let inativados = 0;
+  let reativados = 0;
   const errors = [];
+  const origem = opts.origem === "cliente" ? "cliente" : "escritorio";
+
+  // Listagem sem CPF (ex.: "Relação de Empregados" do Domínio) casa pelo nome.
+  const porNome = new Map();
+  const { rows: atuais } = await client.query(
+    "SELECT id, name, active FROM employees WHERE company_id = $1",
+    [companyId]
+  );
+  for (const e of atuais) {
+    const k = normalizarNome(e.name);
+    if (!porNome.has(k)) porNome.set(k, []);
+    porNome.get(k).push(e);
+  }
+
+  /** Aplica a situação da planilha (demitido/trabalhando) a um cadastro existente. */
+  const aplicarSituacao = async (id, ativoAgora, ativoPlanilha) => {
+    if (typeof ativoPlanilha !== "boolean" || ativoAgora === ativoPlanilha) return;
+    await client.query("UPDATE employees SET active = $2 WHERE id = $1", [id, ativoPlanilha]);
+    if (ativoPlanilha) {
+      reativados += 1;
+    } else {
+      inativados += 1;
+      // A planilha diz que foi demitido: o aviso "sumiu da folha" perde o sentido.
+      await client.query(
+        `UPDATE employee_exit_alerts
+            SET situacao = 'resolvido', resolucao = 'inativado', resolvido_em = now()
+          WHERE situacao = 'pendente' AND employee_id = $1`,
+        [id]
+      );
+    }
+  };
 
   for (let idx = 0; idx < rows.length; idx += 1) {
     const item = rows[idx] || {};
@@ -40,6 +74,41 @@ async function importEmployeesForCompany(client, companyId, companyCnpj, fileCnp
     const ehContribuinte = item.ehContribuinte === true;
     const competencia = opts.competencia || null;
 
+    // `active` explícito vem da planilha (data de demissão / situação); o extrato não manda.
+    const ativoPlanilha = typeof item.active === "boolean" ? item.active : undefined;
+
+    if (!cpf) {
+      // Linha só com nome: atualiza quem já existe; cadastra provisório quem é novo.
+      if (!validateString(name, 2, 200)) {
+        errors.push({ row: idx + 1, message: "Nome inválido" });
+        continue;
+      }
+      const iguais = porNome.get(normalizarNome(name)) || [];
+      if (iguais.length > 1) {
+        errors.push({ row: idx + 1, message: `Mais de um cadastro com o nome ${name}` });
+        continue;
+      }
+      if (iguais.length === 1) {
+        await aplicarSituacao(iguais[0].id, iguais[0].active !== false, ativoPlanilha);
+        iguais[0].active = ativoPlanilha ?? iguais[0].active;
+        skipped += 1;
+        continue;
+      }
+      if (ativoPlanilha === false) {
+        skipped += 1;
+        continue;
+      }
+      // Sem CPF ainda: fica provisório e a folha completa (unificação pelo nome).
+      const { rows: novo } = await client.query(
+        `INSERT INTO employees (company_id, name, cpf, active, origem)
+         VALUES ($1, $2, '', true, $3) RETURNING id`,
+        [companyId, name, origem]
+      );
+      porNome.set(normalizarNome(name), [{ id: novo[0].id, name, active: true }]);
+      inserted += 1;
+      continue;
+    }
+
     if (!validateString(name, 2, 200) || !validateCPF(cpf)) {
       errors.push({ row: idx + 1, message: "Nome/CPF inválido" });
       continue;
@@ -48,22 +117,22 @@ async function importEmployeesForCompany(client, companyId, companyCnpj, fileCnp
       errors.push({ row: idx + 1, message: "PIS inválido" });
       continue;
     }
-    if (item.active === false) {
-      skipped += 1;
-      continue;
-    }
 
     const exists = await client.query(
-      "SELECT 1 FROM employees WHERE company_id = $1 AND cpf = $2 LIMIT 1",
+      "SELECT id, active FROM employees WHERE company_id = $1 AND cpf = $2 LIMIT 1",
       [companyId, cpf]
     );
     if (exists.rowCount) {
+      await aplicarSituacao(exists.rows[0].id, exists.rows[0].active !== false, ativoPlanilha);
       // Já cadastrado: não recria, mas ATUALIZA o que a folha nova traz de fresco.
       // COALESCE mantém o valor antigo quando o extrato veio sem o campo — melhor um
       // salário de meses atrás do que apagar o único que temos.
+      // Cadastro provisório do cliente casado pelo CPF: o nome da folha passa a valer.
       await client.query(
         `UPDATE employees
-            SET codigo = COALESCE($3, codigo),
+            SET name = CASE WHEN codigo IS NULL AND origem = 'cliente' AND $3::text IS NOT NULL
+                            THEN $9 ELSE name END,
+                codigo = COALESCE($3, codigo),
                 cargo = COALESCE($6, cargo),
                 vinculo = COALESCE($7, vinculo),
                 eh_contribuinte = CASE WHEN $8 THEN true ELSE eh_contribuinte END,
@@ -71,22 +140,30 @@ async function importEmployeesForCompany(client, companyId, companyCnpj, fileCnp
                 salario_competencia = CASE WHEN $4 IS NULL THEN salario_competencia
                                            ELSE COALESCE($5, salario_competencia) END
           WHERE company_id = $1 AND cpf = $2`,
-        [companyId, cpf, codigo, salario, competencia, cargo, vinculo, ehContribuinte]
+        [companyId, cpf, codigo, salario, competencia, cargo, vinculo, ehContribuinte, name]
       );
+      skipped += 1;
+      continue;
+    }
+    if (ativoPlanilha === false) {
+      // Demitido e nunca cadastrado: nada a fazer.
       skipped += 1;
       continue;
     }
 
     await client.query(
       `INSERT INTO employees
-         (company_id, name, cpf, pis, active, codigo, salario_base, salario_competencia, cargo, vinculo, eh_contribuinte)
-       VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10)`,
-      [companyId, name, cpf, pis, codigo, salario, salario ? competencia : null, cargo, vinculo, ehContribuinte]
+         (company_id, name, cpf, pis, active, codigo, salario_base, salario_competencia, cargo, vinculo, eh_contribuinte, origem)
+       VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10, $11)`,
+      [companyId, name, cpf, pis, codigo, salario, salario ? competencia : null, cargo, vinculo, ehContribuinte, origem]
     );
     inserted += 1;
   }
 
-  return { status: 201, body: { inserted, skipped, errors } };
+  // Quem o cliente cadastrou antes da folha chegar vira um só com o cadastro oficial.
+  const unificados = await unificarAutomatico(client, companyId);
+
+  return { status: 201, body: { inserted, skipped, errors, inativados, reativados, unificados } };
 }
 
 module.exports = { importEmployeesForCompany };

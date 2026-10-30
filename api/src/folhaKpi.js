@@ -12,6 +12,7 @@ const { extrairDoTexto, cpfValido } = require("./extratoEmployees");
 const { projetar } = require("./decimoTerceiro");
 const { funcionarioRealSql, ehProLabore, ehEstagiario } = require("./payrollRoles");
 const { aplicarAutomaticas } = require("./alertas");
+const { unificarAutomatico } = require("./employeeUnify");
 
 /** Lê o texto de um PDF de entrega. Devolve null se o arquivo sumiu do volume. */
 async function textoDoExtrato(filePath) {
@@ -85,6 +86,19 @@ async function sincronizarEmployeesDoExtrato(db, companyId, funcionarios) {
         [companyId, nome, f.cpf, salario, f.cargo || null, f.vinculo || null, Boolean(f.ehContribuinte)]
       );
     }
+  }
+  // Cadastro provisório do cliente (feito antes da folha chegar) vira um só com o da folha.
+  if (typeof db.connect !== "function") return;
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    await unificarAutomatico(client, companyId);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.warn("[folhaKpi] unificação automática falhou:", err.message);
+  } finally {
+    client.release();
   }
 }
 
