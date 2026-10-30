@@ -153,22 +153,29 @@ const AlterarSenhaPage = () => {
 
             <Separator />
 
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Não lembra a senha atual?</p>
+            {company?.gerente ? (
               <p className="text-xs text-muted-foreground">
-                Enviamos um link de redefinição para o e-mail cadastrado da sua empresa. Se não
-                houver e-mail cadastrado, peça à contabilidade para cadastrar.
+                Não lembra a senha atual? Peça ao responsável da empresa para gerar uma nova na
+                tela Gerentes.
               </p>
-              <Button
-                variant="outline"
-                className="w-full gap-2"
-                disabled={enviarLink.isPending}
-                onClick={() => enviarLink.mutate()}
-              >
-                <Mail className="h-4 w-4" />
-                {enviarLink.isPending ? "Enviando..." : "Enviar link por e-mail"}
-              </Button>
-            </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Não lembra a senha atual?</p>
+                <p className="text-xs text-muted-foreground">
+                  Enviamos um link de redefinição para o e-mail cadastrado da sua empresa. Se não
+                  houver e-mail cadastrado, peça à contabilidade para cadastrar.
+                </p>
+                <Button
+                  variant="outline"
+                  className="w-full gap-2"
+                  disabled={enviarLink.isPending}
+                  onClick={() => enviarLink.mutate()}
+                >
+                  <Mail className="h-4 w-4" />
+                  {enviarLink.isPending ? "Enviando..." : "Enviar link por e-mail"}
+                </Button>
+              </div>
+            )}
 
             {obrigatorio && (
               <>

@@ -76,6 +76,7 @@ import AdmissoesAdminPage from "./pages/admin/AdmissoesPage.tsx";
 import AcompanhamentosPage from "./pages/admin/AcompanhamentosPage.tsx";
 import AlterarSenhaPage from "./pages/AlterarSenhaPage.tsx";
 import ManutencaoPage from "./pages/ManutencaoPage.tsx";
+import GerentesPage from "./pages/GerentesPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -172,6 +173,17 @@ function OwnerOnlyRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Gerentes da empresa: só o login principal (gerente não gerencia outros gerentes). */
+function CompanyOwnerRoute({ children }: { children: React.ReactNode }) {
+  const { isLoggedIn, isAdmin, company } = useAuth();
+  if (!isLoggedIn) return <Navigate to="/login" replace />;
+  if (isAdmin) return <Navigate to="/admin/hub" replace />;
+  if (!company) return <Navigate to="/login" replace />;
+  if (company.mustChangePassword) return <Navigate to="/alterar-senha" replace />;
+  if (company.gerente) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 const AppRoutes = () => (
   <Routes>
     <Route path="/login" element={<LoginPage />} />
@@ -231,6 +243,7 @@ const AppRoutes = () => (
     <Route path="/alterar-senha" element={<LoggedInRoute><AlterarSenhaPage /></LoggedInRoute>} />
     <Route path="/" element={<CompanyOnlyRoute><Index /></CompanyOnlyRoute>} />
     <Route path="/primeiros-passos" element={<CompanyOnlyRoute><PrimeirosPassosPage /></CompanyOnlyRoute>} />
+    <Route path="/gerentes" element={<CompanyOwnerRoute><GerentesPage /></CompanyOwnerRoute>} />
     <Route path="/suspensao" element={<CompanyToolRoute tool="suspension"><SuspensionPage /></CompanyToolRoute>} />
     <Route path="/advertencia" element={<CompanyToolRoute tool="warning"><WarningPage /></CompanyToolRoute>} />
     <Route path="/historico" element={<HistoryAccessRoute><HistoryPage /></HistoryAccessRoute>} />
