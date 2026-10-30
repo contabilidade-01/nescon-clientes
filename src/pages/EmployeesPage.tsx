@@ -1,6 +1,17 @@
 import { type ChangeEvent, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Pencil, Trash2, Users, Save, X, Upload } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Users, Save, X, Upload, UserMinus, UserCheck } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,10 +47,29 @@ const EmployeesPage = () => {
     withoutCpf: number;
   } | null>(null);
 
+  const [aba, setAba] = useState<"ativos" | "inativos">("ativos");
+
   const { data: employees, isLoading } = useQuery({
     queryKey: ["employees", company?.id],
     queryFn: () => api.employees.list({ companyId: company!.id }),
     enabled: !!company,
+  });
+
+  // Quem saiu fica numa lista à parte: some das telas do dia a dia (advertência,
+  // atestado…), mas dá para conferir e reativar se foi engano.
+  const { data: inativos, isLoading: loadingInativos } = useQuery({
+    queryKey: ["employees", company?.id, "inativos"],
+    queryFn: () => api.employees.list({ companyId: company!.id, inativos: true }),
+    enabled: !!company,
+  });
+
+  const situacaoMutation = useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) => api.employees.update(id, { active }),
+    onSuccess: (_r, { active }) => {
+      queryClient.invalidateQueries({ queryKey: ["employees"] });
+      toast.success(active ? "Funcionário reativado" : "Funcionário inativado — está na aba Inativos");
+    },
+    onError: (e: Error) => toast.error(e.message || "Erro ao alterar a situação"),
   });
 
   const addMutation = useMutation({
@@ -270,7 +300,63 @@ const EmployeesPage = () => {
           </Card>
         )}
 
-        {isLoading ? (
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm">
+          {(["ativos", "inativos"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setAba(k)}
+              className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+                aba === k ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+              }`}
+            >
+              {k === "ativos" ? "Ativos" : "Inativos"}
+              {k === "ativos" && employees ? ` (${employees.length})` : ""}
+              {k === "inativos" && inativos ? ` (${inativos.length})` : ""}
+            </button>
+          ))}
+        </div>
+
+        {aba === "inativos" ? (
+          loadingInativos ? (
+            <div className="py-12 text-center text-muted-foreground">Carregando...</div>
+          ) : !inativos?.length ? (
+            <div className="py-12 text-center text-muted-foreground">
+              <UserMinus className="mx-auto mb-3 h-12 w-12 opacity-30" />
+              <p>Nenhum funcionário inativo</p>
+            </div>
+          ) : (
+            inativos.map((emp) => (
+              <Card key={emp.id} className="opacity-80">
+                <CardContent className="flex items-center gap-3 p-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                    <UserMinus className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-foreground truncate">{emp.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {emp.cpf ? `CPF: ${maskCPF(emp.cpf)}` : "CPF pendente"}
+                      {emp.inativado_em
+                        ? ` • saiu em ${new Date(emp.inativado_em).toLocaleDateString("pt-BR")}${
+                            emp.inativado_por === "cliente" ? " (por você)" : ""
+                          }`
+                        : ""}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1"
+                    disabled={situacaoMutation.isPending}
+                    onClick={() => situacaoMutation.mutate({ id: emp.id, active: true })}
+                  >
+                    <UserCheck className="h-4 w-4" /> Reativar
+                  </Button>
+                </CardContent>
+              </Card>
+            ))
+          )
+        ) : isLoading ? (
           <div className="py-12 text-center text-muted-foreground">Carregando...</div>
         ) : !employees?.length ? (
           <div className="py-12 text-center text-muted-foreground">
@@ -297,17 +383,50 @@ const EmployeesPage = () => {
                   )}
                 </div>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => startEdit(emp)} className="h-8 w-8">
+                  <Button variant="ghost" size="icon" onClick={() => startEdit(emp)} className="h-8 w-8" title="Editar">
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteMutation.mutate(emp.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        title="Inativar (saiu da empresa)"
+                        disabled={situacaoMutation.isPending}
+                      >
+                        <UserMinus className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>{emp.name} saiu da empresa?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Ele deixa de aparecer nas listas do dia a dia e vai para a aba Inativos, onde
+                          você pode reativar se precisar. O escritório vê no painel que a saída foi dada por você.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => situacaoMutation.mutate({ id: emp.id, active: false })}>
+                          Sim, inativar
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                  {/* Excluir só o que o próprio cliente cadastrou e a folha ainda não
+                      confirmou (cadastro por engano). Quem saiu se inativa: o histórico fica. */}
+                  {emp.origem === "cliente" && !emp.codigo && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      title="Excluir cadastro feito por engano"
+                      onClick={() => deleteMutation.mutate(emp.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

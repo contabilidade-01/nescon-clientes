@@ -1712,7 +1712,7 @@ export const api = {
       rows: Array<{ name: string; cpf: string; pis?: string | null; active?: boolean }>,
       fileCnpj: string
     ) =>
-      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }>; inativados?: number; reativados?: number; unificados?: number }>(
+      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }>; inativados?: number; reativados?: number; unificados?: number; cpfsCompletados?: number }>(
         `/admin/companies/${companyId}/import-employees`,
         { method: "POST", body: JSON.stringify({ rows, fileCnpj }) }
       ),
@@ -2524,11 +2524,11 @@ export const api = {
   },
 
   employees: {
-    list: (opts?: { companyId?: string }) => {
-      const q =
-        opts?.companyId && opts.companyId.length
-          ? `?company_id=${encodeURIComponent(opts.companyId)}`
-          : "";
+    list: (opts?: { companyId?: string; inativos?: boolean }) => {
+      const p = new URLSearchParams();
+      if (opts?.companyId) p.set("company_id", opts.companyId);
+      if (opts?.inativos) p.set("inativos", "1");
+      const q = p.toString() ? `?${p.toString()}` : "";
       return request<
         Array<{
           id: string;
@@ -2541,6 +2541,9 @@ export const api = {
           codigo?: string | null;
           /** 'cliente' = cadastrado pelo portal; provisório até a folha confirmar. */
           origem?: string;
+          inativado_em?: string | null;
+          /** Quem deu a saída: 'cliente' (portal) ou 'escritorio'. */
+          inativado_por?: string | null;
           company_name?: string;
           company_cnpj?: string;
         }>
@@ -2552,7 +2555,7 @@ export const api = {
         body: JSON.stringify(data),
       }),
     import: (rows: Array<{ name: string; cpf: string; pis?: string | null; active?: boolean }>, fileCnpj: string) =>
-      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }>; inativados?: number; reativados?: number; unificados?: number }>("/employees/import", {
+      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }>; inativados?: number; reativados?: number; unificados?: number; cpfsCompletados?: number }>("/employees/import", {
         method: "POST",
         body: JSON.stringify({ rows, fileCnpj }),
       }),

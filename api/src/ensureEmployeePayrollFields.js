@@ -24,6 +24,9 @@ async function ensureEmployeePayrollFields(db) {
     // marca que o admin já olhou — some da lista de conferência.
     await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS origem TEXT NOT NULL DEFAULT 'escritorio';`);
     await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS conferido_em TIMESTAMPTZ;`);
+    // Saída dada pelo cliente no portal (sem esperar a folha) ou pelo escritório.
+    await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS inativado_em TIMESTAMPTZ;`);
+    await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS inativado_por TEXT;`);
     // Backfill: preencher vinculo a partir do cargo para quem já estava no banco
     await db.query(`
       UPDATE employees SET vinculo = 'Diretor'
