@@ -196,7 +196,7 @@ const AppRoutes = () => (
     <Route path="/admin/grupos" element={<AdminAreaRoute area="empresas"><GruposPage /></AdminAreaRoute>} />
     <Route path="/admin/clientes-gclick" element={<OwnerOnlyRoute><ClientesGclickPage /></OwnerOnlyRoute>} />
     <Route path="/admin/funcionarios" element={<AdminAreaRoute area="funcionarios"><FuncionariosAdminPage /></AdminAreaRoute>} />
-    <Route path="/admin/admissoes" element={<AdminAreaRoute area="funcionarios"><AdmissoesAdminPage /></AdminAreaRoute>} />
+    <Route path="/admin/admissoes" element={<AdminAreaRoute area="admissoes"><AdmissoesAdminPage /></AdminAreaRoute>} />
     <Route path="/admin/acompanhamentos" element={<AdminAreaRoute area="acompanhamentos"><AcompanhamentosPage /></AdminAreaRoute>} />
     <Route path="/admin/entregas" element={<AdminAreaRoute area="entregas"><EntregasPage /></AdminAreaRoute>} />
     <Route path="/admin/licencas" element={<AdminAreaRoute area="licencas"><LicencasPage /></AdminAreaRoute>} />

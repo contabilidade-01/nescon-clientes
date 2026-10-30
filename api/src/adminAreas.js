@@ -24,6 +24,7 @@ const ADMIN_AREAS = [
   "atendimento",
   "acessos",
   "acompanhamentos",
+  "admissoes",
 ];
 
 const ADMIN_AREA_LABELS = {
@@ -38,7 +39,24 @@ const ADMIN_AREA_LABELS = {
   atendimento: "Atendimentos (chat)",
   acessos: "Controle de acessos",
   acompanhamentos: "Acompanhamentos mensais",
+  admissoes: "Admissões",
 };
+
+/**
+ * Área que vem junto com outra. "Admissões" nasceu separada para dar a alguém só as
+ * fichas e os documentos de admissão; quem já tinha "Funcionários" continua vendo as
+ * admissões, como antes da separação.
+ */
+const AREA_INCLUIDA_EM = {
+  admissoes: ["funcionarios"],
+};
+
+/** A pessoa tem a área marcada, ou uma área que a inclui. */
+function areaLiberada(areas, area) {
+  if (!areas) return false;
+  if (areas[area]) return true;
+  return (AREA_INCLUIDA_EM[area] || []).some((a) => Boolean(areas[a]));
+}
 
 /** Normaliza o JSON gravado: chave ausente vira false. `null` = acesso total. */
 function mergeAreas(raw) {
@@ -59,4 +77,12 @@ function isAdminArea(a) {
   return ADMIN_AREAS.includes(a);
 }
 
-module.exports = { ADMIN_AREAS, ADMIN_AREA_LABELS, mergeAreas, sanitizeAreas, isAdminArea };
+module.exports = {
+  ADMIN_AREAS,
+  ADMIN_AREA_LABELS,
+  AREA_INCLUIDA_EM,
+  areaLiberada,
+  mergeAreas,
+  sanitizeAreas,
+  isAdminArea,
+};

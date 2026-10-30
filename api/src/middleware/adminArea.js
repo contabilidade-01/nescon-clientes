@@ -7,12 +7,13 @@
  * As permissões vêm do banco a cada requisição (ver middleware/auth.js), não do token:
  * tirar o acesso de alguém tem efeito imediato, sem esperar o JWT expirar.
  */
+const { areaLiberada } = require("../adminAreas");
 
 /** O dono vê tudo; os demais, só o que estiver marcado. */
 function adminHasArea(req, area) {
   if (!req.isAdmin) return false;
   if (req.admin?.isOwner) return true;
-  return Boolean(req.admin?.areas?.[area]);
+  return areaLiberada(req.admin?.areas, area);
 }
 
 /** Bloqueia a rota para quem não tem a área. Use depois de authMiddleware. */

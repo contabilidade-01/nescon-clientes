@@ -17,6 +17,7 @@ export const ADMIN_AREAS = [
   "atendimento",
   "acessos",
   "acompanhamentos",
+  "admissoes",
 ] as const;
 
 export type AdminArea = (typeof ADMIN_AREAS)[number];
@@ -46,6 +47,15 @@ export const ADMIN_AREA_LABELS: Record<AdminArea, { title: string; description: 
     title: "Acompanhamentos mensais",
     description: "Folha, impostos, NFs de MEI e destinação a quem executa",
   },
+  admissoes: {
+    title: "Admissões",
+    description: "Só as fichas e os documentos de admissão",
+  },
+};
+
+/** Área que vem junto com outra — espelho de AREA_INCLUIDA_EM em api/src/adminAreas.js. */
+export const AREA_INCLUIDA_EM: Partial<Record<AdminArea, AdminArea[]>> = {
+  admissoes: ["funcionarios"],
 };
 
 /** Chave ausente = sem acesso. `null`/`undefined` = acesso total (logins antigos). */
@@ -65,5 +75,6 @@ export function canSeeArea(
 ): boolean {
   if (isOwner) return true;
   if (!areas) return false;
-  return Boolean(areas[area]);
+  if (areas[area]) return true;
+  return (AREA_INCLUIDA_EM[area] ?? []).some((a) => Boolean(areas[a]));
 }
