@@ -469,7 +469,35 @@ export type LoginResponse =
       is_matriz?: boolean;
       /** Empresas do grupo (vazio quando a empresa é independente). */
       empresas_grupo?: Array<{ id: string; name: string; cnpj: string; is_matriz: boolean }>;
+    }
+  | {
+      token: string;
+      /** Gerente criado pela empresa: entra por CPF e só emite advertência/suspensão. */
+      role: "company_user";
+      gerente: { id: string; nome: string };
+      company: {
+        id: string;
+        name: string;
+        cnpj: string;
+        tool_access?: CompanyToolAccessApi;
+        must_change_password?: boolean;
+        escala_12x36?: boolean;
+      };
     };
+
+/** Gerente da empresa, como a tela "Gerentes" do portal lista. */
+export type Gerente = {
+  id: string;
+  cpf: string;
+  nome: string;
+  email: string | null;
+  permissions: { warning?: boolean; suspension?: boolean };
+  active: boolean;
+  must_change_password: boolean;
+  password_expires_at: string | null;
+  ultimo_login_em: string | null;
+  criado_em: string;
+};
 
 /** Uma obrigação do catálogo, com o vencimento do mês já calculado pelo servidor. */
 export interface AlertObligation {
@@ -927,6 +955,8 @@ export const api = {
       request<{
         company: { id: string; name: string; cnpj: string };
         tool_access: CompanyToolAccessApi;
+        /** Preenchido quando quem está logado é um gerente da empresa. */
+        gerente?: { id: string; nome: string } | null;
         /** Falso quando a empresa só tem pró-labore: a seção Férias não aparece. */
         tem_funcionarios?: boolean;
         /** 12x36: suspensão conta PLANTÕES e o retorno pula a folga (ver suspensaoPeriodo.ts). null = servidor não soube. */
@@ -2971,6 +3001,19 @@ export const api = {
   },
 
   /** Telemetria de uso do portal (cliente logado). Best-effort — nunca atrapalha a navegação. */
+  /** Gerentes da empresa — só o login principal da empresa usa. */
+  gerentes: {
+    list: () => request<Gerente[]>("/gerentes"),
+    create: (body: { cpf: string; nome: string; email?: string; permissions: Gerente["permissions"] }) =>
+      request<{ gerente: Gerente; senha: string }>("/gerentes", { method: "POST", body: JSON.stringify(body) }),
+    update: (
+      id: string,
+      body: Partial<{ nome: string; email: string | null; permissions: Gerente["permissions"]; active: boolean }>
+    ) => request<Gerente>(`/gerentes/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    novaSenha: (id: string) =>
+      request<{ gerente: Gerente; senha: string }>(`/gerentes/${id}/nova-senha`, { method: "POST" }),
+    remove: (id: string) => request<{ ok: boolean }>(`/gerentes/${id}`, { method: "DELETE" }),
+  },
   portal: {
     registrarUso: (ferramenta: string) =>
       request<{ ok: boolean }>("/portal/uso", {

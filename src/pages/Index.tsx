@@ -25,6 +25,7 @@ import {
   FileX,
   CalendarRange,
   Scale,
+  UserCog,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -112,7 +113,7 @@ const Index = () => {
 
   useEffect(() => {
     if (!company?.id || !company.token) return;
-    const { id, token, mustChangePassword, isAdminPersonified, isMatriz, empresasGrupo, escala12x36 } = company;
+    const { id, token, mustChangePassword, isAdminPersonified, isMatriz, empresasGrupo, escala12x36, gerente } = company;
     let cancelled = false;
     (async () => {
       try {
@@ -120,7 +121,8 @@ const Index = () => {
         if (cancelled) return;
         // Personificação: não mostrar o aviso de LGPD — o aceite é do cliente, não do
         // admin que está só conferindo o ambiente.
-        setMostrarLgpd(!isAdminPersonified && !data.lgpd?.consent_at && !data.lgpd?.prompt_seen_at);
+        // Gerente também não: o aceite é da empresa.
+        setMostrarLgpd(!isAdminPersonified && !gerente && !data.lgpd?.consent_at && !data.lgpd?.prompt_seen_at);
         login({
           role: "company",
           id,
@@ -138,6 +140,7 @@ const Index = () => {
           isAdminPersonified,
           isMatriz,
           empresasGrupo,
+          gerente: data.gerente ?? gerente ?? null,
         });
       } catch {
         /* sessão inválida ou rede: mantém estado local */
@@ -149,6 +152,8 @@ const Index = () => {
   }, [company?.id, company?.token, company?.mustChangePassword, login]);
 
   const canSeePayments = isToolAllowed(company?.toolAccess, "calendar");
+  // Gerente só emite advertência/suspensão: o servidor recusa o resto, então nem pede.
+  const isGerente = Boolean(company?.gerente);
 
   const { data: upcoming, isLoading: loadingUpcoming } = useQuery({
     queryKey: ["deliverables-upcoming", "home"],
@@ -169,7 +174,7 @@ const Index = () => {
   const { data: docCount } = useQuery({
     queryKey: ["deliverables", "home-count"],
     queryFn: () => api.deliverables.list(),
-    enabled: !!company,
+    enabled: !!company && !isGerente,
   });
 
   // Mensagens sem resposta do escritório. Sem este número, o cliente só descobre que
@@ -188,7 +193,7 @@ const Index = () => {
   const { data: onboarding } = useQuery({
     queryKey: ["onboarding-portal"],
     queryFn: () => api.onboarding.portal(),
-    enabled: !!company,
+    enabled: !!company && !isGerente,
     retry: false,
   });
   const passos = onboarding?.onboarding && onboarding.onboarding.status !== "concluido" ? onboarding.onboarding : null;
@@ -253,6 +258,18 @@ const Index = () => {
             </h1>
           </div>
           <CompanySwitcher />
+          {!isGerente && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => navigate("/gerentes")}
+              aria-label="Gerentes"
+              title="Gerentes: acessos só para advertência e suspensão"
+            >
+              <UserCog className="h-5 w-5" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -280,9 +297,11 @@ const Index = () => {
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="eyebrow">Bem-vindo de volta</p>
-              <h2 className="mt-2 truncate text-2xl font-bold sm:text-3xl">{primeiroNome}</h2>
+              <h2 className="mt-2 truncate text-2xl font-bold sm:text-3xl">{isGerente ? company?.gerente?.nome : primeiroNome}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                {!canSeePayments
+                {isGerente
+                  ? "Acesso de gerente: advertências e suspensões."
+                  : !canSeePayments
                   ? "Seus documentos ficam guardados aqui."
                   : loadingUpcoming
                     ? "Carregando seus vencimentos..."
@@ -302,12 +321,14 @@ const Index = () => {
                   </p>
                 </div>
               )}
-              <div className="min-w-[7.5rem] rounded-xl border bg-background/40 px-4 py-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Documentos
-                </p>
-                <p className="mt-1 text-2xl font-bold tabular-nums">{docCount?.length ?? "—"}</p>
-              </div>
+              {!isGerente && (
+                <div className="min-w-[7.5rem] rounded-xl border bg-background/40 px-4 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Documentos
+                  </p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums">{docCount?.length ?? "—"}</p>
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -365,6 +386,7 @@ const Index = () => {
           </section>
         )}
 
+        {!isGerente && (
         <section>
           <button
             type="button"
@@ -381,6 +403,7 @@ const Index = () => {
             <ArrowUpRight className="h-5 w-5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
           </button>
         </section>
+        )}
 
         {/* Próximos pagamentos */}
         {canSeePayments && (

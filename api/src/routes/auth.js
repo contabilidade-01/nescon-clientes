@@ -3,7 +3,8 @@ const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const db = require("../db");
-const { generateToken, generateAdminToken, authMiddleware } = require("../middleware/auth");
+const { generateToken, generateAdminToken, generateGerenteToken, authMiddleware } = require("../middleware/auth");
+const { acessoDoGerente } = require("../gerentes");
 const { mergeToolAccess } = require("../companyTools");
 const { getCompanyByCnpjForLogin } = require("../toolAccessDb");
 const { registrarLogin } = require("../portalEventos");
@@ -45,6 +46,29 @@ async function getAdminByCpfForLogin(dbConn, cpfDigits) {
       active: true,
       must_change_password: false,
     }));
+  }
+}
+
+/**
+ * Gerente no login. Base sem a tabela ainda (42P01, migração por rodar): ninguém é
+ * gerente e o login segue para o cliente.
+ */
+async function getGerenteForLogin(dbConn, cpfDigits) {
+  try {
+    const { rows } = await dbConn.query(
+      `SELECT u.id, u.nome, u.password_hash, u.permissions, u.active,
+              u.must_change_password, u.password_expires_at,
+              c.id AS company_id, c.name AS company_name, c.cnpj AS company_cnpj,
+              c.tool_access, c.escala_12x36
+         FROM company_users u
+         JOIN companies c ON c.id = u.company_id
+        WHERE u.cpf = $1 AND c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE`,
+      [cpfDigits]
+    );
+    return rows;
+  } catch (err) {
+    if (err.code !== "42P01") throw err;
+    return [];
   }
 }
 
@@ -257,6 +281,49 @@ router.post("/login", loginIpLimiter, loginContaLimiter, async (req, res) => {
           is_owner: Boolean(adm.is_owner),
           areas: mergeAreas(adm.areas),
           must_change_password: Boolean(adm.must_change_password),
+        },
+      });
+    }
+
+    // Gerente criado pela empresa (company_users). Vem antes do cliente pessoa física;
+    // o cadastro do gerente recusa CPF que já seja login de cliente, então os dois não
+    // disputam o mesmo CPF.
+    const gerentes = clean.length === 11 ? await getGerenteForLogin(db, clean) : [];
+    if (gerentes.length) {
+      const g = gerentes[0];
+      if (g.active === false) {
+        return res.status(403).json({ error: "Acesso desativado. Procure o responsável da empresa." });
+      }
+      const man = await lerManutencao(db);
+      if (man.ativo) {
+        return res.status(503).json({ error: man.mensagem || MENSAGEM_PADRAO, code: "MAINTENANCE" });
+      }
+      if (!(await bcryptMatches(g.password_hash, password))) {
+        return res.status(401).json({ error: "Senha incorreta" });
+      }
+      const { senhaTemporariaExpirada } = require("../senhaExpiracao");
+      if (
+        senhaTemporariaExpirada({
+          mustChangePassword: g.must_change_password,
+          passwordExpiresAt: g.password_expires_at,
+        })
+      ) {
+        return res.status(401).json({ error: "Senha temporária expirada. Peça uma nova ao responsável da empresa." });
+      }
+      db.query("UPDATE company_users SET ultimo_login_em = now() WHERE id = $1", [g.id]).catch(
+        (e) => console.error("gerente ultimo_login_em:", e.message)
+      );
+      return res.json({
+        token: generateGerenteToken({ id: g.id, company_id: g.company_id }),
+        role: "company_user",
+        gerente: { id: g.id, nome: g.nome },
+        company: {
+          id: g.company_id,
+          name: g.company_name,
+          cnpj: g.company_cnpj,
+          tool_access: acessoDoGerente(g.tool_access, g.permissions),
+          must_change_password: Boolean(g.must_change_password),
+          escala_12x36: Boolean(g.escala_12x36),
         },
       });
     }
@@ -603,8 +670,8 @@ router.post("/change-password", authMiddleware, changePasswordLimiter, async (re
       return res.status(400).json({ error: "A nova senha precisa de pelo menos 8 caracteres" });
     }
 
-    const tabela = req.isAdmin ? "platform_admins" : "companies";
-    const id = req.isAdmin ? req.admin?.id : req.company?.id;
+    const tabela = req.isAdmin ? "platform_admins" : req.companyUser ? "company_users" : "companies";
+    const id = req.isAdmin ? req.admin?.id : req.companyUser ? req.companyUser.id : req.company?.id;
     if (!id) return res.status(401).json({ error: "Sessão inválida" });
 
     const { rows } = await db.query(
@@ -642,6 +709,13 @@ router.post("/change-password", authMiddleware, changePasswordLimiter, async (re
         "UPDATE platform_admins SET password_hash = $1, must_change_password = false WHERE id = $2",
         [hash, id]
       );
+    } else if (req.companyUser) {
+      await db.query(
+        "UPDATE company_users SET password_hash = $1, must_change_password = false, password_expires_at = NULL, atualizado_em = now() WHERE id = $2",
+        [hash, id]
+      );
+      // Gerente não usa links de redefinição (quem gera senha nova é a empresa).
+      return res.json({ message: "Senha alterada com sucesso." });
     } else {
       await db.query(
         "UPDATE companies SET password_hash = $1, must_change_password = false, password_expires_at = NULL WHERE id = $2",
@@ -763,6 +837,7 @@ router.get("/company-session", authMiddleware, async (req, res) => {
       name: req.company.name,
       cnpj: req.company.cnpj,
     },
+    gerente: req.companyUser ? { id: req.companyUser.id, nome: req.companyUser.nome } : null,
     tool_access: req.companyToolAccess,
     tem_funcionarios: temFuncionarios,
     escala_12x36: escala12x36,

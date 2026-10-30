@@ -28,6 +28,11 @@ export type CompanySession = {
   empresasGrupo?: EmpresaGrupo[];
   /** Marca que é uma sessão de personificação do admin */
   isAdminPersonified?: boolean;
+  /**
+   * Login de GERENTE criado pela empresa (CPF): só advertência/suspensão. O
+   * `toolAccess` já vem reduzido do servidor; isto serve para esconder o resto do portal.
+   */
+  gerente?: { id: string; nome: string } | null;
 };
 
 export type AdminSession = {
@@ -47,6 +52,12 @@ export type AdminSession = {
 export type AuthSession = CompanySession | AdminSession;
 
 const STORAGE_KEY = "company_session";
+
+function parseGerente(g: unknown): CompanySession["gerente"] {
+  if (!g || typeof g !== "object") return null;
+  const o = g as Record<string, unknown>;
+  return typeof o.id === "string" ? { id: o.id, nome: typeof o.nome === "string" ? o.nome : "" } : null;
+}
 
 function parseStored(): AuthSession | null {
   try {
@@ -89,6 +100,7 @@ function parseStored(): AuthSession | null {
         empresasGrupo: Array.isArray(o.empresasGrupo) ? o.empresasGrupo as EmpresaGrupo[] : [],
         // Sobrevive ao F5: sem isto, recarregar a página perdia a marca de personificação.
         isAdminPersonified: Boolean(o.isAdminPersonified),
+        gerente: parseGerente(o.gerente),
       };
     }
 
@@ -133,7 +145,7 @@ export function useAuth() {
    * Chama a API, recebe novo token, atualiza localStorage e recarrega.
    */
   const trocarEmpresa = useCallback(async (companyId: string) => {
-    if (!session || session.role !== "company") return;
+    if (!session || session.role !== "company" || session.gerente) return;
     const empresasGrupo = session.empresasGrupo || [];
 
     try {
@@ -179,6 +191,8 @@ export function useAuth() {
     company: companySession,
     admin: session?.role === "admin" ? session : null,
     isAdmin: session?.role === "admin",
+    /** Login de gerente (CPF criado pela empresa), não o login principal. */
+    isGerente: Boolean(companySession?.gerente),
     isLoggedIn: !!session,
     empresasGrupo: companySession?.empresasGrupo || [],
     trocarEmpresa,

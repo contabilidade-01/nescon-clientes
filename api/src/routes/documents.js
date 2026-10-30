@@ -47,10 +47,20 @@ router.get("/", async (req, res) => {
     if (!req.company?.id) {
       return res.status(403).json({ error: "Sessão de empresa inválida" });
     }
+    const companyId = req.company.id;
+    // Gerente não tem a tela de Histórico, mas o formulário usa as advertências e
+    // suspensões anteriores do funcionário para montar a próxima — só dos tipos que ele emite.
+    if (req.companyUser) {
+      const tipos = ["warning", "suspension"].filter((t) => companyHasTool(req, t));
+      const { rows } = await db.query(
+        "SELECT * FROM issued_documents WHERE company_id = $1 AND document_type = ANY($2::text[]) ORDER BY created_at DESC",
+        [companyId, tipos]
+      );
+      return res.json(rows);
+    }
     if (!companyHasTool(req, "history")) {
       return res.status(403).json({ error: "Histórico de documentos não está ativo para a sua empresa." });
     }
-    const companyId = req.company.id;
     const { rows } = await db.query(
       "SELECT * FROM issued_documents WHERE company_id = $1 ORDER BY created_at DESC",
       [companyId]
@@ -92,17 +102,19 @@ router.post("/", requireCompanyUser, async (req, res) => {
 
     const { rows } = await db.query(
       `INSERT INTO issued_documents
-        (document_type, employee_name, employee_cpf, employee_pis, company_name, company_cnpj, company_id, start_date, suspension_days, return_date, description)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+        (document_type, employee_name, employee_cpf, employee_pis, company_name, company_cnpj, company_id, start_date, suspension_days, return_date, description, company_user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [normalizedType, d.employee_name.trim(), d.employee_cpf.replace(/\D/g, ""),
        d.employee_pis || null, req.company.name, req.company.cnpj, companyId,
-       d.start_date || null, d.suspension_days || null, d.return_date || null, d.description || null]
+       d.start_date || null, d.suspension_days || null, d.return_date || null, d.description || null,
+       req.companyUser?.id || null]
     );
 
     // Alerta WhatsApp ao admin
     if (whatsappConfigurado() && ADMIN_WHATSAPP) {
       const tipo = normalizedType === "suspension" ? "Suspensão" : "Advertência";
-      const texto = `📋 ${tipo} gerada\nEmpresa: ${req.company.name}\nFuncionário: ${d.employee_name}\n\nAbrir: ${getPublicAppUrl()}/admin`;
+      const porGerente = req.companyUser ? `\nEmitida por: ${req.companyUser.nome} (gerente)` : "";
+      const texto = `📋 ${tipo} gerada\nEmpresa: ${req.company.name}\nFuncionário: ${d.employee_name}${porGerente}\n\nAbrir: ${getPublicAppUrl()}/admin`;
       enviarTexto({ numero: ADMIN_WHATSAPP, texto, delayMs: 1000 }).catch(() => {});
     }
 
