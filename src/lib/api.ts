@@ -1712,7 +1712,7 @@ export const api = {
       rows: Array<{ name: string; cpf: string; pis?: string | null; active?: boolean }>,
       fileCnpj: string
     ) =>
-      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }>; inativados?: number; reativados?: number; unificados?: number }>(
+      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }>; inativados?: number; reativados?: number; unificados?: number; cpfsCompletados?: number }>(
         `/admin/companies/${companyId}/import-employees`,
         { method: "POST", body: JSON.stringify({ rows, fileCnpj }) }
       ),
@@ -2555,7 +2555,7 @@ export const api = {
         body: JSON.stringify(data),
       }),
     import: (rows: Array<{ name: string; cpf: string; pis?: string | null; active?: boolean }>, fileCnpj: string) =>
-      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }>; inativados?: number; reativados?: number; unificados?: number }>("/employees/import", {
+      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }>; inativados?: number; reativados?: number; unificados?: number; cpfsCompletados?: number }>("/employees/import", {
         method: "POST",
         body: JSON.stringify({ rows, fileCnpj }),
       }),

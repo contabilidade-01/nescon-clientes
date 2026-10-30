@@ -29,13 +29,14 @@ async function importEmployeesForCompany(client, companyId, companyCnpj, fileCnp
   let skipped = 0;
   let inativados = 0;
   let reativados = 0;
+  let cpfsCompletados = 0;
   const errors = [];
   const origem = opts.origem === "cliente" ? "cliente" : "escritorio";
 
   // Listagem sem CPF (ex.: "Relação de Empregados" do Domínio) casa pelo nome.
   const porNome = new Map();
   const { rows: atuais } = await client.query(
-    "SELECT id, name, active FROM employees WHERE company_id = $1",
+    "SELECT id, name, cpf, active FROM employees WHERE company_id = $1",
     [companyId]
   );
   for (const e of atuais) {
@@ -104,7 +105,7 @@ async function importEmployeesForCompany(client, companyId, companyCnpj, fileCnp
          VALUES ($1, $2, '', true, $3) RETURNING id`,
         [companyId, name, origem]
       );
-      porNome.set(normalizarNome(name), [{ id: novo[0].id, name, active: true }]);
+      porNome.set(normalizarNome(name), [{ id: novo[0].id, name, cpf: "", active: true }]);
       inserted += 1;
       continue;
     }
@@ -118,10 +119,27 @@ async function importEmployeesForCompany(client, companyId, companyCnpj, fileCnp
       continue;
     }
 
-    const exists = await client.query(
+    let exists = await client.query(
       "SELECT id, active FROM employees WHERE company_id = $1 AND cpf = $2 LIMIT 1",
       [companyId, cpf]
     );
+    if (!exists.rowCount) {
+      // Já cadastrado pelo nome, mas sem CPF (veio de listagem sem CPF): completa o CPF
+      // no mesmo cadastro em vez de criar outro.
+      const semCpf = (porNome.get(normalizarNome(name)) || []).filter(
+        (e) => String(e.cpf || "").replace(/\D/g, "").length !== 11
+      );
+      if (semCpf.length === 1) {
+        await client.query("UPDATE employees SET cpf = $2, pis = COALESCE(pis, $3) WHERE id = $1", [
+          semCpf[0].id,
+          cpf,
+          pis,
+        ]);
+        semCpf[0].cpf = cpf;
+        cpfsCompletados += 1;
+        exists = { rowCount: 1, rows: [{ id: semCpf[0].id, active: semCpf[0].active }] };
+      }
+    }
     if (exists.rowCount) {
       await aplicarSituacao(exists.rows[0].id, exists.rows[0].active !== false, ativoPlanilha);
       // Já cadastrado: não recria, mas ATUALIZA o que a folha nova traz de fresco.
@@ -163,7 +181,7 @@ async function importEmployeesForCompany(client, companyId, companyCnpj, fileCnp
   // Quem o cliente cadastrou antes da folha chegar vira um só com o cadastro oficial.
   const unificados = await unificarAutomatico(client, companyId);
 
-  return { status: 201, body: { inserted, skipped, errors, inativados, reativados, unificados } };
+  return { status: 201, body: { inserted, skipped, errors, inativados, reativados, unificados, cpfsCompletados } };
 }
 
 module.exports = { importEmployeesForCompany };

@@ -224,10 +224,12 @@ export function describeImportResult(r: {
   inativados?: number;
   reativados?: number;
   unificados?: number;
+  cpfsCompletados?: number;
 }): string {
   const partes = [`${r.inserted} cadastrado(s)`, `${r.skipped} já existiam`];
   if (r.inativados) partes.push(`${r.inativados} inativado(s) por demissão`);
   if (r.reativados) partes.push(`${r.reativados} reativado(s)`);
+  if (r.cpfsCompletados) partes.push(`${r.cpfsCompletados} com CPF completado`);
   if (r.unificados) partes.push(`${r.unificados} unificado(s) com o cadastro da folha`);
   return `Importação concluída: ${partes.join(", ")}`;
 }
