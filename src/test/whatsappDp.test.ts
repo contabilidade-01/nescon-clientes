@@ -222,3 +222,25 @@ describe("enquadramento no art. 482 (motivos que não são falta)", () => {
     expect(r.texto).not.toContain("ausência");
   });
 });
+
+describe("motivo sem a fala do cliente (sem 'relato do empregador')", () => {
+  it("saudação e pedido não viram motivo", () => {
+    expect(dp.limparPedido("Olá, eu quero fazer uma advertência")).toBe("");
+    expect(dp.limparPedido("quero advertir o João")).toBe("");
+    expect(dp.patchDeSlots({ ia: {}, texto: "Olá, eu quero fazer uma advertência", step: "inicio" }).motivo).toBeUndefined();
+    expect(dp.patchDeSlots({ ia: { motivo: "Olá, eu quero fazer uma advertência" }, texto: "x", step: "inicio" }).motivo).toBeUndefined();
+  });
+
+  it("guarda só o fato quando vem junto com o pedido", () => {
+    expect(dp.limparPedido("Bom dia! Quero dar uma advertência pro João porque faltou dia 20")).toBe("faltou dia 20");
+    expect(dp.limparPedido("Oi, quero uma suspensão de 2 dias para o Pedro que chegou bêbado")).toBe("chegou bêbado");
+    expect(dp.limparPedido("discussão agressiva com colega")).toBe("discussão agressiva com colega");
+  });
+
+  it("termo de falta não traz relato do empregador", () => {
+    const txt = dp.redigirMotivoAdvertencia({ motivo: "Olá, eu quero fazer uma advertência", datasFatoBR: "20/10/2026" });
+    expect(txt).not.toMatch(/relato/i);
+    expect(txt).not.toMatch(/olá/i);
+    expect(txt).toContain("20/10/2026");
+  });
+});
