@@ -19,6 +19,11 @@ async function ensureEmployeePayrollFields(db) {
     // Flag permanente: se o employee apareceu com "Contr:" no extrato, é contribuinte
     // (pró-labore). Não depende de reprocessamento — uma vez marcado, nunca mais entra no 13º.
     await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS eh_contribuinte BOOLEAN NOT NULL DEFAULT false;`);
+    // Quem cadastrou: 'cliente' (portal) fica provisório até a folha confirmar e ser
+    // unificado com o cadastro do escritório (ver employeeUnify.js). `conferido_em`
+    // marca que o admin já olhou — some da lista de conferência.
+    await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS origem TEXT NOT NULL DEFAULT 'escritorio';`);
+    await db.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS conferido_em TIMESTAMPTZ;`);
     // Backfill: preencher vinculo a partir do cargo para quem já estava no banco
     await db.query(`
       UPDATE employees SET vinculo = 'Diretor'

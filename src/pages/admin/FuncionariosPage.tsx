@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { RefreshCw, UserMinus, Users } from "lucide-react";
+import { GitMerge, RefreshCw, UserMinus, Users } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { CompanyFilter } from "@/components/admin/CompanyFilter";
 import { AdminExtratoBulk } from "@/components/AdminExtratoBulk";
@@ -36,6 +36,8 @@ const FuncionariosPage = () => {
     >
       <SaidasDaFolha />
 
+      <UnificacaoCadastros companyId={companyId} />
+
       <AdminExtratoBulk />
 
       <CompanyFilter
@@ -58,8 +60,9 @@ const FuncionariosPage = () => {
               <div key={e.id} className="flex flex-col border-b border-border/50 pb-2 last:border-0">
                 <span className="font-medium">{e.name}</span>
                 <span className="text-xs text-muted-foreground">
-                  {e.company_name ?? "—"} · CPF {e.cpf}
+                  {e.company_name ?? "—"} · {e.cpf ? `CPF ${maskCPF(e.cpf)}` : "CPF pendente"}
                   {!e.active ? " · inativo" : ""}
+                  {e.origem === "cliente" && !e.codigo ? " · cadastrado pelo cliente" : ""}
                 </span>
               </div>
             ))
@@ -215,6 +218,125 @@ function SaidasDaFolha() {
             </div>
           ))
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Cadastros que o cliente fez sozinho (ou vieram de listagem sem CPF) e a folha ainda não
+ * confirmou. Mesmo CPF ou mesmo nome já são unidos na importação; aqui fica o que pede
+ * um olho: nome escrito diferente, CPF com dígito trocado, ou admissão nova de verdade.
+ */
+function UnificacaoCadastros({ companyId }: { companyId: string }) {
+  const queryClient = useQueryClient();
+  const [escolha, setEscolha] = useState<Record<string, string>>({});
+
+  const { data } = useQuery({
+    queryKey: ["employee-unificacao", companyId || "all"],
+    queryFn: () => api.admin.employeeUnificacao(companyId || undefined),
+  });
+
+  const invalidar = () => {
+    queryClient.invalidateQueries({ queryKey: ["employee-unificacao"] });
+    queryClient.invalidateQueries({ queryKey: ["employees"] });
+  };
+
+  const unificar = useMutation({
+    mutationFn: ({ manter, absorver }: { manter: string; absorver: string }) =>
+      api.admin.unificarFuncionarios(manter, absorver),
+    onSuccess: () => {
+      invalidar();
+      toast.success("Cadastros unificados — o histórico passou para o cadastro da folha");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const conferir = useMutation({
+    mutationFn: (id: string) => api.admin.conferirFuncionario(id),
+    onSuccess: () => {
+      invalidar();
+      toast.success("Mantido como funcionário novo");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const pendentes = data?.pendentes ?? [];
+  if (!pendentes.length) return null;
+
+  return (
+    <Card className="border-primary/40">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <GitMerge className="h-4 w-4" /> Cadastrados pelo cliente ({pendentes.length})
+        </CardTitle>
+        <CardDescription>
+          O cliente cadastra sem precisar de aprovação. Quando a folha chega, quem tem o mesmo CPF ou
+          o mesmo nome é unificado sozinho. Estes precisam da sua conferência: escolha o cadastro da
+          folha que é a mesma pessoa, ou confirme que é admissão nova.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {pendentes.map((p) => {
+          const alvo = escolha[p.provisorio.id] ?? p.sugestao?.id ?? "";
+          return (
+            <div key={p.provisorio.id} className="space-y-2 rounded-lg border p-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{p.provisorio.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {p.company_name} ·{" "}
+                  {p.provisorio.cpf ? `CPF ${maskCPF(p.provisorio.cpf)}` : "CPF pendente"} ·{" "}
+                  {p.provisorio.origem === "cliente" ? "cadastrado pelo cliente" : "veio de listagem sem CPF"}
+                  {p.provisorio.created_at
+                    ? ` em ${new Date(p.provisorio.created_at).toLocaleDateString("pt-BR")}`
+                    : ""}
+                </p>
+                {p.sugestao && (
+                  <p className="text-xs text-primary">
+                    Provável mesma pessoa: {p.sugestao.name} ({p.semelhanca}% parecido)
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <select
+                  className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm sm:flex-1"
+                  value={alvo}
+                  onChange={(e) => setEscolha((prev) => ({ ...prev, [p.provisorio.id]: e.target.value }))}
+                >
+                  <option value="">Unificar com…</option>
+                  {p.opcoes.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                      {o.cpf ? ` - ${maskCPF(o.cpf)}` : ""}
+                      {o.active ? "" : " (inativo)"}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="flex-1 sm:flex-none"
+                    disabled={!alvo || unificar.isPending}
+                    onClick={() => unificar.mutate({ manter: alvo, absorver: p.provisorio.id })}
+                  >
+                    Unificar
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 sm:flex-none"
+                    disabled={conferir.isPending}
+                    onClick={() => conferir.mutate(p.provisorio.id)}
+                  >
+                    É funcionário novo
+                  </Button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </CardContent>
     </Card>
   );

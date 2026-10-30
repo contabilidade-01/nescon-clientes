@@ -1709,10 +1709,10 @@ export const api = {
       }),
     importEmployees: (
       companyId: string,
-      rows: Array<{ name: string; cpf: string; pis?: string | null }>,
+      rows: Array<{ name: string; cpf: string; pis?: string | null; active?: boolean }>,
       fileCnpj: string
     ) =>
-      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }> }>(
+      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }>; inativados?: number; reativados?: number; unificados?: number }>(
         `/admin/companies/${companyId}/import-employees`,
         { method: "POST", body: JSON.stringify({ rows, fileCnpj }) }
       ),
@@ -2210,6 +2210,27 @@ export const api = {
       },
     },
 
+    /** Cadastros do cliente que a folha ainda não confirmou, com o provável par. */
+    employeeUnificacao: (companyId?: string) =>
+      request<{
+        total: number;
+        pendentes: Array<{
+          company_id: string;
+          company_name: string;
+          provisorio: { id: string; name: string; cpf: string; origem: string; created_at: string };
+          sugestao: { id: string; name: string; cpf: string; active: boolean } | null;
+          semelhanca: number;
+          opcoes: Array<{ id: string; name: string; cpf: string; active: boolean }>;
+        }>;
+      }>(`/admin/employee-unificacao${companyId ? `?company_id=${encodeURIComponent(companyId)}` : ""}`),
+    unificarFuncionarios: (manterId: string, absorverId: string) =>
+      request<{ ok: boolean }>("/admin/employee-unificacao/unificar", {
+        method: "POST",
+        body: JSON.stringify({ manter_id: manterId, absorver_id: absorverId }),
+      }),
+    conferirFuncionario: (id: string) =>
+      request<{ ok: boolean }>(`/admin/employee-unificacao/${id}/conferir`, { method: "POST" }),
+
     /** Quem está cadastrado mas não veio no último extrato — aguarda confirmação. */
     saidasFolha: () =>
       request<{
@@ -2517,15 +2538,21 @@ export const api = {
           active: boolean;
           company_id: string;
           created_at: string;
+          codigo?: string | null;
+          /** 'cliente' = cadastrado pelo portal; provisório até a folha confirmar. */
+          origem?: string;
           company_name?: string;
           company_cnpj?: string;
         }>
       >(`/employees${q}`);
     },
     create: (data: { company_id?: string; name: string; cpf: string; pis?: string | null; active?: boolean }) =>
-      request("/employees", { method: "POST", body: JSON.stringify(data) }),
-    import: (rows: Array<{ name: string; cpf: string; pis?: string | null }>, fileCnpj: string) =>
-      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }> }>("/employees/import", {
+      request<{ id: string; name: string; cpf: string; pis: string | null; active: boolean }>("/employees", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    import: (rows: Array<{ name: string; cpf: string; pis?: string | null; active?: boolean }>, fileCnpj: string) =>
+      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }>; inativados?: number; reativados?: number; unificados?: number }>("/employees/import", {
         method: "POST",
         body: JSON.stringify({ rows, fileCnpj }),
       }),

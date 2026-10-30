@@ -194,6 +194,9 @@ export function WarningForm() {
             value={selectedEmployeeId}
             onChange={setSelectedEmployeeId}
             loading={loadingEmployees}
+            onCreated={(emp) =>
+              setEmployees((prev) => [...prev, emp].sort((a, b) => a.name.localeCompare(b.name)))
+            }
           />
           {selectedEmployee && (
             <div className="rounded-lg bg-muted p-3">
