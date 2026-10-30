@@ -108,7 +108,7 @@ export const SETORES: Setor[] = [
       { to: "/admin/grupos", label: "Grupos de empresas", icon: Network, area: "empresas" },
       { to: "/admin/enviar-acesso", label: "Enviar acesso (WhatsApp)", icon: Send, area: "empresas" },
       { to: "/admin/funcionarios", label: "Funcionários", icon: Users, area: "funcionarios" },
-      { to: "/admin/admissoes", label: "Admissões", icon: UserPlus, area: "funcionarios" },
+      { to: "/admin/admissoes", label: "Admissões", icon: UserPlus, area: "admissoes" },
       { to: "/admin/folha", label: "Painel de folha", icon: CircleDollarSign, area: "funcionarios" },
       { to: "/admin/honorarios-queijeiro", label: "Honorários (folha)", icon: Calculator, area: "funcionarios" },
       { to: "/admin/honorarios-atualizacao", label: "Atualização de Honorários", icon: Scale, area: "funcionarios" },

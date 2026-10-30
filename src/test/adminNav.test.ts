@@ -36,6 +36,19 @@ describe("visibilidade", () => {
     expect(v[0].items.map((i) => i.to)).toEqual(["/admin/licencas"]);
   });
 
+  it("colaborador só com 'admissoes' vê só o item Admissões", () => {
+    const areas = { ...mergeAdminAreas({}), admissoes: true };
+    const itens = setoresVisiveis({ isOwner: false, areas }).flatMap((s) => s.items.map((i) => i.to));
+    expect(itens).toEqual(["/admin/admissoes"]);
+  });
+
+  it("colaborador com 'funcionarios' continua vendo Admissões", () => {
+    const areas = { ...mergeAdminAreas({}), funcionarios: true };
+    const itens = setoresVisiveis({ isOwner: false, areas }).flatMap((s) => s.items.map((i) => i.to));
+    expect(itens).toContain("/admin/admissoes");
+    expect(itens).toContain("/admin/folha");
+  });
+
   it("item só do dono fica escondido de colaborador", () => {
     const usuarios = SETORES.flatMap((s) => s.items).find((i) => i.to === "/admin/usuarios")!;
     expect(podeVerItem(usuarios, { isOwner: false, areas: mergeAdminAreas(null) })).toBe(false);
