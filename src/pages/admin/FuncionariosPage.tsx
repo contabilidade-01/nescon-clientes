@@ -61,7 +61,15 @@ const FuncionariosPage = () => {
                 <span className="font-medium">{e.name}</span>
                 <span className="text-xs text-muted-foreground">
                   {e.company_name ?? "—"} · {e.cpf ? `CPF ${maskCPF(e.cpf)}` : "CPF pendente"}
-                  {!e.active ? " · inativo" : ""}
+                  {!e.active
+                    ? ` · inativo${e.inativado_por === "cliente" ? " (saída dada pelo cliente" : ""}${
+                        e.inativado_por === "cliente" && e.inativado_em
+                          ? ` em ${new Date(e.inativado_em).toLocaleDateString("pt-BR")})`
+                          : e.inativado_por === "cliente"
+                            ? ")"
+                            : ""
+                      }`
+                    : ""}
                   {e.origem === "cliente" && !e.codigo ? " · cadastrado pelo cliente" : ""}
                 </span>
               </div>

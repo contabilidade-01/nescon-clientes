@@ -45,9 +45,12 @@ router.get("/", async (req, res) => {
       return res.status(403).json({ error: "Esta ferramenta não está ativa para a sua empresa." });
     }
     const companyId = req.company.id;
-    // A empresa vê só ativos; demitidos (active=false) ficam só para o admin.
+    // A empresa vê só ativos (é a lista das advertências, atestados…). Com ?inativos=1
+    // devolve os que saíram, para a tela de Funcionários mostrar à parte e reativar.
+    const inativos = req.query.inativos === "1" || req.query.inativos === "true";
     const { rows } = await db.query(
-      "SELECT * FROM employees WHERE company_id = $1 AND active IS TRUE ORDER BY name",
+      `SELECT * FROM employees WHERE company_id = $1 AND active IS ${inativos ? "NOT TRUE" : "TRUE"}
+        ORDER BY ${inativos ? "inativado_em DESC NULLS LAST, name" : "name"}`,
       [companyId]
     );
     res.json(rows);
@@ -143,6 +146,16 @@ router.post("/import", requireCompanyUser, (req, res, next) => {
   }
 });
 
+/** Inativado à mão: o aviso "sumiu da folha" daquela pessoa perde o sentido. */
+async function fecharAvisosDeSaida(employeeId) {
+  await db.query(
+    `UPDATE employee_exit_alerts
+        SET situacao = 'resolvido', resolucao = 'inativado', resolvido_em = now()
+      WHERE situacao = 'pendente' AND employee_id = $1`,
+    [employeeId]
+  );
+}
+
 router.put("/:id", async (req, res) => {
   try {
     if (!validateUUID(req.params.id)) {
@@ -162,7 +175,14 @@ router.put("/:id", async (req, res) => {
       sets.push(`cpf=$${i++}`); vals.push(cpf.replace(/\D/g, ""));
     }
     if (pis !== undefined) { sets.push(`pis=$${i++}`); vals.push(pis); }
-    if (active !== undefined) { sets.push(`active=$${i++}`); vals.push(active); }
+    if (active !== undefined) {
+      if (typeof active !== "boolean") return res.status(400).json({ error: "Situação inválida" });
+      sets.push(`active=$${i++}`); vals.push(active);
+      // Quem inativou e quando: o cliente pode dar a saída antes da folha chegar, e o
+      // escritório precisa saber que não foi a folha que tirou a pessoa.
+      sets.push(`inativado_em = ${active ? "NULL" : "now()"}`);
+      sets.push(`inativado_por=$${i++}`); vals.push(active ? null : req.isAdmin ? "escritorio" : "cliente");
+    }
 
     if (!sets.length) return res.status(400).json({ error: "Nenhum campo para atualizar" });
 
@@ -176,6 +196,7 @@ router.put("/:id", async (req, res) => {
         vals
       );
       if (!rows.length) return res.status(404).json({ error: "Funcionário não encontrado" });
+      if (active === false) await fecharAvisosDeSaida(rows[0].id);
       return res.json(rows[0]);
     }
 
@@ -190,6 +211,7 @@ router.put("/:id", async (req, res) => {
       vals
     );
     if (!rows.length) return res.status(404).json({ error: "Funcionário não encontrado" });
+    if (active === false) await fecharAvisosDeSaida(rows[0].id);
     res.json(rows[0]);
   } catch (err) {
     console.error(err);

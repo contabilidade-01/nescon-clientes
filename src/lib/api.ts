@@ -2524,11 +2524,11 @@ export const api = {
   },
 
   employees: {
-    list: (opts?: { companyId?: string }) => {
-      const q =
-        opts?.companyId && opts.companyId.length
-          ? `?company_id=${encodeURIComponent(opts.companyId)}`
-          : "";
+    list: (opts?: { companyId?: string; inativos?: boolean }) => {
+      const p = new URLSearchParams();
+      if (opts?.companyId) p.set("company_id", opts.companyId);
+      if (opts?.inativos) p.set("inativos", "1");
+      const q = p.toString() ? `?${p.toString()}` : "";
       return request<
         Array<{
           id: string;
@@ -2541,6 +2541,9 @@ export const api = {
           codigo?: string | null;
           /** 'cliente' = cadastrado pelo portal; provisório até a folha confirmar. */
           origem?: string;
+          inativado_em?: string | null;
+          /** Quem deu a saída: 'cliente' (portal) ou 'escritorio'. */
+          inativado_por?: string | null;
           company_name?: string;
           company_cnpj?: string;
         }>

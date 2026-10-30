@@ -56,6 +56,9 @@ CREATE TABLE IF NOT EXISTS employees (
   -- (unificação em api/src/employeeUnify.js).
   origem TEXT NOT NULL DEFAULT 'escritorio',
   conferido_em TIMESTAMPTZ,
+  -- Quem deu a saída: 'cliente' (portal) ou 'escritorio'.
+  inativado_em TIMESTAMPTZ,
+  inativado_por TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
