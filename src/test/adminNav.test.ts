@@ -29,11 +29,11 @@ describe("visibilidade", () => {
     expect(setoresVisiveis({ isOwner: true, areas: mergeAdminAreas(null) }).map((s) => s.id)).toHaveLength(SETORES.length);
   });
 
-  it("colaborador só com 'licencas' vê só o setor fiscal, e só esse item", () => {
+  it("colaborador só com 'licencas' vê só o setor fiscal: licenças e certificado digital", () => {
     const areas = { ...mergeAdminAreas({}), licencas: true };
     const v = setoresVisiveis({ isOwner: false, areas });
     expect(v.map((s) => s.id)).toEqual(["fiscal"]);
-    expect(v[0].items.map((i) => i.to)).toEqual(["/admin/licencas"]);
+    expect(v[0].items.map((i) => i.to)).toEqual(["/admin/licencas", "/admin/certificados"]);
   });
 
   it("item só do dono fica escondido de colaborador", () => {
@@ -52,5 +52,12 @@ describe("setor da rota atual", () => {
     expect(setorDoCaminho("/admin")).toBeNull();
     expect(setorDoCaminho("/admin/hub")).toBeNull();
     expect(setorDoCaminho("/admin/folha-x")).toBeNull();
+  });
+});
+
+describe("tela do setor", () => {
+  it("/admin/setor/:id é reconhecida como o próprio setor", () => {
+    expect(setorDoCaminho("/admin/setor/fiscal")?.id).toBe("fiscal");
+    expect(setorDoCaminho("/admin/setor/nao-existe")).toBeNull();
   });
 });

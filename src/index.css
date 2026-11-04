@@ -128,3 +128,10 @@
     background-image: linear-gradient(160deg, hsl(var(--primary) / 0.08), transparent 45%);
   }
 }
+
+/* Barra inferior do portal (celular): reserva o espaço para ela não cobrir o conteúdo. */
+@media (max-width: 767px) {
+  body.com-barra-portal {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+}
