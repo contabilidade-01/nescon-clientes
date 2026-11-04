@@ -13,6 +13,7 @@ import {
   CircleDollarSign,
   UserCog,
   UserPlus,
+  FileBadge,
   FileCheck2,
   FileText,
   FileUp,
@@ -74,7 +75,7 @@ export const HUB_PATH = "/admin/hub";
 
 export const ITEM_VISAO_GERAL: NavItem = {
   to: "/admin",
-  label: "Visão geral",
+  label: "Visão geral detalhada",
   icon: LayoutDashboard,
   end: true,
 };
@@ -144,6 +145,7 @@ export const SETORES: Setor[] = [
       { to: "/admin/impostos-ecac", label: "Impostos e-CAC (cobrança)", icon: Landmark, area: "alertas" },
       { to: "/admin/regime", label: "Simulador de regime (IBS/CBS)", icon: Scale, area: "empresas" },
       { to: "/admin/licencas", label: "Licenças", icon: ShieldCheck, area: "licencas" },
+      { to: "/admin/certificados", label: "Certificado digital", icon: FileBadge, area: "licencas" },
       { to: "/admin/taxas-anuais", label: "Taxas anuais", icon: CalendarCheck, area: "taxas_anuais" },
     ],
   },
@@ -190,10 +192,21 @@ export function setoresVisiveis(quem: Quem): Setor[] {
  * com fronteira — "/admin/folha" não pode pegar "/admin/folha-x" de outro setor.
  */
 export function setorDoCaminho(pathname: string): Setor | null {
+  const m = /^\/admin\/setor\/([a-z-]+)/.exec(pathname);
+  if (m) return setorPorId(m[1]) ?? null;
   for (const s of SETORES) {
     for (const i of s.items) {
       if (pathname === i.to || pathname.startsWith(`${i.to}/`)) return s;
     }
   }
   return null;
+}
+
+export function setorPorId(id: string | undefined): Setor | undefined {
+  return SETORES.find((s) => s.id === id);
+}
+
+/** Rota da tela de um setor do painel. */
+export function caminhoDoSetor(id: string): string {
+  return `/admin/setor/${id}`;
 }

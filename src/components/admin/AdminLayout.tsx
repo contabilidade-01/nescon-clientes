@@ -26,6 +26,7 @@ import { mergeAdminAreas } from "@/lib/adminAreas";
 import {
   HUB_PATH,
   ITEM_VISAO_GERAL,
+  caminhoDoSetor,
   setorDoCaminho,
   setoresVisiveis,
   type NavItem,
@@ -35,12 +36,11 @@ import { GclickAlertaDialog } from "@/components/admin/GclickAlertaDialog";
 import { cn } from "@/lib/utils";
 
 /**
- * Painel do escritório dividido por setor (mapa em src/lib/adminNav.ts, o mesmo do hub).
- * Cada item é uma rota própria. Dentro de um setor o menu mostra só as páginas dele; no
- * hub, na Visão geral e em rota fora do mapa mostra todos os setores, como era antes.
+ * Painel do escritório como HUB por setor (mapa em src/lib/adminNav.ts, o mesmo da tela
+ * Geral). O menu lista os setores; dentro de um setor mostra também as páginas dele.
  * O menu lateral retrai para ícones (botão no topo ou Ctrl/Cmd+B) e vira gaveta no celular.
  */
-const ITEM_HUB: NavItem = { to: HUB_PATH, label: "Setores (início)", icon: LayoutGrid };
+const ITEM_HUB: NavItem = { to: HUB_PATH, label: "Geral", icon: LayoutGrid, end: true };
 
 function formatCpf(cpf?: string) {
   if (!cpf) return "";
@@ -102,11 +102,22 @@ export function AdminLayout({
 
   const setorAtual = setorDoCaminho(pathname);
   const todos = setoresVisiveis(admin);
-  // Dentro de um setor: só o dele. Fora de qualquer setor: todos, como antes do hub.
-  const setoresNoMenu = setorAtual ? todos.filter((x) => x.id === setorAtual.id) : todos;
+  // HUB: o menu lista os setores (no modo retraído vira a barra de ícones). Dentro de um
+  // setor, as páginas dele aparecem logo abaixo.
+  const itensSetores: NavItem[] = todos.map((x) => ({
+    to: caminhoDoSetor(x.id),
+    label: x.label,
+    icon: x.icon,
+    end: true,
+    badgePendencias: x.items.some((i) => i.badgePendencias),
+    badgeAtendimentos: x.items.some((i) => i.badgeAtendimentos),
+  }));
+  const doSetor = setorAtual ? todos.find((x) => x.id === setorAtual.id) : undefined;
   const secoesVisiveis: Array<{ label: string; items: NavItem[] }> = [
-    { label: "Geral", items: [ITEM_HUB, ITEM_VISAO_GERAL] },
-    ...setoresNoMenu.map((x) => ({ label: x.label, items: x.items })),
+    { label: "Início", items: [ITEM_HUB] },
+    { label: "Setores", items: itensSetores },
+    ...(doSetor ? [{ label: doSetor.label, items: doSetor.items }] : []),
+    { label: "Relatórios", items: [ITEM_VISAO_GERAL] },
   ];
 
   return (
@@ -135,7 +146,12 @@ export function AdminLayout({
               <SidebarGroupContent>
                 <SidebarMenu>
                   {section.items.map((item) => {
-                    const ativo = item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`);
+                    const ehSetor = item.to.startsWith("/admin/setor/");
+                    const ativo = ehSetor
+                      ? pathname === item.to || (doSetor !== undefined && caminhoDoSetor(doSetor.id) === item.to)
+                      : item.end
+                        ? pathname === item.to
+                        : pathname === item.to || pathname.startsWith(`${item.to}/`);
                     return (
                       <SidebarMenuItem key={item.to}>
                         <SidebarMenuButton asChild isActive={ativo} tooltip={item.label}>

@@ -77,6 +77,11 @@ import AcompanhamentosPage from "./pages/admin/AcompanhamentosPage.tsx";
 import AlterarSenhaPage from "./pages/AlterarSenhaPage.tsx";
 import ManutencaoPage from "./pages/ManutencaoPage.tsx";
 import GerentesPage from "./pages/GerentesPage.tsx";
+import SetorPage from "./pages/SetorPage.tsx";
+import CertificadoDigitalPage from "./pages/CertificadoDigitalPage.tsx";
+import SetorAdminPage from "./pages/admin/SetorAdminPage.tsx";
+import CertificadosAdminPage from "./pages/admin/CertificadosPage.tsx";
+import { PortalBottomNav } from "@/components/hub/PortalBottomNav";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -204,6 +209,9 @@ const AppRoutes = () => (
     <Route path="/admin/onboarding/modelos" element={<AdminAreaRoute area="empresas"><OnboardingModelosPage /></AdminAreaRoute>} />
     <Route path="/admin/hub" element={<AdminOnlyRoute><HubPage /></AdminOnlyRoute>} />
     <Route path="/admin" element={<AdminOnlyRoute><VisaoGeralPage /></AdminOnlyRoute>} />
+    {/* Tela de um setor do painel: indicadores e cartões das páginas dele */}
+    <Route path="/admin/setor/:id" element={<AdminOnlyRoute><SetorAdminPage /></AdminOnlyRoute>} />
+    <Route path="/admin/certificados" element={<AdminAreaRoute area="licencas"><CertificadosAdminPage /></AdminAreaRoute>} />
     <Route path="/admin/empresas" element={<AdminAreaRoute area="empresas"><EmpresasPage /></AdminAreaRoute>} />
     <Route path="/admin/grupos" element={<AdminAreaRoute area="empresas"><GruposPage /></AdminAreaRoute>} />
     <Route path="/admin/clientes-gclick" element={<OwnerOnlyRoute><ClientesGclickPage /></OwnerOnlyRoute>} />
@@ -242,6 +250,9 @@ const AppRoutes = () => (
     {/* Única tela liberada enquanto a senha for a inicial */}
     <Route path="/alterar-senha" element={<LoggedInRoute><AlterarSenhaPage /></LoggedInRoute>} />
     <Route path="/" element={<CompanyOnlyRoute><Index /></CompanyOnlyRoute>} />
+    {/* HUB do portal: tela de cada setor (lista das telas dele) */}
+    <Route path="/setor/:id" element={<CompanyOnlyRoute><SetorPage /></CompanyOnlyRoute>} />
+    <Route path="/certificado-digital" element={<CompanyOwnerRoute><CertificadoDigitalPage /></CompanyOwnerRoute>} />
     <Route path="/primeiros-passos" element={<CompanyOnlyRoute><PrimeirosPassosPage /></CompanyOnlyRoute>} />
     <Route path="/gerentes" element={<CompanyOwnerRoute><GerentesPage /></CompanyOwnerRoute>} />
     <Route path="/suspensao" element={<CompanyToolRoute tool="suspension"><SuspensionPage /></CompanyToolRoute>} />
@@ -275,6 +286,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AppRoutes />
+        <PortalBottomNav />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

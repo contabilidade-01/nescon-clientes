@@ -1,102 +1,40 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  CircleDollarSign,
-  FileText,
   AlertTriangle,
-  History,
-  Users,
-  MessageSquare,
+  ArrowUpRight,
+  CalendarClock,
+  CheckCircle2,
+  ChevronRight,
+  FileBadge,
+  FileX,
+  KeyRound,
   LogOut,
-  ClipboardList,
-  Calculator,
-  CalendarDays,
   Palmtree,
   Receipt,
-  Wallet,
-  Barcode,
-  FolderOpen,
-  CheckCircle2,
-  ArrowUpRight,
-  KeyRound,
   Sparkles,
-  FileWarning,
-  FileX,
-  CalendarRange,
-  Scale,
   UserCog,
+  Users,
+  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DueBadge } from "@/components/DueBadge";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
-import {
-  isToolAllowed,
-  mergeClientToolAccess,
-  COMPANY_TOOL_LABELS,
-  TOOL_GROUPS,
-  TOOL_GROUP_LABELS,
-  type CompanyToolKey,
-  type ToolGroup,
-} from "@/lib/companyTools";
-import { competenciaLabel, formatDueLong } from "@/lib/deliverableDisplay";
+import { situacaoPagamentos } from "@/lib/situacaoPagamentos";
+import { isToolAllowed, mergeClientToolAccess, type CompanyToolKey } from "@/lib/companyTools";
+import { formatDueLong } from "@/lib/deliverableDisplay";
 import { LgpdConsentDialog } from "@/components/LgpdConsentDialog";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
-
-type MenuItem = {
-  key: string;
-  tool: CompanyToolKey;
-  path: string;
-  icon: typeof FileText;
-  /** Sobrepõe o rótulo da ferramenta (duas telas dividem a chave `calendar`). */
-  title?: string;
-  description?: string;
-};
-
-const MENU_ITEMS: MenuItem[] = [
-  { key: "calendar", tool: "calendar", path: "/calendario", icon: CalendarDays,
-    title: "Calendário", description: "Tudo do mês num só lugar" },
-  { key: "upcoming", tool: "calendar", path: "/proximos-pagamentos", icon: Wallet,
-    title: "Próximos pagamentos", description: "Atrasados e próximos" },
-  { key: "fiscal_guides", tool: "fiscal_guides", path: "/guias", icon: Receipt,
-    title: "Guias fiscais", description: "Impostos e contribuições" },
-  // Permissão própria (fase de teste): o escritório libera por empresa.
-  { key: "impostos_pendentes", tool: "impostos_ecac", path: "/impostos-pendentes", icon: AlertTriangle,
-    title: "Impostos em aberto", description: "O que consta na Receita e a guia atualizada" },
-  { key: "boletos", tool: "boletos", path: "/boletos", icon: Barcode,
-    title: "Boletos", description: "Boletos a pagar" },
-  { key: "payroll_files", tool: "payroll_files", path: "/folha", icon: FileText,
-    title: "Folha de pagamento", description: "Extratos e recibos mensais" },
-  // Mesma permissão da folha: quem vê o documento vê o custo dele.
-  { key: "custo_folha", tool: "payroll_files", path: "/custo-folha", icon: CircleDollarSign,
-    title: "Custo de folha", description: "Quanto custou por mês e a projeção do 13º" },
-  { key: "documents", tool: "documents", path: "/documentos", icon: FolderOpen,
-    title: "Documentos", description: "Contratos e relatórios" },
-  { key: "vacations", tool: "vacations", path: "/ferias", icon: Palmtree,
-    title: "Férias", description: "Quem tem direito, custo e faltas" },
-  { key: "certificates", tool: "certificates", path: "/atestados", icon: ClipboardList },
-  { key: "suspension", tool: "suspension", path: "/suspensao", icon: FileText },
-  { key: "warning", tool: "warning", path: "/advertencia", icon: AlertTriangle },
-  { key: "chatbot", tool: "chatbot", path: "/chatbot", icon: MessageSquare },
-  { key: "salary_adhoc", tool: "salary_adhoc", path: "/salario-avulso", icon: Calculator },
-  { key: "employees", tool: "employees", path: "/funcionarios", icon: Users },
-  { key: "escalas", tool: "escalas", path: "/escalas", icon: CalendarRange },
-  { key: "regime", tool: "regime_tributario", path: "/regime", icon: Scale,
-    title: "Simulador de regime", description: "Simples puro ou IBS/CBS por fora" },
-  { key: "history", tool: "history", path: "/historico", icon: History },
-  { key: "chat", tool: "chat", path: "/mensagens", icon: MessageSquare,
-    title: "Mensagens", description: "Fale com o escritório" },
-];
-
-const GROUP_SUBTITLE: Record<ToolGroup, string> = {
-  financeiro: "Guias, calendário e próximos pagamentos",
-  entregas: "Contratos e relatórios",
-  portal: "Fale com o escritório",
-  dp: "Folha, férias e rotinas de funcionários",
-};
+import { Atalho, HubCard, IconBox, Indicador, RoscaPagamentos } from "@/components/hub/Hub";
+import {
+  ATALHOS_INICIO,
+  ITEM_CHAT,
+  itensPorChaves,
+  setoresVisiveisPortal,
+  type PortalItem,
+} from "@/lib/portalNav";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -104,10 +42,11 @@ const Index = () => {
 
   // Registra a abertura de uma ferramenta (tela "Controle de acessos") e navega.
   // Best-effort: se o registro falhar, a navegação acontece do mesmo jeito.
-  const abrirFerramenta = (tool: CompanyToolKey, path: string) => {
-    api.portal.registrarUso(tool);
+  const abrirFerramenta = (tool: CompanyToolKey | undefined, path: string) => {
+    if (tool) api.portal.registrarUso(tool);
     navigate(path);
   };
+  const abrirItem = (item: PortalItem) => abrirFerramenta(item.tool, item.path);
   // Aviso de LGPD: só abre se o servidor disser que a empresa nunca respondeu.
   const [mostrarLgpd, setMostrarLgpd] = useState(false);
 
@@ -171,10 +110,18 @@ const Index = () => {
     enabled: !!company && podeFerias,
   });
 
-  const { data: docCount } = useQuery({
+  // Todas as entregas: alimenta a rosca de pagamentos.
+  const { data: entregas, isLoading: loadingEntregas } = useQuery({
     queryKey: ["deliverables", "home-count"],
     queryFn: () => api.deliverables.list(),
     enabled: !!company && !isGerente,
+  });
+
+  const podeFuncionarios = isToolAllowed(company?.toolAccess, "employees") && !isGerente;
+  const { data: funcionarios } = useQuery({
+    queryKey: ["employees", "home"],
+    queryFn: () => api.employees.list(),
+    enabled: !!company && podeFuncionarios,
   });
 
   // Mensagens sem resposta do escritório. Sem este número, o cliente só descobre que
@@ -198,18 +145,18 @@ const Index = () => {
   });
   const passos = onboarding?.onboarding && onboarding.onboarding.status !== "concluido" ? onboarding.onboarding : null;
 
-  const visibleItems = MENU_ITEMS.filter((item) => {
-    if (company && !isToolAllowed(company.toolAccess, item.tool)) return false;
-    // Férias só para quem tem funcionário celetista: empresa só com pró-labore não
-    // tem o que programar, e um menu vazio parece serviço faltando.
-    if (item.tool === "vacations" && company?.temFuncionarios === false) return false;
-    return true;
+  // Certificado digital: só avisa na entrada quando vence logo ou já venceu.
+  const { data: certificado } = useQuery({
+    queryKey: ["certificado-digital"],
+    queryFn: () => api.certificadoDigital.meu(),
+    enabled: !!company && !isGerente,
+    retry: false,
   });
 
-  const groups: Array<{ group: ToolGroup; items: MenuItem[] }> = TOOL_GROUPS.map((group) => ({
-    group,
-    items: visibleItems.filter((item) => COMPANY_TOOL_LABELS[item.tool].group === group),
-  })).filter((g) => g.items.length > 0);
+  const setores = setoresVisiveisPortal(company);
+  const atalhos = itensPorChaves(ATALHOS_INICIO, company, 4);
+  const pagamentos = useMemo(() => situacaoPagamentos(entregas), [entregas]);
+  const totalPagamentos = pagamentos.pagas + pagamentos.aVencer + pagamentos.vencidas;
 
   const handleLogout = () => {
     logout();
@@ -217,7 +164,7 @@ const Index = () => {
   };
 
   const abertas = upcoming?.length ?? 0;
-  const primeiroNome = (company?.name || "").replace(/\s+(LTDA|ME|EPP|S\/?A|EIRELI)\.?$/i, "");
+  const proxima = upcoming?.[0];
   const estaPersonificando = Boolean(localStorage.getItem("admin_session_backup"));
 
   const voltarAoAdmin = () => {
@@ -228,6 +175,9 @@ const Index = () => {
       window.location.href = "/admin/hub";
     }
   };
+
+  const certStatus = certificado?.status;
+  const certDias = certificado?.certificado?.dias_restantes ?? null;
 
   return (
     <div className="min-h-screen">
@@ -247,14 +197,14 @@ const Index = () => {
       )}
 
       <header className="border-b border-border/60 bg-card/40 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/80 to-primary/30 text-primary-foreground">
-            <Sparkles className="h-5 w-5" />
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-dashed border-primary/40 text-primary">
+            <Sparkles className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="eyebrow">Hub Empresa · Portal</p>
-            <h1 className="truncate text-base font-bold leading-tight sm:text-lg">
-              {company?.name ?? "Portal do Cliente"}
+            <p className="text-[11px] text-muted-foreground">Seja bem-vindo</p>
+            <h1 className="truncate text-sm font-bold leading-tight sm:text-base">
+              {isGerente ? company?.gerente?.nome : company?.name ?? "Portal do Cliente"}
             </h1>
           </div>
           <CompanySwitcher />
@@ -282,7 +232,7 @@ const Index = () => {
           <Button
             variant="ghost"
             size="icon"
-            className="text-muted-foreground hover:text-foreground"
+            className="text-destructive/80 hover:text-destructive"
             onClick={handleLogout}
             aria-label="Sair"
           >
@@ -291,48 +241,8 @@ const Index = () => {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl space-y-8 px-4 py-6">
-        {/* Herói — quem é a empresa e o que exige atenção agora */}
-        <section className="card-glow p-6 sm:p-8">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="eyebrow">Bem-vindo de volta</p>
-              <h2 className="mt-2 truncate text-2xl font-bold sm:text-3xl">{isGerente ? company?.gerente?.nome : primeiroNome}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {isGerente
-                  ? "Acesso de gerente: advertências e suspensões."
-                  : !canSeePayments
-                  ? "Seus documentos ficam guardados aqui."
-                  : loadingUpcoming
-                    ? "Carregando seus vencimentos..."
-                    : abertas === 0
-                      ? "Nenhuma guia em aberto no momento."
-                      : `${abertas} pagamento${abertas > 1 ? "s" : ""} ${abertas > 1 ? "próximos" : "próximo"} do vencimento.`}
-              </p>
-            </div>
-            <div className="flex shrink-0 gap-3">
-              {canSeePayments && (
-                <div className="min-w-[7.5rem] rounded-xl border bg-background/40 px-4 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Guias abertas
-                  </p>
-                  <p className="mt-1 text-2xl font-bold tabular-nums">
-                    {loadingUpcoming ? "—" : abertas}
-                  </p>
-                </div>
-              )}
-              {!isGerente && (
-                <div className="min-w-[7.5rem] rounded-xl border bg-background/40 px-4 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Documentos
-                  </p>
-                  <p className="mt-1 text-2xl font-bold tabular-nums">{docCount?.length ?? "—"}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
+      <main className="mx-auto w-full max-w-5xl space-y-4 px-4 py-5 sm:space-y-6">
+        {/* Primeiros passos do cliente novo */}
         {passos && (
           <section aria-label="Primeiros passos" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
             <div className="min-w-0">
@@ -347,201 +257,269 @@ const Index = () => {
           </section>
         )}
 
-        {/* Ações Rápidas de RH — Prioridade no Topo */}
-        {(isToolAllowed(company?.toolAccess, "warning") || isToolAllowed(company?.toolAccess, "suspension")) && (
-          <section className="grid gap-4 sm:grid-cols-2">
+        {/* Gerente: só advertência e suspensão, em destaque. */}
+        {isGerente && (
+          <section className="grid gap-3 sm:grid-cols-2">
             {isToolAllowed(company?.toolAccess, "warning") && (
               <button
                 type="button"
                 onClick={() => abrirFerramenta("warning", "/advertencia")}
-                className="group flex items-center gap-4 rounded-2xl border-2 border-primary/20 bg-primary/5 p-5 text-left transition-all hover:border-primary/40 hover:bg-primary/10"
+                className="group flex items-center gap-4 rounded-2xl border bg-card p-5 text-left transition-colors hover:border-primary/50"
               >
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-                  <AlertTriangle className="h-6 w-6" />
-                </div>
+                <IconBox icon={AlertTriangle} className="h-12 w-12" />
                 <div className="min-w-0 flex-1">
                   <h3 className="font-bold">Gerar Advertência</h3>
                   <p className="text-sm text-muted-foreground">Emitir advertência formal ao funcionário</p>
                 </div>
-                <ArrowUpRight className="h-5 w-5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
+                <ArrowUpRight className="h-5 w-5 shrink-0 text-muted-foreground group-hover:text-primary" />
               </button>
             )}
-
             {isToolAllowed(company?.toolAccess, "suspension") && (
               <button
                 type="button"
                 onClick={() => abrirFerramenta("suspension", "/suspensao")}
-                className="group flex items-center gap-4 rounded-2xl border-2 border-destructive/20 bg-destructive/5 p-5 text-left transition-all hover:border-destructive/40 hover:bg-destructive/10"
+                className="group flex items-center gap-4 rounded-2xl border bg-card p-5 text-left transition-colors hover:border-destructive/50"
               >
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-destructive text-destructive-foreground shadow-sm">
-                  <FileX className="h-6 w-6" />
-                </div>
+                <IconBox icon={FileX} tom="destructive" className="h-12 w-12" />
                 <div className="min-w-0 flex-1">
                   <h3 className="font-bold">Gerar Suspensão</h3>
                   <p className="text-sm text-muted-foreground">Emitir suspensão formal ao funcionário</p>
                 </div>
-                <ArrowUpRight className="h-5 w-5 shrink-0 text-muted-foreground transition-colors group-hover:text-destructive" />
+                <ArrowUpRight className="h-5 w-5 shrink-0 text-muted-foreground group-hover:text-destructive" />
               </button>
             )}
           </section>
         )}
 
         {!isGerente && (
-        <section>
-          <button
-            type="button"
-            onClick={() => navigate("/admissao")}
-            className="group flex w-full items-center gap-4 rounded-2xl border-2 border-primary/20 bg-primary/5 p-5 text-left transition-all hover:border-primary/40 hover:bg-primary/10"
-          >
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-              <ClipboardList className="h-6 w-6" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="font-bold">Ficha de admissão</h3>
-              <p className="text-sm text-muted-foreground">Cadastrar funcionário novo e gerar o PDF da ficha</p>
-            </div>
-            <ArrowUpRight className="h-5 w-5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
-          </button>
-        </section>
-        )}
-
-        {/* Próximos pagamentos */}
-        {canSeePayments && (
-          <section>
-            <div className="mb-3 flex items-end justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold">Próximos pagamentos</h2>
-                <p className="text-sm text-muted-foreground">O que precisa da sua atenção agora</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => abrirFerramenta("calendar", "/proximos-pagamentos")}
-                className="flex shrink-0 items-center gap-1 text-sm font-medium text-primary hover:underline"
-              >
-                Ver todos <ArrowUpRight className="h-4 w-4" />
-              </button>
-            </div>
-
-            {loadingUpcoming ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {[0, 1, 2].map((i) => (
-                  <Skeleton key={i} className="h-36 rounded-2xl" />
-                ))}
-              </div>
-            ) : abertas === 0 ? (
-              <div className="flex items-center gap-3 rounded-2xl border bg-card/60 px-5 py-6">
-                <CheckCircle2 className="h-6 w-6 shrink-0 text-success" />
-                <div>
-                  <p className="font-medium">Nenhuma guia em aberto</p>
-                  <p className="text-sm text-muted-foreground">
-                    Novos vencimentos aparecem aqui assim que a contabilidade enviar.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {upcoming!.map((d) => (
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+            {/* Cartão principal: o que vence agora */}
+            {canSeePayments ? (
+              <HubCard
+                icon={Receipt}
+                titulo="Próximo vencimento"
+                className="card-glow"
+                acao={
                   <button
-                    key={d.id}
                     type="button"
                     onClick={() => abrirFerramenta("calendar", "/proximos-pagamentos")}
-                    className="rounded-2xl border bg-card/70 p-5 text-left transition-colors hover:border-primary/40 hover:bg-card"
+                    className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      {d.doc_type ? (
-                        <Badge variant="secondary" className="font-mono text-[10px] tracking-wide">
-                          {d.doc_type}
-                        </Badge>
-                      ) : (
-                        <span />
-                      )}
-                      <DueBadge dueDate={d.due_date} status={d.status} />
-                    </div>
-                    <p className="mt-3 truncate text-lg font-semibold">{d.title}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {competenciaLabel(d.competencia)}
-                    </p>
-                    <p className="mt-3 text-lg font-bold text-primary">
-                      {formatDueLong(d.due_date)}
+                    Ver todos <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                }
+              >
+                {loadingUpcoming ? (
+                  <Skeleton className="mt-4 h-14 rounded-xl" />
+                ) : proxima ? (
+                  <button
+                    type="button"
+                    onClick={() => abrirFerramenta("calendar", "/proximos-pagamentos")}
+                    className="mt-3 block w-full text-left"
+                  >
+                    <p className="text-2xl font-bold tabular-nums sm:text-3xl">{formatDueLong(proxima.due_date)}</p>
+                    <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                      {proxima.title}
+                      {" · "}
+                      {abertas} {abertas === 1 ? "pagamento próximo" : "pagamentos próximos"}
                     </p>
                   </button>
-                ))}
-              </div>
+                ) : (
+                  <div className="mt-3 flex items-center gap-3">
+                    <CheckCircle2 className="h-6 w-6 shrink-0 text-success" />
+                    <div>
+                      <p className="font-semibold">Nenhuma guia em aberto</p>
+                      <p className="text-xs text-muted-foreground">
+                        Novos vencimentos aparecem aqui assim que a contabilidade enviar.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </HubCard>
+            ) : (
+              <HubCard icon={Sparkles} titulo="Portal do cliente">
+                <p className="mt-3 text-sm text-muted-foreground">Seus documentos ficam guardados aqui.</p>
+              </HubCard>
             )}
-          </section>
+
+            {/* Atalhos do que o cliente mais usa */}
+            {atalhos.length > 0 && (
+              <section aria-label="Atalhos" className="grid grid-cols-4 content-center gap-2 rounded-2xl md:border md:bg-card md:p-4">
+                {atalhos.map((a) => (
+                  <Atalho key={a.key} icon={a.icon} label={a.title} onClick={() => abrirItem(a)} />
+                ))}
+              </section>
+            )}
+          </div>
         )}
 
-        {/* Só aparece quando há o que resolver — cartão vazio vira ruído. */}
+        {/* Avisos: só quando há o que resolver — cartão vazio vira ruído. */}
+        {!isGerente && (certStatus === "vencido" || certStatus === "a_vencer") && (
+          <button
+            type="button"
+            onClick={() => navigate("/certificado-digital")}
+            className={`flex w-full items-center gap-3 rounded-2xl border-2 px-4 py-3 text-left ${
+              certStatus === "vencido" ? "border-destructive/50 bg-destructive/10" : "border-warning/50 bg-warning/10"
+            }`}
+          >
+            <IconBox icon={FileBadge} tom={certStatus === "vencido" ? "destructive" : "warning"} />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold">
+                {certStatus === "vencido"
+                  ? "Seu certificado digital venceu"
+                  : certDias === 0
+                    ? "Seu certificado digital vence hoje"
+                    : `Seu certificado digital vence em ${certDias} dia${certDias === 1 ? "" : "s"}`}
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                Sem ele não emitimos notas nem entregamos declarações. Toque para ver e informar a renovação.
+              </span>
+            </span>
+            <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+          </button>
+        )}
+
         {podeFerias && ferias?.resumo && (ferias.resumo.vencidas > 0 || ferias.resumo.em_risco_faltas > 0) && (
           <button
             type="button"
             onClick={() => abrirFerramenta("vacations", "/ferias")}
-            className="flex w-full items-center gap-3 rounded-2xl border-2 border-amber-500/50 bg-amber-500/10 px-5 py-4 text-left"
+            className="flex w-full items-center gap-3 rounded-2xl border-2 border-warning/50 bg-warning/10 px-4 py-3 text-left"
           >
-            <Palmtree className="h-6 w-6 shrink-0 text-amber-600" />
+            <IconBox icon={Palmtree} tom="warning" />
             <span className="min-w-0 flex-1">
-              <span className="block font-semibold">
+              <span className="block text-sm font-semibold">
                 {ferias.resumo.vencidas > 0
                   ? `${ferias.resumo.vencidas} férias vencida(s)`
                   : `${ferias.resumo.em_risco_faltas} funcionário(s) prestes a perder dias de férias`}
               </span>
-              <span className="block text-sm text-muted-foreground">
+              <span className="block text-xs text-muted-foreground">
                 {ferias.resumo.vencidas > 0 && ferias.resumo.em_risco_faltas > 0
                   ? `E ${ferias.resumo.em_risco_faltas} prestes a perder dias por faltas. `
                   : ""}
                 Toque para ver quem, quando e quanto custa.
               </span>
             </span>
-            <ArrowUpRight className="h-5 w-5 shrink-0 text-amber-600" />
+            <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
           </button>
         )}
 
-        {groups.length === 0 && (
+        {!isGerente && (podeFuncionarios || podeFerias || canSeePayments) && (
+          <div className="grid gap-4 md:grid-cols-2">
+            {(podeFuncionarios || podeFerias) && (
+              <HubCard
+                icon={Users}
+                titulo="Departamento Pessoal"
+                acao={
+                  <button type="button" onClick={() => navigate("/setor/dp")} className="text-xs font-medium text-primary hover:underline">
+                    Abrir setor
+                  </button>
+                }
+              >
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {podeFuncionarios && (
+                    <Indicador
+                      label="Funcionários ativos"
+                      valor={funcionarios ? funcionarios.length : "—"}
+                      onClick={() => abrirFerramenta("employees", "/funcionarios")}
+                    />
+                  )}
+                  {podeFerias && (
+                    <Indicador
+                      label="Férias a vencer"
+                      valor={ferias?.resumo ? ferias.resumo.a_vencer + ferias.resumo.vencidas : "—"}
+                      tom={ferias?.resumo?.vencidas ? "destructive" : ferias?.resumo?.a_vencer ? "warning" : undefined}
+                      onClick={() => abrirFerramenta("vacations", "/ferias")}
+                    />
+                  )}
+                </div>
+              </HubCard>
+            )}
+
+            {canSeePayments && (
+              <HubCard icon={Wallet} titulo="Situação dos pagamentos">
+                <p className="mt-1 text-xs text-muted-foreground">Guias e boletos dos últimos 90 dias e os próximos</p>
+                {loadingEntregas ? (
+                  <Skeleton className="mt-3 h-24 rounded-xl" />
+                ) : totalPagamentos === 0 ? (
+                  <p className="mt-3 text-sm text-muted-foreground">Nenhuma guia ou boleto no período.</p>
+                ) : (
+                  <RoscaPagamentos {...pagamentos} />
+                )}
+              </HubCard>
+            )}
+          </div>
+        )}
+
+        {setores.length === 0 && !(podeChat && !isGerente) && (
           <p className="rounded-2xl border border-dashed bg-card/40 px-4 py-8 text-center text-sm text-muted-foreground">
             Nenhuma ferramenta está liberada para esta empresa. Contacte o administrador.
           </p>
         )}
 
-        {/* Menu por seção */}
-        {groups.map(({ group, items }) => (
-          <section key={group}>
-            <div className="mb-3">
-              <h2 className="text-lg font-bold">{TOOL_GROUP_LABELS[group].title}</h2>
-              <p className="text-sm text-muted-foreground">{GROUP_SUBTITLE[group]}</p>
-            </div>
+        {/* Setores: no computador é a navegação principal; no celular, a barra inferior repete. */}
+        {setores.length > 0 && (
+          <section aria-label="Setores">
+            <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Setores</h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {items.map((item) => {
-                const meta = COMPANY_TOOL_LABELS[item.tool];
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => abrirFerramenta(item.tool, item.path)}
-                    className="group flex min-w-0 items-center gap-4 rounded-2xl border bg-card/70 p-4 text-left transition-colors hover:border-primary/40 hover:bg-card"
-                  >
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
-                      <item.icon className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="flex items-center gap-2 truncate font-semibold">
-                        {item.title ?? meta.title}
-                        {item.key === "chat" && naoLidasChat > 0 && (
-                          <Badge className="bg-destructive text-destructive-foreground">
-                            {naoLidasChat}
-                          </Badge>
-                        )}
-                      </h3>
-                      <p className="truncate text-sm text-muted-foreground">
-                        {item.description ?? meta.description}
-                      </p>
-                    </div>
-                    <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
-                  </button>
-                );
-              })}
+              {setores.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => navigate(`/setor/${s.id}`)}
+                  className="group flex min-w-0 flex-col gap-3 rounded-2xl border bg-card p-4 text-left transition-colors hover:border-primary/50"
+                >
+                  <span className="flex items-center gap-3">
+                    <IconBox icon={s.icon} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">{s.label}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{s.descricao}</span>
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary" />
+                  </span>
+                  <span className="flex flex-wrap gap-1.5">
+                    {s.items.slice(0, 4).map((i) => (
+                      <span key={i.key} className="rounded-md border px-2 py-0.5 text-[11px] text-muted-foreground">
+                        {i.title}
+                      </span>
+                    ))}
+                    {s.items.length > 4 && (
+                      <span className="rounded-md border px-2 py-0.5 text-[11px] text-muted-foreground">
+                        +{s.items.length - 4}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              ))}
+              {podeChat && !isGerente && (
+                <button
+                  type="button"
+                  onClick={() => abrirItem(ITEM_CHAT)}
+                  className="group flex min-w-0 items-center gap-3 rounded-2xl border bg-card p-4 text-left transition-colors hover:border-primary/50"
+                >
+                  <IconBox icon={ITEM_CHAT.icon} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      Mensagens
+                      {naoLidasChat > 0 && (
+                        <span className="rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">
+                          {naoLidasChat}
+                        </span>
+                      )}
+                    </span>
+                    <span className="block truncate text-xs text-muted-foreground">Fale com o escritório</span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary" />
+                </button>
+              )}
             </div>
           </section>
-        ))}
+        )}
+
+        {!isGerente && canSeePayments && (
+          <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <CalendarClock className="h-3.5 w-3.5" /> Vencimentos atualizados quando a contabilidade envia as guias.
+          </p>
+        )}
       </main>
     </div>
   );

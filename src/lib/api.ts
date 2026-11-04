@@ -175,6 +175,55 @@ export type PublicDeliverable = {
   company_name: string;
 };
 
+/** Certificado digital: estado calculado da validade (nunca gravado). */
+export type CertificadoStatus = "ativo" | "a_vencer" | "vencido" | "ausente";
+export type CertificadoTipo = "a1" | "a3";
+export type CertificadoTitular = "e_cnpj" | "e_cpf";
+
+export type CertificadoDados = {
+  tipo: CertificadoTipo;
+  titular: CertificadoTitular;
+  emissor?: string | null;
+  emitido_em?: string | null;
+  vence_em: string;
+  observacao?: string | null;
+};
+
+export type CertificadoItem = {
+  company_id: string;
+  name: string;
+  cnpj: string;
+  whatsapp: string | null;
+  certificado_id: string | null;
+  tipo: CertificadoTipo | null;
+  titular: CertificadoTitular | null;
+  emissor: string | null;
+  emitido_em: string | null;
+  vence_em: string | null;
+  observacao: string | null;
+  origem: "escritorio" | "cliente" | null;
+  avisado_em: string | null;
+  status: CertificadoStatus;
+  dias_restantes: number | null;
+};
+
+export type CertificadoPortal = {
+  dias_aviso: number;
+  status: CertificadoStatus;
+  certificado: {
+    id: string;
+    tipo: CertificadoTipo;
+    titular: CertificadoTitular;
+    emissor: string | null;
+    emitido_em: string | null;
+    vence_em: string;
+    origem: "escritorio" | "cliente";
+    updated_at: string;
+    status: CertificadoStatus;
+    dias_restantes: number;
+  } | null;
+};
+
 export type LicenseType = "funcionamento" | "avcb_clcb" | "sanitaria";
 /** Estado é sempre calculado a partir do vencimento — nunca vem gravado. */
 export type LicenseStatus = "ativa" | "a_vencer" | "vencida" | "ausente";
@@ -1091,6 +1140,33 @@ export const api = {
   },
 
   /** Licenças (funcionamento, AVCB/CLCB, vigilância sanitária). Só admin. */
+  /** Certificado digital — painel (área licenças; aviso pelo WhatsApp exige alertas). */
+  certificados: {
+    overview: () =>
+      request<{ dias_aviso: number; por_status: Record<CertificadoStatus, number> }>(
+        "/admin/certificados/overview"
+      ),
+    itens: (filtros?: { status?: CertificadoStatus; q?: string }) => {
+      const p = new URLSearchParams();
+      if (filtros?.status) p.set("status", filtros.status);
+      if (filtros?.q) p.set("q", filtros.q);
+      const q = p.toString();
+      return request<CertificadoItem[]>(`/admin/certificados/itens${q ? `?${q}` : ""}`);
+    },
+    criar: (data: CertificadoDados & { company_id: string }) =>
+      request<{ id: string }>("/admin/certificados", { method: "POST", body: JSON.stringify(data) }),
+    editar: (id: string, data: CertificadoDados) =>
+      request<{ id: string }>(`/admin/certificados/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    apagar: (id: string) => request<{ ok: boolean }>(`/admin/certificados/${id}`, { method: "DELETE" }),
+    avisar: (companyId: string) =>
+      request<{ ok: boolean; numero: string }>(`/admin/certificados/avisar/${companyId}`, { method: "POST" }),
+  },
+  /** Certificado digital — portal do cliente. */
+  certificadoDigital: {
+    meu: () => request<CertificadoPortal>("/certificado-digital"),
+    informar: (data: CertificadoDados) =>
+      request<{ id: string }>("/certificado-digital", { method: "POST", body: JSON.stringify(data) }),
+  },
   licencas: {
     overview: () => request<LicenseOverview>("/licencas/overview"),
     itens: (opts?: { status?: LicenseStatus; tipo?: LicenseType; companyId?: string; q?: string }) => {

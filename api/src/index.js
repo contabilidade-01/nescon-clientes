@@ -9,6 +9,7 @@ const { ensurePasswordResetSchema } = require("./ensurePasswordResetSchema");
 const { ensureToolAccessSchema } = require("./ensureToolAccessSchema");
 const { ensureDeliverablesSchema } = require("./ensureDeliverablesSchema");
 const { ensureLicensesSchema } = require("./ensureLicensesSchema");
+const { ensureCertificadosSchema } = require("./ensureCertificadosSchema");
 const { ensureAdminUsersSchema } = require("./ensureAdminUsersSchema");
 const {
   ensureGclickClientsSchema,
@@ -126,6 +127,10 @@ const onboardingRoutes = require("./routes/onboarding");
 app.use("/api/admin/onboarding", onboardingRoutes.adminRouter);
 app.use("/api/onboarding/public", onboardingRoutes.publicRouter);
 app.use("/api/onboarding/portal", onboardingRoutes.portalRouter);
+// Certificado digital: validade e aviso (painel e portal). Antes de /api/admin.
+const certificadosRoutes = require("./routes/certificadosDigitais");
+app.use("/api/admin/certificados", certificadosRoutes.adminRouter);
+app.use("/api/certificado-digital", certificadosRoutes.portalRouter);
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/chat", require("./routes/chat"));
 app.use("/api/employees", require("./routes/employees"));
@@ -187,6 +192,7 @@ async function start() {
     await ensureToolAccessSchema(db);
     await ensureDeliverablesSchema(db);
     await ensureLicensesSchema(db);
+    await ensureCertificadosSchema(db);
     await ensureAdminUsersSchema(db);
     await ensureGclickClientsSchema(db);
     await ensureAppSettings(db);
