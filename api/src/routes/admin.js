@@ -2061,7 +2061,7 @@ router.post("/config/ia/testar", adminOnly, async (req, res) => {
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: require("../iaProvider").MODELO_CLAUDE,
           max_tokens: 10,
           messages: [{ role: "user", content: "Responda apenas: ok" }],
         }),
@@ -2094,7 +2094,18 @@ router.post("/config/ia/testar", adminOnly, async (req, res) => {
     }
 
     clearTimeout(timeoutId);
-    res.json({ ok: resultado.ok, erro: resultado.ok ? null : `HTTP ${resultado.status}` });
+    // Devolve o motivo que o provedor deu (chave inválida, modelo inexistente, sem
+    // crédito...), não só o código HTTP: é o que diz ao escritório o que corrigir.
+    let motivo = null;
+    if (!resultado.ok) {
+      const corpo = await resultado.json().catch(() => null);
+      motivo = corpo?.error?.message || corpo?.error?.type || null;
+    }
+    res.json({
+      ok: resultado.ok,
+      erro: resultado.ok ? null : `HTTP ${resultado.status}${motivo ? `: ${motivo}` : ""}`,
+      modelo: provider === "claude" ? require("../iaProvider").MODELO_CLAUDE : undefined,
+    });
   } catch (err) {
     res.json({ ok: false, erro: err.message });
   }
