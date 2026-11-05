@@ -487,9 +487,9 @@ function iniciarAgendadorAlertas(db) {
         console.error("[alertas] drenar fila:", err.message);
       }
 
-      // Fila do aviso de "documento novo" (janela 07:50–19h). Require tardio para não
+      // Fila do aviso de "documento novo" (janela 08h–18h). Require tardio para não
       // criar ciclo com docNotify, que importa deste módulo. Roda antes do motor de
-      // vencimento para o aviso das 07:50 sair na frente dos alertas das 08h.
+      // vencimento para o aviso agendado sair na frente dos alertas das 08h.
       try {
         const { drenarDocNotify } = require("./docNotify");
         const dd = await drenarDocNotify(db);
