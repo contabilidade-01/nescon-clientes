@@ -134,7 +134,7 @@ async function marcar(db, id, status, motivo, extra = {}) {
 
 /**
  * Tenta mandar UMA guia. Nunca lança. Devolve { status, motivo }.
- * `diferirSeForaDaJanela`: o envio na hora respeita 08–19h dias úteis como o docNotify.
+ * `diferirSeForaDaJanela`: o envio na hora respeita 08–18h dias úteis como o docNotify.
  */
 async function tentarEnvio(db, envio, { forcarAgora = false } = {}) {
   try {
@@ -156,7 +156,7 @@ async function tentarEnvio(db, envio, { forcarAgora = false } = {}) {
     const v = numeroWpp.validar(e.whatsapp);
     if (!v.ok) return { status: "sem_whatsapp", motivo: v.motivo };
     if (!forcarAgora && !podeEnviarAgora(minutosSP())) {
-      return { status: "na_fila", motivo: "Fora do horário (08–19h): sai no próximo dia útil a partir das 07:50" };
+      return { status: "na_fila", motivo: "Fora do horário (08–18h): sai a partir das 08:00" };
     }
     const meuNumero = await uazapi.owner();
     if (meuNumero && v.numero === meuNumero) {

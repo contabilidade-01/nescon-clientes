@@ -16,24 +16,29 @@ const { enviarComRetry, sobOTeto, marcarEnviado } = require("./alertasEnvio");
 const { hojeSP, somarDias, minutosSP } = require("./diasBancarios");
 const acessoLinks = require("./acessoLinks");
 
-// Janela em que o aviso de documento pode sair NA HORA (horário comercial de Brasília).
-// Fora dela, o aviso é agendado para as 07:50 do DIA SEGUINTE — de propósito antes das
-// 08h, para não competir com os alertas de vencimento que saem às 08h.
+// Janela em que o aviso de documento pode sair (horário comercial de Brasília):
+// 08:00 até 17:59. Fora dela, o aviso vai para a fila e sai às 08:00 do próximo dia —
+// ou do mesmo dia, se chegou de madrugada. Regra pedida pelo escritório (05/11/2026):
+// nada antes das 08h nem a partir das 18h.
 const JANELA_INICIO_MIN = 8 * 60; // 08:00
-const JANELA_FIM_MIN = 19 * 60; // 19:00
-const ENVIO_DIFERIDO_MIN = 7 * 60 + 50; // 07:50
+const JANELA_FIM_MIN = 18 * 60; // 18:00 (exclusivo)
 
-/** Pode enviar AGORA? Só dentro do horário comercial (08:00–18:59). Função pura. */
+/** Pode enviar AGORA? Só dentro do horário comercial (08:00–17:59). Função pura. */
 function podeEnviarAgora(minutos) {
   return minutos >= JANELA_INICIO_MIN && minutos < JANELA_FIM_MIN;
 }
 
-/**
- * O drenador pode entregar os agendados? A partir das 07:50 e até as 19:00. Começa às
- * 07:50 para o aviso sair antes da leva de vencimentos das 08h. Função pura.
- */
+/** O drenador pode entregar os agendados? Mesma janela do envio direto. Função pura. */
 function podeDrenar(minutos) {
-  return minutos >= ENVIO_DIFERIDO_MIN && minutos < JANELA_FIM_MIN;
+  return podeEnviarAgora(minutos);
+}
+
+/**
+ * Dia em que um aviso fora da janela deve sair: hoje, se ainda não deu 08h (chegou de
+ * madrugada); amanhã, se já passou das 18h. Função pura.
+ */
+function diaDoEnvioAgendado(hoje, minutos) {
+  return minutos < JANELA_INICIO_MIN ? hoje : somarDias(hoje, 1);
 }
 
 function portalUrl(caminho = "/") {
@@ -52,7 +57,7 @@ function mesclarDocumentos(...listas) {
 }
 
 /**
- * Guarda o aviso na fila para as 07:50 do dia seguinte. Se já houver um pendente para a
+ * Guarda o aviso na fila para as 08:00 do dia de envio. Se já houver um pendente para a
  * empresa, junta os documentos (sem duplicar) num aviso só — evita duas mensagens de
  * manhã por causa de dois syncs na madrugada.
  */
@@ -149,11 +154,12 @@ async function notificarDocumentosNovos(db, companyId, documentos) {
     }
 
     // Fora do horário comercial (madrugada/noite): não acorda o cliente. Vai para a fila
-    // e sai às 07:50 do DIA SEGUINTE, antes dos alertas de vencimento das 08h.
-    if (!podeEnviarAgora(minutosSP())) {
-      const enviarDia = somarDias(hojeSP(), 1);
+    // e sai às 08:00 (no mesmo dia se for madrugada, no seguinte se já passou das 18h).
+    const agora = minutosSP();
+    if (!podeEnviarAgora(agora)) {
+      const enviarDia = diaDoEnvioAgendado(hojeSP(), agora);
       await enfileirarDocNotify(db, companyId, documentos, enviarDia);
-      return { enviado: false, agendado: true, motivo: `Fora do horário — agendado para ${enviarDia} às 07:50` };
+      return { enviado: false, agendado: true, motivo: `Fora do horário — agendado para ${enviarDia} às 08:00` };
     }
 
     const v = numeroWpp.validar(empresa.whatsapp);
@@ -179,9 +185,9 @@ async function notificarDocumentosNovos(db, companyId, documentos) {
 }
 
 /**
- * Reprocessa a fila de avisos de documento: a partir das 07:50 (Brasília) entrega os
+ * Reprocessa a fila de avisos de documento: a partir das 08:00 (Brasília) entrega os
  * agendados cujo dia chegou. Reusa as mesmas travas do envio direto (teto/hora, retry,
- * número da própria instância). Fora da janela (antes das 07:50 ou depois das 19h) não
+ * número da própria instância). Fora da janela (antes das 08h ou a partir das 18h) não
  * faz nada — espera o próximo ciclo.
  */
 async function drenarDocNotify(db) {
@@ -245,4 +251,5 @@ module.exports = {
   podeEnviarAgora,
   podeDrenar,
   mesclarDocumentos,
+  diaDoEnvioAgendado,
 };
