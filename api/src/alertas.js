@@ -38,8 +38,17 @@ function whatsappSql(aliasCompany = "c") {
   return numeroWpp.celularSql(aliasCompany, "g");
 }
 
-/** JOIN que acompanha `whatsappSql`. */
-const JOIN_ESPELHO = `LEFT JOIN gclick_clients g ON g.company_id = c.id`;
+/**
+ * JOIN que acompanha `whatsappSql`.
+ *
+ * Casa pelo vínculo (`company_id`) e, enquanto o cliente ainda não foi aceito no painel
+ * (espelho sem vínculo), pelo CNPJ. Sem o segundo caso, cliente novo — cuja empresa foi
+ * criada pela sincronização de documentos ou cadastrada à mão sem celular — ficava sem
+ * número, e o aviso de "documento novo" (ex.: o primeiro DAS) não saía, mesmo com o
+ * celular no G-Click. O CNPJ é único no espelho, então continua no máximo uma linha.
+ */
+const JOIN_ESPELHO =
+  "LEFT JOIN gclick_clients g ON (g.company_id = c.id OR (g.company_id IS NULL AND g.cnpj = c.cnpj))";
 
 function portalUrl(caminho = "/") {
   const base = (process.env.PUBLIC_APP_URL || "").replace(/\/+$/, "");

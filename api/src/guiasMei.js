@@ -142,10 +142,10 @@ async function tentarEnvio(db, envio, { forcarAgora = false } = {}) {
     const { rows } = await db.query(
       `SELECT c.id, c.name, c.avisos_documentos_ativos, ${whatsappSql("c")} AS whatsapp,
               d.access_token, d.file_name
-         FROM guias_mei_envios g
-         JOIN companies c ON c.id = g.company_id ${JOIN_ESPELHO}
-         JOIN deliverables d ON d.id = g.deliverable_id
-        WHERE g.id = $1`,
+         FROM guias_mei_envios e
+         JOIN companies c ON c.id = e.company_id ${JOIN_ESPELHO}
+         JOIN deliverables d ON d.id = e.deliverable_id
+        WHERE e.id = $1`,
       [envio.id]
     );
     if (!rows.length) return { status: "falhou", motivo: "empresa ou documento não encontrado" };

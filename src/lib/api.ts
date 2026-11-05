@@ -2380,7 +2380,11 @@ export const api = {
           em: string;
           /** Avisos de "documento novo" mandados pelo próprio portal ao fim desta sincronização. */
           avisos_enviados?: number;
+          /** Fora do horário comercial: vão às 07:50 do dia seguinte. */
+          avisos_agendados?: number;
           avisos_nao_enviados?: number;
+          /** Empresas que não receberam o aviso na hora, com o motivo. */
+          avisos_detalhe?: { empresa: string; documentos: string[]; agendado: boolean; motivo: string }[];
         } | null;
       }>("/admin/sync-gclick/status"),
     /** Dispara a sincronização com o G-Click (traz documentos e cria empresas que faltam). */

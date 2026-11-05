@@ -97,12 +97,14 @@ async function mapaEmpresas(cnpjsNecessarios) {
       // deixava a conta aberta a quem soubesse o número.
       const { rows: novo } = await db.query(
         `INSERT INTO companies
-           (name, cnpj, password_hash, contact_email, tool_access, must_change_password)
-         VALUES ($1,$2,$3,$4,$5::jsonb,true)
+           (name, cnpj, password_hash, contact_email, phone, tool_access, must_change_password)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,true)
          ON CONFLICT (cnpj) DO NOTHING
          RETURNING id`,
+        // O telefone do G-Click entra junto: é por ele que sai o aviso do primeiro
+        // documento. Sem isso a empresa nascia muda e o WhatsApp não ia.
         [nome, cnpj, await bcrypt.hash(gerarSenhaInicial(), 10), dados?.email || null,
-         JSON.stringify(PORTAL_ONLY_TOOL_ACCESS)]
+         dados?.phone || null, JSON.stringify(PORTAL_ONLY_TOOL_ACCESS)]
       );
       if (novo.length) {
         mapa.set(cnpj, novo[0].id);
@@ -116,6 +118,16 @@ async function mapaEmpresas(cnpjsNecessarios) {
     }
   }
   return { mapa, criadas };
+}
+
+/** id → nome das empresas, para o resumo da sincronização. Nunca lança. */
+async function nomesDasEmpresas(ids) {
+  try {
+    const { rows } = await db.query("SELECT id, name FROM companies WHERE id = ANY($1)", [ids]);
+    return new Map(rows.map((r) => [r.id, r.name]));
+  } catch {
+    return new Map();
+  }
 }
 
 /**
@@ -378,14 +390,27 @@ async function sincronizar({
     // esse teto de propósito.
     if (notificar && novosPorEmpresa.size) {
       total.avisos_enviados = 0;
+      total.avisos_agendados = 0;
       total.avisos_nao_enviados = 0;
+      // Quem ficou sem aviso e por quê, para a tela de Sincronização mostrar — antes só
+      // ia para o log do servidor e não havia como saber por que um cliente não recebeu.
+      total.avisos_detalhe = [];
+      const nomes = await nomesDasEmpresas([...novosPorEmpresa.keys()]);
       for (const [companyId, docs] of novosPorEmpresa) {
         const r = await notificarDocumentosNovos(db, companyId, docs);
-        if (r.enviado) total.avisos_enviados++;
-        else {
-          total.avisos_nao_enviados++;
-          console.log(`[sync] aviso de documento novo não enviado (${companyId}): ${r.motivo}`);
+        if (r.enviado) {
+          total.avisos_enviados++;
+          continue;
         }
+        if (r.agendado) total.avisos_agendados++;
+        else total.avisos_nao_enviados++;
+        total.avisos_detalhe.push({
+          empresa: nomes.get(companyId) || companyId,
+          documentos: docs.map((d) => d.title),
+          agendado: Boolean(r.agendado),
+          motivo: r.motivo,
+        });
+        console.log(`[sync] aviso de documento novo não enviado (${companyId}): ${r.motivo}`);
       }
     }
 
