@@ -18,7 +18,7 @@ const {
   obrigacoesSemGuia,
   montarMensagemAlerta,
 } = require("./alertasRegras");
-const { hojeSP, somarDias, ehDiaBancario, proximoDiaBancario } = require("./diasBancarios");
+const { hojeSP, somarDias, ehDiaBancario, proximoDiaBancario, diaBancarioAnterior } = require("./diasBancarios");
 const { lerConfig } = require("./alertasConfig");
 const { trechoDeIncentivo } = require("./engagement");
 const numeroWpp = require("./whatsappNumero");
@@ -416,13 +416,26 @@ function diasUteisAposVencimento(dueDate, hoje) {
   return count;
 }
 
+/**
+ * Dia em que o LEMBRETE de um boleto deve sair: vencimento menos a antecedência. Se esse dia
+ * cai em fim de semana (ou feriado), vai para o dia útil ANTERIOR. Sem isso, boleto com
+ * vencimento no domingo teria o lembrete na véspera de sábado — e o motor não manda mensagem
+ * de honorário no fim de semana nem reenvia depois (a comparação é pela data exata), então o
+ * cliente ficava sem aviso nenhum. Função pura.
+ */
+function diaDoLembreteBoleto(dueDate, diasAntes) {
+  if (!dueDate) return null;
+  const dia = somarDias(dueDate, -(Number(diasAntes) || 0));
+  return diaBancarioAnterior(dia) || dia;
+}
+
 function itensBoletoDoDia(
   boletos,
   { hoje, diasAntes, cobrancaDias, honorariosCobrancaDias, lembreteOn, cobrancaOn }
 ) {
   const itens = [];
   for (const b of boletos || []) {
-    const eLembrete = lembreteOn && b.due_date === somarDias(hoje, diasAntes);
+    const eLembrete = lembreteOn && hoje === diaDoLembreteBoleto(b.due_date, diasAntes);
     // A COBRANÇA de honorário saiu deste motor: agora tem mensagem própria em 2 fases
     // (ver honorariosCobranca.js). Aqui o honorário só gera LEMBRETE (antes do
     // vencimento). A cobrança de atraso segue valendo só para BOLETO COMUM.
@@ -1023,6 +1036,7 @@ module.exports = {
   panorama,
   previsao,
   itensBoletoDoDia,
+  diaDoLembreteBoleto,
   diasUteisAposVencimento,
   registrarEnvio,
   salvarPreferencias,
