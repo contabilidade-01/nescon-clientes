@@ -36,6 +36,25 @@ function podeDrenar(minutos) {
   return minutos >= ENVIO_DIFERIDO_MIN && minutos < JANELA_FIM_MIN;
 }
 
+/** Sábado ou domingo? Recebe 'AAAA-MM-DD' (dia de São Paulo). Função pura. */
+function ehFimDeSemana(dataISO) {
+  const dia = new Date(`${dataISO}T12:00:00Z`).getUTCDay();
+  return dia === 0 || dia === 6;
+}
+
+/**
+ * Dia em que o aviso que não pode sair AGORA deve sair (sempre às 07:50). Função pura.
+ *  - madrugada (antes das 08:00): HOJE — mandar para amanhã atrasava um dia inteiro quem
+ *    teve o documento sincronizado às 02h;
+ *  - depois das 19:00: amanhã;
+ *  - nunca em fim de semana: sábado e domingo pulam para a segunda.
+ */
+function diaDoAvisoAdiado(minutos, hoje) {
+  let dia = minutos < JANELA_FIM_MIN ? hoje : somarDias(hoje, 1);
+  while (ehFimDeSemana(dia)) dia = somarDias(dia, 1);
+  return dia;
+}
+
 function portalUrl(caminho = "/") {
   const base = (process.env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
   return base ? `${base}${caminho}` : null;
@@ -150,10 +169,11 @@ async function notificarDocumentosNovos(db, companyId, documentos) {
 
     // Fora do horário comercial (madrugada/noite): não acorda o cliente. Vai para a fila
     // e sai às 07:50 do DIA SEGUINTE, antes dos alertas de vencimento das 08h.
-    if (!podeEnviarAgora(minutosSP())) {
-      const enviarDia = somarDias(hojeSP(), 1);
+    // Fim de semana também não sai (mesmo dentro do horário): vai para a segunda.
+    if (!podeEnviarAgora(minutosSP()) || ehFimDeSemana(hojeSP())) {
+      const enviarDia = diaDoAvisoAdiado(minutosSP(), hojeSP());
       await enfileirarDocNotify(db, companyId, documentos, enviarDia);
-      return { enviado: false, agendado: true, motivo: `Fora do horário — agendado para ${enviarDia} às 07:50` };
+      return { enviado: false, agendado: true, motivo: `Fora do horário ou fim de semana — agendado para ${enviarDia} às 07:50` };
     }
 
     const v = numeroWpp.validar(empresa.whatsapp);
@@ -186,7 +206,7 @@ async function notificarDocumentosNovos(db, companyId, documentos) {
  */
 async function drenarDocNotify(db) {
   if (!uazapi.configurado()) return { enviados: 0, tentadas: 0 };
-  if (!podeDrenar(minutosSP())) return { enviados: 0, tentadas: 0 };
+  if (!podeDrenar(minutosSP()) || ehFimDeSemana(hojeSP())) return { enviados: 0, tentadas: 0 };
 
   const hoje = hojeSP();
   const { rows } = await db.query(
@@ -244,5 +264,7 @@ module.exports = {
   drenarDocNotify,
   podeEnviarAgora,
   podeDrenar,
+  diaDoAvisoAdiado,
+  ehFimDeSemana,
   mesclarDocumentos,
 };
