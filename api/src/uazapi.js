@@ -17,6 +17,12 @@ class UazapiNaoConfigurado extends Error {}
 class UazapiTokenInvalido extends Error {}
 /** Número que não é cliente ativo do portal (nem do escritório). Não adianta repetir. */
 class UazapiDestinoNaoPermitido extends Error {}
+/**
+ * Cliente não recebe WhatsApp no sábado nem no domingo. Não herda de
+ * UazapiDestinoNaoPermitido de propósito: aquele é falha DEFINITIVA, este é só "tente na
+ * segunda" — quem reenfileira não pode descartar a mensagem por causa disso.
+ */
+class UazapiFimDeSemana extends Error {}
 
 /**
  * Regra do escritório: só cliente cadastrado recebe mensagem. Fica aqui, no único ponto
@@ -29,6 +35,14 @@ async function exigirDestinoPermitido(numero) {
     const final = String(numero || "").replace(/\D/g, "").slice(-4);
     console.warn(`[uazapi] envio bloqueado para ...${final}: ${r.motivo}`);
     throw new UazapiDestinoNaoPermitido(`Envio bloqueado: ${r.motivo}.`);
+  }
+  // Aviso interno ao escritório pode sair a qualquer dia; cliente, só de segunda a sexta.
+  // WHATSAPP_FIM_DE_SEMANA=true libera em emergência (mesmo padrão de WHATSAPP_SO_CLIENTES).
+  if (r.tipo !== "escritorio" && process.env.WHATSAPP_FIM_DE_SEMANA !== "true") {
+    const { ehFimDeSemanaSP } = require("./janelaEnvio");
+    if (ehFimDeSemanaSP()) {
+      throw new UazapiFimDeSemana("Envio bloqueado: o portal não manda WhatsApp a cliente no fim de semana.");
+    }
   }
 }
 
@@ -229,4 +243,5 @@ module.exports = {
   UazapiNaoConfigurado,
   UazapiTokenInvalido,
   UazapiDestinoNaoPermitido,
+  UazapiFimDeSemana,
 };

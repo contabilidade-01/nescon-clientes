@@ -31,10 +31,19 @@ function ehDiaUtil() {
   return dia >= 1 && dia <= 5;
 }
 
+/**
+ * Hoje (São Paulo) é sábado ou domingo? Regra do escritório: o portal NUNCA manda
+ * WhatsApp a cliente no fim de semana. Aceita uma data para ser testável.
+ */
+function ehFimDeSemanaSP(agora = new Date()) {
+  const dia = new Date(agora.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" })).getDay();
+  return dia === 0 || dia === 6;
+}
+
 /** Texto curto da janela para mensagens de erro/diagnóstico ("08:00–19:00"). */
 function descricaoJanela() {
   const hh = (min) => String(Math.floor(min / 60)).padStart(2, "0") + ":" + String(min % 60).padStart(2, "0");
   return `${hh(JANELA_INICIO_MIN)}–${hh(JANELA_FIM_MIN)}`;
 }
 
-module.exports = { JANELA_INICIO_MIN, JANELA_FIM_MIN, dentroDaJanela, ehDiaUtil, descricaoJanela };
+module.exports = { JANELA_INICIO_MIN, JANELA_FIM_MIN, dentroDaJanela, ehDiaUtil, ehFimDeSemanaSP, descricaoJanela };

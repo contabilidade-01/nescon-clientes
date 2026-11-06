@@ -18,7 +18,7 @@ const {
   obrigacoesSemGuia,
   montarMensagemAlerta,
 } = require("./alertasRegras");
-const { hojeSP, somarDias, ehDiaBancario, proximoDiaBancario, diaBancarioAnterior } = require("./diasBancarios");
+const { hojeSP, somarDias, ehDiaBancario, proximoDiaBancario, diaBancarioAnterior, ddmm, diasCobertosPeloAviso } = require("./diasBancarios");
 const { lerConfig } = require("./alertasConfig");
 const { trechoDeIncentivo } = require("./engagement");
 const numeroWpp = require("./whatsappNumero");
@@ -662,7 +662,12 @@ async function previsao(db, { data = null, simular = true, diaUtil = true } = {}
     const proximaGuia = guiasPorEmpresa.get(e.id) || new Map();
 
     // Tributo com guia só entra se a guia está no portal; o salário sai pelo catálogo.
-    itens.push(...itensTributariosDoDia({ codigos, proximaGuia, hoje }));
+    // Na sexta, cobre também o sábado e o domingo: não se manda WhatsApp no fim de
+    // semana, e o aviso de tributo não pode se perder por isso. O item leva a data do
+    // vencimento, então a mensagem continua correta.
+    for (const diaAviso of diasCobertosPeloAviso(hoje)) {
+      itens.push(...itensTributariosDoDia({ codigos, proximaGuia, hoje: diaAviso }));
+    }
     if (!itens.length) continue;
 
     // Para férias, a chave de duplicidade inclui os nomes dos funcionários alertados,

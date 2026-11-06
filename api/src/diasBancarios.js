@@ -232,6 +232,28 @@ function minutosSP(agora = new Date()) {
   return h * 60 + m;
 }
 
+/** Sábado ou domingo? Recebe 'YYYY-MM-DD'. */
+function ehFimDeSemana(dataISO) {
+  const dia = new Date(`${dataISO}T12:00:00Z`).getUTCDay();
+  return dia === 0 || dia === 6;
+}
+
+/**
+ * Dias "cobertos" por um aviso enviado em `hoje`: o próprio dia e, se for dia útil, os
+ * sábados/domingos seguintes — o portal não manda WhatsApp no fim de semana, então o
+ * aviso que cairia neles sai na sexta. Fim de semana devolve só [hoje].
+ */
+function diasCobertosPeloAviso(hoje) {
+  const dias = [hoje];
+  if (ehFimDeSemana(hoje)) return dias;
+  let d = somarDias(hoje, 1);
+  while (ehFimDeSemana(d)) {
+    dias.push(d);
+    d = somarDias(d, 1);
+  }
+  return dias;
+}
+
 /** 'YYYY-MM-DD' -> 'DD/MM' para texto de mensagem. */
 function ddmm(data) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(data || ""));
@@ -254,4 +276,6 @@ module.exports = {
   hojeSP,
   minutosSP,
   ddmm,
+  ehFimDeSemana,
+  diasCobertosPeloAviso,
 };
