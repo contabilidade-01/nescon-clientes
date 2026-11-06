@@ -36,7 +36,7 @@ const { previsao, registrarEnvio, registrarFalha } = require("./alertas");
 const { trechoDeIncentivo } = require("./engagement");
 const { hojeSP, minutosSP } = require("./diasBancarios");
 const { lerConfig } = require("./alertasConfig");
-const { dentroDaJanela, ehDiaUtil, descricaoJanela } = require("./janelaEnvio");
+const { dentroDaJanela, ehDiaUtil, ehFimDeSemanaSP, descricaoJanela } = require("./janelaEnvio");
 
 function num(valor, padrao) {
   const n = Number(valor);
@@ -125,6 +125,16 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, comp
       ignorados: 0,
       foraDaJanela: true,
       erro: `Fora da janela diurna de envio (${descricaoJanela()}). Nada foi enviado; tente durante o dia.`,
+      resultados: [],
+    };
+  }
+
+  // Fim de semana: nada sai (os avisos do sábado/domingo já foram antecipados para a
+  // sexta — ver diasCobertosPeloAviso). Simulação continua liberada.
+  if (!apenasSimular && ehFimDeSemanaSP() && process.env.WHATSAPP_FIM_DE_SEMANA !== "true") {
+    return {
+      dia, enviados: 0, falhas: 0, ignorados: 0, foraDaJanela: true,
+      erro: "Fim de semana: o portal não manda WhatsApp a cliente. O que sairia hoje vai na próxima rodada de dia útil.",
       resultados: [],
     };
   }
