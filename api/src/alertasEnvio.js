@@ -231,6 +231,7 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, comp
         companyId: m.company_id, obrigacoes: m.obrigacoes, numero: v.numero, marcar: marcarEnviado,
       });
       if (pdf.enviados) console.log(`[alertas] ${m.empresa}: ${pdf.enviados} boleto(s) PDF anexado(s).`);
+      if (pdf.erros && pdf.erros.length) await avisarPdfFaltou(db, m.empresa, pdf.erros);
 
       resultados.push({ empresa: m.empresa, company_id: m.company_id, status: "enviado", numero: v.numero, boletosPdf: pdf.enviados });
     } catch (err) {
@@ -407,6 +408,7 @@ async function drenarOutbox(db) {
         companyId: o.company_id, obrigacoes: o.obrigacoes, numero: v.numero, marcar: marcarEnviado,
       });
       if (pdfFila.enviados) console.log(`[alertas] fila: ${pdfFila.enviados} boleto(s) PDF anexado(s).`);
+      if (pdfFila.erros && pdfFila.erros.length) await avisarPdfFaltou(db, o.empresa || o.company_id, pdfFila.erros);
       await db.query(`UPDATE alert_outbox SET status='enviado', atualizado_em=now() WHERE id=$1`, [o.id]);
     } catch (err) {
       const tentativas = (o.tentativas || 0) + 1;
@@ -453,6 +455,26 @@ async function avisarEscritorio(db, quantas) {
     await uazapi.enviarTexto({ numero: v.numero, texto, delayMs: 0 });
   } catch (err) {
     console.error("[alertas] aviso ao escritório:", err.message);
+  }
+}
+
+/**
+ * Avisa o escritório quando o texto do alerta de boleto saiu mas o PDF NÃO foi anexado
+ * (mesmo após as repetições). O cliente ficou só com o link do portal: o escritório pode
+ * reenviar o boleto pela tela de Boletos. Best-effort, nunca lança.
+ */
+async function avisarPdfFaltou(db, empresa, erros) {
+  try {
+    console.error(`[alertas] ${empresa}: PDF do boleto NÃO anexado (${erros.map((e) => e.motivo).join("; ")}).`);
+    const { escritorio_whatsapp: numero } = await lerConfig(db);
+    const v = numeroWpp.validar(numero || "");
+    if (!v.ok) return;
+    const texto =
+      `⚠️ *Alertas Nescon:* o aviso de boleto foi enviado a *${empresa}*, mas o PDF do boleto não foi anexado ` +
+      `(${erros.map((e) => e.motivo).join("; ")}). Reenvie pela tela *Boletos*.`;
+    await uazapi.enviarTexto({ numero: v.numero, texto, delayMs: 0 });
+  } catch (err) {
+    console.error("[alertas] aviso de PDF faltando:", err.message);
   }
 }
 

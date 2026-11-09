@@ -213,15 +213,17 @@ async function enviarBoletos({ simular = false, agora = new Date(), companyIds =
         fileUrl = detalhe?.payment_options?.bank_slip?.url || fileUrl;
       }
       const docName = `Boleto_${String(b.empresa_nome).replace(/[^a-zA-Z0-9]/g, "_").slice(0, 30)}_${venc.replace(/\//g, "-")}.pdf`;
-      if (fileUrl) {
-        await uazapi.enviarDocumento({ numero: v.numero, fileUrl, docName, caption: texto, delayMs: 2000 });
-      } else {
-        // Sem PDF: manda ao menos o texto, com o link do portal como plano B.
-        await uazapi.enviarTexto({ numero: v.numero, texto, delayMs: 1200 });
+      // O envio É o boleto: sem PDF não manda texto solto. Não carimba e tenta de novo na
+      // próxima rodada; o erro aparece no log e no resultado.
+      if (!fileUrl) {
+        erros.push({ empresa: b.empresa_nome, motivo: "sem PDF disponível" });
+        resultados.push({ empresa: b.empresa_nome, status: "falhou", vencimento: b.due_date, motivo: "sem PDF disponível" });
+        continue;
       }
+      await uazapi.enviarDocumento({ numero: v.numero, fileUrl, docName, caption: texto, delayMs: 2000 });
       await db.query("UPDATE deliverables SET boleto_enviado_em = now() WHERE id = $1", [b.id]);
       enviados += 1;
-      resultados.push({ empresa: b.empresa_nome, status: "enviado", numero: v.numero, vencimento: b.due_date, comPdf: Boolean(fileUrl) });
+      resultados.push({ empresa: b.empresa_nome, status: "enviado", numero: v.numero, vencimento: b.due_date, comPdf: true });
     } catch (err) {
       // Sem carimbo: tenta de novo na próxima rodada (outro dia útil). Fim de semana não
       // chega aqui — a trava central da uazapi cuida disso.
