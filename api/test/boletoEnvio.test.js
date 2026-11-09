@@ -50,11 +50,13 @@ test("decidir: no dia do lembrete só carimba (PDF já vai junto do lembrete)", 
   assert.equal(decidirEnvioBoleto({ ...base, dueDate: "2026-11-10", hoje: "2026-11-09" }), "carimbar");
 });
 
-test("decidir: lembrete desligado na empresa, o envio sai normalmente", () => {
-  assert.equal(
-    decidirEnvioBoleto({ ...base, lembreteAtivo: false, dueDate: "2026-11-10", hoje: "2026-11-09" }),
-    "enviar"
-  );
+test("decidir: empresa com o aviso de vencimento desligado não recebe nem lembrete nem envio", () => {
+  for (const hoje of ["2026-11-05", "2026-11-09"]) {
+    assert.equal(
+      decidirEnvioBoleto({ ...base, lembreteAtivo: false, dueDate: "2026-11-10", hoje }),
+      null
+    );
+  }
 });
 
 test("decidir: vencido não envia", () => {

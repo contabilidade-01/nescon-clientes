@@ -23,7 +23,7 @@
  *
  * ## Travas
  * Dia bancário e janela diurna (no envio real), uazapi configurada, e os gates master da
- * empresa (alertas_ativos, arquivada, excluida). Um boleto por mensagem; PDF fresco da Cora
+ * empresa (alertas_ativos, aviso de vencimento do boleto ligado, arquivada, excluida). Um boleto por mensagem; PDF fresco da Cora
  * e, sem PDF, o texto com o link do portal.
  */
 const db = require("./db");
@@ -57,13 +57,16 @@ function diaDoEnvioBoleto(dueDate, diasAntes) {
 /**
  * Decide se o boleto entra no envio de hoje. Função pura (testável sem banco).
  * Devolve "enviar", "carimbar" (já sai junto do lembrete hoje) ou null (ainda não é a hora
- * / já venceu / sem envio configurado).
+ * / já venceu / sem envio configurado / empresa com o aviso de vencimento desligado).
  */
 function decidirEnvioBoleto({ dueDate, hoje, diasEnvio, diasLembrete, lembreteAtivo = true }) {
+  // Segue a marcação da empresa ("Honorários — aviso de vencimento"): desligada, nada de
+  // lembrete NEM de envio do boleto.
+  if (!lembreteAtivo) return null;
   const diaEnvio = diaDoEnvioBoleto(dueDate, diasEnvio);
   if (!diaEnvio || !hoje || hoje < diaEnvio) return null;
   if (hoje > dueDate) return null;
-  if (lembreteAtivo && Number(diasLembrete) > 0) {
+  if (Number(diasLembrete) > 0) {
     const diaLembrete = somarDias(dueDate, -Number(diasLembrete));
     const diaLembreteUtil = diaBancarioAnterior(diaLembrete) || diaLembrete;
     if (hoje === diaLembreteUtil) return "carimbar";
@@ -123,6 +126,7 @@ async function enviarBoletos({ simular = false, agora = new Date(), companyIds =
         AND d.boleto_enviado_em IS NULL
         AND d.due_date >= $1::date AND d.due_date <= $2::date
         AND c.alertas_ativos IS TRUE
+        AND c.boleto_lembrete_ativo IS NOT FALSE
         AND c.arquivada IS NOT TRUE
         AND c.excluida IS NOT TRUE${filtroEmpresas}
       ORDER BY c.name, d.due_date`,
