@@ -32,7 +32,7 @@ const numeroWpp = require("./whatsappNumero");
 const { hojeSP, minutosSP, somarDias, ehDiaBancario, diaBancarioAnterior } = require("./diasBancarios");
 const { dentroDaJanela } = require("./janelaEnvio");
 const { lerConfig } = require("./alertasConfig");
-const { urlPdfFresca } = require("./boletoPdf");
+const cora = require("./cora");
 const { rodapeAutomatico, competenciaBR, valorBR } = require("./honorariosCobranca");
 
 const PAUSA_ENTRE_ENVIOS_MS = Math.max(0, Number(process.env.BOLETO_ENVIO_PAUSA_MS) || 2000);
@@ -187,7 +187,31 @@ async function enviarBoletos({ simular = false, agora = new Date(), companyIds =
     }
 
     try {
-      const fileUrl = await urlPdfFresca(b.external_ref, b.pdf_url);
+      // Consulta FRESCA na Cora, um boleto por vez, imediatamente antes de enviar: o sync
+      // do dia pode ter horas. Pago ou cancelado não sai; sem resposta da Cora também não
+      // (não dá para saber o estado) e fica para a próxima rodada, sem carimbo.
+      const invoiceId = String(b.external_ref || "").replace(/^cora_/, "");
+      let fileUrl = b.pdf_url || null;
+      if (invoiceId) {
+        const detalhe = await cora.getInvoiceDetail(invoiceId);
+        if (!detalhe || !detalhe.status) {
+          pulados += 1;
+          resultados.push({ empresa: b.empresa_nome, status: "pulado", vencimento: b.due_date, motivo: "Cora não respondeu à consulta" });
+          continue;
+        }
+        if (cora.mapCoraStatusToPortal(detalhe.status) === "paid") {
+          await db.query("UPDATE deliverables SET status='paid', paid_at=COALESCE(paid_at, now()) WHERE id=$1", [b.id]);
+          pulados += 1;
+          resultados.push({ empresa: b.empresa_nome, status: "pulado", vencimento: b.due_date, motivo: "já pago na Cora" });
+          continue;
+        }
+        if (cora.ehCancelado(detalhe.status)) {
+          pulados += 1;
+          resultados.push({ empresa: b.empresa_nome, status: "pulado", vencimento: b.due_date, motivo: "cancelado na Cora" });
+          continue;
+        }
+        fileUrl = detalhe?.payment_options?.bank_slip?.url || fileUrl;
+      }
       const docName = `Boleto_${String(b.empresa_nome).replace(/[^a-zA-Z0-9]/g, "_").slice(0, 30)}_${venc.replace(/\//g, "-")}.pdf`;
       if (fileUrl) {
         await uazapi.enviarDocumento({ numero: v.numero, fileUrl, docName, caption: texto, delayMs: 2000 });
