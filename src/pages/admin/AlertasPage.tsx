@@ -872,6 +872,30 @@ const AlertasPage = () => {
                   (honorariosCobranca.js). O antigo campo "Cobrar o vencido em X dias" era
                   do boleto comum (inexistente hoje) e foi removido para não confundir. */}
               <div className="border-t pt-4 space-y-3">
+                <p className="text-sm font-medium">Envio do boleto</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Label htmlFor="boleto-envio-dias-antes" className="font-normal text-sm">
+                    Enviar o boleto
+                  </Label>
+                  <Input
+                    id="boleto-envio-dias-antes"
+                    type="number"
+                    min={0}
+                    max={30}
+                    className="h-9 w-20"
+                    defaultValue={config.data?.boleto_envio_dias_antes ?? 5}
+                    onBlur={(e) => {
+                      const d = Number(e.target.value);
+                      if (Number.isInteger(d) && d >= 0 && d <= 30 && d !== config.data?.boleto_envio_dias_antes) {
+                        salvarConfig.mutate({ boleto_envio_dias_antes: d });
+                      }
+                    }}
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    dia(s) antes do vencimento, com o PDF (0 = não enviar). Se cair em fim de semana ou feriado, sai no
+                    dia útil anterior.
+                  </span>
+                </div>
                 <p className="text-sm font-medium">Aviso de vencimento do honorário</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <Label htmlFor="boleto-dias-antes" className="font-normal text-sm">
@@ -891,7 +915,7 @@ const AlertasPage = () => {
                       }
                     }}
                   />
-                  <span className="text-sm text-muted-foreground">dia(s) antes do vencimento (0 = sem lembrete)</span>
+                  <span className="text-sm text-muted-foreground">dia(s) antes do vencimento (0 = sem lembrete). Também antecipa em fim de semana ou feriado.</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   A <strong>cobrança do vencido</strong> segue a régua de honorário em 2 fases (a partir do 2º dia útil
