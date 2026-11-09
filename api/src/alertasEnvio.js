@@ -573,6 +573,21 @@ function iniciarAgendadorAlertas(db) {
         console.error("[honorarios] cobrança do dia:", err.message);
       }
 
+      // ENVIO do boleto (PDF) ~5 dias antes do vencimento: mensagem própria, DEPOIS do
+      // alerta do dia para que, no dia do lembrete, o boleto só seja carimbado (o PDF já
+      // foi junto do lembrete) e o cliente não receba duas mensagens iguais.
+      try {
+        const { enviarBoletos } = require("./boletoEnvio");
+        const rb = await enviarBoletos({ agora: new Date() });
+        if (rb.enviados || rb.erros?.length) {
+          console.log(`[boletoEnvio] ${dia}: ${rb.enviados} enviado(s), ${rb.pulados} pulado(s), ${rb.erros.length} erro(s).`);
+        } else if (rb.motivo) {
+          console.log(`[boletoEnvio] ${dia}: nada a enviar (${rb.motivo}).`);
+        }
+      } catch (err) {
+        console.error("[boletoEnvio] envio do dia:", err.message);
+      }
+
       console.log(
         `[alertas] ${dia}: ${r.enviados} enviado(s), ${r.falhas} falha(s), ${r.ignorados} ignorado(s).`
       );

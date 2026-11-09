@@ -25,6 +25,9 @@ const CHAVES = {
   // Cadência de cobrança do BOLETO (Cora). Antes só existia em variável de ambiente
   // (ALERTAS_BOLETO_*), o que cobrava redeploy e não aparecia na tela.
   boletoDiasAntes: "alertas_boleto_dias_antes",
+  // ENVIO do boleto (PDF) ao cliente, N dias antes do vencimento. Mensagem própria, sem
+  // tom de alerta; o LEMBRETE (boletoDiasAntes) é outra mensagem, mais perto do vencimento.
+  boletoEnvioDiasAntes: "alertas_boleto_envio_dias_antes",
   boletoCobrancaDias: "alertas_boleto_cobranca_dias",
   // Marcos de cobrança de HONORÁRIOS (boletos marcados como is_honorario=true).
   // Mais agressivo que boletos comuns porque é mensalidade fixa do escritório.
@@ -41,6 +44,8 @@ const HORA_PADRAO = 8;
 // rodava antes desta tela); a tela é a fonte assim que alguém salvar. Preservam o
 // comportamento histórico: avisar 1 dia antes e cobrar o vencido em 3, 10 e 30 dias.
 const BOLETO_DIAS_ANTES_PADRAO = diasAntesValido(process.env.ALERTAS_BOLETO_DIAS_ANTES, 1);
+// Envio do boleto: 5 dias antes do vencimento (0 = desligado).
+const BOLETO_ENVIO_DIAS_ANTES_PADRAO = diasAntesValido(process.env.ALERTAS_BOLETO_ENVIO_DIAS_ANTES, 5);
 const BOLETO_COBRANCA_PADRAO = parseCobrancaDias(process.env.ALERTAS_BOLETO_COBRANCA_DIAS, [3, 10, 30]);
 
 // Padrão de HONORÁRIOS: marcos mais agressivos (1, 3, 5, 10, 15, 30 dias).
@@ -76,12 +81,13 @@ function parseCobrancaDias(valor, padrao = []) {
 }
 
 async function lerConfig(db) {
-  const [auto, hora, cnpj, whats, diasAntes, cobranca, honorariosCobranca, agradecimento] = await Promise.all([
+  const [auto, hora, cnpj, whats, diasAntes, envioDiasAntes, cobranca, honorariosCobranca, agradecimento] = await Promise.all([
     getSetting(db, CHAVES.automatico),
     getSetting(db, CHAVES.hora),
     getSetting(db, CHAVES.escritorioCnpj),
     getSetting(db, CHAVES.escritorioWhatsapp),
     getSetting(db, CHAVES.boletoDiasAntes),
+    getSetting(db, CHAVES.boletoEnvioDiasAntes),
     getSetting(db, CHAVES.boletoCobrancaDias),
     getSetting(db, CHAVES.honorariosCobrancaDias),
     getSetting(db, CHAVES.agradecimentoAtivo),
@@ -96,13 +102,14 @@ async function lerConfig(db) {
     // Número já normalizado (com 55) ou vazio. Env como valor inicial.
     escritorio_whatsapp: whats || process.env.ALERTAS_ESCRITORIO_WHATSAPP || "",
     boleto_dias_antes: diasAntes === null ? BOLETO_DIAS_ANTES_PADRAO : diasAntesValido(diasAntes, BOLETO_DIAS_ANTES_PADRAO),
+    boleto_envio_dias_antes: envioDiasAntes === null ? BOLETO_ENVIO_DIAS_ANTES_PADRAO : diasAntesValido(envioDiasAntes, BOLETO_ENVIO_DIAS_ANTES_PADRAO),
     // null = nunca configurado → padrão; string (mesmo vazia) = escolha do admin.
     boleto_cobranca_dias: cobranca === null ? BOLETO_COBRANCA_PADRAO : parseCobrancaDias(cobranca),
     honorarios_cobranca_dias: honorariosCobranca === null ? HONORARIOS_COBRANCA_PADRAO : parseCobrancaDias(honorariosCobranca),
   };
 }
 
-async function salvarConfig(db, { envio_automatico, agradecimento_ativo, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_cobranca_dias, honorarios_cobranca_dias }) {
+async function salvarConfig(db, { envio_automatico, agradecimento_ativo, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_envio_dias_antes, boleto_cobranca_dias, honorarios_cobranca_dias }) {
   if (envio_automatico !== undefined) {
     await setSetting(db, CHAVES.automatico, Boolean(envio_automatico));
   }
@@ -129,6 +136,9 @@ async function salvarConfig(db, { envio_automatico, agradecimento_ativo, hora, e
   }
   if (boleto_dias_antes !== undefined) {
     await setSetting(db, CHAVES.boletoDiasAntes, diasAntesValido(boleto_dias_antes, BOLETO_DIAS_ANTES_PADRAO));
+  }
+  if (boleto_envio_dias_antes !== undefined) {
+    await setSetting(db, CHAVES.boletoEnvioDiasAntes, diasAntesValido(boleto_envio_dias_antes, BOLETO_ENVIO_DIAS_ANTES_PADRAO));
   }
   if (boleto_cobranca_dias !== undefined) {
     // Normaliza para "3,10,30" (ou "" se o admin desligou a cobrança de vencido).

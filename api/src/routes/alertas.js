@@ -333,7 +333,7 @@ router.get("/config", async (_req, res) => {
 });
 
 router.put("/config", async (req, res) => {
-  const { envio_automatico, agradecimento_ativo, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_cobranca_dias } = req.body || {};
+  const { envio_automatico, agradecimento_ativo, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_envio_dias_antes, boleto_cobranca_dias } = req.body || {};
   if (envio_automatico !== undefined && typeof envio_automatico !== "boolean") {
     return res.status(400).json({ error: "envio_automatico deve ser booleano" });
   }
@@ -350,6 +350,9 @@ router.put("/config", async (req, res) => {
   if (escritorio_whatsapp !== undefined && escritorio_whatsapp !== null && !validateString(String(escritorio_whatsapp), 0, 20)) {
     return res.status(400).json({ error: "escritorio_whatsapp inválido" });
   }
+  if (boleto_envio_dias_antes !== undefined && (!Number.isInteger(boleto_envio_dias_antes) || boleto_envio_dias_antes < 0 || boleto_envio_dias_antes > 30)) {
+    return res.status(400).json({ error: "boleto_envio_dias_antes deve ser um inteiro de 0 a 30" });
+  }
   if (boleto_dias_antes !== undefined && (!Number.isInteger(boleto_dias_antes) || boleto_dias_antes < 0 || boleto_dias_antes > 30)) {
     return res.status(400).json({ error: "boleto_dias_antes deve ser um inteiro de 0 a 30" });
   }
@@ -360,7 +363,7 @@ router.put("/config", async (req, res) => {
     }
   }
   try {
-    const r = await salvarConfig(db, { envio_automatico, agradecimento_ativo, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_cobranca_dias });
+    const r = await salvarConfig(db, { envio_automatico, agradecimento_ativo, hora, escritorio_cnpj, escritorio_whatsapp, boleto_dias_antes, boleto_envio_dias_antes, boleto_cobranca_dias });
     // Número do escritório recusado volta com o motivo, em vez de salvar torto.
     if (r && r.erro) return res.status(400).json({ error: r.erro });
     res.json(r);

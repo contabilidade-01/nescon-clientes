@@ -864,6 +864,8 @@ export interface AlertOpConfig {
   escritorio_whatsapp: string;
   /** Antecedência do lembrete do boleto Cora, em dias (0 = sem véspera). */
   boleto_dias_antes: number;
+  /** Quantos dias antes do vencimento o boleto (PDF) é enviado ao cliente (0 = desligado). */
+  boleto_envio_dias_antes: number;
   /** Marcos de cobrança do boleto vencido, em dias após o vencimento (ex.: [3,10,30]; vazio = desligado). */
   boleto_cobranca_dias: number[];
 }
