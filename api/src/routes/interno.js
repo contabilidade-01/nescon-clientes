@@ -8,6 +8,7 @@ const db = require("../db");
 const { enviarTexto } = require("../uazapi");
 const guiasMei = require("../guiasMei");
 const numeroWpp = require("../whatsappNumero");
+const { funcionarioRealSql } = require("../payrollRoles");
 
 const INTERNAL_TOKEN = process.env.INTERNAL_API_TOKEN || "";
 
@@ -72,6 +73,31 @@ router.get("/clientes-carteira", authInterno, async (_req, res) => {
     res.json({ gerado_em: new Date().toISOString(), clientes: rows });
   } catch (err) {
     console.error("[INTERNO] clientes-carteira:", err.message);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/**
+ * GET /api/interno/empresas-funcionarios
+ * Para a Central e-CAC saber quais empresas têm FGTS a recolher: CNPJ e quantos
+ * funcionários ativos cada empresa tem (pró-labore, diretor e estagiário não contam,
+ * mesma regra dos alertas). Não devolve nome, CPF nem salário de ninguém.
+ */
+router.get("/empresas-funcionarios", authInterno, async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT c.cnpj,
+              (SELECT count(*)::int FROM employees e WHERE e.company_id = c.id AND ${funcionarioRealSql("e")}) AS funcionarios
+         FROM companies c
+        WHERE c.cnpj IS NOT NULL AND c.cnpj <> ''
+          AND c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE`
+    );
+    const empresas = rows
+      .map((r) => ({ cnpj: String(r.cnpj).replace(/\D/g, ""), funcionarios: Number(r.funcionarios) || 0 }))
+      .filter((r) => r.cnpj.length === 14);
+    res.json({ gerado_em: new Date().toISOString(), empresas });
+  } catch (err) {
+    console.error("[INTERNO] empresas-funcionarios:", err.message);
     res.status(500).json({ error: "Erro interno" });
   }
 });
