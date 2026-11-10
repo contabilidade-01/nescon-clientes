@@ -14,7 +14,9 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmployeeSelect } from "@/components/EmployeeSelect";
 import { downloadSuspensionDoc, type SuspensionData } from "@/lib/generateSuspensionDoc";
-import { calcularPeriodoSuspensao, empresaEh12x36 } from "@/lib/suspensaoPeriodo";
+import { calcularPeriodoSuspensao } from "@/lib/suspensaoPeriodo";
+import { useEscala12x36 } from "@/hooks/useEscala12x36";
+import { DiasSuspensaoInput } from "@/components/DiasSuspensaoInput";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -69,8 +71,8 @@ export function SuspensionForm() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isThirdSuspension, setIsThirdSuspension] = useState(false);
   const [thirdManuallySet, setThirdManuallySet] = useState(false);
-  // Detecção pela empresa (flag da sessão ou CNPJ conhecido) é a fonte de verdade.
-  const empresa12x36 = empresaEh12x36({ escala12x36: company?.escala12x36, cnpj: company?.cnpj });
+  // Detecção pela empresa (cadastro atual no servidor, sessão ou CNPJ conhecido) é a fonte de verdade.
+  const empresa12x36 = useEscala12x36();
   // Override que só LIGA (nunca desliga): permite emitir uma suspensão em 12x36 quando a
   // empresa ainda não foi marcada no cadastro, sem depender de novo login. Como parte de
   // `empresa12x36 ||`, um refresh que zere o override não desliga quem já é 12x36 pelo cadastro.
@@ -271,7 +273,7 @@ export function SuspensionForm() {
             </div>
             <div>
               <Label htmlFor="days">{escala12x36 ? "Plantões de Suspensão *" : "Dias de Suspensão *"}</Label>
-              <Input id="days" type="number" inputMode="numeric" min={1} max={30} value={suspensionDays} onChange={(e) => setSuspensionDays(Math.min(30, Math.max(1, parseInt(e.target.value) || 1)))} className="mt-1" />
+              <DiasSuspensaoInput id="days" value={suspensionDays} onChange={setSuspensionDays} />
               <p className="text-xs text-muted-foreground mt-1">
                 {escala12x36 ? "Escala 12x36: cada unidade é um plantão." : "Máximo 30 dias (Art. 474 CLT)"}
               </p>
