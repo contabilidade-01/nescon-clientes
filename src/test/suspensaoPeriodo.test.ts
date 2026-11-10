@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calcularPeriodoSuspensao, empresaEh12x36 } from "@/lib/suspensaoPeriodo";
+import { calcularPeriodoSuspensao, empresaEh12x36, normalizarDiasSuspensao } from "@/lib/suspensaoPeriodo";
 
 const d = (iso: string) => new Date(`${iso}T00:00:00`);
 const br = (x: Date) => `${x.getDate()}/${x.getMonth() + 1}`;
@@ -56,5 +56,15 @@ describe("empresaEh12x36", () => {
 
   it("empresa qualquer sem flag continua em dia corrido", () => {
     expect(empresaEh12x36({ cnpj: "00.000.000/0001-00" })).toBe(false);
+  });
+});
+
+describe("normalizarDiasSuspensao (campo de dias no celular)", () => {
+  it("vazio ou lixo vira 1, e o máximo é 30", () => {
+    expect(normalizarDiasSuspensao("")).toBe(1);
+    expect(normalizarDiasSuspensao("0")).toBe(1);
+    expect(normalizarDiasSuspensao("abc")).toBe(1);
+    expect(normalizarDiasSuspensao("2")).toBe(2);
+    expect(normalizarDiasSuspensao("45")).toBe(30);
   });
 });

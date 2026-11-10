@@ -11,7 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
-import { calcularPeriodoSuspensao, empresaEh12x36 } from "@/lib/suspensaoPeriodo";
+import { calcularPeriodoSuspensao } from "@/lib/suspensaoPeriodo";
+import { useEscala12x36 } from "@/hooks/useEscala12x36";
+import { DiasSuspensaoInput } from "@/components/DiasSuspensaoInput";
 import { downloadSuspensionDoc, type SuspensionData } from "@/lib/generateSuspensionDoc";
 import { downloadWarningDoc, type WarningData } from "@/lib/generateWarningDoc";
 import { REASON_PRESETS } from "@/lib/reasonPresets";
@@ -68,7 +70,7 @@ export function ChatbotFlow() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [faltaDates, setFaltaDates] = useState<Date[]>([]);
-  const escala12x36 = empresaEh12x36({ escala12x36: company?.escala12x36, cnpj: company?.cnpj });
+  const escala12x36 = useEscala12x36();
 
   useEffect(() => {
     if (company) {
@@ -423,14 +425,7 @@ export function ChatbotFlow() {
 
           {step === "days" && (
             <div className="flex gap-2">
-              <Input
-                type="number"
-                min={1}
-                max={30}
-                value={days}
-                onChange={(e) => setDays(Math.min(30, Math.max(1, parseInt(e.target.value) || 1)))}
-                className="flex-1"
-              />
+              <DiasSuspensaoInput value={days} onChange={setDays} className="mt-0 flex-1" />
               <Button onClick={submitDays}>
                 <Check className="h-4 w-4" />
               </Button>

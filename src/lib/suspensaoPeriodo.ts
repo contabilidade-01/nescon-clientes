@@ -51,3 +51,13 @@ export function calcularPeriodoSuspensao({
   const retorno = addDays(fim, passo);
   return { fim, retorno };
 }
+
+export const DIAS_SUSPENSAO_MIN = 1;
+export const DIAS_SUSPENSAO_MAX = 30;
+
+/** Texto digitado → número válido de dias/plantões (1 a 30). Vazio ou lixo vira 1. */
+export function normalizarDiasSuspensao(texto: string): number {
+  const n = parseInt(String(texto).replace(/\D/g, ""), 10);
+  if (!Number.isFinite(n) || n < DIAS_SUSPENSAO_MIN) return DIAS_SUSPENSAO_MIN;
+  return Math.min(DIAS_SUSPENSAO_MAX, n);
+}
