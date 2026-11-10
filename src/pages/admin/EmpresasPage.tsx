@@ -25,7 +25,8 @@ const EmpresasPage = () => {
   const [confirmArquivar, setConfirmArquivar] = useState(false);
   const [motivoExcluir, setMotivoExcluir] = useState("");
   const [confirmExcluir, setConfirmExcluir] = useState(false);
-  const [buscaEmpresa, setBuscaEmpresa] = useState("");
+  // A Central e-CAC abre esta tela com ?busca=<CNPJ> ("Abrir no Portal" na ficha da empresa).
+  const [buscaEmpresa, setBuscaEmpresa] = useState(() => new URLSearchParams(window.location.search).get("busca") || "");
 
   // A senha inicial é mostrada UMA vez, num aviso persistente. Não existe rota que a
   // consulte depois: uma tela que exibe senha de cliente é uma tela que vaza senha.
