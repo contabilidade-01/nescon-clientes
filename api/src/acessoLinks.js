@@ -19,19 +19,20 @@ function urlDoLink(token) {
  * Link ativo da empresa para a origem (reaproveita o que ainda vale ≥ 3 dias, para a
  * mesma pessoa não receber um link diferente a cada mensagem) ou cria um novo.
  */
-async function obterOuCriar(db, { companyId, origem, cobrancaId = null, dias = null }) {
+async function obterOuCriar(db, { companyId, origem, cobrancaId = null, dias = null, novo = false }) {
   if (!DIAS_PADRAO[origem]) throw new Error(`origem inválida: ${origem}`);
-  const { rows } = await db.query(
+  const validade = Math.max(1, Number(dias || DIAS_PADRAO[origem]));
+  // `novo`: alerta manual — cada envio tem o seu link (vale `dias` a partir de agora).
+  const { rows } = novo ? { rows: [] } : await db.query(
     `SELECT token FROM acesso_links
       WHERE company_id = $1 AND origem = $2 AND revogado_em IS NULL
-        AND expira_em > now() + interval '3 days'
+        AND expira_em >= now() + ($4::int * interval '1 day') - interval '1 day'
         AND ($3::int IS NULL OR cobranca_id = $3::int)
       ORDER BY expira_em DESC LIMIT 1`,
-    [companyId, origem, cobrancaId]
+    [companyId, origem, cobrancaId, validade]
   );
   if (rows.length) return rows[0].token;
   const token = novoToken();
-  const validade = Math.max(1, Number(dias || DIAS_PADRAO[origem]));
   await db.query(
     `INSERT INTO acesso_links (token, company_id, origem, cobranca_id, expira_em)
      VALUES ($1, $2, $3, $4, now() + ($5::int * interval '1 day'))`,

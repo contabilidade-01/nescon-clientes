@@ -25,6 +25,16 @@ const { isSmtpConfigured, createTransport, getPublicAppUrl } = require("./mailer
 const { dentroDaJanela, ehDiaUtil } = require("./janelaEnvio");
 const { minutosSP } = require("./diasBancarios");
 const { montarMensagem, debitosCobraveis, ETAPAS_COM_DEBITOS } = require("./ecacRegras");
+const acessoLinks = require("./acessoLinks");
+
+/** Validade do link sem senha do alerta manual ao cliente (desvio 20). */
+const DIAS_LINK_ALERTA = 7;
+
+/** Link do painel para as mensagens que vão ao ESCRITÓRIO (não conta como clique do cliente). */
+function linkPainel() {
+  const base = getPublicAppUrl();
+  return base ? `${base}/admin/impostos-ecac` : null;
+}
 
 const MAX_TENTATIVAS = 5;
 
@@ -123,8 +133,10 @@ async function registrarEEnviar({ db, cobranca, empresa, pendencia, etapa, canai
       relatorio_data: pendencia?.relatorio_data,
       parcelamento: pendencia?.parcelamento,
       pgfn: pendencia?.pgfn,
-      link: linkRastreado(tok),
-      pixel: canal === "email" ? pixelUrl(tok) : null,
+      // Mensagem ao escritório: o link leva ao painel e não há pixel — clique do escritório
+      // não pode contar como "cliente abriu".
+      link: modoTeste ? linkPainel() : linkRastreado(tok),
+      pixel: canal === "email" && !modoTeste ? pixelUrl(tok) : null,
       escritorio: { nome: cfg.escritorio_nome, whatsapp: cfg.escritorio_whatsapp, email: cfg.escritorio_email },
     });
 
@@ -136,8 +148,10 @@ async function registrarEEnviar({ db, cobranca, empresa, pendencia, etapa, canai
 
     let destino = canal === "email" ? (empresa.contact_email || "").trim() : empresa.whatsapp;
     if (modoTeste) destino = canal === "email" ? cfg.escritorio_email : cfg.escritorio_whatsapp;
-    const assunto = mensagem.assunto ? (modoTeste ? `[TESTE ${empresa.name}] ${mensagem.assunto}` : mensagem.assunto) : null;
-    const texto = modoTeste && canal === "whatsapp" ? `[TESTE — iria para ${empresa.name}]\n${corpo}` : corpo;
+    const assunto = mensagem.assunto ? (modoTeste ? `[Lembrete interno — ${empresa.name}] ${mensagem.assunto}` : mensagem.assunto) : null;
+    const texto = modoTeste && canal === "whatsapp"
+      ? `[Lembrete interno — cliente ${empresa.name}. Confira no painel e, se for o caso, envie o alerta ao cliente.]\n${corpo}`
+      : corpo;
 
     const { rows } = await db.query(
       `INSERT INTO ecac_notificacoes
@@ -175,7 +189,7 @@ async function registrarEEnviar({ db, cobranca, empresa, pendencia, etapa, canai
       continue;
     }
 
-    const r = await tentar(db, { id: notificacaoId, canal, destino, assunto, texto, html: canal === "email" ? mensagem.html : null, tentativas: 0 });
+    const r = await tentar(db, { id: notificacaoId, canal, destino, assunto, texto, html: canal === "email" ? mensagem.html : null, tentativas: 0, modo_teste: modoTeste });
     resultados.push({ canal, ...r });
   }
   return resultados;
@@ -188,8 +202,30 @@ async function fechar(db, id, status, erro) {
   );
 }
 
+/** Cópia para o contato da equipe (best-effort, sem registro próprio). */
+async function copiaEquipe(db, n) {
+  try {
+    const { lerConfig } = require("./ecacConfig");
+    const cfg = await lerConfig(db);
+    if (n.canal === "email" && cfg.equipe_email && cfg.equipe_email !== n.destino) {
+      const html = n.html || (await htmlDaNotificacao(db, n.id));
+      await enviarEmail({ to: cfg.equipe_email, subject: n.assunto || "Aviso da contabilidade", text: n.texto, html });
+    } else if (n.canal === "whatsapp" && cfg.equipe_whatsapp && cfg.equipe_whatsapp !== n.destino) {
+      await enviarWhatsapp({ numero: cfg.equipe_whatsapp, texto: n.texto });
+    }
+  } catch (err) {
+    console.error("[ecac] cópia para a equipe:", err.message);
+  }
+}
+
 /** Uma tentativa de entrega; atualiza a linha. Devolve { status, motivo }. */
 async function tentar(db, n) {
+  const r = await tentarUma(db, n);
+  if (r.status === "enviado" && n.modo_teste) await copiaEquipe(db, n);
+  return r;
+}
+
+async function tentarUma(db, n) {
   try {
     if (n.canal === "email") {
       const html = n.html || (await htmlDaNotificacao(db, n.id));
@@ -259,8 +295,8 @@ async function htmlDaNotificacao(db, notificacaoId) {
     relatorio_data: r.relatorio_data,
     parcelamento: r.parcelamento,
     pgfn: r.pgfn,
-    link: linkRastreado(r.token),
-    pixel: pixelUrl(r.token),
+    link: r.modo_teste ? linkPainel() : linkRastreado(r.token),
+    pixel: r.modo_teste ? null : pixelUrl(r.token),
     escritorio: { nome: cfg.escritorio_nome, whatsapp: cfg.escritorio_whatsapp, email: cfg.escritorio_email },
   });
   return m.html;
@@ -270,7 +306,7 @@ async function htmlDaNotificacao(db, notificacaoId) {
 async function drenarPendentes(db) {
   if (!podeEnviarAgora()) return { tentadas: 0, enviadas: 0 };
   const { rows } = await db.query(
-    `SELECT id, canal, destino, assunto, texto, tentativas
+    `SELECT id, canal, destino, assunto, texto, tentativas, modo_teste
        FROM ecac_notificacoes
       WHERE status = 'pendente' AND (proxima_tentativa_em IS NULL OR proxima_tentativa_em <= now())
       ORDER BY criado_em
@@ -305,10 +341,82 @@ async function avisarEscritorio(db, cfg, { assunto, texto }) {
       console.error("[ecac] aviso ao escritório (WhatsApp):", err.message);
     }
   }
+  // Pessoa da equipe que acompanha: mesma mensagem, best-effort.
+  if (cfg.equipe_email && isSmtpConfigured()) {
+    await enviarEmail({ to: cfg.equipe_email, subject: assunto, text: texto, html: `<pre style="font-family:inherit;white-space:pre-wrap">${texto.replace(/</g, "&lt;")}</pre>` })
+      .then(() => saidas.push("email_equipe"))
+      .catch((err) => console.error("[ecac] aviso à equipe (e-mail):", err.message));
+  }
+  if (cfg.equipe_whatsapp && uazapi.configurado() && podeEnviarAgora()) {
+    await enviarWhatsapp({ numero: cfg.equipe_whatsapp, texto: `${assunto}\n${texto}` })
+      .then(() => saidas.push("whatsapp_equipe"))
+      .catch((err) => console.error("[ecac] aviso à equipe (WhatsApp):", err.message));
+  }
   return saidas;
 }
 
+/**
+ * ALERTA MANUAL AO CLIENTE (desvio 20) — único caminho em que uma mensagem de impostos em
+ * atraso chega ao cliente. Quem chama já conferiu a permissão. Cada envio:
+ *  - gera um link sem senha NOVO, válido por DIAS_LINK_ALERTA dias, guardado na linha;
+ *  - fica registrado em ecac_notificacoes (etapa `alerta-N`, quem enviou, destino);
+ *  - sai na hora (fora da janela/dia útil também — foi uma pessoa que decidiu enviar).
+ * Devolve [{ canal, status, motivo }].
+ */
+async function enviarAlertaCliente({ db, cobranca, empresa, pendencia, canais, cfg, quem }) {
+  const debitos = debitosCobraveis(pendencia?.debitos || []);
+  if (!debitos.length) return canais.map((canal) => ({ canal, status: "ignorado", motivo: "sem débito em aberto no relatório" }));
+  if (empresa.arquivada || empresa.excluida) return canais.map((canal) => ({ canal, status: "ignorado", motivo: "empresa arquivada/excluída" }));
+
+  const { rows: cnt } = await db.query(
+    `SELECT count(DISTINCT etapa)::int AS n FROM ecac_notificacoes WHERE cobranca_id = $1 AND etapa LIKE 'alerta-%'`,
+    [cobranca.id]
+  );
+  const etapa = `alerta-${(cnt[0]?.n || 0) + 1}`;
+  const acessoToken = await acessoLinks.obterOuCriar(db, {
+    companyId: empresa.id, origem: "cobranca", cobrancaId: cobranca.id, dias: DIAS_LINK_ALERTA, novo: true,
+  });
+
+  const resultados = [];
+  for (const canal of canais) {
+    const tok = token();
+    // O texto é o do primeiro aviso (o mais completo e cordial).
+    const mensagem = montarMensagem({
+      etapa: "notificado",
+      empresa,
+      debitos,
+      relatorio_data: pendencia?.relatorio_data,
+      parcelamento: pendencia?.parcelamento,
+      pgfn: pendencia?.pgfn,
+      link: linkRastreado(tok),
+      pixel: canal === "email" ? pixelUrl(tok) : null,
+      escritorio: { nome: cfg.escritorio_nome, whatsapp: cfg.escritorio_whatsapp, email: cfg.escritorio_email },
+    });
+    const texto = canal === "email" ? mensagem.texto : mensagem.whatsapp;
+    const destino = canal === "email" ? (empresa.contact_email || "").trim() : empresa.whatsapp;
+    const { rows } = await db.query(
+      `INSERT INTO ecac_notificacoes
+         (cobranca_id, company_id, etapa, canal, destino, token, status, erro, assunto, texto, modo_teste, acesso_token, enviado_por)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pendente', NULL, $7, $8, false, $9, $10)
+       RETURNING id`,
+      [cobranca.id, empresa.id, etapa, canal, destino || null, tok, mensagem.assunto, texto, acessoToken, quem]
+    );
+    const id = rows[0].id;
+    if (!destino) {
+      const motivo = canal === "email" ? "empresa sem e-mail de contato" : "empresa sem WhatsApp válido";
+      await fechar(db, id, "falhou", motivo);
+      resultados.push({ canal, status: "falhou", motivo });
+      continue;
+    }
+    const r = await tentarUma(db, { id, canal, destino, assunto: mensagem.assunto, texto, html: canal === "email" ? mensagem.html : null, tentativas: 0 });
+    resultados.push({ canal, ...r });
+  }
+  return resultados;
+}
+
 module.exports = {
+  DIAS_LINK_ALERTA,
+  enviarAlertaCliente,
   carregarEmpresa,
   motivoBloqueio,
   registrarEEnviar,

@@ -27,6 +27,11 @@ async function ensureEcacSchema(db) {
     );
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS ecac_pausado_motivo TEXT;`);
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS ecac_pausado_em TIMESTAMPTZ;`);
+    // Alerta manual ao cliente (desvio 20): link sem senha próprio do envio e quem enviou.
+    // Ficam no fim de ensureEcacSchema também (a tabela é criada mais abaixo); aqui é só
+    // para bases que já têm a tabela.
+    await db.query(`ALTER TABLE IF EXISTS ecac_notificacoes ADD COLUMN IF NOT EXISTS acesso_token TEXT;`);
+    await db.query(`ALTER TABLE IF EXISTS ecac_notificacoes ADD COLUMN IF NOT EXISTS enviado_por TEXT;`);
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS ecac_pendencias (
@@ -106,6 +111,8 @@ async function ensureEcacSchema(db) {
         UNIQUE (cobranca_id, etapa, canal)
       );
     `);
+    await db.query(`ALTER TABLE ecac_notificacoes ADD COLUMN IF NOT EXISTS acesso_token TEXT;`);
+    await db.query(`ALTER TABLE ecac_notificacoes ADD COLUMN IF NOT EXISTS enviado_por TEXT;`);
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_ecac_notificacoes_mensagem
         ON ecac_notificacoes(mensagem_id) WHERE mensagem_id IS NOT NULL;
