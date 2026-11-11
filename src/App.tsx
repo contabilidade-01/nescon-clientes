@@ -23,6 +23,7 @@ import OnboardingPage from "./pages/admin/OnboardingPage.tsx";
 import OnboardingModelosPage from "./pages/admin/OnboardingModelosPage.tsx";
 import PrimeirosPassosPage from "./pages/PrimeirosPassosPage.tsx";
 import OnboardingPublicoPage from "./pages/OnboardingPublicoPage.tsx";
+import DpAvulsoPage from "./pages/DpAvulsoPage.tsx";
 import EmpresasPage from "./pages/admin/EmpresasPage.tsx";
 import GruposPage from "./pages/admin/GruposPage.tsx";
 import ClientesGclickPage from "./pages/admin/ClientesGclickPage.tsx";
@@ -200,6 +201,9 @@ const AppRoutes = () => (
     {/* Guias sem senha (link do WhatsApp/e-mail): escopo só guias da empresa */}
     <Route path="/g/:token" element={<GuiasLinkPage />} />
     <Route path="/onboarding/:token" element={<OnboardingPublicoPage />} />
+    {/* Advertência e suspensão por link avulso (sem login): CNPJ → empresa → formulário. */}
+    <Route path="/avulso" element={<DpAvulsoPage />} />
+    <Route path="/avulso/:tipo" element={<DpAvulsoPage />} />
     {/* Calculadora pública de custo de contratação — sem login */}
     <Route path="/calculadora-custo" element={<CalculadoraCustoPage />} />
     {/* Ficha de admissão — pública; se houver sessão de empresa, pré-preenche */}

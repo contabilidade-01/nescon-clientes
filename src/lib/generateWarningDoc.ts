@@ -238,10 +238,16 @@ export function generateWarningDoc(data: WarningData) {
   return doc;
 }
 
-export async function downloadWarningDoc(data: WarningData): Promise<{ blob: Blob; fileName: string }> {
+/** Monta o DOCX sem baixar (o link avulso registra no servidor antes de entregar o arquivo). */
+export async function buildWarningDocFile(data: WarningData): Promise<{ blob: Blob; fileName: string }> {
   const doc = generateWarningDoc(data);
   const blob = await Packer.toBlob(doc);
   const fileName = `advertencia_${data.employeeName.replace(/\s+/g, "_").toLowerCase()}_${formatDateBR(data.warningDate).replace(/\//g, "-")}.docx`;
+  return { blob, fileName };
+}
+
+export async function downloadWarningDoc(data: WarningData): Promise<{ blob: Blob; fileName: string }> {
+  const { blob, fileName } = await buildWarningDocFile(data);
   saveAs(blob, fileName);
   return { blob, fileName };
 }
