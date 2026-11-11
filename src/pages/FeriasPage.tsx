@@ -1,11 +1,19 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertTriangle, BellOff, CalendarClock, CircleDollarSign, Users } from "lucide-react";
+import { AlertTriangle, BellOff, CalendarClock, CircleDollarSign, Search, Users, X } from "lucide-react";
 import { PortalPage } from "@/components/PortalPage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, type VacationItem, type VacationSituacao } from "@/lib/api";
 import { formatDateBR } from "@/lib/licenses";
@@ -23,11 +31,37 @@ function reais(v: number | null | undefined) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-type Filtro = "todos" | "vencida" | "a_vencer" | "faltas";
+type Filtro = "todos" | VacationSituacao;
+type FiltroFaltas = "todas" | "com_faltas" | "em_risco" | "sem_faltas";
+type Ordem = "faltas" | "limite" | "nome" | "custo";
+
+const ORDEM_ROTULO: Record<Ordem, string> = {
+  faltas: "Mais faltas primeiro",
+  limite: "Tirar até (mais urgente)",
+  nome: "Nome (A–Z)",
+  custo: "Maior custo",
+};
+
+/** Ignora acento e caixa: "joao" acha "JOÃO". */
+function normalizar(t: string) {
+  return t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function emRiscoFaltas(p: VacationItem) {
+  return !!p.alerta_faltas && p.alerta_faltas.faltasRestantes <= 3;
+}
+
+function limiteMs(p: VacationItem) {
+  return p.limite_gozo ? new Date(p.limite_gozo).getTime() : Number.POSITIVE_INFINITY;
+}
 
 const FeriasPage = () => {
   const { company } = useAuth();
   const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [filtroFaltas, setFiltroFaltas] = useState<FiltroFaltas>("todas");
+  const [busca, setBusca] = useState("");
+  // Por padrão quem tem mais faltas vem primeiro: é quem está mais perto de perder dias.
+  const [ordem, setOrdem] = useState<Ordem>("faltas");
 
   const queryClient = useQueryClient();
 
@@ -83,20 +117,37 @@ const FeriasPage = () => {
   });
 
   const periodos = useMemo(() => {
-    const lista = data?.periodos ?? [];
-    const filtrada =
-      filtro === "todos"
-        ? lista
-        : filtro === "faltas"
-          ? lista.filter((p) => p.alerta_faltas && p.alerta_faltas.faltasRestantes <= 3)
-          : lista.filter((p) => p.situacao === filtro);
-    // O mais urgente primeiro: quem não tem data vai para o fim.
-    return [...filtrada].sort((a, b) => {
-      const da = a.limite_gozo ? new Date(a.limite_gozo).getTime() : Number.POSITIVE_INFINITY;
-      const db = b.limite_gozo ? new Date(b.limite_gozo).getTime() : Number.POSITIVE_INFINITY;
-      return da - db;
+    const termo = normalizar(busca);
+    const filtrada = (data?.periodos ?? []).filter((p) => {
+      if (filtro !== "todos" && p.situacao !== filtro) return false;
+      if (filtroFaltas === "com_faltas" && !(p.faltas > 0)) return false;
+      if (filtroFaltas === "sem_faltas" && p.faltas > 0) return false;
+      if (filtroFaltas === "em_risco" && !emRiscoFaltas(p)) return false;
+      if (termo && !normalizar(p.nome).includes(termo)) return false;
+      return true;
     });
-  }, [data, filtro]);
+    return [...filtrada].sort((a, b) => {
+      switch (ordem) {
+        case "faltas":
+          // Empate: o mais urgente primeiro.
+          return (b.faltas ?? 0) - (a.faltas ?? 0) || limiteMs(a) - limiteMs(b);
+        case "nome":
+          return a.nome.localeCompare(b.nome, "pt-BR");
+        case "custo":
+          return (b.custo?.total ?? -1) - (a.custo?.total ?? -1);
+        default:
+          // O mais urgente primeiro: quem não tem data vai para o fim.
+          return limiteMs(a) - limiteMs(b);
+      }
+    });
+  }, [data, filtro, filtroFaltas, busca, ordem]);
+
+  const temFiltro = filtro !== "todos" || filtroFaltas !== "todas" || busca.trim() !== "";
+  const limparFiltros = () => {
+    setFiltro("todos");
+    setFiltroFaltas("todas");
+    setBusca("");
+  };
 
   const resumo = data?.resumo;
 
@@ -130,8 +181,8 @@ const FeriasPage = () => {
               rotulo="Funcionários"
               valor={String(resumo?.funcionarios ?? 0)}
               detalhe={`${resumo?.periodos ?? 0} período(s)`}
-              onClick={() => setFiltro("todos")}
-              ativo={filtro === "todos"}
+              onClick={limparFiltros}
+              ativo={!temFiltro}
             />
             <Resumo
               icone={<AlertTriangle className="h-4 w-4" />}
@@ -161,7 +212,11 @@ const FeriasPage = () => {
           {(resumo?.em_risco_faltas ?? 0) > 0 && (
             <button
               type="button"
-              onClick={() => setFiltro("faltas")}
+              onClick={() => {
+                setFiltro("todos");
+                setFiltroFaltas("em_risco");
+                setOrdem("faltas");
+              }}
               className="flex w-full items-center gap-3 rounded-xl border-2 border-amber-500/50 bg-amber-500/10 px-4 py-3 text-left"
             >
               <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
@@ -180,7 +235,68 @@ const FeriasPage = () => {
             </p>
           )}
 
+          <div className="flex flex-col gap-2 rounded-xl border bg-card/40 p-3 lg:flex-row lg:items-center">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar funcionário"
+                className="pl-9"
+                aria-label="Buscar funcionário"
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:flex">
+              <Select value={filtro} onValueChange={(v) => setFiltro(v as Filtro)}>
+                <SelectTrigger className="lg:w-44" aria-label="Situação">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todas as situações</SelectItem>
+                  {(Object.keys(SITUACAO) as VacationSituacao[]).map((k) => (
+                    <SelectItem key={k} value={k}>
+                      {SITUACAO[k].rotulo}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filtroFaltas} onValueChange={(v) => setFiltroFaltas(v as FiltroFaltas)}>
+                <SelectTrigger className="lg:w-48" aria-label="Faltas">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Qualquer nº de faltas</SelectItem>
+                  <SelectItem value="com_faltas">Com faltas</SelectItem>
+                  <SelectItem value="em_risco">Perto de perder dias</SelectItem>
+                  <SelectItem value="sem_faltas">Sem faltas</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={ordem} onValueChange={(v) => setOrdem(v as Ordem)}>
+                <SelectTrigger className="lg:w-52" aria-label="Ordenar">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(ORDEM_ROTULO) as Ordem[]).map((k) => (
+                    <SelectItem key={k} value={k}>
+                      {ORDEM_ROTULO[k]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {temFiltro && (
+              <Button variant="ghost" size="sm" onClick={limparFiltros} className="shrink-0">
+                <X className="mr-1 h-3.5 w-3.5" /> Limpar
+              </Button>
+            )}
+          </div>
+
           <div className="space-y-3">
+            {temFiltro && periodos.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {periodos.length} de {data.periodos.length} período(s)
+              </p>
+            )}
             {periodos.length === 0 ? (
               <p className="rounded-xl border border-dashed bg-card/40 px-4 py-8 text-center text-sm text-muted-foreground">
                 Ninguém nesse filtro.
