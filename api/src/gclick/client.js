@@ -71,7 +71,9 @@ async function mensagemErroHttp(res, path) {
   let detalhe = raw.slice(0, 240).replace(/\s+/g, " ").trim();
   try {
     const j = JSON.parse(raw);
-    detalhe = String(j.message || j.error || j.detail || detalhe);
+    // O G-Click às vezes responde com lista: [{ mensagemUsuario, mensagemDesenvolvedor }].
+    const item = Array.isArray(j) ? j[0] : j;
+    detalhe = String(item?.mensagemUsuario || item?.message || item?.error || item?.detail || detalhe);
   } catch {
     /* corpo não é JSON — usa o trecho cru */
   }
@@ -202,6 +204,20 @@ async function paginaResiliente(page, size, ignorados) {
   return itens;
 }
 
+/** Nome e CNPJ do cliente numa posição da listagem, ou null se não der para ler. */
+async function clienteNaPosicao(posicao) {
+  if (posicao < 0) return null;
+  try {
+    const j = await get("/clientes", { size: "1", page: String(posicao) });
+    const c = (Array.isArray(j) ? j : j?.content || [])[0];
+    if (!c) return null;
+    const { name, cnpj } = extrairDadosCliente(c);
+    return { nome: name || null, cnpj: cnpj || null };
+  } catch {
+    return null;
+  }
+}
+
 async function listarClientes(size = 20) {
   const ignorados = [];
   let first;
@@ -238,6 +254,13 @@ async function listarClientes(size = 20) {
   if (paginas.length) {
     const restantes = await mapLimit(paginas, 4, (p) => paginaResiliente(p, sizeUsado, ignorados));
     for (const lista of restantes) todos.push(...lista);
+  }
+
+  // O cadastro com defeito não pode ser lido, mas os vizinhos sim: dizer "fica entre
+  // FULANO e BELTRANO" basta para o escritório achá-lo na lista de clientes do G-Click.
+  for (const x of ignorados) {
+    x.anterior = await clienteNaPosicao(x.posicao - 1);
+    x.proximo = await clienteNaPosicao(x.posicao + 1);
   }
 
   if (ignorados.length) {
