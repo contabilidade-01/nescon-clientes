@@ -164,6 +164,8 @@ app.use("/api/acesso", require("./routes/acesso"));
 app.use("/api/whatsapp", require("./routes/whatsappWebhook"));
 // Download público (token opaco) dos termos emitidos pelo assistente do WhatsApp.
 app.use("/api/dp-docs", require("./routes/dpDocs"));
+// Advertência/suspensão por link avulso (sem login): ver routes/dpAvulso.js.
+app.use("/api/dp-avulso", require("./routes/dpAvulso"));
 // Integração com central-ecac: endpoints internos (sync contatos, disparo WhatsApp).
 app.use("/api/interno", require("./routes/interno"));
 

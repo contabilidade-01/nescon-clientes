@@ -3105,6 +3105,26 @@ export const api = {
   },
 
   /** Link público do cliente novo (sem login): roteiro de primeiros passos e envio de documentos. */
+  /** Advertência/suspensão por link avulso (sem login) — ver api/src/routes/dpAvulso.js. */
+  dpAvulso: {
+    empresa: (cnpj: string) =>
+      publicRequest<{
+        encontrada: boolean;
+        nome?: string;
+        escala_12x36?: boolean;
+        advertencia?: boolean;
+        suspensao?: boolean;
+      }>(`/dp-avulso/empresa?cnpj=${encodeURIComponent(cnpj.replace(/\D/g, ""))}`),
+    emitir: async (dados: Record<string, unknown>, blob: Blob, fileName: string) => {
+      const form = new FormData();
+      form.append("dados", JSON.stringify(dados));
+      form.append("file", blob, fileName);
+      const res = await fetch(`${API_BASE}/dp-avulso/emitir`, { method: "POST", body: form });
+      const data = await parseResponseJson<{ ok?: boolean; error?: string }>(res);
+      if (!res.ok) throw new Error(data.error || "Não foi possível registrar o documento.");
+      return data;
+    },
+  },
   onboarding: {
     get: (token: string) =>
       publicRequest<import("@/lib/onboardingModelo").OnboardingCliente>(`/onboarding/public/${encodeURIComponent(token)}`),

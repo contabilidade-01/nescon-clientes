@@ -12,7 +12,10 @@ import { MultiDateField } from "@/components/MultiDateField";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { EmployeeSelect } from "@/components/EmployeeSelect";
-import { downloadWarningDoc, type WarningData } from "@/lib/generateWarningDoc";
+import { downloadWarningDoc, buildWarningDocFile, type WarningData } from "@/lib/generateWarningDoc";
+import { saveAs } from "file-saver";
+import { FuncionarioManual } from "@/components/avulso/FuncionarioManual";
+import { cpfParaDocumento, nomeFuncionarioOk, type ModoAvulso } from "@/lib/dpAvulso";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -53,14 +56,21 @@ function buildCondutaReason(descricao: string): string {
   return `Conduta inadequada no ambiente de trabalho: ${desc}${/[.!?]$/.test(desc) ? "" : "."} Tal comportamento contraria as normas internas da empresa, caracterizando ato de indisciplina e desrespeito ao dever de urbanidade.`;
 }
 
-export function WarningForm() {
-  const { company } = useAuth();
+export function WarningForm({ avulso }: { avulso?: ModoAvulso } = {}) {
+  const { company: companySessao } = useAuth();
+  // Link avulso: a empresa vem do CNPJ digitado, não da sessão.
+  const company = avulso ? null : companySessao;
+  const empresaNome = avulso ? avulso.empresa.nome : companySessao?.name || "";
+  const empresaCnpj = avulso ? avulso.empresa.cnpj : companySessao?.cnpj || "";
+  const [nomeManual, setNomeManual] = useState("");
+  const [cpfManual, setCpfManual] = useState("");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [issuedDocs, setIssuedDocs] = useState<IssuedDocument[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   // A advertência quase sempre é emitida no dia — já vem preenchida com hoje.
-  const [warningDate, setWarningDate] = useState<Date | undefined>(() => startOfToday());
+  // No link avulso a pessoa digita a data (pedido do escritório).
+  const [warningDate, setWarningDate] = useState<Date | undefined>(() => (avulso ? undefined : startOfToday()));
   const [reason, setReason] = useState("");
   const [reasonType, setReasonType] = useState<"falta" | "ma_conduta" | "outro" | "">("");
   const [faltaDates, setFaltaDates] = useState<Date[]>([]);
@@ -73,10 +83,17 @@ export function WarningForm() {
   const [newWarning, setNewWarning] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
+  const selectedEmployee: Employee | undefined = avulso
+    ? nomeFuncionarioOk(nomeManual)
+      ? { id: "avulso", name: nomeManual.trim(), cpf: cpfParaDocumento(cpfManual) }
+      : undefined
+    : employees.find((e) => e.id === selectedEmployeeId);
 
   useEffect(() => {
-    if (!company) return;
+    if (!company) {
+      setLoadingEmployees(false);
+      return;
+    }
     setLoadingEmployees(true);
     api.employees
       .list({ companyId: company.id })
@@ -146,13 +163,38 @@ export function WarningForm() {
     const data: WarningData = {
       employeeName: selectedEmployee.name,
       cpf: selectedEmployee.cpf,
-      companyName: company?.name || "",
-      cnpj: company?.cnpj || "",
+      companyName: empresaNome,
+      cnpj: empresaCnpj,
       warningDate,
       reason,
       previousWarnings,
       unjustifiedAbsences: sortedAbsences.map(formatDateBR),
     };
+
+    if (avulso) {
+      try {
+        const { blob, fileName } = await buildWarningDocFile(data);
+        await avulso.emitir(
+          {
+            tipo: "advertencia",
+            cnpj: empresaCnpj,
+            funcionario: selectedEmployee.name,
+            cpf: cpfManual,
+            data: format(warningDate, "yyyy-MM-dd"),
+            motivo: reason,
+          },
+          blob,
+          fileName
+        );
+        saveAs(blob, fileName);
+        toast.success("Advertência gerada! O arquivo foi baixado e a Nescon recebeu uma cópia.");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao gerar documento");
+      } finally {
+        setIsGenerating(false);
+      }
+      return;
+    }
 
     try {
       const created = await api.documents.create({
@@ -189,16 +231,20 @@ export function WarningForm() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <EmployeeSelect
-            employees={employees}
-            value={selectedEmployeeId}
-            onChange={setSelectedEmployeeId}
-            loading={loadingEmployees}
-            onCreated={(emp) =>
-              setEmployees((prev) => [...prev, emp].sort((a, b) => a.name.localeCompare(b.name)))
-            }
-          />
-          {selectedEmployee && (
+          {avulso ? (
+            <FuncionarioManual nome={nomeManual} cpf={cpfManual} onNome={setNomeManual} onCpf={setCpfManual} />
+          ) : (
+            <EmployeeSelect
+              employees={employees}
+              value={selectedEmployeeId}
+              onChange={setSelectedEmployeeId}
+              loading={loadingEmployees}
+              onCreated={(emp) =>
+                setEmployees((prev) => [...prev, emp].sort((a, b) => a.name.localeCompare(b.name)))
+              }
+            />
+          )}
+          {selectedEmployee && !avulso && (
             <div className="rounded-lg bg-muted p-3">
               <p className="text-sm"><span className="text-muted-foreground">CPF:</span> {maskCPF(String(selectedEmployee.cpf || ""))}</p>
             </div>
@@ -207,6 +253,7 @@ export function WarningForm() {
       </Card>
 
       {/* Company Info */}
+      {!avulso && (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -216,11 +263,12 @@ export function WarningForm() {
         </CardHeader>
         <CardContent>
           <div className="rounded-lg bg-muted p-3 space-y-1">
-            <p className="text-sm font-medium">{company?.name}</p>
-            <p className="text-xs text-muted-foreground">CNPJ: {company?.cnpj}</p>
+            <p className="text-sm font-medium">{empresaNome}</p>
+            <p className="text-xs text-muted-foreground">CNPJ: {empresaCnpj}</p>
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Warning Details */}
       <Card>
@@ -234,7 +282,9 @@ export function WarningForm() {
           <div>
             <Label>Data da Advertência *</Label>
             <DateField value={warningDate} onChange={setWarningDate} placeholder="Selecionar data" />
-            <p className="text-xs text-muted-foreground mt-1">Data em que o documento é emitido (já preenchida com hoje).</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {avulso ? "Data em que o documento é emitido." : "Data em que o documento é emitido (já preenchida com hoje)."}
+            </p>
           </div>
           <div>
             <Label>Motivo da Advertência *</Label>

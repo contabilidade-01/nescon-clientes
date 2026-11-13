@@ -13,8 +13,11 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmployeeSelect } from "@/components/EmployeeSelect";
-import { downloadSuspensionDoc, type SuspensionData } from "@/lib/generateSuspensionDoc";
-import { calcularPeriodoSuspensao } from "@/lib/suspensaoPeriodo";
+import { downloadSuspensionDoc, buildSuspensionDocFile, type SuspensionData } from "@/lib/generateSuspensionDoc";
+import { calcularPeriodoSuspensao, empresaEh12x36 } from "@/lib/suspensaoPeriodo";
+import { saveAs } from "file-saver";
+import { FuncionarioManual } from "@/components/avulso/FuncionarioManual";
+import { cpfParaDocumento, nomeFuncionarioOk, type ModoAvulso } from "@/lib/dpAvulso";
 import { useEscala12x36 } from "@/hooks/useEscala12x36";
 import { DiasSuspensaoInput } from "@/components/DiasSuspensaoInput";
 import { api } from "@/lib/api";
@@ -50,8 +53,16 @@ function datesFromDocs(docs: IssuedDocument[], type: string): Date[] {
   return [...unique.values()].sort((a, b) => a.getTime() - b.getTime());
 }
 
-export function SuspensionForm() {
-  const { company } = useAuth();
+export function SuspensionForm({ avulso }: { avulso?: ModoAvulso } = {}) {
+  const { company: companySessao } = useAuth();
+  // Link avulso: a empresa vem do CNPJ digitado, não da sessão.
+  const company = avulso ? null : companySessao;
+  const empresaNome = avulso ? avulso.empresa.nome : companySessao?.name || "";
+  const empresaCnpj = avulso ? avulso.empresa.cnpj : companySessao?.cnpj || "";
+  const [nomeManual, setNomeManual] = useState("");
+  const [cpfManual, setCpfManual] = useState("");
+  // Link avulso: a data de retorno é digitada (a tela só sugere).
+  const [retornoManual, setRetornoManual] = useState<Date>();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [issuedDocs, setIssuedDocs] = useState<IssuedDocument[]>([]);
@@ -72,23 +83,34 @@ export function SuspensionForm() {
   const [isThirdSuspension, setIsThirdSuspension] = useState(false);
   const [thirdManuallySet, setThirdManuallySet] = useState(false);
   // Detecção pela empresa (cadastro atual no servidor, sessão ou CNPJ conhecido) é a fonte de verdade.
-  const empresa12x36 = useEscala12x36();
+  const empresa12x36Sessao = useEscala12x36();
+  const empresa12x36 = avulso
+    ? empresaEh12x36({ escala12x36: avulso.empresa.escala12x36, cnpj: avulso.empresa.cnpj })
+    : empresa12x36Sessao;
   // Override que só LIGA (nunca desliga): permite emitir uma suspensão em 12x36 quando a
   // empresa ainda não foi marcada no cadastro, sem depender de novo login. Como parte de
   // `empresa12x36 ||`, um refresh que zere o override não desliga quem já é 12x36 pelo cadastro.
   const [forcar12x36, setForcar12x36] = useState(false);
   const escala12x36 = empresa12x36 || forcar12x36;
 
-  const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
+  const selectedEmployee: Employee | undefined = avulso
+    ? nomeFuncionarioOk(nomeManual)
+      ? { id: "avulso", name: nomeManual.trim(), cpf: cpfParaDocumento(cpfManual) }
+      : undefined
+    : employees.find((e) => e.id === selectedEmployeeId);
   // 12x36: 1 plantão no dia 10 → folga 11 → retorno 12. Fora dessa escala, dia corrido.
   const periodo = startDate
     ? calcularPeriodoSuspensao({ inicio: startDate, dias: suspensionDays, escala12x36 })
     : null;
   const endDate = periodo?.fim ?? null;
-  const returnDate = periodo?.retorno ?? null;
+  const retornoSugerido = periodo?.retorno ?? null;
+  const returnDate = avulso ? retornoManual ?? null : retornoSugerido;
 
   useEffect(() => {
-    if (!company) return;
+    if (!company) {
+      setLoadingEmployees(false);
+      return;
+    }
     setLoadingEmployees(true);
     api.employees
       .list({ companyId: company.id })
@@ -144,6 +166,11 @@ export function SuspensionForm() {
     const missing: string[] = [];
     if (!selectedEmployee) missing.push("o funcionário");
     if (!startDate) missing.push("a data de início");
+    if (avulso && !retornoManual) missing.push("a data de retorno");
+    if (avulso && startDate && retornoManual && retornoManual.getTime() <= startDate.getTime()) {
+      toast.error("A data de retorno precisa ser depois do início da suspensão.");
+      return;
+    }
     if (!reasonType) missing.push("o motivo");
     else if (reasonType === "outro" && !reason.trim()) missing.push("a descrição do motivo");
     if (missing.length > 0) {
@@ -161,8 +188,8 @@ export function SuspensionForm() {
     const data: SuspensionData = {
       employeeName: selectedEmployee.name,
       cpf: selectedEmployee.cpf,
-      companyName: company?.name || "",
-      cnpj: company?.cnpj || "",
+      companyName: empresaNome,
+      cnpj: empresaCnpj,
       startDate,
       suspensionDays,
       previousWarnings,
@@ -176,6 +203,33 @@ export function SuspensionForm() {
       // O Word espelha exatamente a data de retorno mostrada na tela (12x36 ou não).
       returnDate: returnDate ?? undefined,
     };
+
+    if (avulso) {
+      try {
+        const { blob, fileName } = await buildSuspensionDocFile(data);
+        await avulso.emitir(
+          {
+            tipo: "suspensao",
+            cnpj: empresaCnpj,
+            funcionario: selectedEmployee.name,
+            cpf: cpfManual,
+            data: format(startDate, "yyyy-MM-dd"),
+            dias: suspensionDays,
+            retorno: returnDate ? format(returnDate, "yyyy-MM-dd") : "",
+            motivo: isOtherReason ? reason : "Faltas injustificadas",
+          },
+          blob,
+          fileName
+        );
+        saveAs(blob, fileName);
+        toast.success("Suspensão gerada! O arquivo foi baixado e a Nescon recebeu uma cópia.");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao gerar documento");
+      } finally {
+        setIsGenerating(false);
+      }
+      return;
+    }
 
     try {
       const created = await api.documents.create({
@@ -216,16 +270,20 @@ export function SuspensionForm() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <EmployeeSelect
-            employees={employees}
-            value={selectedEmployeeId}
-            onChange={setSelectedEmployeeId}
-            loading={loadingEmployees}
-            onCreated={(emp) =>
-              setEmployees((prev) => [...prev, emp].sort((a, b) => a.name.localeCompare(b.name)))
-            }
-          />
-          {selectedEmployee && (
+          {avulso ? (
+            <FuncionarioManual nome={nomeManual} cpf={cpfManual} onNome={setNomeManual} onCpf={setCpfManual} />
+          ) : (
+            <EmployeeSelect
+              employees={employees}
+              value={selectedEmployeeId}
+              onChange={setSelectedEmployeeId}
+              loading={loadingEmployees}
+              onCreated={(emp) =>
+                setEmployees((prev) => [...prev, emp].sort((a, b) => a.name.localeCompare(b.name)))
+              }
+            />
+          )}
+          {selectedEmployee && !avulso && (
             <div className="rounded-lg bg-muted p-3">
               <p className="text-sm"><span className="text-muted-foreground">CPF:</span> {maskCPF(String(selectedEmployee.cpf || ""))}</p>
             </div>
@@ -234,6 +292,7 @@ export function SuspensionForm() {
       </Card>
 
       {/* Company Info (read-only) */}
+      {!avulso && (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -243,11 +302,12 @@ export function SuspensionForm() {
         </CardHeader>
         <CardContent>
           <div className="rounded-lg bg-muted p-3 space-y-1">
-            <p className="text-sm font-medium">{company?.name}</p>
-            <p className="text-xs text-muted-foreground">CNPJ: {company?.cnpj}</p>
+            <p className="text-sm font-medium">{empresaNome}</p>
+            <p className="text-xs text-muted-foreground">CNPJ: {empresaCnpj}</p>
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Suspension Details */}
       <Card>
@@ -298,10 +358,28 @@ export function SuspensionForm() {
                   Funcionário em escala 12x36
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Conta plantões (de dois em dois dias) e o retorno pula a folga seguinte. Para deixar
-                  fixo nesta empresa, marque a escala no cadastro (Admin → Empresas).
+                  Conta plantões (de dois em dois dias) e o retorno pula a folga seguinte.
+                  {!avulso && " Para deixar fixo nesta empresa, marque a escala no cadastro (Admin → Empresas)."}
                 </p>
               </div>
+            </div>
+          )}
+
+          {avulso && (
+            <div>
+              <Label>Data de Retorno ao Trabalho *</Label>
+              <DateField value={retornoManual} onChange={setRetornoManual} placeholder="Selecionar data de retorno" />
+              {retornoSugerido && (!retornoManual || retornoManual.getTime() !== retornoSugerido.getTime()) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 h-7 px-2 text-xs"
+                  onClick={() => setRetornoManual(retornoSugerido)}
+                >
+                  Usar sugestão: {formatDateBR(retornoSugerido)}
+                </Button>
+              )}
             </div>
           )}
 
