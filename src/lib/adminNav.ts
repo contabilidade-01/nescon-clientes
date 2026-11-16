@@ -35,6 +35,7 @@ import {
   Users,
   Settings2,
   type LucideIcon,
+  Gauge,
 } from "lucide-react";
 import { canSeeArea, type AdminArea } from "@/lib/adminAreas";
 
@@ -116,6 +117,7 @@ export const SETORES: Setor[] = [
       { to: "/admin/ferias-lote", label: "Upload de férias (lote)", icon: FileUp, area: "funcionarios" },
       { to: "/admin/ferias-urgencia", label: "Férias — Urgência", icon: AlertTriangle, area: "funcionarios" },
       { to: "/admin/escalas", label: "Escalas de trabalho (6x1)", icon: CalendarRange, area: "funcionarios" },
+      { to: "/admin/jornadas", label: "Prontidão 42h / 40h", icon: Gauge, area: "funcionarios" },
       { to: "/admin/acompanhamentos", label: "Acompanhamentos mensais", icon: CalendarClock, area: "acompanhamentos" },
     ],
   },

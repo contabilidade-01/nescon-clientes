@@ -1,3 +1,4 @@
+import { vigenciaEm } from "@/lib/escala/regras";
 export type AdmissionStatus = "novo" | "em_andamento" | "concluido";
 export type AdmissionOrigem = "portal" | "publico_cliente" | "publico_externo";
 
@@ -197,7 +198,7 @@ export const OPCOES = {
   reservistaCategoria: ["1ª categoria", "2ª categoria", "3ª categoria", "Dispensado"],
 } as const;
 
-export type JornadaPresetId = "comercial44" | "6x1" | "12x36" | "40h" | "personalizado";
+export type JornadaPresetId = "comercial44" | "6x1" | "42h" | "12x36" | "40h" | "personalizado";
 
 export const JORNADA_PRESETS: Array<{
   id: JornadaPresetId;
@@ -206,7 +207,7 @@ export const JORNADA_PRESETS: Array<{
 }> = [
   {
     id: "comercial44",
-    label: "Comercial 44h",
+    label: "Comercial 44h (até 15/12/2026)",
     fields: {
       jornadaPreset: "comercial44",
       cargaMensal: "220",
@@ -220,7 +221,7 @@ export const JORNADA_PRESETS: Array<{
   },
   {
     id: "6x1",
-    label: "44h 6x1",
+    label: "44h 6x1 (até 15/12/2026)",
     fields: {
       jornadaPreset: "6x1",
       cargaMensal: "220",
@@ -230,6 +231,21 @@ export const JORNADA_PRESETS: Array<{
       horarioSaida: "17:20",
       intervalo: "1 hora",
       jornadaObs: "Escala 6x1 — 44 horas semanais.",
+    },
+  },
+  {
+    id: "42h",
+    label: "42h 5x2 (com acordo)",
+    fields: {
+      jornadaPreset: "42h",
+      cargaMensal: "210",
+      cargaSemanal: "42",
+      diaFolga: "Sábado e domingo",
+      horarioEntrada: "08:00",
+      horarioSaida: "17:24",
+      intervalo: "1 hora",
+      jornadaObs:
+        "Segunda a sexta, 8h24/dia (42h semanais). Exige acordo ou convenção coletiva que amplie a jornada diária (art. 7º da EC 141/2026).",
     },
   },
   {
@@ -463,4 +479,46 @@ export function mergeAdmissionDados(raw: unknown): AdmissionDados {
     base.localNascimento = o.identidadeLocal;
   }
   return base;
+}
+
+/**
+ * Modelos de jornada que valem para a data de admissão (EC 141/2026): 44h e 6x1 só
+ * até 15/12/2026; 42h só até 15/12/2027. Sem data, mostra os que valem hoje.
+ */
+const PRESETS_ATE: Partial<Record<JornadaPresetId, string>> = {
+  comercial44: "2026-12-16",
+  "6x1": "2026-12-16",
+  "42h": "2027-12-16",
+};
+
+export function presetsParaData(dataAdmissao: string, hoje: string): typeof JORNADA_PRESETS {
+  const ref = /^\d{4}-\d{2}-\d{2}$/.test(dataAdmissao) ? dataAdmissao : hoje;
+  return JORNADA_PRESETS.filter((p) => {
+    const ate = PRESETS_ATE[p.id];
+    return !ate || ref < ate;
+  });
+}
+
+/**
+ * Aviso quando a jornada da ficha não cabe na regra em vigor na data de admissão.
+ * null = tudo certo (ou dado insuficiente para dizer).
+ */
+export function avisoJornadaAdmissao(
+  d: Pick<AdmissionDados, "dataAdmissao" | "cargaSemanal" | "diaFolga" | "jornadaPreset">,
+): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.dataAdmissao)) return null;
+  const v = vigenciaEm(d.dataAdmissao);
+  const carga = Number(String(d.cargaSemanal || "").replace(",", "."));
+  if (d.jornadaPreset === "12x36" || d.diaFolga === "Conforme escala 12x36") {
+    return v.limiteSemanalHoras < 44
+      ? `12x36 continua permitida, mas a média (42h) passa de ${v.limiteSemanalHoras}h: confirme que a convenção coletiva prevê a escala.`
+      : null;
+  }
+  if (Number.isFinite(carga) && carga > v.limiteSemanalHoras) {
+    return `Admissão em ${d.dataAdmissao.split("-").reverse().join("/")}: o limite é de ${v.limiteSemanalHoras}h semanais (${v.nome}). Ajuste a carga horária.`;
+  }
+  if (v.repousosSemanais >= 2 && (d.jornadaPreset === "6x1" || d.diaFolga === "1 dia na semana (escala)")) {
+    return "A partir de 16/12/2026 são 2 folgas por semana: a escala 6x1 não vale mais.";
+  }
+  return null;
 }

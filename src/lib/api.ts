@@ -140,6 +140,17 @@ async function requestBlob(path: string): Promise<Blob> {
   return res.blob();
 }
 
+/** Jornada no cadastro do funcionário (ver api/src/ensureJornadaSchema.js). */
+export type EmployeeJornada = {
+  carga_semanal?: number | string | null;
+  escala?: string | null;
+  folga?: string | null;
+  horario_entrada?: string | null;
+  horario_saida?: string | null;
+  hipersuficiente?: boolean;
+  jornada_atualizada_em?: string | null;
+};
+
 export type DeliverableCategory = "guia" | "boleto" | "folha" | "outro" | "avulso";
 /** De quem é o cliente: do escritório ('nescon') ou pessoal do Jean ('jean'). */
 export type CarteiraCliente = "nescon" | "jean";
@@ -1099,6 +1110,32 @@ export const api = {
    * empresa da sessão e exige a ferramenta `escalas` ligada).
    */
   escalas: {
+    /**
+     * Uma volta da conversa com o assistente de IA. `messages` vai e volta no formato da
+     * API do Claude (blocos); as ferramentas rodam no navegador (assistenteFerramentas.ts).
+     */
+    assistente: (messages: unknown[], companyId?: string) =>
+      request<{ content: Array<{ type: string; [k: string]: unknown }>; stop_reason: string | null; model: string }>(
+        `/escalas/assistente${qsEmpresa(companyId)}`,
+        { method: "POST", body: JSON.stringify({ messages }) },
+      ),
+    /** Prontidão da carteira para 42h/40h (só escritório). */
+    prontidao: () =>
+      request<
+        Array<{
+          id: string;
+          name: string;
+          cnpj: string;
+          escala_12x36: boolean;
+          escalas_liberado: boolean;
+          conferido_em: string | null;
+          atividade_definida: boolean;
+          tem_acordo: boolean;
+          segmento: string | null;
+          meses: string[];
+          funcionarios: Array<{ id: string; company_id: string; name: string } & EmployeeJornada>;
+        }>
+      >("/escalas/prontidao"),
     config: (companyId?: string) =>
       request<{ dados: unknown; atualizado_em: string | null; atualizado_por: string | null }>(
         `/escalas/config${qsEmpresa(companyId)}`
@@ -2658,10 +2695,17 @@ export const api = {
           inativado_por?: string | null;
           company_name?: string;
           company_cnpj?: string;
-        }>
+        } & EmployeeJornada>
       >(`/employees${q}`);
     },
-    create: (data: { company_id?: string; name: string; cpf: string; pis?: string | null; active?: boolean }) =>
+    /** Última conferência da lista pelo cliente. */
+    conferencia: (companyId?: string) =>
+      request<{ conferido_em: string | null; conferido_por: string | null }>(
+        `/employees/conferencia${companyId ? `?company_id=${encodeURIComponent(companyId)}` : ""}`,
+      ),
+    confirmarConferencia: () =>
+      request<{ conferido_em: string; conferido_por: string }>("/employees/conferencia", { method: "POST" }),
+    create: (data: { company_id?: string; name: string; cpf: string; pis?: string | null; active?: boolean } & EmployeeJornada) =>
       request<{ id: string; name: string; cpf: string; pis: string | null; active: boolean }>("/employees", {
         method: "POST",
         body: JSON.stringify(data),
@@ -2671,7 +2715,7 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ rows, fileCnpj }),
       }),
-    update: (id: string, data: { name?: string; cpf?: string; pis?: string | null; active?: boolean }) =>
+    update: (id: string, data: { name?: string; cpf?: string; pis?: string | null; active?: boolean } & EmployeeJornada) =>
       request(`/employees/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: string) =>
       request(`/employees/${id}`, { method: "DELETE" }),
