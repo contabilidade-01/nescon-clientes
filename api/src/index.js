@@ -18,6 +18,7 @@ const {
 const { ensureAppSettings } = require("./appSettings");
 const { resolverJwtSecret } = require("./jwtSecret");
 const { ensureEmployeePayrollFields } = require("./ensureEmployeePayrollFields");
+const { ensureJornadaSchema } = require("./ensureJornadaSchema");
 const { ensureExtratoAutoSchema } = require("./ensureExtratoAutoSchema");
 const { ensureVacationSchema } = require("./ensureVacationSchema");
 const { ensureEngagementSchema } = require("./ensureEngagementSchema");
@@ -211,6 +212,7 @@ async function start() {
     // ensureEmployeePayrollFields atualiza: precisa vir antes (banco limpo).
     await ensureExtratoAutoSchema(db);
     await ensureEmployeePayrollFields(db);
+    await ensureJornadaSchema(db);
     await ensureVacationSchema(db);
     await ensureEngagementSchema(db);
     await ensureAlertasSchema(db);

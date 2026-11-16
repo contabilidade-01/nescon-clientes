@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { maskCNPJ, maskCPF } from "@/lib/masks";
 import { cn } from "@/lib/utils";
+import { hojeISO } from "@/lib/jornadaFuncionario";
 import {
   DOCS_OBRIGATORIOS,
-  JORNADA_PRESETS,
+  avisoJornadaAdmissao,
+  presetsParaData,
   OPCOES,
   UFS,
   type AdmissionAnexo,
@@ -551,7 +553,7 @@ export function AdmissaoFichaForm({
         <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
           <p className="text-xs font-medium">4. Jornada — escolha um modelo (pode editar depois)</p>
           <div className="flex flex-wrap gap-2">
-            {JORNADA_PRESETS.map((p) => (
+            {presetsParaData(dados.dataAdmissao, hojeISO()).map((p) => (
               <Button
                 key={p.id}
                 type="button"
@@ -563,6 +565,11 @@ export function AdmissaoFichaForm({
               </Button>
             ))}
           </div>
+          {avisoJornadaAdmissao(dados) && (
+            <p role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+              {avisoJornadaAdmissao(dados)}
+            </p>
+          )}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Carga horária mensal">
               <Input value={dados.cargaMensal} onChange={(e) => set({ cargaMensal: e.target.value, jornadaPreset: "personalizado" })} />

@@ -5,6 +5,18 @@ const { adminHasArea } = require("../middleware/adminArea");
 const { companyHasAnyTool, companyHasTool, EMPLOYEE_LIST_TOOLS } = require("../middleware/companyToolAccess");
 const { validateCPF, validateString, validateUUID } = require("../middleware/validate");
 const { importEmployeesForCompany } = require("../employeeImport");
+const { lerJornada } = require("../employeeJornada");
+
+/**
+ * Poderes do cliente sobre a lista: quem usa alguma ferramenta que depende da lista de
+ * funcionários (advertência, suspensão, atestados, escalas…) pode adicionar, editar e
+ * excluir. Antes o cadastro aceitava qualquer uma dessas ferramentas, mas editar e excluir
+ * exigiam a ferramenta "Funcionários": o cliente adicionava e não conseguia corrigir.
+ */
+function podeGerirLista(req) {
+  return companyHasAnyTool(req, EMPLOYEE_LIST_TOOLS);
+}
+const SEM_PODER = "Cadastro de funcionários não está ativo para a sua empresa.";
 
 // All routes require auth
 router.use(authMiddleware);
@@ -67,14 +79,14 @@ router.get("/", async (req, res) => {
  * é unificado com o do escritório quando a folha chegar (ver employeeUnify.js).
  */
 router.post("/", requireCompanyUser, (req, res, next) => {
-  if (!companyHasAnyTool(req, EMPLOYEE_LIST_TOOLS)) {
-    return res.status(403).json({ error: "Cadastro de funcionários não está ativo para a sua empresa." });
-  }
+  if (!podeGerirLista(req)) return res.status(403).json({ error: SEM_PODER });
   next();
 }, async (req, res) => {
   try {
     const companyId = req.company.id;
     const { name, cpf, pis } = req.body;
+    const jornada = lerJornada(req.body);
+    if (jornada.erro) return res.status(400).json({ error: jornada.erro });
 
     if (!name || !validateString(name, 2, 200)) {
       return res.status(400).json({ error: "Nome inválido (2-200 caracteres)" });
@@ -103,9 +115,18 @@ router.post("/", requireCompanyUser, (req, res, next) => {
       return res.status(200).json(rows[0]);
     }
 
+    const j = jornada.campos;
+    const temJornada = Object.keys(j).length > 0;
     const { rows } = await db.query(
-      "INSERT INTO employees (company_id, name, cpf, pis, origem) VALUES ($1,$2,$3,$4,'cliente') RETURNING *",
-      [companyId, name.trim().toUpperCase(), cpfDigits, pis || null]
+      `INSERT INTO employees (company_id, name, cpf, pis, origem, carga_semanal, escala, folga,
+                              horario_entrada, horario_saida, hipersuficiente, jornada_atualizada_em)
+       VALUES ($1,$2,$3,$4,'cliente',$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [
+        companyId, name.trim().toUpperCase(), cpfDigits, pis || null,
+        j.carga_semanal ?? null, j.escala ?? null, j.folga ?? null,
+        j.horario_entrada ?? null, j.horario_saida ?? null, j.hipersuficiente ?? false,
+        temJornada ? new Date() : null,
+      ]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -156,6 +177,45 @@ async function fecharAvisosDeSaida(employeeId) {
   );
 }
 
+/**
+ * Conferência da lista pelo cliente: ele revisa quem está na lista (exclui, adiciona,
+ * edita a jornada) e confirma que está certa. O escritório vê quando foi a última vez.
+ */
+router.get("/conferencia", async (req, res) => {
+  try {
+    if (req.isAdmin && !adminHasArea(req, "funcionarios")) {
+      return res.status(403).json({ error: "Você não tem acesso a esta área do painel" });
+    }
+    const companyId = req.isAdmin ? (req.query.company_id || "").toString() : req.company?.id;
+    if (!companyId || !validateUUID(companyId)) return res.status(400).json({ error: "Empresa inválida" });
+    const { rows } = await db.query(
+      `SELECT funcionarios_conferidos_em AS conferido_em, funcionarios_conferidos_por AS conferido_por
+         FROM companies WHERE id = $1`,
+      [companyId]
+    );
+    res.json(rows[0] || { conferido_em: null, conferido_por: null });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+router.post("/conferencia", requireCompanyUser, async (req, res) => {
+  try {
+    if (!podeGerirLista(req)) return res.status(403).json({ error: SEM_PODER });
+    const { rows } = await db.query(
+      `UPDATE companies SET funcionarios_conferidos_em = now(), funcionarios_conferidos_por = $2
+        WHERE id = $1
+        RETURNING funcionarios_conferidos_em AS conferido_em, funcionarios_conferidos_por AS conferido_por`,
+      [req.company.id, req.companyUser ? "gerente" : "empresa"]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
 router.put("/:id", async (req, res) => {
   try {
     if (!validateUUID(req.params.id)) {
@@ -184,6 +244,14 @@ router.put("/:id", async (req, res) => {
       sets.push(`inativado_por=$${i++}`); vals.push(active ? null : req.isAdmin ? "escritorio" : "cliente");
     }
 
+    const jornada = lerJornada(req.body);
+    if (jornada.erro) return res.status(400).json({ error: jornada.erro });
+    const camposJornada = Object.entries(jornada.campos);
+    for (const [col, val] of camposJornada) {
+      sets.push(`${col}=$${i++}`); vals.push(val);
+    }
+    if (camposJornada.length) sets.push("jornada_atualizada_em = now()");
+
     if (!sets.length) return res.status(400).json({ error: "Nenhum campo para atualizar" });
 
     if (req.isAdmin) {
@@ -200,9 +268,7 @@ router.put("/:id", async (req, res) => {
       return res.json(rows[0]);
     }
 
-    if (!companyHasTool(req, "employees")) {
-      return res.status(403).json({ error: "Cadastro de funcionários não está ativo para a sua empresa." });
-    }
+    if (!podeGerirLista(req)) return res.status(403).json({ error: SEM_PODER });
     const companyId = req.company.id;
     vals.push(req.params.id);
     vals.push(companyId);
@@ -232,10 +298,22 @@ router.delete("/:id", async (req, res) => {
       if (!rowCount) return res.status(404).json({ error: "Funcionário não encontrado" });
       return res.json({ ok: true });
     }
-    if (!companyHasTool(req, "employees")) {
-      return res.status(403).json({ error: "Cadastro de funcionários não está ativo para a sua empresa." });
-    }
+    if (!podeGerirLista(req)) return res.status(403).json({ error: SEM_PODER });
     const companyId = req.company.id;
+    // Excluir apaga junto os atestados da pessoa (ON DELETE CASCADE). Quem tem atestado
+    // saiu da empresa, não foi cadastrado por engano: inativar guarda o histórico.
+    const { rows: atestados } = await db.query(
+      `SELECT count(*)::int AS n FROM medical_certificates m
+         JOIN employees e ON e.id = m.employee_id
+        WHERE m.employee_id = $1 AND e.company_id = $2`,
+      [req.params.id, companyId]
+    );
+    if (atestados[0]?.n > 0) {
+      return res.status(409).json({
+        error: "Este funcionário tem atestados no histórico. Use Inativar: ele sai da lista e o histórico fica guardado.",
+        code: "TEM_HISTORICO",
+      });
+    }
     const { rowCount } = await db.query(
       "DELETE FROM employees WHERE id=$1 AND company_id=$2",
       [req.params.id, companyId]
