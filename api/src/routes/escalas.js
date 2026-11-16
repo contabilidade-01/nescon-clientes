@@ -13,6 +13,17 @@ const { authMiddleware } = require("../middleware/auth");
 const { adminHasArea } = require("../middleware/adminArea");
 const { companyHasTool } = require("../middleware/companyToolAccess");
 const { validateUUID } = require("../middleware/validate");
+const rateLimit = require("express-rate-limit");
+const { responder: responderAssistente } = require("../escalaAssistente");
+
+/** Cada pergunta pode virar várias chamadas (uma por ferramenta usada). */
+const limiteAssistente = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Muitas perguntas ao assistente em pouco tempo. Aguarde alguns minutos." },
+});
 
 router.use(authMiddleware);
 
@@ -104,6 +115,17 @@ router.get("/prontidao", async (req, res) => {
     console.error("[escalas] prontidao:", err.message);
     res.status(500).json({ error: "Erro ao montar a prontidão" });
   }
+});
+
+/**
+ * Assistente de IA (ver escalaAssistente.js): uma volta da conversa. O navegador executa as
+ * ferramentas na escala aberta e devolve os resultados na próxima chamada.
+ */
+router.post("/assistente", limiteAssistente, async (req, res) => {
+  const e = empresaDe(req);
+  if (e.erro) return res.status(e.status).json({ error: e.erro });
+  const r = await responderAssistente(db, req.body?.messages);
+  res.status(r.status).json(r.body);
 });
 
 router.get("/config", async (req, res) => {

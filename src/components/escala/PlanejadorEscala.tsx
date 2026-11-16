@@ -28,6 +28,7 @@ import {
   UserRound,
   Users,
   Wand2,
+  Bot,
   XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +50,8 @@ import { FeriadosLocais } from "@/components/escala/FeriadosLocais";
 import { PainelCenarios } from "@/components/escala/PainelCenarios";
 import { PainelContingente } from "@/components/escala/PainelContingente";
 import { PainelDistribuicao } from "@/components/escala/PainelDistribuicao";
+import { PainelAssistente } from "@/components/escala/PainelAssistente";
+import type { EstadoEscala } from "@/lib/escala/assistenteFerramentas";
 import { PainelPorPessoa } from "@/components/escala/PainelPorPessoa";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -125,7 +128,7 @@ function abrev(d: number) {
 }
 
 type Pessoa = { id: string; name: string };
-type Aba = "cenarios" | "automatica" | "escala" | "pessoa" | "contingente" | "regras";
+type Aba = "cenarios" | "automatica" | "assistente" | "escala" | "pessoa" | "contingente" | "regras";
 
 /**
  * Planejador de escalas. O escritório passa `companyId` (simula qualquer cliente); no
@@ -508,6 +511,25 @@ export function PlanejadorEscala({
     );
   }
 
+  // Assistente de IA: aplica na tela o que as ferramentas mudaram e grava quando pedido.
+  function aplicarEstadoDaIa(e: EstadoEscala) {
+    setConfigs(e.configs);
+    setAjustes(e.ajustes);
+    setCfg(e.cfg);
+    setCenarioAtual(null);
+    setAlterado(true);
+  }
+
+  async function salvarPelaIa(e: EstadoEscala) {
+    await api.escalas.salvarConfig(e.cfg, companyId);
+    await api.escalas.salvarPlano(e.mes, { configs: e.configs, ajustes: e.ajustes } as PlanoMes, companyId);
+    setAlterado(false);
+    toast.success(`Escala de ${nomeMes(e.mes)} salva pelo assistente.`);
+    qc.invalidateQueries({ queryKey: ["escala-planos", chave] });
+    qc.invalidateQueries({ queryKey: ["escala-config", chave] });
+    qc.invalidateQueries({ queryKey: ["escala-plano", chave, e.mes] });
+  }
+
   function aplicarCenario(c: ResultadoCenario) {
     setConfigs(c.configs);
     setAjustes({});
@@ -710,6 +732,9 @@ export function PlanejadorEscala({
           <TabsTrigger value="automatica" className="gap-1.5">
             <Wand2 className="h-4 w-4" /> Automática
           </TabsTrigger>
+          <TabsTrigger value="assistente" className="gap-1.5">
+            <Bot className="h-4 w-4" /> Assistente IA
+          </TabsTrigger>
           <TabsTrigger value="escala" className="gap-1.5">
             <CalendarDays className="h-4 w-4" /> Escala do mês
             {totalErros > 0 && <span className="ml-1 rounded-full bg-destructive px-1.5 text-[10px] text-destructive-foreground">{totalErros}</span>}
@@ -754,6 +779,15 @@ export function PlanejadorEscala({
               onAplicar={aplicarCenario}
             />
           )}
+        </TabsContent>
+
+        <TabsContent value="assistente" className="mt-4">
+          <PainelAssistente
+            estado={{ mes, cfg, configs, ajustes, feriados: feriadosSet }}
+            companyId={companyId}
+            onEstado={aplicarEstadoDaIa}
+            onSalvar={salvarPelaIa}
+          />
         </TabsContent>
 
         <TabsContent value="escala" className="mt-4 space-y-4">

@@ -1110,6 +1110,15 @@ export const api = {
    * empresa da sessão e exige a ferramenta `escalas` ligada).
    */
   escalas: {
+    /**
+     * Uma volta da conversa com o assistente de IA. `messages` vai e volta no formato da
+     * API do Claude (blocos); as ferramentas rodam no navegador (assistenteFerramentas.ts).
+     */
+    assistente: (messages: unknown[], companyId?: string) =>
+      request<{ content: Array<{ type: string; [k: string]: unknown }>; stop_reason: string | null; model: string }>(
+        `/escalas/assistente${qsEmpresa(companyId)}`,
+        { method: "POST", body: JSON.stringify({ messages }) },
+      ),
     /** Prontidão da carteira para 42h/40h (só escritório). */
     prontidao: () =>
       request<
