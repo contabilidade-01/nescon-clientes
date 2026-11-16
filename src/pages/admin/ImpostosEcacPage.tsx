@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { api, type EcacCobrancaResumo, type EcacConfig, type EcacGuia } from "@/lib/api";
+import { api, type EcacBaixaAutoRodada, type EcacBaixaAutoRegistro, type EcacCobrancaResumo, type EcacConfig, type EcacGuia } from "@/lib/api";
 import { agruparDebitos, mesAno, rotuloDebito, TIPOS_PARCELA, type DebitoTela } from "@/lib/ecacDebitos";
 
 function brl(v: number | string | null | undefined) {
@@ -967,6 +967,220 @@ function PausarDialog({ alvo, onClose, onConfirmar }: { alvo: EcacCobrancaResumo
   );
 }
 
+const ROTULO_GUIA: Record<string, string> = { DAS: "DAS", DCTF_WEB: "INSS (DCTF Web)", FGTS: "FGTS" };
+
+/**
+ * Baixa automática: guia "Em atraso" no portal cuja competência não consta mais no
+ * relatório do e-CAC vira paga. Aqui o escritório liga/desliga, vê a prévia, aplica agora
+ * e reverte (uma guia ou a rodada inteira). FGTS fica de fora: não está no relatório.
+ */
+function BaixaAutoCard() {
+  const qc = useQueryClient();
+  const [previa, setPrevia] = useState<EcacBaixaAutoRodada | null>(null);
+  const [verPuladas, setVerPuladas] = useState(false);
+  const cfg = useQuery({ queryKey: ["admin-ecac-baixa-cfg"], queryFn: () => api.adminEcac.baixaAutoConfig() });
+  const hist = useQuery({ queryKey: ["admin-ecac-baixas"], queryFn: () => api.adminEcac.baixasAuto() });
+  const atualizar = () => {
+    qc.invalidateQueries({ queryKey: ["admin-ecac-baixa-cfg"] });
+    qc.invalidateQueries({ queryKey: ["admin-ecac-baixas"] });
+  };
+
+  const salvar = useMutation({
+    mutationFn: (d: { ativa?: boolean; max_idade_dias?: number }) => api.adminEcac.salvarBaixaAutoConfig(d),
+    onSuccess: () => {
+      toast.success("Baixa automática atualizada.");
+      atualizar();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const verPrevia = useMutation({
+    mutationFn: () => api.adminEcac.baixaAutoPrevia(),
+    onSuccess: (r) => setPrevia(r),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const aplicar = useMutation({
+    mutationFn: () => api.adminEcac.baixaAutoAplicar(),
+    onSuccess: (r) => {
+      toast.success(`${r.qtd_baixadas} guia(s) baixada(s) de ${r.analisadas} em atraso.`);
+      setPrevia(null);
+      atualizar();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const reverter = useMutation({
+    mutationFn: (b: EcacBaixaAutoRegistro) => api.adminEcac.reverterBaixaAuto(b.id),
+    onSuccess: (r) => {
+      toast.success(r.revertidas ? "Baixa revertida: a guia voltou para Em atraso." : "Nada a reverter (a guia já tinha mudado).");
+      atualizar();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const reverterRodada = useMutation({
+    mutationFn: (rodada: string) => api.adminEcac.reverterRodadaBaixaAuto(rodada),
+    onSuccess: (r) => {
+      toast.success(`${r.revertidas} guia(s) voltaram para Em atraso.`);
+      atualizar();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const registros = useMemo(() => hist.data || [], [hist.data]);
+  const rodadas = useMemo(() => {
+    const m = new Map<string, { abertas: number; em: string }>();
+    for (const r of registros) {
+      const x = m.get(r.rodada_id) || { abertas: 0, em: r.criado_em };
+      if (!r.revertido_em) x.abertas += 1;
+      m.set(r.rodada_id, x);
+    }
+    return [...m.entries()].filter(([, v]) => v.abertas > 0).slice(0, 5);
+  }, [registros]);
+
+  const c = cfg.data;
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <CardTitle>Baixa automática de guias</CardTitle>
+            <CardDescription>
+              DAS e INSS (DCTF Web) em atraso no portal são marcados como pagos quando a competência não aparece mais no
+              relatório do e-CAC da empresa. Só vale relatório lido com sucesso, tirado depois do vencimento e com até{" "}
+              {c?.max_idade_dias ?? 40} dias; empresa com parcelamento/PGFN ou declaração omissa fica de fora. FGTS não entra.
+            </CardDescription>
+          </div>
+          {c && (
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={c.ativa} onCheckedChange={(v) => salvar.mutate({ ativa: v })} disabled={salvar.isPending} /> ligada
+            </label>
+          )}
+        </div>
+        {c?.ultima_rodada && (
+          <p className="text-xs text-muted-foreground">
+            Última rodada: {dataHoraBR(c.ultima_rodada.em)} · {c.ultima_rodada.qtd_baixadas} baixada(s) de {c.ultima_rodada.analisadas} em atraso
+          </p>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-end gap-2">
+          {c && (
+            <div className="space-y-1">
+              <Label htmlFor="baixa-idade" className="text-xs">Idade máxima do relatório (dias)</Label>
+              <Input
+                id="baixa-idade"
+                type="number"
+                min={5}
+                max={90}
+                defaultValue={c.max_idade_dias}
+                className="h-9 w-24"
+                onBlur={(e) => {
+                  const n = Number(e.target.value);
+                  if (n && n !== c.max_idade_dias) salvar.mutate({ max_idade_dias: n });
+                }}
+              />
+            </div>
+          )}
+          <Button variant="outline" size="sm" onClick={() => verPrevia.mutate()} disabled={verPrevia.isPending}>
+            {verPrevia.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Search className="mr-1 h-4 w-4" />} Ver prévia
+          </Button>
+          <Button size="sm" onClick={() => aplicar.mutate()} disabled={aplicar.isPending}>
+            {aplicar.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1 h-4 w-4" />} Aplicar agora
+          </Button>
+        </div>
+
+        {previa && (
+          <div className="space-y-2 rounded-lg border p-3 text-sm">
+            <p className="font-medium">
+              Prévia: {previa.qtd_baixadas} de {previa.analisadas} guia(s) em atraso seriam baixadas.
+            </p>
+            {previa.baixadas.length > 0 && (
+              <ul className="max-h-64 space-y-0.5 overflow-y-auto text-xs">
+                {previa.baixadas.map((b) => (
+                  <li key={b.deliverable_id}>
+                    <span className="font-medium">{b.company_name}</span> · {ROTULO_GUIA[b.doc_type] || b.doc_type} PA {b.periodo_apuracao} · venc.{" "}
+                    {dataBR(b.due_date)} · <span className="text-muted-foreground">{b.motivo}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {previa.puladas.length > 0 && (
+              <Collapsible open={verPuladas} onOpenChange={setVerPuladas}>
+                <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <ChevronDown className="h-3 w-3" /> {previa.puladas.length} ficam em aberto (ver motivo)
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <ul className="mt-1 max-h-64 space-y-0.5 overflow-y-auto text-xs text-muted-foreground">
+                    {previa.puladas.map((b) => (
+                      <li key={b.deliverable_id}>
+                        {b.company_name} · {ROTULO_GUIA[b.doc_type] || b.doc_type} PA {b.periodo_apuracao} · {b.motivo}
+                      </li>
+                    ))}
+                  </ul>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </div>
+        )}
+
+        {rodadas.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {rodadas.map(([rodada, v]) => (
+              <Button
+                key={rodada}
+                variant="outline"
+                size="sm"
+                onClick={() => reverterRodada.mutate(rodada)}
+                disabled={reverterRodada.isPending}
+                title="Volta para Em atraso todas as guias desta rodada que ainda estão pagas pela baixa automática"
+              >
+                <XCircle className="mr-1 h-4 w-4" /> Reverter rodada de {dataHoraBR(v.em)} ({v.abertas})
+              </Button>
+            ))}
+          </div>
+        )}
+
+        {registros.length > 0 ? (
+          <div className="max-h-80 overflow-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="py-1 pr-2">Empresa</th>
+                  <th className="py-1 pr-2">Guia</th>
+                  <th className="py-1 pr-2">Vencimento</th>
+                  <th className="py-1 pr-2">Relatório</th>
+                  <th className="py-1 pr-2">Baixada em</th>
+                  <th className="py-1" />
+                </tr>
+              </thead>
+              <tbody>
+                {registros.map((r) => (
+                  <tr key={r.id} className="border-b last:border-0">
+                    <td className="py-1 pr-2">{r.company_name}</td>
+                    <td className="py-1 pr-2">{ROTULO_GUIA[r.doc_type] || r.doc_type} PA {r.periodo_apuracao}</td>
+                    <td className="py-1 pr-2">{dataBR(r.due_date)}</td>
+                    <td className="py-1 pr-2">{dataBR(r.relatorio_data)}</td>
+                    <td className="py-1 pr-2">{dataHoraBR(r.criado_em)}</td>
+                    <td className="py-1 text-right">
+                      {r.revertido_em ? (
+                        <span className="text-muted-foreground">revertida</span>
+                      ) : (
+                        <Button variant="ghost" size="sm" className="h-7" onClick={() => reverter.mutate(r)} disabled={reverter.isPending}>
+                          Reverter
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Nenhuma baixa automática ainda.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 const ImpostosEcacPage = () => {
   const qc = useQueryClient();
   const [somenteAbertas, setSomenteAbertas] = useState(true);
@@ -1024,6 +1238,8 @@ const ImpostosEcacPage = () => {
     >
       <div className="space-y-6">
         {cfg.data ? <ConfigCard cfg={cfg.data} /> : <p className="text-sm text-muted-foreground">Carregando configuração…</p>}
+
+        <BaixaAutoCard />
 
         <Card>
           <CardHeader className="space-y-4">

@@ -85,3 +85,26 @@ central-ecac (dia 25, lote pago)  ──▶  espelho ecac_pendencias (importaç�
    agora**: as mensagens chegam no e-mail/WhatsApp do escritório com o nome da empresa.
 4. Conferir texto, valores e links. Só então desligar o modo teste.
 5. Ligar **Importar todo mês** (dia 26 por padrão; o lote do central-ecac roda no 25).
+
+## Baixa automática de guias (16/11/2026)
+
+Pedido do Jean: guia **DAS** ou **INSS (DCTF Web)** que está "Em atraso" em Próximos
+pagamentos e cuja competência **não consta mais** no relatório de situação fiscal da
+empresa é marcada como paga (mesmo efeito do "Paguei"), com a marca "baixa automática" e
+a data do relatório. Código em `api/src/ecacBaixaAuto.js`, testes em
+`src/test/ecacBaixaAuto.test.ts`.
+
+* **Quando roda:** logo depois de cada importação (carteira ou uma empresa, inclusive a
+  confirmação), uma vez por dia no agendador, e no botão **Aplicar agora** do painel.
+  Chave liga/desliga na tela (nasce ligada).
+* **Casamento:** a `competencia` do G-Click é o mês de pagamento; o período de apuração é
+  o mês anterior ao vencimento. DAS ↔ débitos SN/MEI; DCTF Web ↔ INSS, IRRF e outros.
+  Guia cuja competência não bate com o vencimento fica de fora.
+* **Só baixa com relatório bom:** lido com sucesso (`relatorio_situacao` preenchida),
+  tirado depois do vencimento da guia e com até N dias (padrão 40). Empresa com
+  parcelamento ou PGFN no relatório, débito do mesmo período ou declaração omissa
+  (PGDAS-D, DCTFWeb, GFIP) no mês: não baixa.
+* **FGTS não entra**: não aparece no relatório da Receita (decisão do Jean, 16/11/2026).
+* **Reverter:** por guia ou pela rodada inteira no painel; o cliente também pode "Reabrir".
+  Guia revertida/reaberta nunca mais tem baixa automática (`baixa_auto_bloqueada`).
+  Trilha em `ecac_baixas_auto` e em `ecac_eventos` (`baixa_automatica`).

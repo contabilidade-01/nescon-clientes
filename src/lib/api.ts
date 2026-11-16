@@ -172,7 +172,63 @@ export type Deliverable = {
   historico?: boolean;
   /** URL pública do PDF (ex: boletos Cora sem arquivo local). */
   pdf_url?: string | null;
+  /** Baixa automática: a competência não consta mais no relatório do e-CAC. */
+  baixa_auto_em?: string | null;
+  baixa_auto_relatorio_em?: string | null;
   created_at: string;
+};
+
+export type EcacBaixaAutoConfig = {
+  ativa: boolean;
+  max_idade_dias: number;
+  fgts_com_inss: boolean;
+  ultima_rodada: { rodada_id: string; em: string; analisadas: number; qtd_baixadas: number; quem: string } | null;
+};
+
+export type EcacBaixaAutoLinha = {
+  deliverable_id: string;
+  company_id: string;
+  company_name: string;
+  doc_type: string;
+  title: string;
+  due_date: string;
+  periodo_apuracao: string;
+  motivo: string;
+  relatorio_data: string | null;
+  baixa_id?: number;
+};
+
+export type EcacBaixaAutoRodada = {
+  pulado?: boolean;
+  motivo?: string;
+  rodada_id: string;
+  aplicada: boolean;
+  analisadas: number;
+  qtd_baixadas: number;
+  qtd_puladas: number;
+  baixadas: EcacBaixaAutoLinha[];
+  puladas: EcacBaixaAutoLinha[];
+};
+
+export type EcacBaixaAutoRegistro = {
+  id: number;
+  rodada_id: string;
+  deliverable_id: string;
+  company_id: string;
+  company_name: string;
+  doc_type: string;
+  competencia: string | null;
+  periodo_apuracao: string | null;
+  due_date: string | null;
+  relatorio_id: number | null;
+  relatorio_data: string | null;
+  motivo: string | null;
+  quem: string | null;
+  criado_em: string;
+  revertido_em: string | null;
+  revertido_por: string | null;
+  title: string | null;
+  status: DeliverableStatus | null;
 };
 
 export type PublicDeliverable = {
@@ -3353,6 +3409,16 @@ export const api = {
         `/admin/ecac/cobrancas/${cobrancaId}/alertar`,
         { method: "POST", body: JSON.stringify({ canais }) }
       ),
+    baixaAutoConfig: () => request<EcacBaixaAutoConfig>("/admin/ecac/baixa-auto/config"),
+    salvarBaixaAutoConfig: (dados: Partial<Pick<EcacBaixaAutoConfig, "ativa" | "max_idade_dias">>) =>
+      request<EcacBaixaAutoConfig>("/admin/ecac/baixa-auto/config", { method: "PUT", body: JSON.stringify(dados) }),
+    baixaAutoPrevia: () => request<EcacBaixaAutoRodada>("/admin/ecac/baixa-auto/previa"),
+    baixaAutoAplicar: () => request<EcacBaixaAutoRodada>("/admin/ecac/baixa-auto/aplicar", { method: "POST", body: "{}" }),
+    baixasAuto: () => request<EcacBaixaAutoRegistro[]>("/admin/ecac/baixa-auto"),
+    reverterBaixaAuto: (id: number) =>
+      request<{ revertidas: number; total: number }>(`/admin/ecac/baixa-auto/${id}/reverter`, { method: "POST", body: "{}" }),
+    reverterRodadaBaixaAuto: (rodadaId: string) =>
+      request<{ revertidas: number; total: number }>(`/admin/ecac/baixa-auto/rodadas/${encodeURIComponent(rodadaId)}/reverter`, { method: "POST", body: "{}" }),
     revogarLinks: (companyId: string) =>
       request<{ ok: boolean; revogados: number }>(`/admin/ecac/empresas/${companyId}/links/revogar`, { method: "POST", body: "{}" }),
     retomarCobranca: (id: number) => request<{ ok: boolean }>(`/admin/ecac/cobrancas/${id}/retomar`, { method: "POST", body: "{}" }),

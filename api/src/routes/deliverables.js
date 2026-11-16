@@ -33,7 +33,8 @@ const {
 // deslocar o dia. Ordenar pelo texto 'YYYY-MM-DD' é equivalente a ordenar cronologicamente.
 const FIELDS = `id, company_id, category, doc_type, title, competencia,
                 to_char(due_date, 'YYYY-MM-DD') AS due_date,
-                file_name, status, paid_at, source, historico, created_at`;
+                file_name, status, paid_at, source, historico, created_at,
+                baixa_auto_em, baixa_auto_relatorio_em`;
 
 function isCompetencia(value) {
   return typeof value === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
@@ -448,7 +449,12 @@ router.patch("/:id", async (req, res) => {
     const paidAt = status === "paid" ? "now()" : "NULL";
 
     const params = [status, req.params.id];
-    let sql = `UPDATE deliverables SET status = $1, paid_at = ${paidAt} WHERE id = $2`;
+    // Marcação manual substitui a automática. Reabrir uma guia que teve baixa automática
+    // trava a baixa automática dela (quem reabriu sabe que não foi paga).
+    const baixaAuto = status === "paid"
+      ? "baixa_auto_em = NULL, baixa_auto_relatorio_em = NULL"
+      : "baixa_auto_bloqueada = (baixa_auto_bloqueada OR baixa_auto_em IS NOT NULL), baixa_auto_em = NULL, baixa_auto_relatorio_em = NULL";
+    let sql = `UPDATE deliverables SET status = $1, paid_at = ${paidAt}, ${baixaAuto} WHERE id = $2`;
     if (!req.isAdmin) {
       params.push(req.company.id);
       sql += ` AND company_id = $${params.length}${onlyReleased(req)}`;

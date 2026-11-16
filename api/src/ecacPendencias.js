@@ -31,19 +31,21 @@ async function upsertEspelho(db, companyId, esp) {
   const { rows } = await db.query(
     `INSERT INTO ecac_pendencias
        (company_id, cnpj, relatorio_id, relatorio_data, debitos, omissoes, parcelamento, pgfn,
-        qtd_atraso, total_atraso, qtd_a_vencer, qtd_invalidos)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12)
+        qtd_atraso, total_atraso, qtd_a_vencer, qtd_invalidos, relatorio_situacao)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12, $13)
      ON CONFLICT (company_id, relatorio_id) DO UPDATE
        SET debitos = EXCLUDED.debitos, omissoes = EXCLUDED.omissoes,
            parcelamento = EXCLUDED.parcelamento, pgfn = EXCLUDED.pgfn,
            qtd_atraso = EXCLUDED.qtd_atraso, total_atraso = EXCLUDED.total_atraso,
            qtd_a_vencer = EXCLUDED.qtd_a_vencer, qtd_invalidos = EXCLUDED.qtd_invalidos,
+           relatorio_situacao = EXCLUDED.relatorio_situacao,
            importado_em = now()
      RETURNING id, (xmax = 0) AS novo`,
     [
       companyId, esp.cnpj, esp.relatorio_id, esp.relatorio_data,
       JSON.stringify(esp.debitos), JSON.stringify(esp.omissoes), esp.parcelamento, esp.pgfn,
       esp.qtd_atraso, esp.total_atraso, esp.qtd_a_vencer, esp.qtd_invalidos,
+      esp.relatorio_situacao || null,
     ]
   );
   return { id: rows[0].id, novo: Boolean(rows[0].novo) };
@@ -118,6 +120,12 @@ async function importarEmpresa(db, companyId, cnpj, { desde = null } = {}) {
   const esp = espelhoDaEmpresa(e);
   if (!esp) return null;
   const { id, novo } = await upsertEspelho(db, companyId, esp);
+  // Relatório novo da empresa: dá baixa no que não consta mais (ecacBaixaAuto.js).
+  try {
+    await require("./ecacBaixaAuto").rodar(db, { companyIds: [companyId], quem: "importacao-empresa" });
+  } catch (err) {
+    console.error("[ecac-baixa] após importar empresa:", err.message);
+  }
   return { pendenciaId: id, novo, espelho: esp };
 }
 
