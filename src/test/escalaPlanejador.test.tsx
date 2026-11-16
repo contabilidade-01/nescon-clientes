@@ -164,3 +164,50 @@ describe("edição em lote na tela", () => {
     expect(screen.getByText("Mudanças não salvas")).toBeInTheDocument();
   });
 });
+
+describe("12x36, lote e caixa do funcionário", () => {
+  beforeEach(() => {
+    mockApi.config.mockResolvedValue({ dados: { segmento: "restaurante", atividadeDefinida: true, usa12x36: true }, atualizado_em: null, atualizado_por: null });
+  });
+
+  async function abrirGrade() {
+    comQuery(<PlanejadorEscala pessoas={PESSOAS} />);
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Escala do mês/ })).toBeInTheDocument());
+    const aba = screen.getByRole("tab", { name: /Escala do mês/ });
+    fireEvent.mouseDown(aba);
+    fireEvent.click(aba);
+    await waitFor(() => expect(screen.getByText("Edição em lote")).toBeInTheDocument());
+  }
+
+  it("12x36 padrão (1h de intervalo) não acusa excesso de horas", async () => {
+    await abrirGrade();
+    expect(screen.getByText("Dentro da lei")).toBeInTheDocument();
+    expect(screen.getByText("0 aviso(s)")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Configurar escala/ }).map((b) => b.textContent)).toEqual(["12x36 A · 07:00–19:00", "12x36 B · 07:00–19:00"]);
+    expect(screen.getAllByText(/média · de 4[02]h/).length).toBe(2);
+  });
+
+  it("sem ninguém marcado, o horário padrão vale para todos", async () => {
+    await abrirGrade();
+    fireEvent.change(screen.getByLabelText("Entrada em lote"), { target: { value: "19:00" } });
+    fireEvent.change(screen.getByLabelText("Saída em lote"), { target: { value: "07:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Usar o horário como padrão" }));
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: /Configurar escala/ }).map((b) => b.textContent)).toEqual(["12x36 A · 19:00–07:00", "12x36 B · 19:00–07:00"]),
+    );
+  });
+
+  it("clicar no nome abre a caixa e aplica horário só nos dias da semana escolhidos", async () => {
+    await abrirGrade();
+    fireEvent.click(screen.getByRole("button", { name: "Ana" }));
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    expect(screen.getByText("Escala de Ana")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sábado" }));
+    fireEvent.change(screen.getByLabelText("Entrada dos dias da semana"), { target: { value: "08:00" } });
+    fireEvent.change(screen.getByLabelText("Saída dos dias da semana"), { target: { value: "14:00" } });
+    fireEvent.click(screen.getByRole("button", { name: /Aplicar em \d+ dia\(s\) do mês/ }));
+    await waitFor(() => expect(screen.getAllByText("08h–14h").length).toBeGreaterThan(0));
+    expect(screen.getByRole("button", { name: /Desfazer ajustes à mão \([1-9]/ })).toBeInTheDocument();
+    expect(screen.getByText("Mudanças não salvas")).toBeInTheDocument();
+  });
+});

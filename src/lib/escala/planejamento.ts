@@ -9,7 +9,7 @@ import { MODOS_BLOQUEIO, type ModoBloqueio } from "./bloqueio";
 import { DEMANDA_VAZIA, type Demanda } from "./contingente";
 import type { FeriadoLocal } from "./feriados";
 import { SEGMENTOS, viradaNoMes, vigenciaEm, type PerfilJornada, type Segmento } from "./regras";
-import { validarEscala, type Ocorrencia } from "./validar";
+import { mediasDa12x36, validarEscala, type Ocorrencia } from "./validar";
 
 /**
  * - 6x1: só até 15/12/2026.
@@ -232,7 +232,10 @@ export interface AvaliacaoPessoa {
   ocorrencias: Ocorrencia[];
   porDia: Map<string, "erro" | "atencao">;
   horas: number;
-  /** Semana mais carregada que toca o mês, e o limite da regra naquela semana. */
+  /**
+   * Semana mais carregada que toca o mês, e o limite da regra naquela semana. Na 12x36 é
+   * a maior MÉDIA de duas semanas seguidas (a régua do regime), não a semana de 4 plantões.
+   */
   maiorSemana: number;
   limiteSemana: number;
   /** Como a validação trata a semana acima do limite: erro, aviso (acordo/12x36) ou nada. */
@@ -261,7 +264,7 @@ export function avaliarPessoa(
   // As semanas das pontas entram na conta, mas o aviso de um dia do mês vizinho não é deste mês.
   const ocorrencias = resultado.ocorrencias.filter((o) => o.data.startsWith(mes) || !REGRAS_DO_DIA.has(o.regra));
   const horas = dias.reduce((a, d) => a + (d.turno ? minutosTrabalhados(d.turno) : 0), 0) / 60;
-  const semanas = resultado.semanas.filter((x) => x.completa);
+  const semanas = c.modelo === "12x36" ? mediasDa12x36(resultado.semanas) : resultado.semanas.filter((x) => x.completa);
   const pior = semanas.reduce<(typeof semanas)[number] | null>((a, x) => (!a || x.horas - x.limiteHoras > a.horas - a.limiteHoras ? x : a), null);
   const limite = ocorrencias.filter((o) => o.regra === "LIMITE_SEMANAL");
   const semanaAcima = limite.some((o) => o.gravidade === "erro") ? "erro" : limite.length ? "atencao" : null;
