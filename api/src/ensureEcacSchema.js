@@ -157,6 +157,36 @@ async function ensureEcacSchema(db) {
       CREATE INDEX IF NOT EXISTS idx_ecac_eventos_empresa ON ecac_eventos(company_id, criado_em DESC);
     `);
 
+    // Situação lida do relatório: vazia = PDF que não foi lido (falha de coleta). A
+    // baixa automática só confia em relatório com situação preenchida.
+    await db.query(`ALTER TABLE ecac_pendencias ADD COLUMN IF NOT EXISTS relatorio_situacao TEXT;`);
+
+    // Baixa automática de guias pelo relatório (ecacBaixaAuto.js): trilha e reversão.
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS ecac_baixas_auto (
+        id BIGSERIAL PRIMARY KEY,
+        rodada_id TEXT NOT NULL,
+        deliverable_id UUID REFERENCES deliverables(id) ON DELETE CASCADE,
+        company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        doc_type TEXT NOT NULL,
+        competencia TEXT,
+        periodo_apuracao TEXT,
+        due_date DATE,
+        pendencia_id BIGINT REFERENCES ecac_pendencias(id) ON DELETE SET NULL,
+        relatorio_id INTEGER,
+        relatorio_data TIMESTAMPTZ,
+        motivo TEXT,
+        quem TEXT,
+        criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+        revertido_em TIMESTAMPTZ,
+        revertido_por TEXT
+      );
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_ecac_baixas_auto_rodada ON ecac_baixas_auto(rodada_id);`);
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_ecac_baixas_auto_empresa ON ecac_baixas_auto(company_id, criado_em DESC);
+    `);
+
     console.log("[DB] ecac_*: tabelas verificadas/criadas.");
   } catch (err) {
     console.error("[DB] ensureEcacSchema falhou:", err.message, err.code || "");

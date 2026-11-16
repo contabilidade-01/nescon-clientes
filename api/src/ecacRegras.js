@@ -166,6 +166,7 @@ function espelhoDaEmpresa(e) {
     cnpj: cnpjChave(e.cnpj),
     relatorio_id: Number(e.relatorio.id),
     relatorio_data: e.relatorio.data_hora || null,
+    relatorio_situacao: e.relatorio.situacao || null,
     relatorio_recente: Boolean(e.relatorio_recente),
     debitos,
     omissoes: Array.isArray(e.omissoes) ? e.omissoes : [],

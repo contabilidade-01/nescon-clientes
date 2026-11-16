@@ -17,6 +17,7 @@ const envio = require("./ecacEnvio");
 const { lerConfig, registrarImportacao } = require("./ecacConfig");
 const regras = require("./ecacRegras");
 const { hojeSP } = require("./diasBancarios");
+const baixaAuto = require("./ecacBaixaAuto");
 
 function cicloDe(iso) {
   return String(iso).slice(0, 7);
@@ -92,6 +93,14 @@ async function importarEAbrir(db, { ciclo = null, desde = null, manual = false, 
     relatorios_velhos: resumo.relatorios_velhos, inativas_no_ecac: resumo.inativas_no_ecac, erros: resumo.erros,
     em: new Date().toISOString(),
   };
+  // Guia do portal que não consta mais no relatório novo → baixa automática.
+  try {
+    const b = await baixaAuto.rodar(db, { quem: `importacao:${quem}` });
+    saida.baixa_automatica = b.pulado ? { pulado: true, motivo: b.motivo } : { rodada_id: b.rodada_id, baixadas: b.qtd_baixadas, analisadas: b.analisadas };
+  } catch (err) {
+    console.error("[ecac-baixa] após importação:", err.message);
+    saida.baixa_automatica = { erro: err.message };
+  }
   await registrarImportacao(db, cicloAlvo, saida);
   await evento(db, null, null, "importacao", { ...saida, empresas: undefined });
   console.log(`[ecac] importação ${cicloAlvo} (${quem}): ${resumo.casadas} casadas, ${abertas} cobrança(s) aberta(s), ${resumo.sem_cadastro.length} sem cadastro.`);
@@ -469,6 +478,7 @@ async function retomar(db, companyId, quem) {
 // -------------------------------------------------------------------- agendador
 
 let importacaoEmAndamento = false;
+let ultimoDiaBaixa = null;
 
 function iniciarAgendadorEcac(db) {
   console.log("[ecac] agendador de pé; importação e envio ligam/desligam na tela (Impostos e-CAC).");
@@ -488,6 +498,17 @@ function iniciarAgendadorEcac(db) {
           await importarEAbrir(db, { ciclo, quem: "agendador" });
         } finally {
           importacaoEmAndamento = false;
+        }
+      }
+
+      // 1b) baixa automática uma vez por dia: guia que chega depois do relatório também
+      //     é conferida contra ele (só banco, custo zero).
+      if (ultimoDiaBaixa !== hoje) {
+        ultimoDiaBaixa = hoje;
+        try {
+          await baixaAuto.rodar(db, { quem: "agendador" });
+        } catch (err) {
+          console.error("[ecac-baixa] diária:", err.message);
         }
       }
 

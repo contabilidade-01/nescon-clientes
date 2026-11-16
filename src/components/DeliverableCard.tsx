@@ -84,6 +84,12 @@ export function DeliverableCard({ deliverable: d, showPayment = false, showCompe
               Vence em {formatDue(d.due_date)}
             </p>
           )}
+          {d.status === "paid" && d.baixa_auto_em && (
+            <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-400" title="Você pode reabrir se ainda não pagou.">
+              Baixa automática: não consta mais no relatório da Receita
+              {d.baixa_auto_relatorio_em ? ` de ${new Date(d.baixa_auto_relatorio_em).toLocaleDateString("pt-BR")}` : ""}
+            </p>
+          )}
           {ehHistorico && d.due_date && (
             <p className="mt-0.5 text-sm text-muted-foreground">
               Venceu em {formatDue(d.due_date)} · documento de arquivo

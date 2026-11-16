@@ -18,6 +18,7 @@ const envio = require("../ecacEnvio");
 const regras = require("../ecacRegras");
 const acessoLinks = require("../acessoLinks");
 const pend = require("../ecacPendencias");
+const baixaAuto = require("../ecacBaixaAuto");
 const { adminHasArea } = require("../middleware/adminArea");
 
 router.use(authMiddleware);
@@ -66,6 +67,85 @@ router.post("/importar", async (req, res) => {
     if (err instanceof ecac.EcacIndisponivel) return res.status(502).json({ error: err.message });
     console.error("[ecac-admin] importar:", err.message);
     res.status(500).json({ error: "Falha na importação: " + err.message });
+  }
+});
+
+// --------------------------------------------------- baixa automática de guias
+/**
+ * Guia "Em atraso" do portal cuja competência não consta mais no relatório do e-CAC é
+ * marcada como paga (ecacBaixaAuto.js). Aqui: ligar/desligar, prévia, aplicar agora,
+ * histórico e reverter (uma guia ou a rodada inteira).
+ */
+router.get("/baixa-auto/config", async (_req, res) => {
+  try {
+    res.json(await baixaAuto.lerConfig(db));
+  } catch (err) {
+    console.error("[ecac-admin] baixa config:", err.message);
+    res.status(500).json({ error: "Erro ao ler a configuração" });
+  }
+});
+
+router.put("/baixa-auto/config", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const cfg = await baixaAuto.salvarConfig(db, { ativa: b.ativa, max_idade_dias: b.max_idade_dias });
+    await cobranca.evento(db, null, null, "config", { por: quem(req), baixa_auto: { ativa: b.ativa, max_idade_dias: b.max_idade_dias } });
+    res.json(cfg);
+  } catch (err) {
+    console.error("[ecac-admin] baixa salvar:", err.message);
+    res.status(500).json({ error: "Erro ao salvar" });
+  }
+});
+
+/** Prévia: o que seria baixado agora e por que o resto fica. Não grava nada. */
+router.get("/baixa-auto/previa", async (_req, res) => {
+  try {
+    res.json(await baixaAuto.rodar(db, { aplicar: false, quem: "previa" }));
+  } catch (err) {
+    console.error("[ecac-admin] baixa prévia:", err.message);
+    res.status(500).json({ error: "Falha na prévia: " + err.message });
+  }
+});
+
+router.post("/baixa-auto/aplicar", async (req, res) => {
+  try {
+    res.json(await baixaAuto.rodar(db, { aplicar: true, forcar: true, quem: quem(req) }));
+  } catch (err) {
+    console.error("[ecac-admin] baixa aplicar:", err.message);
+    res.status(500).json({ error: "Falha ao aplicar: " + err.message });
+  }
+});
+
+router.get("/baixa-auto", async (req, res) => {
+  try {
+    const companyId = req.query.company_id ? String(req.query.company_id) : null;
+    if (companyId && !validateUUID(companyId)) return res.status(400).json({ error: "company_id inválido" });
+    res.json(await baixaAuto.listar(db, { limite: req.query.limite, companyId }));
+  } catch (err) {
+    console.error("[ecac-admin] baixa listar:", err.message);
+    res.status(500).json({ error: "Erro ao listar" });
+  }
+});
+
+router.post("/baixa-auto/:id/reverter", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "id inválido" });
+  try {
+    res.json(await baixaAuto.reverter(db, { baixaId: id, quem: quem(req) }));
+  } catch (err) {
+    console.error("[ecac-admin] baixa reverter:", err.message);
+    res.status(500).json({ error: "Falha ao reverter: " + err.message });
+  }
+});
+
+router.post("/baixa-auto/rodadas/:rodada/reverter", async (req, res) => {
+  const rodada = String(req.params.rodada || "");
+  if (!/^\d{8}-[0-9a-f]{6}$/.test(rodada)) return res.status(400).json({ error: "rodada inválida" });
+  try {
+    res.json(await baixaAuto.reverter(db, { rodadaId: rodada, quem: quem(req) }));
+  } catch (err) {
+    console.error("[ecac-admin] baixa reverter rodada:", err.message);
+    res.status(500).json({ error: "Falha ao reverter: " + err.message });
   }
 });
 
