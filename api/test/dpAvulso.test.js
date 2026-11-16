@@ -42,3 +42,18 @@ test("ferramentas: segue o liga/desliga da empresa (omitido = ligado)", () => {
   assert.deepEqual(ferramentasDaEmpresa(null), { advertencia: true, suspensao: true });
   assert.deepEqual(ferramentasDaEmpresa({ warning: false }), { advertencia: false, suspensao: true });
 });
+
+test("lista do link avulso: só nomes, sem vazios nem repetidos, em ordem", () => {
+  const { nomesParaLista } = require("../src/dpAvulso");
+  assert.deepEqual(
+    nomesParaLista([
+      { name: "Zé  Carlos", cpf: "11122233344" },
+      { name: "ana souza" },
+      { name: "ANA SOUZA" },
+      { name: " " },
+      { name: null },
+      { name: "Álvaro Lima" },
+    ]),
+    ["Álvaro Lima", "ana souza", "Zé Carlos"]
+  );
+});

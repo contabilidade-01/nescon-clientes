@@ -1,8 +1,8 @@
 /**
  * Link avulso de advertência/suspensão (sem login): o cliente informa o CNPJ, a tela
- * acha a empresa no cadastro e os formulários do portal rodam em "modo avulso" —
- * funcionário, datas, dias e retorno digitados à mão, sem lista de funcionários nem
- * histórico da empresa.
+ * acha a empresa no cadastro e os formulários do portal rodam em "modo avulso" — o
+ * funcionário sai da lista da empresa (só nomes) ou é digitado à mão; datas, dias e
+ * retorno são digitados. Sem histórico da empresa.
  */
 export type EmpresaAvulsa = {
   nome: string;
@@ -12,6 +12,8 @@ export type EmpresaAvulsa = {
 
 export type ModoAvulso = {
   empresa: EmpresaAvulsa;
+  /** Nomes dos funcionários ativos da empresa (pode vir vazio: aí só digitação). */
+  funcionarios?: string[];
   /** Registra a emissão no servidor (histórico + aviso ao escritório). Lança erro se falhar. */
   emitir: (dados: Record<string, unknown>, blob: Blob, fileName: string) => Promise<unknown>;
 };

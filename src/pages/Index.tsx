@@ -27,6 +27,7 @@ import { isToolAllowed, mergeClientToolAccess, type CompanyToolKey } from "@/lib
 import { formatDueLong } from "@/lib/deliverableDisplay";
 import { LgpdConsentDialog } from "@/components/LgpdConsentDialog";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
+import { LinkAvulsoCard } from "@/components/LinkAvulsoCard";
 import { Atalho, HubCard, IconBox, Indicador, RoscaPagamentos } from "@/components/hub/Hub";
 import {
   ATALHOS_INICIO,
@@ -351,6 +352,11 @@ const Index = () => {
               </section>
             )}
           </div>
+        )}
+
+        {/* Link sem login de advertência/suspensão: fixo para quem tem a ferramenta. */}
+        {(isToolAllowed(company?.toolAccess, "warning") || isToolAllowed(company?.toolAccess, "suspension")) && (
+          <LinkAvulsoCard />
         )}
 
         {/* Avisos: só quando há o que resolver — cartão vazio vira ruído. */}

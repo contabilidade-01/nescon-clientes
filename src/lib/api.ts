@@ -3159,6 +3159,11 @@ export const api = {
         advertencia?: boolean;
         suspensao?: boolean;
       }>(`/dp-avulso/empresa?cnpj=${encodeURIComponent(cnpj.replace(/\D/g, ""))}`),
+    /** Só os nomes dos funcionários ativos, para escolher na tela (sem CPF). */
+    funcionarios: (cnpj: string) =>
+      publicRequest<{ nomes: string[] }>(
+        `/dp-avulso/funcionarios?cnpj=${encodeURIComponent(cnpj.replace(/\D/g, ""))}`
+      ),
     emitir: async (dados: Record<string, unknown>, blob: Blob, fileName: string) => {
       const form = new FormData();
       form.append("dados", JSON.stringify(dados));
