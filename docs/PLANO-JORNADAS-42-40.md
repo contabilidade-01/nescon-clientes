@@ -33,7 +33,19 @@ Pedido do Jean em 13/11/2026 e 16/11/2026. O planejador de escalas (ver
   salário e o art. 468 da CLT; opcionalmente grava a nova jornada no cadastro. Recusa
   gerar jornada fora da regra da data de início.
 
+## Parte 3 — Distribuição automática
+
+Aba "Automática" no planejador (`src/lib/escala/distribuir.ts` + `PainelDistribuicao.tsx`).
+O cliente monta grupos ("4 pessoas em 12x36", "o resto em 5x2 com folga fixa na segunda",
+"6x1 com folga variável", horário de cada grupo) e o sistema sorteia, com semente, 40
+distribuições: folgas espalhadas dentro do grupo (rodízio sobre a lista embaralhada),
+turmas da 12x36 equilibradas, rodízio de domingos pelo mínimo do segmento. Cada uma passa
+pelo motor (`avaliarCenario`); fica a sem erro que melhor cobre a demanda e deixa os dias
+mais uniformes. "Outra distribuição" sorteia de novo; "Aplicar na grade" usa a mesma trava
+dos cenários. 6x1 só aparece em meses antes de 16/12/2026.
+
 ## Próximas partes
+
 
 3. Distribuição automática de escalas (6x1 hoje, 12x36, folga fixa ou variável).
 4. Assistente de IA (API do Claude com ferramentas) que analisa e aplica na escala.

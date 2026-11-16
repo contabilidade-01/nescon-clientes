@@ -27,6 +27,7 @@ import {
   Trash2,
   UserRound,
   Users,
+  Wand2,
   XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +48,7 @@ import { DiasFechados, EscolherAtividade, type EscolhaAtividade } from "@/compon
 import { FeriadosLocais } from "@/components/escala/FeriadosLocais";
 import { PainelCenarios } from "@/components/escala/PainelCenarios";
 import { PainelContingente } from "@/components/escala/PainelContingente";
+import { PainelDistribuicao } from "@/components/escala/PainelDistribuicao";
 import { PainelPorPessoa } from "@/components/escala/PainelPorPessoa";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -123,7 +125,7 @@ function abrev(d: number) {
 }
 
 type Pessoa = { id: string; name: string };
-type Aba = "cenarios" | "escala" | "pessoa" | "contingente" | "regras";
+type Aba = "cenarios" | "automatica" | "escala" | "pessoa" | "contingente" | "regras";
 
 /**
  * Planejador de escalas. O escritório passa `companyId` (simula qualquer cliente); no
@@ -705,6 +707,9 @@ export function PlanejadorEscala({
           <TabsTrigger value="cenarios" className="gap-1.5">
             <Sparkles className="h-4 w-4" /> Cenários
           </TabsTrigger>
+          <TabsTrigger value="automatica" className="gap-1.5">
+            <Wand2 className="h-4 w-4" /> Automática
+          </TabsTrigger>
           <TabsTrigger value="escala" className="gap-1.5">
             <CalendarDays className="h-4 w-4" /> Escala do mês
             {totalErros > 0 && <span className="ml-1 rounded-full bg-destructive px-1.5 text-[10px] text-destructive-foreground">{totalErros}</span>}
@@ -732,6 +737,21 @@ export function PlanejadorEscala({
               onAplicar={aplicarCenario}
               onVariar={() => setVariacao((v) => v + 1)}
               onHorario={mudarHorario}
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="automatica" className="mt-4">
+          {configs.length === 0 ? (
+            <SemEquipe onVaga={adicionarVaga} />
+          ) : (
+            <PainelDistribuicao
+              pessoas={equipe}
+              mes={mes}
+              empresa={cfg}
+              feriados={feriadosSet}
+              modeloPadrao={modeloPadrao}
+              onAplicar={aplicarCenario}
             />
           )}
         </TabsContent>
