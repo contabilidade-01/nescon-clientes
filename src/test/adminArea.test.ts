@@ -56,6 +56,22 @@ describe("adminHasArea", () => {
   });
 });
 
+describe("área Admissões", () => {
+  it("quem tem só 'admissoes' entra nas admissões e não no resto de Funcionários", () => {
+    const req = usuario({ admissoes: true });
+    expect(adminHasArea(req, "admissoes")).toBe(true);
+    expect(adminHasArea(req, "funcionarios")).toBe(false);
+  });
+
+  it("quem já tinha 'funcionarios' continua vendo as admissões", () => {
+    expect(adminHasArea(usuario({ funcionarios: true }), "admissoes")).toBe(true);
+  });
+
+  it("sem nenhuma das duas, admissões ficam fechadas", () => {
+    expect(adminHasArea(usuario({ licencas: true }), "admissoes")).toBe(false);
+  });
+});
+
 describe("requireArea", () => {
   it("deixa passar quem tem a área", () => {
     const next = vi.fn();
