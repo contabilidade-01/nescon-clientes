@@ -473,7 +473,7 @@ adminRouter.get("/:id/condicoes", async (req, res) => {
         if (novo[sec] && typeof novo[sec] === "object") base[sec] = { ...(base[sec] || {}), ...novo[sec] };
       }
     }
-    // Cidade, data e testemunhas pertencem a cada documento: o aditivo novo começa sem data.
+    // Cidade e data pertencem a cada documento: o aditivo novo começa sem data.
     if (base.assinatura) base.assinatura = { ...base.assinatura, data: "" };
     const proximo = adits.reduce((m, a) => Math.max(m, a.aditivo_numero || 0), 0) + 1;
     res.json({
