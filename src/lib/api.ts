@@ -1037,6 +1037,11 @@ export type ClientesSemBoletoResposta = {
   sync_em: string | null;
 };
 
+/** Link real do servidor para baixar o Word de uma advertência/suspensão guardada. */
+export function dpDocDocxUrl(token: string): string {
+  return `${API_BASE}/dp-docs/${encodeURIComponent(token)}/docx`;
+}
+
 export type EnvioAvulsoConfig = {
   tipos: { chave: string; rotulo: string }[];
   max_arquivos: number;
@@ -2813,6 +2818,7 @@ export const api = {
         employee_pis: string | null; company_name: string; company_cnpj: string; company_id: string | null;
         start_date: string | null; suspension_days: number | null; return_date: string | null;
         description: string | null; created_at: string;
+        origem?: string | null; file_docx?: string | null; access_token?: string | null;
       }>>(`/documents${q}`);
     },
     /** Grava o documento (advertência/suspensão) no histórico; devolve a linha criada. */
@@ -3250,7 +3256,7 @@ export const api = {
       form.append("dados", JSON.stringify(dados));
       form.append("file", blob, fileName);
       const res = await fetch(`${API_BASE}/dp-avulso/emitir`, { method: "POST", body: form });
-      const data = await parseResponseJson<{ ok?: boolean; error?: string }>(res);
+      const data = await parseResponseJson<{ ok?: boolean; token?: string; error?: string }>(res);
       if (!res.ok) throw new Error(data.error || "Não foi possível registrar o documento.");
       return data;
     },

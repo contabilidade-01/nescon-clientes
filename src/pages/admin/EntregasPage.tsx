@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ClipboardList, FileText } from "lucide-react";
+import { ClipboardList, Download, FileText } from "lucide-react";
 import { format, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { CompanyFilter } from "@/components/admin/CompanyFilter";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { api } from "@/lib/api";
+import { api, dpDocDocxUrl } from "@/lib/api";
 
 /** Formata data com segurança: valor nulo ou inválido nunca derruba a página. */
 function formatDateSafe(value: string | null | undefined, pattern: string): string {
@@ -107,12 +107,28 @@ const EntregasPage = () => {
                   <Badge variant={doc.document_type === "suspension" ? "default" : "secondary"}>
                     {doc.document_type === "suspension" ? "Suspensão" : "Advertência"}
                   </Badge>
+                  {doc.origem === "link_avulso" && (
+                    <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-400">
+                      Link avulso
+                    </Badge>
+                  )}
                   <span className="text-xs text-muted-foreground">{doc.company_name}</span>
                 </div>
                 <p className="mt-1 font-medium">{doc.employee_name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {formatDateSafe(doc.created_at, "dd/MM/yyyy HH:mm")} · CNPJ {doc.company_cnpj}
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    {formatDateSafe(doc.created_at, "dd/MM/yyyy HH:mm")} · CNPJ {doc.company_cnpj}
+                  </p>
+                  {doc.file_docx && doc.access_token && (
+                    <a
+                      href={dpDocDocxUrl(doc.access_token)}
+                      download
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                    >
+                      <Download className="h-3.5 w-3.5" /> Baixar Word
+                    </a>
+                  )}
+                </div>
               </div>
             ))
           ) : (
