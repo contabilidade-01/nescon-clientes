@@ -102,7 +102,12 @@ export function validarEscala(
           ? CLT.intervaloAte6hMin
           : 0;
     if (turno.intervaloMin < minimo) {
-      add(data, "INTERVALO", "erro", `Intervalo de ${turno.intervaloMin}min; o mínimo para essa jornada é ${minimo}min.`);
+      if (r12) {
+        // Art. 59-A: na 12x36 o intervalo pode ser "observado ou indenizado".
+        add(data, "INTERVALO", "atencao", `Intervalo de ${turno.intervaloMin}min no plantão: na 12x36 pode, mas o intervalo não usufruído (${minimo}min) é pago como indenização.`);
+      } else {
+        add(data, "INTERVALO", "erro", `Intervalo de ${turno.intervaloMin}min; o mínimo para essa jornada é ${minimo}min.`);
+      }
     }
 
     if (feriados.has(data) && !r12) {
@@ -180,10 +185,10 @@ export function validarEscala(
   // e o erro só vem se a média do mês (semanas completas, pelo mês do sábado) estourar.
   const flexivel = perfil.temAcordoColetivo || r12;
   for (const s of semanas.filter((x) => x.completa)) {
-    if (!isentoDeHoras(somarDias(s.inicio, 6)) && s.horas > s.limiteHoras) {
-      const msg = r12
-        ? `12x36 com ${fmtH(s.horas * H)} na semana, acima das ${s.limiteHoras}h de ${s.vigencia}: ajustar na convenção coletiva.`
-        : `${fmtH(s.horas * H)} na semana; o limite é ${s.limiteHoras}h (${s.vigencia}).`;
+    // Na 12x36 a semana alterna 3 e 4 plantões (33h/44h com 1h de intervalo): semana a
+    // semana sempre "estoura". A régua dela é a média (abaixo, mediasDa12x36).
+    if (!r12 && !isentoDeHoras(somarDias(s.inicio, 6)) && s.horas > s.limiteHoras) {
+      const msg = `${fmtH(s.horas * H)} na semana; o limite é ${s.limiteHoras}h (${s.vigencia}).`;
       add(s.inicio, "LIMITE_SEMANAL", flexivel ? "atencao" : "erro", msg);
     }
     if (!r12 && s.folgas < s.repousosExigidos) {
@@ -192,6 +197,21 @@ export function validarEscala(
         "REPOUSO_SEMANAL",
         perfil.temAcordoColetivo ? "atencao" : "erro",
         `${s.folgas} folga(s) na semana; são exigidos ${s.repousosExigidos} (${s.vigencia}).`,
+      );
+    }
+  }
+
+  if (r12) {
+    // 12x36 (art. 59-A): mede-se a média do ciclo. Duas semanas seguidas têm sempre 7
+    // plantões num 12x36 regular, então a média de cada par é a média real do regime
+    // (11h x 3,5 = 38h30 com 1h de intervalo; 12h x 3,5 = 42h com intervalo indenizado).
+    for (const m of mediasDa12x36(semanas)) {
+      if (isentoDeHoras(somarDias(m.inicio, 13)) || m.horas <= m.limiteHoras + 1e-9) continue;
+      add(
+        m.inicio,
+        "LIMITE_SEMANAL",
+        "atencao",
+        `12x36 com média de ${fmtH(m.horas * H)} por semana, acima das ${m.limiteHoras}h de ${m.vigencia}: precisa de previsão na convenção coletiva (com 1h de intervalo usufruído a média de um plantão de 12h cai para 38h30).`,
       );
     }
   }
@@ -248,6 +268,27 @@ export function validarEscala(
 
   ocorrencias.sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
   return { ocorrencias, semanas };
+}
+
+/**
+ * Média semanal da 12x36 em cada par de semanas completas e seguidas (14 dias = 7
+ * plantões no ciclo regular). Com uma semana completa só, vale ela sozinha. O limite é o
+ * da 2ª semana do par (o lado seguro na virada da emenda).
+ */
+export function mediasDa12x36(semanas: ResumoSemana[]): Array<{ inicio: string; horas: number; limiteHoras: number; vigencia: string }> {
+  const completas = semanas.filter((s) => s.completa).sort((a, b) => (a.inicio < b.inicio ? -1 : 1));
+  if (completas.length === 1) {
+    const s = completas[0];
+    return [{ inicio: s.inicio, horas: s.horas, limiteHoras: s.limiteHoras, vigencia: s.vigencia }];
+  }
+  const out: Array<{ inicio: string; horas: number; limiteHoras: number; vigencia: string }> = [];
+  for (let i = 0; i + 1 < completas.length; i++) {
+    const a = completas[i];
+    const b = completas[i + 1];
+    if (diasEntre(a.inicio, b.inicio) !== 7) continue;
+    out.push({ inicio: a.inicio, horas: (a.horas + b.horas) / 2, limiteHoras: b.limiteHoras, vigencia: b.vigencia });
+  }
+  return out;
 }
 
 function diasNoMes(mes: string): number {

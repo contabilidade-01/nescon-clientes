@@ -163,7 +163,7 @@ export function PainelPorPessoa({
                     linha.semanaAcima === "atencao" && "border-amber-500 text-amber-700 dark:text-amber-300",
                   )}
                 >
-                  Maior semana {num(linha.maiorSemana)}h de {linha.limiteSemana}h
+                  {linha.config.modelo === "12x36" ? "Média semanal" : "Maior semana"} {num(linha.maiorSemana)}h de {linha.limiteSemana}h
                 </Badge>
                 <Badge variant="outline">{atual?.domingosDeFolga ?? 0} domingo(s) de folga</Badge>
               </div>
@@ -332,7 +332,7 @@ function CartaoOpcao({
 }
 
 /** O mês da pessoa em semanas de domingo a sábado, com as horas de cada semana. */
-function CalendarioPessoa({
+export function CalendarioPessoa({
   c,
   mes,
   ajustes,
@@ -376,7 +376,8 @@ function CalendarioPessoa({
             {semanas.map((s) => {
               const horas = s.reduce((a, d) => a + (d.turno ? minutosTrabalhados(d.turno) : 0), 0) / 60;
               const limite = vigenciaEm(s[s.length - 1].data).limiteSemanalHoras;
-              const acima = horas > limite + 0.01;
+              // Na 12x36 a semana de 4 plantões passa do limite por natureza: a régua é a média.
+              const acima = c.modelo !== "12x36" && horas > limite + 0.01;
               return (
                 <tr key={s[0].data}>
                   {s.map((d) => {

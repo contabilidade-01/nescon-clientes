@@ -78,7 +78,7 @@ export function resumoJornada(j: JornadaCadastro): string {
 /**
  * Situação da jornada numa data 'YYYY-MM-DD'.
  *  - fora: carga acima do limite, ou 6x1 depois de 16/12/2026 (a emenda exige 2 folgas).
- *  - atencao: 12x36 depois da etapa 1 (média de 42h; renegociar na convenção) ou 42h
+ *  - atencao: 12x36 na etapa 2 (40h: a média com intervalo indenizado é 42h) ou 42h
  *    na etapa 1 (só cabe em 5 dias com acordo/convenção que amplie o dia para 8h24).
  *  - sem_dado: o cadastro não diz a carga nem a escala.
  */
@@ -93,11 +93,11 @@ export function situacaoJornada(j: JornadaCadastro, data: string): SituacaoJorna
   if (!carga && !escala) return { nivel: "sem_dado", rotulo: "Jornada não informada", vigencia: v };
 
   if (escala === "12x36") {
-    if (v.limiteSemanalHoras < 44) {
+    if (v.limiteSemanalHoras < 42) {
       return {
         nivel: "atencao",
-        rotulo: "12x36: renegociar",
-        detalhe: `A 12x36 continua permitida, mas a média dela (42h) passa de ${v.limiteSemanalHoras}h. Precisa de previsão na convenção coletiva.`,
+        rotulo: "12x36: conferir intervalo",
+        detalhe: `A 12x36 continua permitida. Com 1h de intervalo usufruído a média fica em 38h30 e cabe nas ${v.limiteSemanalHoras}h; com intervalo indenizado a média (42h) passa e precisa de previsão na convenção coletiva.`,
         vigencia: v,
       };
     }

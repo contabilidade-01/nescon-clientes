@@ -41,10 +41,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarraLote, type AtalhoDias } from "@/components/escala/BarraLote";
-import { ControlesPessoa } from "@/components/escala/ControlesPessoa";
+import { BarraLote, type AtalhoDias, type MarcarPessoas } from "@/components/escala/BarraLote";
+import { DialogoPessoa } from "@/components/escala/DialogoPessoa";
+import { agruparOcorrencias } from "@/lib/escala/ocorrencias";
 import { DiasFechados, EscolherAtividade, type EscolhaAtividade } from "@/components/escala/EscolherAtividade";
 import { FeriadosLocais } from "@/components/escala/FeriadosLocais";
 import { PainelCenarios } from "@/components/escala/PainelCenarios";
@@ -166,6 +166,8 @@ export function PlanejadorEscala({
   const [trocandoAtividade, setTrocandoAtividade] = useState(false);
   // Simulação por funcionário: a pessoa aberta.
   const [foco, setFoco] = useState<string | null>(null);
+  // Caixa de personalização de um funcionário (clique no nome).
+  const [aberta, setAberta] = useState<string | null>(null);
 
   const configQuery = useQuery({
     queryKey: ["escala-config", chave],
@@ -189,20 +191,23 @@ export function PlanejadorEscala({
 
   // Modelo de quem entra sem escala salva: o que já nasce dentro da regra do mês.
   const modeloPadrao = modeloPadraoDoMes(mes, cfg.atividadeDefinida ? cfg.usa12x36 : regime12x36Padrao);
-  const modeloPadraoRef = useRef(modeloPadrao);
-  modeloPadraoRef.current = modeloPadrao;
 
   // Mês salvo (ou o modelo padrão) mesclado com o quadro atual de funcionários. Espera a
   // configuração da empresa para saber o modelo padrão (12x36 ou não).
+  // O modelo padrão sai da configuração CARREGADA, não do estado `cfg`: os dois efeitos
+  // rodam no mesmo ciclo e o `cfg` ainda estaria no padrão (empresa 12x36 abria em 5x2).
+  const cfgCarregada = configQuery.data ? normalizarConfigEmpresa(configQuery.data.dados) : null;
+  const usa12x36Carregado = cfgCarregada?.atividadeDefinida ? cfgCarregada.usa12x36 : regime12x36Padrao;
   useEffect(() => {
     if (planoQuery.isLoading || configQuery.isLoading) return;
     const salvo = planoQuery.data?.dados as PlanoMes | undefined;
-    const plano = mesclarPlano(salvo && Array.isArray(salvo.configs) ? salvo : null, pessoas, modeloPadraoRef.current);
+    const plano = mesclarPlano(salvo && Array.isArray(salvo.configs) ? salvo : null, pessoas, modeloPadraoDoMes(mes, usa12x36Carregado));
     setConfigs(plano.configs);
     setAjustes(plano.ajustes);
     setAlterado(false);
     setCenarioAtual(null);
-  }, [planoQuery.data, planoQuery.isLoading, configQuery.isLoading, pessoas]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planoQuery.data, planoQuery.isLoading, configQuery.isLoading, pessoas, usa12x36Carregado]);
 
   const salvar = useMutation({
     mutationFn: async () => {
@@ -426,6 +431,15 @@ export function PlanejadorEscala({
     );
   }
 
+  /** Muda dias de uma pessoa só (caixa do funcionário), com bloqueio e trava das regras. */
+  function diasDaPessoa(id: string, datas: string[], acao: AcaoDia): boolean {
+    if (!datas.length) return false;
+    if (acao.tipo === "horario" && !liberado(id, acao.turno)) return false;
+    const ok = aplicarSeguro(configs, { ...ajustes, [id]: ajustesEmLote(ajustes[id] || {}, datas, acao) }, [id]);
+    if (ok) toast.success(`${acao.tipo === "folga" ? "Folga" : acao.tipo === "horario" ? `Horário ${acao.turno.entrada}–${acao.turno.saida}` : "Volta ao modelo"} em ${datas.length} dia(s).`);
+    return ok;
+  }
+
   function alternar<T>(set: Set<T>, v: T): Set<T> {
     const n = new Set(set);
     if (n.has(v)) n.delete(v);
@@ -466,6 +480,13 @@ export function PlanejadorEscala({
     }
   }
 
+  function marcarPessoas(filtro: MarcarPessoas) {
+    if (filtro === "nenhuma") return setSelPessoas(new Set());
+    const passa = (c: ConfigPessoa) =>
+      filtro === "todas" ? true : filtro === "turmaA" ? c.modelo === "12x36" && c.turma === "A" : filtro === "turmaB" ? c.modelo === "12x36" && c.turma === "B" : c.modelo === filtro;
+    setSelPessoas(new Set(configs.filter(passa).map((c) => c.id)));
+  }
+
   function loteDias(acao: AcaoDia) {
     const datas = [...selDias].sort();
     if (!datas.length) return toast.error("Marque os dias clicando no cabeçalho da grade.");
@@ -487,8 +508,9 @@ export function PlanejadorEscala({
   }
 
   function lotePessoas(patch: Partial<ConfigPessoa>) {
-    const ids = configs.filter((c) => selPessoas.has(c.id)).map((c) => c.id);
-    if (!ids.length) return toast.error("Marque as pessoas na caixa ao lado do nome.");
+    // Sem pessoa marcada, vale para todos (como nos dias).
+    const ids = selPessoas.size ? configs.filter((c) => selPessoas.has(c.id)).map((c) => c.id) : configs.map((c) => c.id);
+    if (!ids.length) return toast.error("Nenhuma pessoa na escala.");
     const mudaModelo = CAMPOS_DO_MODELO.some((k) => k in patch);
     for (const id of ids) {
       const c = configs.find((x) => x.id === id)!;
@@ -809,6 +831,8 @@ export function PlanejadorEscala({
               repousos={vigencia.repousosSemanais}
               onAtalho={atalhoDias}
               onLimparPessoas={() => setSelPessoas(new Set())}
+              modelos={[...new Set(configs.map((c) => c.modelo))]}
+              onMarcarPessoas={marcarPessoas}
               onDias={loteDias}
               onPessoas={lotePessoas}
             />
@@ -900,11 +924,9 @@ export function PlanejadorEscala({
                               <LinhaConfig
                                 c={c}
                                 erros={erros}
-                                repousos={vigencia.repousosSemanais}
-                                viradaEm={viradaComFolgas ? virada?.inicio : undefined}
                                 selecionado={selPessoas.has(c.id)}
                                 onSelecionar={() => setSelPessoas((s) => alternar(s, c.id))}
-                                onChange={(p) => atualizar(c.id, p)}
+                                onAbrir={() => setAberta(c.id)}
                                 onRemover={
                                   c.id.startsWith("vaga-")
                                     ? () => {
@@ -935,10 +957,12 @@ export function PlanejadorEscala({
                                 semanaAcima === "erro" && "bg-destructive/15 font-semibold text-destructive",
                                 semanaAcima === "atencao" && "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
                               )}
-                              title={`Limite: ${limiteSemana}h`}
+                              title={c.modelo === "12x36" ? `Média semanal da 12x36 (duas semanas seguidas). Limite: ${limiteSemana}h` : `Limite: ${limiteSemana}h`}
                             >
                               {maiorSemana.toFixed(1).replace(".", ",")}h
-                              <span className="block text-[10px] font-normal opacity-70">de {limiteSemana}h</span>
+                              <span className="block text-[10px] font-normal opacity-70">
+                                {c.modelo === "12x36" ? "média · " : ""}de {limiteSemana}h
+                              </span>
                             </td>
                           </tr>
                         );
@@ -1095,6 +1119,26 @@ export function PlanejadorEscala({
         </TabsContent>
       </Tabs>
 
+      {aberta &&
+        (() => {
+          const linha = linhas.find((l) => l.config.id === aberta);
+          if (!linha) return null;
+          return (
+            <DialogoPessoa
+              linha={linha}
+              mes={mes}
+              ajustes={ajustes}
+              feriados={feriados}
+              feriadosSet={feriadosSet}
+              repousos={vigencia.repousosSemanais}
+              viradaEm={viradaComFolgas ? virada?.inicio : undefined}
+              onChange={(p) => atualizar(linha.config.id, p)}
+              onDias={(datas, acao) => diasDaPessoa(linha.config.id, datas, acao)}
+              onFechar={() => setAberta(null)}
+            />
+          );
+        })()}
+
       {editando && (
         <EditarDia
           nome={editando.pessoa.nome}
@@ -1129,20 +1173,16 @@ function SemEquipe({ onVaga }: { onVaga: () => void }) {
 function LinhaConfig({
   c,
   erros,
-  repousos,
   selecionado,
   onSelecionar,
-  onChange,
+  onAbrir,
   onRemover,
-  viradaEm,
 }: {
   c: ConfigPessoa;
   erros: number;
-  repousos: number;
-  viradaEm?: string;
   selecionado: boolean;
   onSelecionar: () => void;
-  onChange: (p: Partial<ConfigPessoa>) => void;
+  onAbrir: () => void;
   onRemover?: () => void;
 }) {
   return (
@@ -1150,33 +1190,32 @@ function LinhaConfig({
       <div className="flex min-w-0 items-center gap-1.5">
         <Checkbox checked={selecionado} onCheckedChange={onSelecionar} aria-label={`Marcar ${c.nome}`} />
         {erros ? <XCircle className="h-3.5 w-3.5 shrink-0 text-destructive" /> : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
-        <span className="truncate text-xs font-medium" title={c.nome}>
+        <button
+          type="button"
+          onClick={onAbrir}
+          className="truncate text-left text-xs font-medium hover:text-primary hover:underline"
+          title={`Personalizar a escala de ${c.nome}`}
+        >
           {c.nome}
-        </span>
+        </button>
         {onRemover && (
           <button type="button" className="ml-auto text-muted-foreground hover:text-destructive" onClick={onRemover} aria-label="Remover vaga">
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className="flex w-full items-center gap-1 truncate rounded border border-dashed px-1.5 py-0.5 text-left text-[11px] text-muted-foreground hover:border-primary hover:text-foreground"
-            aria-label={`Configurar escala de ${c.nome}`}
-          >
-            <Settings2 className="h-3 w-3 shrink-0" />
-            <span className="truncate">
-              {MODELOS[c.modelo]} · {c.entrada}–{c.saida}
-            </span>
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-[380px] p-3">
-      <p className="mb-2 text-xs font-medium">Escala de {c.nome}</p>
-      <ControlesPessoa c={c} repousos={repousos} viradaEm={viradaEm} onChange={onChange} />
-        </PopoverContent>
-      </Popover>
+      <button
+        type="button"
+        onClick={onAbrir}
+        className="flex w-full items-center gap-1 truncate rounded border border-dashed px-1.5 py-0.5 text-left text-[11px] text-muted-foreground hover:border-primary hover:text-foreground"
+        aria-label={`Configurar escala de ${c.nome}`}
+      >
+        <Settings2 className="h-3 w-3 shrink-0" />
+        <span className="truncate">
+          {MODELOS[c.modelo]}
+          {c.modelo === "12x36" ? ` ${c.turma}` : ""} · {c.entrada}–{c.saida}
+        </span>
+      </button>
     </div>
   );
 }
@@ -1295,23 +1334,6 @@ function EditarDia({
   );
 }
 
-/**
- * A mesma falha semanal se repete em todas as semanas do mês (um 6x1 de 44h estoura o
- * limite em cada uma). Agrupa por mensagem para a lista dizer uma vez, com as semanas.
- */
-function agrupar(ocorrencias: Ocorrencia[]) {
-  const grupos = new Map<string, { gravidade: Ocorrencia["gravidade"]; mensagem: string; datas: string[]; semanal: boolean }>();
-  for (const o of ocorrencias) {
-    const k = `${o.gravidade}|${o.mensagem}`;
-    if (!grupos.has(k)) grupos.set(k, { gravidade: o.gravidade, mensagem: o.mensagem, datas: [], semanal: !REGRAS_DO_DIA.has(o.regra) });
-    grupos.get(k)!.datas.push(o.data);
-  }
-  return [...grupos.values()].map((g) => ({
-    ...g,
-    quando: `${g.semanal ? (g.datas.length > 1 ? "semanas de " : "semana de ") : ""}${g.datas.map(ddmm).join(", ")}`,
-  }));
-}
-
 function ListaOcorrencias({ linhas }: { linhas: Array<{ nome: string; ocorrencias: Ocorrencia[] }> }) {
   const comProblema = linhas.filter((l) => l.ocorrencias.length);
   if (!comProblema.length) {
@@ -1333,7 +1355,7 @@ function ListaOcorrencias({ linhas }: { linhas: Array<{ nome: string; ocorrencia
           <div key={l.nome}>
             <p className="text-sm font-medium">{l.nome}</p>
             <ul className="mt-1 space-y-0.5">
-              {agrupar(l.ocorrencias).map((g, i) => (
+              {agruparOcorrencias(l.ocorrencias).map((g, i) => (
                 <li key={i} className="flex items-start gap-1.5 text-xs">
                   {g.gravidade === "erro" ? (
                     <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
