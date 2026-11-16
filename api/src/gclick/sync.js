@@ -369,10 +369,18 @@ async function sincronizar({
     if (historico) total.regularizados = await regularizarHistorico(comps, tipos);
 
     // Extratos novos entram sozinhos: cadastra/atualiza funcionários (código e
-    // salário) e transforma saídas em aviso. Só na carga completa.
-    if (!cnpjFiltro) {
-      const e = await extratoAuto.processarExtratos(db);
-      if (!e.ok) console.error("[sync] extratos:", e.erro);
+    // salário) e transforma saídas em aviso. Sincronização de uma empresa só relê o
+    // extrato dela — antes não relia nada e a lista só andava na carga completa.
+    {
+      let ids = null;
+      if (cnpjFiltro) {
+        const { rows } = await db.query("SELECT id FROM companies WHERE cnpj = $1", [cnpjFiltro]);
+        ids = rows.map((r) => r.id);
+      }
+      if (!cnpjFiltro || ids.length) {
+        const e = await extratoAuto.processarExtratos(db, { companyIds: ids });
+        if (!e.ok) console.error("[sync] extratos:", e.erro);
+      }
     }
 
     // Liberar quaisquer documentos retidos que ainda existam (legado da época em que

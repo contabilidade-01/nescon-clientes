@@ -8,6 +8,7 @@ const { mergeToolAccess } = require("../companyTools");
 const { listCompanies, insertCompanyRow, PG_UNDEFINED_COLUMN } = require("../toolAccessDb");
 const { CARTEIRAS } = require("../ensureCarteiraSchema");
 const { importEmployeesForCompany } = require("../employeeImport");
+const { fixarDpParaQuemTemFuncionarios } = require("../dpFixado");
 const employeeUnify = require("../employeeUnify");
 const { parseExtratoEmployees } = require("../extratoEmployees");
 const { resolveUploadPath, uploadPdf, removeUploadFile } = require("../uploads");
@@ -1827,6 +1828,8 @@ router.post("/extrato-employees/import", requireArea("funcionarios"), async (req
       }
     }
 
+    // Quem passou a ter funcionário ganha advertência e suspensão no portal.
+    await fixarDpParaQuemTemFuncionarios(db, companies.map((c) => c.id));
     res.json({ inseridos: totalInseridos, pulados: totalPulados, inativados: totalInativados, empresas: porEmpresa });
   } catch (err) {
     console.error("[extrato-import]", err);
@@ -1955,6 +1958,7 @@ router.post("/companies/:id/import-employees", requireArea("funcionarios"), asyn
         return res.status(result.status).json(result.body);
       }
       await client.query("COMMIT");
+      await fixarDpParaQuemTemFuncionarios(db, [company.id]);
       return res.status(201).json(result.body);
     } catch (err) {
       await client.query("ROLLBACK");

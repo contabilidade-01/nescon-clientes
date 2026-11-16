@@ -93,6 +93,11 @@ const Index = () => {
   const canSeePayments = isToolAllowed(company?.toolAccess, "calendar");
   // Gerente só emite advertência/suspensão: o servidor recusa o resto, então nem pede.
   const isGerente = Boolean(company?.gerente);
+  const podeAdvertencia = isToolAllowed(company?.toolAccess, "warning");
+  const podeSuspensao = isToolAllowed(company?.toolAccess, "suspension");
+  // Fixadas no topo para o gerente e para a empresa com funcionário (ver api/src/dpFixado.js).
+  const dpFixado =
+    (podeAdvertencia || podeSuspensao) && (isGerente || company?.temFuncionarios === true);
 
   const { data: upcoming, isLoading: loadingUpcoming } = useQuery({
     queryKey: ["deliverables-upcoming", "home"],
@@ -257,10 +262,11 @@ const Index = () => {
           </section>
         )}
 
-        {/* Gerente: só advertência e suspensão, em destaque. */}
-        {isGerente && (
-          <section className="grid gap-3 sm:grid-cols-2">
-            {isToolAllowed(company?.toolAccess, "warning") && (
+        {/* Advertência e suspensão fixadas: o gerente só faz isso; a empresa, quando o
+            sistema identifica que ela tem funcionário (extrato da folha ou cadastro). */}
+        {dpFixado && (
+          <section aria-label="Advertência e suspensão" className="grid gap-3 sm:grid-cols-2">
+            {podeAdvertencia && (
               <button
                 type="button"
                 onClick={() => abrirFerramenta("warning", "/advertencia")}
@@ -274,7 +280,7 @@ const Index = () => {
                 <ArrowUpRight className="h-5 w-5 shrink-0 text-muted-foreground group-hover:text-primary" />
               </button>
             )}
-            {isToolAllowed(company?.toolAccess, "suspension") && (
+            {podeSuspensao && (
               <button
                 type="button"
                 onClick={() => abrirFerramenta("suspension", "/suspensao")}
