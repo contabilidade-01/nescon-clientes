@@ -48,6 +48,64 @@ function validarDados(dados) {
   return null;
 }
 
+/**
+ * Prontidão da carteira para 42h/40h (painel do escritório): por empresa com funcionário
+ * ativo, a jornada de cada um, se a lista foi conferida, se a escala está liberada no
+ * portal, o que a empresa marcou no planejador e quais meses têm escala salva. A conta de
+ * "dentro/fora da regra" roda na tela (src/lib/jornadaFuncionario.ts), a mesma do cliente.
+ */
+router.get("/prontidao", async (req, res) => {
+  if (!req.isAdmin || !adminHasArea(req, "funcionarios")) {
+    return res.status(403).json({ error: "Sem acesso a esta área." });
+  }
+  try {
+    const { rows: empresas } = await db.query(
+      `SELECT c.id, c.name, c.cnpj, c.escala_12x36, c.tool_access,
+              c.funcionarios_conferidos_em AS conferido_em,
+              ec.dados AS config,
+              COALESCE((SELECT array_agg(p.mes ORDER BY p.mes) FROM escala_planejamentos p WHERE p.company_id = c.id), '{}') AS meses
+         FROM companies c
+         LEFT JOIN escala_config ec ON ec.company_id = c.id
+        WHERE EXISTS (SELECT 1 FROM employees e WHERE e.company_id = c.id AND e.active IS TRUE)
+        ORDER BY c.name`
+    );
+    const { rows: funcs } = await db.query(
+      `SELECT e.id, e.company_id, e.name, e.carga_semanal, e.escala, e.folga,
+              e.horario_entrada, e.horario_saida, e.hipersuficiente
+         FROM employees e
+        WHERE e.active IS TRUE AND COALESCE(e.eh_contribuinte, false) = false
+        ORDER BY e.name`
+    );
+    const porEmpresa = new Map();
+    for (const f of funcs) {
+      if (!porEmpresa.has(f.company_id)) porEmpresa.set(f.company_id, []);
+      porEmpresa.get(f.company_id).push(f);
+    }
+    res.json(
+      empresas.map((c) => {
+        const cfg = c.config || {};
+        const ta = c.tool_access || {};
+        return {
+          id: c.id,
+          name: c.name,
+          cnpj: c.cnpj,
+          escala_12x36: Boolean(c.escala_12x36),
+          escalas_liberado: ta.escalas === true,
+          conferido_em: c.conferido_em,
+          atividade_definida: Boolean(cfg.atividadeDefinida),
+          tem_acordo: Boolean(cfg.temAcordoColetivo),
+          segmento: cfg.segmento || null,
+          meses: c.meses || [],
+          funcionarios: porEmpresa.get(c.id) || [],
+        };
+      })
+    );
+  } catch (err) {
+    console.error("[escalas] prontidao:", err.message);
+    res.status(500).json({ error: "Erro ao montar a prontidão" });
+  }
+});
+
 router.get("/config", async (req, res) => {
   const e = empresaDe(req);
   if (e.erro) return res.status(e.status).json({ error: e.erro });

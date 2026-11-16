@@ -22,6 +22,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { maskCPF, maskPIS } from "@/lib/masks";
 import { type EmployeeJornada } from "@/lib/api";
+import { AditivoJornadaDialog } from "@/components/AditivoJornadaDialog";
 import {
   ESCALAS_FUNCIONARIO,
   FOLGAS_FUNCIONARIO,
@@ -612,6 +613,16 @@ const EmployeesPage = () => {
                   )}
                 </div>
                 <div className="flex gap-1">
+                  {company && (
+                    <AditivoJornadaDialog
+                      empresa={{ name: company.name, cnpj: company.cnpj || "" }}
+                      funcionario={emp}
+                      onSalvarJornada={async (j) => {
+                        await api.employees.update(emp.id, j);
+                        queryClient.invalidateQueries({ queryKey: ["employees"] });
+                      }}
+                    />
+                  )}
                   <Button variant="ghost" size="icon" onClick={() => startEdit(emp)} className="h-8 w-8" title="Editar">
                     <Pencil className="h-4 w-4" />
                   </Button>

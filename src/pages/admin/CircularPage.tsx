@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -83,7 +84,12 @@ function Bolhas({ texto, midiaUrl, tipo }: { texto: string; midiaUrl: string | n
 
 const CircularPage = () => {
   const queryClient = useQueryClient();
-  const [texto, setTexto] = useState("");
+  // Texto pronto vindo de outra tela (ex.: Prontidão 42h/40h). O escritório revisa antes de enviar.
+  const location = useLocation();
+  const [texto, setTexto] = useState(() => {
+    const t = (location.state as { texto?: unknown } | null)?.texto;
+    return typeof t === "string" ? t : "";
+  });
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [previa, setPrevia] = useState<string | null>(null);
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null);

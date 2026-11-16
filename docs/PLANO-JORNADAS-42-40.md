@@ -21,8 +21,19 @@ Pedido do Jean em 13/11/2026 e 16/11/2026. O planejador de escalas (ver
   Excluir vale para qualquer cadastro, menos quem tem atestado (aí é Inativar).
   Gerentes continuam só com leitura.
 
-## Próximos PRs
+## Parte 2 — Prontidão, aditivo e circular
 
-2. Painel de prontidão no admin, aditivo de alteração de jornada e circular aos clientes.
+- **Prontidão 42h / 40h** (`/admin/jornadas`, área funcionários; `GET /api/escalas/prontidao`):
+  por cliente com funcionário, quantos ficam fora da regra e em atenção na data da etapa,
+  sem jornada, planejador liberado, escala do mês da etapa salva e lista conferida. Filtro
+  "só com pendência", liberar o planejador em lote e "Circular aos clientes", que abre a
+  Circular (WhatsApp) com o texto pronto para o escritório revisar e enviar.
+- **Aditivo de jornada** (`src/lib/generateAditivoJornadaPdf.ts`, botão em cada
+  funcionário): termo aditivo em PDF com a nova jornada, a anterior, a manutenção do
+  salário e o art. 468 da CLT; opcionalmente grava a nova jornada no cadastro. Recusa
+  gerar jornada fora da regra da data de início.
+
+## Próximas partes
+
 3. Distribuição automática de escalas (6x1 hoje, 12x36, folga fixa ou variável).
 4. Assistente de IA (API do Claude com ferramentas) que analisa e aplica na escala.

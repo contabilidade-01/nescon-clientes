@@ -53,6 +53,7 @@ import AcessosPage from "./pages/admin/AcessosPage.tsx";
 import FeriasUploadLotePage from "./pages/admin/FeriasUploadLotePage.tsx";
 import FeriasUrgenciaPage from "./pages/admin/FeriasUrgenciaPage.tsx";
 import EscalasAdminPage from "./pages/admin/EscalasPage.tsx";
+import JornadasProntidaoPage from "./pages/admin/JornadasProntidaoPage.tsx";
 import RegimeAdminPage from "./pages/admin/RegimePage.tsx";
 import EnviarAcessoPage from "./pages/admin/EnviarAcessoPage.tsx";
 import ContratosPage from "./pages/admin/ContratosPage.tsx";
@@ -227,6 +228,7 @@ const AppRoutes = () => (
     <Route path="/admin/taxas-anuais" element={<AdminAreaRoute area="taxas_anuais"><TaxasAnuaisPage /></AdminAreaRoute>} />
     <Route path="/admin/folha" element={<AdminAreaRoute area="funcionarios"><PainelFolhaPage /></AdminAreaRoute>} />
     <Route path="/admin/escalas" element={<AdminAreaRoute area="funcionarios"><EscalasAdminPage /></AdminAreaRoute>} />
+    <Route path="/admin/jornadas" element={<AdminAreaRoute area="funcionarios"><JornadasProntidaoPage /></AdminAreaRoute>} />
     <Route path="/admin/alertas" element={<AdminAreaRoute area="alertas"><AlertasPage /></AdminAreaRoute>} />
     <Route path="/admin/lgpd" element={<AdminAreaRoute area="lgpd"><LgpdPage /></AdminAreaRoute>} />
     <Route path="/admin/sincronizacao" element={<AdminAreaRoute area="sincronizacao"><SincronizacaoPage /></AdminAreaRoute>} />

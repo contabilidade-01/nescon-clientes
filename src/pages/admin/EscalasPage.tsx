@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { CompanyPicker } from "@/components/admin/CompanyPicker";
 import { PlanejadorEscala } from "@/components/escala/PlanejadorEscala";
@@ -15,7 +16,9 @@ import { isToolAllowed } from "@/lib/companyTools";
  * trabalho" em Empresas (nasce desligada).
  */
 const EscalasPage = () => {
-  const [companyId, setCompanyId] = useState("");
+  // ?empresa=<id> abre direto na empresa (link da Prontidão 42h/40h).
+  const [params] = useSearchParams();
+  const [companyId, setCompanyId] = useState(() => params.get("empresa") || "");
   const { data: companies } = useAdminCompanies();
   const empresa = companies?.find((c) => c.id === companyId);
 

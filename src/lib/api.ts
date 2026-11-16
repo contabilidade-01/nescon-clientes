@@ -1110,6 +1110,23 @@ export const api = {
    * empresa da sessão e exige a ferramenta `escalas` ligada).
    */
   escalas: {
+    /** Prontidão da carteira para 42h/40h (só escritório). */
+    prontidao: () =>
+      request<
+        Array<{
+          id: string;
+          name: string;
+          cnpj: string;
+          escala_12x36: boolean;
+          escalas_liberado: boolean;
+          conferido_em: string | null;
+          atividade_definida: boolean;
+          tem_acordo: boolean;
+          segmento: string | null;
+          meses: string[];
+          funcionarios: Array<{ id: string; company_id: string; name: string } & EmployeeJornada>;
+        }>
+      >("/escalas/prontidao"),
     config: (companyId?: string) =>
       request<{ dados: unknown; atualizado_em: string | null; atualizado_por: string | null }>(
         `/escalas/config${qsEmpresa(companyId)}`
