@@ -39,3 +39,22 @@ test("falha no banco não derruba quem chamou", async () => {
   const db = { query: async () => { throw new Error("sem coluna"); } };
   assert.deepEqual(await fixarDpParaQuemTemFuncionarios(db), []);
 });
+
+test("grupo: loja com funcionário mantém advertência mesmo com outra loja desligada", async () => {
+  const { getToolAccessForGroup } = require("../src/toolAccessDb");
+  const db = {
+    query: async () => ({
+      rows: [
+        { tool_access: { warning: true, suspension: true, employees: true, history: true, chat: false } },
+        { tool_access: { warning: false, suspension: false, employees: false, history: false, chat: false } },
+      ],
+    }),
+  };
+  const a = await getToolAccessForGroup(db, ["a", "b"]);
+  assert.equal(a.warning, true);
+  assert.equal(a.suspension, true);
+  assert.equal(a.employees, true);
+  assert.equal(a.history, true);
+  // O resto segue a regra antiga.
+  assert.equal(a.chat, false);
+});

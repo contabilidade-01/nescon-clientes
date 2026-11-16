@@ -3,6 +3,7 @@
  * Código de erro: 42703 = undefined_column
  */
 const { mergeToolAccess, DEFAULT_TOOL_ACCESS } = require("./companyTools");
+const { DP_TOOLS_FIXADAS } = require("./dpFixado");
 
 const PG_UNDEFINED_COLUMN = "42703";
 
@@ -93,6 +94,12 @@ async function getToolAccessForGroup(db, grupoIds) {
     for (const key of Object.keys(DEFAULT_TOOL_ACCESS)) {
       if (DEFAULT_TOOL_ACCESS[key] !== false) continue;
       agregado[key] = rows.some((r) => r.tool_access && r.tool_access[key] === true);
+    }
+    // Advertência, suspensão, lista e histórico também: o portal liga sozinho na empresa
+    // que tem funcionário (dpFixado.js). Num grupo em que só uma loja tem funcionário, a
+    // regra de cima (desliga se alguma está desligada) escondia tudo dela.
+    for (const key of DP_TOOLS_FIXADAS) {
+      if (rows.some((r) => r.tool_access && r.tool_access[key] === true)) agregado[key] = true;
     }
     return agregado;
   } catch (err) {

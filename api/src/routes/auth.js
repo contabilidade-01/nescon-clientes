@@ -6,7 +6,8 @@ const db = require("../db");
 const { generateToken, generateAdminToken, generateGerenteToken, authMiddleware } = require("../middleware/auth");
 const { acessoDoGerente } = require("../gerentes");
 const { mergeToolAccess } = require("../companyTools");
-const { getCompanyByCnpjForLogin } = require("../toolAccessDb");
+const { getCompanyByCnpjForLogin, getToolAccessForGroup } = require("../toolAccessDb");
+const { fixarDpParaQuemTemFuncionarios } = require("../dpFixado");
 const { registrarLogin } = require("../portalEventos");
 const {
   validateCNPJ,
@@ -805,6 +806,15 @@ router.get("/company-session", authMiddleware, async (req, res) => {
   } catch (err) {
     console.error("company-session funcionarios:", err.message);
   }
+  // Rede de segurança da varredura do arranque/extrato: empresa com funcionário que
+  // ainda não teve advertência e suspensão ligadas ganha agora, já nesta resposta.
+  let toolAccess = req.companyToolAccess;
+  if (temFuncionarios && !req.companyUser) {
+    const ligadas = await fixarDpParaQuemTemFuncionarios(db, [req.company.id]);
+    if (ligadas.length) {
+      toolAccess = await getToolAccessForGroup(db, req.empresas_grupo_ids || [req.company.id]);
+    }
+  }
 
   // O estado do LGPD vem da base (não do token): o aviso do primeiro acesso some
   // assim que o cliente responde, sem precisar de novo login.
@@ -838,7 +848,7 @@ router.get("/company-session", authMiddleware, async (req, res) => {
       cnpj: req.company.cnpj,
     },
     gerente: req.companyUser ? { id: req.companyUser.id, nome: req.companyUser.nome } : null,
-    tool_access: req.companyToolAccess,
+    tool_access: toolAccess,
     tem_funcionarios: temFuncionarios,
     escala_12x36: escala12x36,
     lgpd,
