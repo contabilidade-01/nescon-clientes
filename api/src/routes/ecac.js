@@ -38,6 +38,8 @@ router.get("/r/:token", async (req, res) => {
   try {
     const clique = tok ? await cobranca.registrarClique(db, tok) : null;
     if (clique && clique.company_id) {
+      // Alerta manual: o envio tem o seu link (7 dias). Vencido/cancelado → página avisa.
+      if (clique.acesso_token) return res.redirect(302, `${base}/g/${clique.acesso_token}`);
       const acesso = await acessoLinks.obterOuCriar(db, { companyId: clique.company_id, origem: "cobranca", cobrancaId: clique.cobranca_id || null });
       return res.redirect(302, `${base}/g/${acesso}`);
     }

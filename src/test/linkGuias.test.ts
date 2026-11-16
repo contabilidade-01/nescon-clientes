@@ -17,14 +17,30 @@ describe("aviso de guia do mês com link sem senha", () => {
       ],
       "https://app.teste/g/abc"
     );
-    expect(t).toContain("Baixe suas guias aqui (sem senha): https://app.teste/g/abc");
+    expect(t).toContain("Clique aqui para baixar as guias: https://app.teste/g/abc");
     expect(t).toContain("Demais documentos no portal: https://app.teste/documentos");
+    expect(t).not.toContain("sem senha");
   });
   it("sem guia: só o portal, como antes", () => {
     process.env.PUBLIC_APP_URL = "https://app.teste";
     const t = montarTexto("ALFA", [{ title: "Recibos", guia: false }]);
     expect(t).toContain("Acesse: https://app.teste/documentos");
-    expect(t).not.toContain("sem senha");
+    expect(t).not.toContain("Clique aqui");
+  });
+  it("guias do mês: nome, vencimento e DAS/INSS/FGTS no convite", () => {
+    process.env.PUBLIC_APP_URL = "https://app.teste";
+    const t = montarTexto(
+      "ALFA",
+      [
+        { title: "x", competencia: "2026-10", guia: true, docType: "DAS", vencimento: "2026-10-20" },
+        { title: "y", competencia: "2026-10", guia: true, docType: "DCTF_WEB", vencimento: "2026-10-20" },
+        { title: "z", competencia: "2026-10", guia: true, docType: "FGTS", vencimento: "2026-10-20" },
+      ],
+      "https://app.teste/g/abc"
+    );
+    expect(t).toContain("Chegaram as guias no portal, ALFA");
+    expect(t).toContain("• INSS (DCTFWeb) — vence 20/10");
+    expect(t).toContain("Clique aqui para baixar o DAS, o INSS (DCTFWeb) e o FGTS: https://app.teste/g/abc");
   });
 });
 

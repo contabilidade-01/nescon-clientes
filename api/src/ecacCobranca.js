@@ -288,9 +288,16 @@ async function passo(db, cobranca, cfg, hoje) {
         await registrarProxima(`${etapa} (envio desligado)`, regras.somarDiasUteis(hoje, 1));
         return { id: cobranca.id, acao: "enviar", etapa, pulado: "envio desligado" };
       }
-      if (bloqueio && !cfg.modo_teste) {
+      // Lembrete ao escritório: só não sai se a empresa estiver pausada/arquivada.
+      const bloqueioEscritorio = !empresa
+        ? "empresa não encontrada"
+        : empresa.arquivada || empresa.excluida
+          ? "empresa arquivada/excluída"
+          : empresa.ecac_cobranca_ativa === false ? "cobrança do e-CAC pausada para a empresa" : null;
+      const bloqueioEfetivo = cfg.modo_teste ? bloqueioEscritorio : bloqueio;
+      if (bloqueioEfetivo) {
         await registrarProxima(`${etapa} (pausada)`, regras.somarDiasUteis(hoje, 1));
-        return { id: cobranca.id, acao: "enviar", etapa, pulado: bloqueio };
+        return { id: cobranca.id, acao: "enviar", etapa, pulado: bloqueioEfetivo };
       }
 
       const resultados = canais.length
@@ -362,7 +369,7 @@ async function registrarGuiaGerada(db, { companyId, emissao, reuso, solicitadoPo
 async function registrarClique(db, token) {
   const { rows } = await db.query(
     `UPDATE ecac_notificacoes SET clicado_em = COALESCE(clicado_em, now()) WHERE token = $1
-     RETURNING company_id, cobranca_id, etapa, canal`,
+     RETURNING company_id, cobranca_id, etapa, canal, acesso_token`,
     [token]
   );
   if (rows.length) await evento(db, rows[0].company_id, rows[0].cobranca_id, "link_clicado", { etapa: rows[0].etapa, canal: rows[0].canal });

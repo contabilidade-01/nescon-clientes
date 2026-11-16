@@ -17,6 +17,8 @@ const cobranca = require("../ecacCobranca");
 const envio = require("../ecacEnvio");
 const regras = require("../ecacRegras");
 const acessoLinks = require("../acessoLinks");
+const pend = require("../ecacPendencias");
+const { adminHasArea } = require("../middleware/adminArea");
 
 router.use(authMiddleware);
 router.use(requireArea("alertas"));
@@ -154,6 +156,7 @@ router.get("/cobrancas/:id", async (req, res) => {
       guias,
       eventos,
       links,
+      pode_alertar: adminHasArea(req, "ecac_alerta_cliente"),
     });
   } catch (err) {
     console.error("[ecac-admin] cobrança:", err.message);
@@ -201,6 +204,100 @@ router.post("/empresas/:companyId/parcelas/consultar", async (req, res) => {
     res.json(await ecac.consultarParcelas({ cnpj, tipo, forcar: Boolean(req.body?.forcar), solicitadoPor: quem(req) }));
   } catch (err) {
     erroEcac(res, err, "consultar parcelas");
+  }
+});
+
+// ------------------------------------------------- confirmar pendências (desvio 20)
+async function empresaPorId(companyId) {
+  const { rows } = await db.query(`SELECT id, name, cnpj FROM companies WHERE id = $1`, [companyId]);
+  return rows[0] || null;
+}
+
+/**
+ * Relatório novo chegou: reimporta o espelho (custo zero) e faz as cobranças abertas da
+ * empresa passarem a usar o relatório confirmado (mesmo efeito do "adotar_relatorio").
+ */
+async function adotarRelatorioConfirmado(empresa) {
+  const r = await pend.importarEmpresa(db, empresa.id, empresa.cnpj);
+  if (!r || !r.pendenciaId) return null;
+  await db.query(
+    `UPDATE ecac_cobrancas SET pendencia_id = $2, relatorio_id = $3, atualizado_em = now()
+      WHERE company_id = $1 AND encerrado_em IS NULL`,
+    [empresa.id, r.pendenciaId, r.espelho.relatorio_id]
+  );
+  return r;
+}
+
+/** POST /empresas/:companyId/confirmar — pede à Receita o relatório AGORA (pago, ~R$ 0,32). */
+router.post("/empresas/:companyId/confirmar", async (req, res) => {
+  const { companyId } = req.params;
+  if (!validateUUID(companyId)) return res.status(400).json({ error: "company_id inválido" });
+  const empresa = await empresaPorId(companyId);
+  const cnpj = empresa && regras.cnpjChave(empresa.cnpj);
+  if (!cnpj) return res.status(400).json({ error: "Empresa sem CNPJ" });
+  try {
+    res.json(await ecac.confirmarSituacao({ cnpj, solicitadoPor: quem(req) }));
+  } catch (err) {
+    erroEcac(res, err, "confirmar");
+  }
+});
+
+/**
+ * GET /empresas/:companyId/confirmacao — status da confirmação; quando concluída e mais
+ * nova que o espelho, reimporta e devolve `importado: true` (o painel recarrega o detalhe).
+ */
+router.get("/empresas/:companyId/confirmacao", async (req, res) => {
+  const { companyId } = req.params;
+  if (!validateUUID(companyId)) return res.status(400).json({ error: "company_id inválido" });
+  const empresa = await empresaPorId(companyId);
+  const cnpj = empresa && regras.cnpjChave(empresa.cnpj);
+  if (!cnpj) return res.status(400).json({ error: "Empresa sem CNPJ" });
+  try {
+    const st = await ecac.confirmacaoSituacao(cnpj);
+    let importado = false;
+    if (st && st.status === "concluida" && st.relatorio_id) {
+      const atual = await pend.ultimaPendencia(db, empresa.id);
+      if (!atual || Number(atual.relatorio_id) !== Number(st.relatorio_id)) {
+        importado = Boolean(await adotarRelatorioConfirmado({ ...empresa, cnpj }));
+      }
+    }
+    res.json({ ...st, importado });
+  } catch (err) {
+    erroEcac(res, err, "confirmação");
+  }
+});
+
+// --------------------------------------------------- alerta manual ao cliente
+/**
+ * POST /cobrancas/:id/alertar { canais: ['whatsapp','email'] } — ÚNICO caminho de mensagem
+ * de impostos em atraso ao cliente. Exige a permissão "Enviar alerta de impostos ao
+ * cliente" (o dono sempre tem). Link sem senha novo, válido por 7 dias.
+ */
+router.post("/cobrancas/:id/alertar", async (req, res) => {
+  if (!adminHasArea(req, "ecac_alerta_cliente")) {
+    return res.status(403).json({ error: "Você não tem permissão para enviar alertas ao cliente." });
+  }
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "id inválido" });
+  const canais = (Array.isArray(req.body?.canais) ? req.body.canais : []).filter((c) => c === "whatsapp" || c === "email");
+  if (!canais.length) return res.status(400).json({ error: "Escolha WhatsApp e/ou e-mail." });
+  try {
+    const { rows } = await db.query(`SELECT * FROM ecac_cobrancas WHERE id = $1`, [id]);
+    if (!rows.length) return res.status(404).json({ error: "Cobrança não encontrada" });
+    const cb = rows[0];
+    const empresa = await envio.carregarEmpresa(db, cb.company_id);
+    if (!empresa) return res.status(404).json({ error: "Empresa não encontrada" });
+    const pendencia = await pend.ultimaPendencia(db, cb.company_id);
+    const cfg = await lerConfig(db);
+    const resultados = await envio.enviarAlertaCliente({ db, cobranca: cb, empresa, pendencia, canais, cfg, quem: quem(req) });
+    await db.query(
+      `INSERT INTO ecac_eventos (company_id, cobranca_id, tipo, dados) VALUES ($1, $2, 'alerta_cliente', $3::jsonb)`,
+      [cb.company_id, cb.id, JSON.stringify({ por: quem(req), resultados, relatorio_data: pendencia?.relatorio_data || null })]
+    );
+    res.json({ ok: true, resultados, validade_dias: envio.DIAS_LINK_ALERTA });
+  } catch (err) {
+    console.error("[ecac-admin] alertar:", err.message);
+    res.status(500).json({ error: "Erro ao enviar o alerta" });
   }
 });
 

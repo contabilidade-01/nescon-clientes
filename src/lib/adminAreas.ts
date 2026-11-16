@@ -18,6 +18,8 @@ export const ADMIN_AREAS = [
   "acessos",
   "acompanhamentos",
   "admissoes",
+  // Ação, não página: enviar ao cliente o alerta de impostos em atraso (link de recálculo).
+  "ecac_alerta_cliente",
 ] as const;
 
 export type AdminArea = (typeof ADMIN_AREAS)[number];
@@ -50,6 +52,10 @@ export const ADMIN_AREA_LABELS: Record<AdminArea, { title: string; description: 
   admissoes: {
     title: "Admissões",
     description: "Só as fichas e os documentos de admissão",
+  },
+  ecac_alerta_cliente: {
+    title: "Enviar alerta de impostos ao cliente",
+    description: "Na tela Impostos e-CAC: mandar ao cliente o link para gerar/recalcular as guias",
   },
 };
 

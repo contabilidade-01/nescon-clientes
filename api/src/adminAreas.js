@@ -25,6 +25,9 @@ const ADMIN_AREAS = [
   "acessos",
   "acompanhamentos",
   "admissoes",
+  // Permissão de AÇÃO (não é página): enviar ao cliente o alerta de impostos em atraso
+  // com o link de recálculo. Ver routes/adminEcac.js (POST /cobrancas/:id/alertar).
+  "ecac_alerta_cliente",
 ];
 
 const ADMIN_AREA_LABELS = {
@@ -40,6 +43,7 @@ const ADMIN_AREA_LABELS = {
   acessos: "Controle de acessos",
   acompanhamentos: "Acompanhamentos mensais",
   admissoes: "Admissões",
+  ecac_alerta_cliente: "Enviar alerta de impostos ao cliente",
 };
 
 /**
