@@ -58,6 +58,16 @@ async function ensureDeliverablesSchema(db) {
     await db.query(`
       ALTER TABLE deliverables ADD COLUMN IF NOT EXISTS historico BOOLEAN NOT NULL DEFAULT false;
     `);
+    /**
+     * Baixa automática pelo relatório do e-CAC (ecacBaixaAuto.js): quando foi e de que
+     * relatório saiu (o cliente vê "baixa automática" no card). `baixa_auto_bloqueada`
+     * marca guia que alguém reabriu depois da baixa: dali em diante, só manual.
+     */
+    await db.query(`ALTER TABLE deliverables ADD COLUMN IF NOT EXISTS baixa_auto_em TIMESTAMPTZ;`);
+    await db.query(`ALTER TABLE deliverables ADD COLUMN IF NOT EXISTS baixa_auto_relatorio_em TIMESTAMPTZ;`);
+    await db.query(`
+      ALTER TABLE deliverables ADD COLUMN IF NOT EXISTS baixa_auto_bloqueada BOOLEAN NOT NULL DEFAULT false;
+    `);
     // Entregas que já existiam antes da retenção continuam visíveis (não sumir do
     // cliente numa atualização). Só vale para linhas antigas: a coluna nasce nula.
     await db.query(`

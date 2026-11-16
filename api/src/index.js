@@ -104,7 +104,20 @@ app.use(express.json({ limit: "1mb" }));
 
 // Servir arquivos de upload (anexos do chat, PDFs de entregas).
 const { UPLOAD_DIR } = require("./uploads");
-app.use("/api/uploads", express.static(path.resolve(UPLOAD_DIR)));
+// Pastas com ponto no nome (ex.: .envios-avulsos, arquivos que o cliente manda pela página
+// pública /enviar) NUNCA são servidas aqui: só saem pelo painel, logado. O express.static
+// já ignora "dotfiles", mas a trava explícita não depende desse padrão.
+app.use("/api/uploads", (req, res, next) => {
+  let caminho = req.path;
+  try {
+    caminho = decodeURIComponent(req.path);
+  } catch {
+    return res.status(400).end();
+  }
+  if (/(^|[\\/])\./.test(caminho)) return res.status(404).end();
+  next();
+});
+app.use("/api/uploads", express.static(path.resolve(UPLOAD_DIR), { dotfiles: "deny" }));
 
 // Nota de segurança: quem está com a senha inicial (= CNPJ, público) é barrado na API
 // inteira, não só na tela. A trava vive DENTRO do authMiddleware — ver
@@ -132,6 +145,9 @@ app.use("/api/onboarding/portal", onboardingRoutes.portalRouter);
 const certificadosRoutes = require("./routes/certificadosDigitais");
 app.use("/api/admin/certificados", certificadosRoutes.adminRouter);
 app.use("/api/certificado-digital", certificadosRoutes.portalRouter);
+// Documentos enviados pelo cliente na página pública /enviar (ver routes/envioAvulso.js).
+const envioAvulsoRoutes = require("./routes/envioAvulso");
+app.use("/api/admin/envios-avulsos", envioAvulsoRoutes.adminRouter);
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/chat", require("./routes/chat"));
 app.use("/api/employees", require("./routes/employees"));
@@ -167,6 +183,8 @@ app.use("/api/whatsapp", require("./routes/whatsappWebhook"));
 app.use("/api/dp-docs", require("./routes/dpDocs"));
 // Advertência/suspensão por link avulso (sem login): ver routes/dpAvulso.js.
 app.use("/api/dp-avulso", require("./routes/dpAvulso"));
+// Envio de documentos sem login (CNPJ + tipo + arquivos): ver routes/envioAvulso.js.
+app.use("/api/envio-avulso", envioAvulsoRoutes.publicRouter);
 // Integração com central-ecac: endpoints internos (sync contatos, disparo WhatsApp).
 app.use("/api/interno", require("./routes/interno"));
 
@@ -214,6 +232,7 @@ async function start() {
     await ensureEmployeePayrollFields(db);
     // Advertência e suspensão fixadas para quem tem funcionário (ver dpFixado.js).
     await require("./ensureDpFixadoSchema").ensureDpFixadoSchema(db);
+    await require("./ensureEnviosAvulsosSchema").ensureEnviosAvulsosSchema(db);
     await ensureJornadaSchema(db);
     await ensureVacationSchema(db);
     await ensureEngagementSchema(db);

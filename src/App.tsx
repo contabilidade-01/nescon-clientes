@@ -24,6 +24,7 @@ import OnboardingModelosPage from "./pages/admin/OnboardingModelosPage.tsx";
 import PrimeirosPassosPage from "./pages/PrimeirosPassosPage.tsx";
 import OnboardingPublicoPage from "./pages/OnboardingPublicoPage.tsx";
 import DpAvulsoPage from "./pages/DpAvulsoPage.tsx";
+import EnvioAvulsoPage from "./pages/EnvioAvulsoPage.tsx";
 import EmpresasPage from "./pages/admin/EmpresasPage.tsx";
 import GruposPage from "./pages/admin/GruposPage.tsx";
 import ClientesGclickPage from "./pages/admin/ClientesGclickPage.tsx";
@@ -41,6 +42,7 @@ import AtendimentosPage from "./pages/admin/AtendimentosPage.tsx";
 import MensagensPage from "./pages/MensagensPage.tsx";
 import UsuariosPage from "./pages/admin/UsuariosPage.tsx";
 import DocumentUploadPage from "./pages/admin/DocumentUploadPage.tsx";
+import EnviosRecebidosPage from "./pages/admin/EnviosRecebidosPage.tsx";
 import DocumentosAdminPage from "./pages/admin/DocumentosAdminPage.tsx";
 import ConfigIaPage from "./pages/admin/ConfigIaPage.tsx";
 import VencimentosSugeridosPage from "./pages/admin/VencimentosSugeridosPage.tsx";
@@ -205,6 +207,8 @@ const AppRoutes = () => (
     {/* Advertência e suspensão por link avulso (sem login): CNPJ → empresa → formulário. */}
     <Route path="/avulso" element={<DpAvulsoPage />} />
     <Route path="/avulso/:tipo" element={<DpAvulsoPage />} />
+    {/* Envio de documentos pelo cliente (sem login): CNPJ → tipo → arquivos. */}
+    <Route path="/enviar" element={<EnvioAvulsoPage />} />
     {/* Calculadora pública de custo de contratação — sem login */}
     <Route path="/calculadora-custo" element={<CalculadoraCustoPage />} />
     {/* Ficha de admissão — pública; se houver sessão de empresa, pré-preenche */}
@@ -236,6 +240,7 @@ const AppRoutes = () => (
     <Route path="/admin/clientes-sem-boleto" element={<AdminAreaRoute area="sincronizacao"><ClientesSemBoletoPage /></AdminAreaRoute>} />
     <Route path="/admin/atendimentos" element={<AdminAreaRoute area="atendimento"><AtendimentosPage /></AdminAreaRoute>} />
     <Route path="/admin/usuarios" element={<OwnerOnlyRoute><UsuariosPage /></OwnerOnlyRoute>} />
+    <Route path="/admin/envios-recebidos" element={<AdminAreaRoute area="entregas"><EnviosRecebidosPage /></AdminAreaRoute>} />
     <Route path="/admin/doc-upload" element={<AdminAreaRoute area="entregas"><DocumentUploadPage /></AdminAreaRoute>} />
     <Route path="/admin/documentos" element={<AdminAreaRoute area="entregas"><DocumentosAdminPage /></AdminAreaRoute>} />
     <Route path="/admin/config-ia" element={<AdminAreaRoute area="entregas"><ConfigIaPage /></AdminAreaRoute>} />

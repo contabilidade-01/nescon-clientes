@@ -172,7 +172,63 @@ export type Deliverable = {
   historico?: boolean;
   /** URL pública do PDF (ex: boletos Cora sem arquivo local). */
   pdf_url?: string | null;
+  /** Baixa automática: a competência não consta mais no relatório do e-CAC. */
+  baixa_auto_em?: string | null;
+  baixa_auto_relatorio_em?: string | null;
   created_at: string;
+};
+
+export type EcacBaixaAutoConfig = {
+  ativa: boolean;
+  max_idade_dias: number;
+  fgts_com_inss: boolean;
+  ultima_rodada: { rodada_id: string; em: string; analisadas: number; qtd_baixadas: number; quem: string } | null;
+};
+
+export type EcacBaixaAutoLinha = {
+  deliverable_id: string;
+  company_id: string;
+  company_name: string;
+  doc_type: string;
+  title: string;
+  due_date: string;
+  periodo_apuracao: string;
+  motivo: string;
+  relatorio_data: string | null;
+  baixa_id?: number;
+};
+
+export type EcacBaixaAutoRodada = {
+  pulado?: boolean;
+  motivo?: string;
+  rodada_id: string;
+  aplicada: boolean;
+  analisadas: number;
+  qtd_baixadas: number;
+  qtd_puladas: number;
+  baixadas: EcacBaixaAutoLinha[];
+  puladas: EcacBaixaAutoLinha[];
+};
+
+export type EcacBaixaAutoRegistro = {
+  id: number;
+  rodada_id: string;
+  deliverable_id: string;
+  company_id: string;
+  company_name: string;
+  doc_type: string;
+  competencia: string | null;
+  periodo_apuracao: string | null;
+  due_date: string | null;
+  relatorio_id: number | null;
+  relatorio_data: string | null;
+  motivo: string | null;
+  quem: string | null;
+  criado_em: string;
+  revertido_em: string | null;
+  revertido_por: string | null;
+  title: string | null;
+  status: DeliverableStatus | null;
 };
 
 export type PublicDeliverable = {
@@ -985,6 +1041,31 @@ export type ClientesSemBoletoResposta = {
 export function dpDocDocxUrl(token: string): string {
   return `${API_BASE}/dp-docs/${encodeURIComponent(token)}/docx`;
 }
+
+export type EnvioAvulsoConfig = {
+  tipos: { chave: string; rotulo: string }[];
+  max_arquivos: number;
+  max_mb_arquivo: number;
+  max_mb_envio: number;
+  accept: string;
+};
+
+export type EnvioRecebido = {
+  id: string;
+  protocolo: string;
+  tipo: string;
+  tipo_rotulo: string;
+  observacao: string | null;
+  remetente: string | null;
+  status: "novo" | "tratado";
+  tratado_por: string | null;
+  tratado_em: string | null;
+  created_at: string;
+  company_id: string;
+  empresa: string;
+  cnpj: string;
+  arquivos: { id: string; nome: string; tamanho: number }[];
+};
 
 export const api = {
   auth: {
@@ -3180,6 +3261,59 @@ export const api = {
       return data;
     },
   },
+  /** Envio de documentos pelo cliente, sem login (página /enviar) — ver api/src/routes/envioAvulso.js. */
+  envioAvulso: {
+    tipos: () => publicRequest<EnvioAvulsoConfig>(`/envio-avulso/tipos`),
+    empresa: (cnpj: string) =>
+      publicRequest<{ encontrada: boolean; nome?: string }>(
+        `/envio-avulso/empresa?cnpj=${encodeURIComponent(cnpj.replace(/\D/g, ""))}`
+      ),
+    /** XHR em vez de fetch para mostrar o progresso do envio (foto grande no 4G demora). */
+    enviar: (
+      campos: { cnpj: string; tipo: string; observacao?: string; remetente?: string; site?: string },
+      arquivos: File[],
+      onProgresso?: (pct: number) => void
+    ) =>
+      new Promise<{ ok: boolean; protocolo: string; arquivos: number }>((resolve, reject) => {
+        const form = new FormData();
+        for (const [k, v] of Object.entries(campos)) form.append(k, v ?? "");
+        for (const f of arquivos) form.append("arquivos", f, f.name);
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${API_BASE}/envio-avulso/enviar`);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable && onProgresso) onProgresso(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onerror = () => reject(new Error("Sem conexão. Confira a internet e tente de novo."));
+        xhr.onload = () => {
+          let data: { error?: string; ok?: boolean; protocolo?: string; arquivos?: number } = {};
+          try {
+            data = JSON.parse(xhr.responseText || "{}");
+          } catch {
+            /* resposta não-JSON (ex.: 413 do proxy) */
+          }
+          if (xhr.status >= 200 && xhr.status < 300 && data.ok) {
+            resolve({ ok: true, protocolo: data.protocolo || "", arquivos: data.arquivos || arquivos.length });
+          } else if (xhr.status === 413) {
+            reject(new Error("Os arquivos passam do tamanho permitido. Divida em mais de um envio."));
+          } else {
+            reject(new Error(data.error || "Não foi possível enviar agora. Tente de novo."));
+          }
+        };
+        xhr.send(form);
+      }),
+  },
+  /** Painel: documentos recebidos pela página /enviar. */
+  enviosRecebidos: {
+    listar: (params: { status?: "novo" | "tratado" | ""; busca?: string }) => {
+      const q = new URLSearchParams();
+      if (params.status) q.set("status", params.status);
+      if (params.busca) q.set("busca", params.busca);
+      return request<{ envios: EnvioRecebido[]; novos: number }>(`/admin/envios-avulsos?${q.toString()}`);
+    },
+    marcar: (id: string, status: "novo" | "tratado") =>
+      request<{ ok: boolean }>(`/admin/envios-avulsos/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+    fetchArquivo: (arquivoId: string) => requestBlob(`/admin/envios-avulsos/arquivos/${arquivoId}/file`),
+  },
   onboarding: {
     get: (token: string) =>
       publicRequest<import("@/lib/onboardingModelo").OnboardingCliente>(`/onboarding/public/${encodeURIComponent(token)}`),
@@ -3359,6 +3493,16 @@ export const api = {
         `/admin/ecac/cobrancas/${cobrancaId}/alertar`,
         { method: "POST", body: JSON.stringify({ canais }) }
       ),
+    baixaAutoConfig: () => request<EcacBaixaAutoConfig>("/admin/ecac/baixa-auto/config"),
+    salvarBaixaAutoConfig: (dados: Partial<Pick<EcacBaixaAutoConfig, "ativa" | "max_idade_dias">>) =>
+      request<EcacBaixaAutoConfig>("/admin/ecac/baixa-auto/config", { method: "PUT", body: JSON.stringify(dados) }),
+    baixaAutoPrevia: () => request<EcacBaixaAutoRodada>("/admin/ecac/baixa-auto/previa"),
+    baixaAutoAplicar: () => request<EcacBaixaAutoRodada>("/admin/ecac/baixa-auto/aplicar", { method: "POST", body: "{}" }),
+    baixasAuto: () => request<EcacBaixaAutoRegistro[]>("/admin/ecac/baixa-auto"),
+    reverterBaixaAuto: (id: number) =>
+      request<{ revertidas: number; total: number }>(`/admin/ecac/baixa-auto/${id}/reverter`, { method: "POST", body: "{}" }),
+    reverterRodadaBaixaAuto: (rodadaId: string) =>
+      request<{ revertidas: number; total: number }>(`/admin/ecac/baixa-auto/rodadas/${encodeURIComponent(rodadaId)}/reverter`, { method: "POST", body: "{}" }),
     revogarLinks: (companyId: string) =>
       request<{ ok: boolean; revogados: number }>(`/admin/ecac/empresas/${companyId}/links/revogar`, { method: "POST", body: "{}" }),
     retomarCobranca: (id: number) => request<{ ok: boolean }>(`/admin/ecac/cobrancas/${id}/retomar`, { method: "POST", body: "{}" }),

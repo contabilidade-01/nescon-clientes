@@ -92,4 +92,5 @@ module.exports = {
   uploadPdf,
   resolveUploadPath,
   removeUploadFile,
+  corrigirNomeUtf8,
 };
