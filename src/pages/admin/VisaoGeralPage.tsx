@@ -60,7 +60,7 @@ function esperaLabel(horas: number): string {
  * Interruptor do modo manutenção — só o dono. Ligado, o cliente não entra (login e sessão
  * bloqueados) e vê a mensagem; o admin continua acessando normalmente.
  */
-function ManutencaoCard() {
+export function ManutencaoCard() {
   const queryClient = useQueryClient();
   const [mensagem, setMensagem] = useState<string | null>(null);
   const { data } = useQuery({

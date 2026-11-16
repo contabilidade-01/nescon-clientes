@@ -23,6 +23,7 @@ import OnboardingPage from "./pages/admin/OnboardingPage.tsx";
 import OnboardingModelosPage from "./pages/admin/OnboardingModelosPage.tsx";
 import PrimeirosPassosPage from "./pages/PrimeirosPassosPage.tsx";
 import OnboardingPublicoPage from "./pages/OnboardingPublicoPage.tsx";
+import DpAvulsoPage from "./pages/DpAvulsoPage.tsx";
 import EmpresasPage from "./pages/admin/EmpresasPage.tsx";
 import GruposPage from "./pages/admin/GruposPage.tsx";
 import ClientesGclickPage from "./pages/admin/ClientesGclickPage.tsx";
@@ -52,6 +53,8 @@ import AcessosPage from "./pages/admin/AcessosPage.tsx";
 import FeriasUploadLotePage from "./pages/admin/FeriasUploadLotePage.tsx";
 import FeriasUrgenciaPage from "./pages/admin/FeriasUrgenciaPage.tsx";
 import EscalasAdminPage from "./pages/admin/EscalasPage.tsx";
+import JornadasProntidaoPage from "./pages/admin/JornadasProntidaoPage.tsx";
+import RegimeAdminPage from "./pages/admin/RegimePage.tsx";
 import EnviarAcessoPage from "./pages/admin/EnviarAcessoPage.tsx";
 import ContratosPage from "./pages/admin/ContratosPage.tsx";
 import PropostasPage from "./pages/admin/PropostasPage.tsx";
@@ -69,11 +72,18 @@ import ProximosPagamentosPage from "./pages/ProximosPagamentosPage.tsx";
 import EntregaPublicaPage from "./pages/EntregaPublicaPage.tsx";
 import CalculadoraCustoPage from "./pages/CalculadoraCustoPage.tsx";
 import EscalasPage from "./pages/EscalasPage.tsx";
+import RegimePage from "./pages/RegimePage.tsx";
 import AdmissaoPage from "./pages/AdmissaoPage.tsx";
 import AdmissoesAdminPage from "./pages/admin/AdmissoesPage.tsx";
 import AcompanhamentosPage from "./pages/admin/AcompanhamentosPage.tsx";
 import AlterarSenhaPage from "./pages/AlterarSenhaPage.tsx";
 import ManutencaoPage from "./pages/ManutencaoPage.tsx";
+import GerentesPage from "./pages/GerentesPage.tsx";
+import SetorPage from "./pages/SetorPage.tsx";
+import CertificadoDigitalPage from "./pages/CertificadoDigitalPage.tsx";
+import SetorAdminPage from "./pages/admin/SetorAdminPage.tsx";
+import CertificadosAdminPage from "./pages/admin/CertificadosPage.tsx";
+import { PortalBottomNav } from "@/components/hub/PortalBottomNav";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -170,6 +180,17 @@ function OwnerOnlyRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Gerentes da empresa: só o login principal (gerente não gerencia outros gerentes). */
+function CompanyOwnerRoute({ children }: { children: React.ReactNode }) {
+  const { isLoggedIn, isAdmin, company } = useAuth();
+  if (!isLoggedIn) return <Navigate to="/login" replace />;
+  if (isAdmin) return <Navigate to="/admin/hub" replace />;
+  if (!company) return <Navigate to="/login" replace />;
+  if (company.mustChangePassword) return <Navigate to="/alterar-senha" replace />;
+  if (company.gerente) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 const AppRoutes = () => (
   <Routes>
     <Route path="/login" element={<LoginPage />} />
@@ -181,6 +202,9 @@ const AppRoutes = () => (
     {/* Guias sem senha (link do WhatsApp/e-mail): escopo só guias da empresa */}
     <Route path="/g/:token" element={<GuiasLinkPage />} />
     <Route path="/onboarding/:token" element={<OnboardingPublicoPage />} />
+    {/* Advertência e suspensão por link avulso (sem login): CNPJ → empresa → formulário. */}
+    <Route path="/avulso" element={<DpAvulsoPage />} />
+    <Route path="/avulso/:tipo" element={<DpAvulsoPage />} />
     {/* Calculadora pública de custo de contratação — sem login */}
     <Route path="/calculadora-custo" element={<CalculadoraCustoPage />} />
     {/* Ficha de admissão — pública; se houver sessão de empresa, pré-preenche */}
@@ -190,17 +214,21 @@ const AppRoutes = () => (
     <Route path="/admin/onboarding/modelos" element={<AdminAreaRoute area="empresas"><OnboardingModelosPage /></AdminAreaRoute>} />
     <Route path="/admin/hub" element={<AdminOnlyRoute><HubPage /></AdminOnlyRoute>} />
     <Route path="/admin" element={<AdminOnlyRoute><VisaoGeralPage /></AdminOnlyRoute>} />
+    {/* Tela de um setor do painel: indicadores e cartões das páginas dele */}
+    <Route path="/admin/setor/:id" element={<AdminOnlyRoute><SetorAdminPage /></AdminOnlyRoute>} />
+    <Route path="/admin/certificados" element={<AdminAreaRoute area="licencas"><CertificadosAdminPage /></AdminAreaRoute>} />
     <Route path="/admin/empresas" element={<AdminAreaRoute area="empresas"><EmpresasPage /></AdminAreaRoute>} />
     <Route path="/admin/grupos" element={<AdminAreaRoute area="empresas"><GruposPage /></AdminAreaRoute>} />
     <Route path="/admin/clientes-gclick" element={<OwnerOnlyRoute><ClientesGclickPage /></OwnerOnlyRoute>} />
     <Route path="/admin/funcionarios" element={<AdminAreaRoute area="funcionarios"><FuncionariosAdminPage /></AdminAreaRoute>} />
-    <Route path="/admin/admissoes" element={<AdminAreaRoute area="funcionarios"><AdmissoesAdminPage /></AdminAreaRoute>} />
+    <Route path="/admin/admissoes" element={<AdminAreaRoute area="admissoes"><AdmissoesAdminPage /></AdminAreaRoute>} />
     <Route path="/admin/acompanhamentos" element={<AdminAreaRoute area="acompanhamentos"><AcompanhamentosPage /></AdminAreaRoute>} />
     <Route path="/admin/entregas" element={<AdminAreaRoute area="entregas"><EntregasPage /></AdminAreaRoute>} />
     <Route path="/admin/licencas" element={<AdminAreaRoute area="licencas"><LicencasPage /></AdminAreaRoute>} />
     <Route path="/admin/taxas-anuais" element={<AdminAreaRoute area="taxas_anuais"><TaxasAnuaisPage /></AdminAreaRoute>} />
     <Route path="/admin/folha" element={<AdminAreaRoute area="funcionarios"><PainelFolhaPage /></AdminAreaRoute>} />
     <Route path="/admin/escalas" element={<AdminAreaRoute area="funcionarios"><EscalasAdminPage /></AdminAreaRoute>} />
+    <Route path="/admin/jornadas" element={<AdminAreaRoute area="funcionarios"><JornadasProntidaoPage /></AdminAreaRoute>} />
     <Route path="/admin/alertas" element={<AdminAreaRoute area="alertas"><AlertasPage /></AdminAreaRoute>} />
     <Route path="/admin/lgpd" element={<AdminAreaRoute area="lgpd"><LgpdPage /></AdminAreaRoute>} />
     <Route path="/admin/sincronizacao" element={<AdminAreaRoute area="sincronizacao"><SincronizacaoPage /></AdminAreaRoute>} />
@@ -215,6 +243,7 @@ const AppRoutes = () => (
     <Route path="/admin/whatsapp" element={<AdminAreaRoute area="alertas"><WhatsAppStatusPage /></AdminAreaRoute>} />
     <Route path="/admin/circular" element={<AdminAreaRoute area="alertas"><CircularPage /></AdminAreaRoute>} />
     <Route path="/admin/impostos-ecac" element={<AdminAreaRoute area="alertas"><ImpostosEcacPage /></AdminAreaRoute>} />
+    <Route path="/admin/regime" element={<AdminAreaRoute area="empresas"><RegimeAdminPage /></AdminAreaRoute>} />
     <Route path="/admin/envio-folha" element={<AdminAreaRoute area="entregas"><AcompanhamentoEnvioPage /></AdminAreaRoute>} />
     <Route path="/admin/honorarios-queijeiro" element={<AdminAreaRoute area="funcionarios"><HonorariosQueijeiroPage /></AdminAreaRoute>} />
     <Route path="/admin/honorarios-atualizacao" element={<AdminAreaRoute area="funcionarios"><HonorariosAtualizacaoPage /></AdminAreaRoute>} />
@@ -227,12 +256,17 @@ const AppRoutes = () => (
     {/* Única tela liberada enquanto a senha for a inicial */}
     <Route path="/alterar-senha" element={<LoggedInRoute><AlterarSenhaPage /></LoggedInRoute>} />
     <Route path="/" element={<CompanyOnlyRoute><Index /></CompanyOnlyRoute>} />
+    {/* HUB do portal: tela de cada setor (lista das telas dele) */}
+    <Route path="/setor/:id" element={<CompanyOnlyRoute><SetorPage /></CompanyOnlyRoute>} />
+    <Route path="/certificado-digital" element={<CompanyOwnerRoute><CertificadoDigitalPage /></CompanyOwnerRoute>} />
     <Route path="/primeiros-passos" element={<CompanyOnlyRoute><PrimeirosPassosPage /></CompanyOnlyRoute>} />
+    <Route path="/gerentes" element={<CompanyOwnerRoute><GerentesPage /></CompanyOwnerRoute>} />
     <Route path="/suspensao" element={<CompanyToolRoute tool="suspension"><SuspensionPage /></CompanyToolRoute>} />
     <Route path="/advertencia" element={<CompanyToolRoute tool="warning"><WarningPage /></CompanyToolRoute>} />
     <Route path="/historico" element={<HistoryAccessRoute><HistoryPage /></HistoryAccessRoute>} />
     <Route path="/funcionarios" element={<CompanyToolRoute tool="employees"><EmployeesPage /></CompanyToolRoute>} />
     <Route path="/escalas" element={<CompanyToolRoute tool="escalas"><EscalasPage /></CompanyToolRoute>} />
+    <Route path="/regime" element={<CompanyToolRoute tool="regime_tributario"><RegimePage /></CompanyToolRoute>} />
     <Route path="/chatbot" element={<CompanyToolRoute tool="chatbot"><ChatbotPage /></CompanyToolRoute>} />
     <Route path="/salario-avulso" element={<CompanyToolRoute tool="salary_adhoc"><SalaryAdhocPage /></CompanyToolRoute>} />
     <Route path="/atestados" element={<CompanyToolRoute tool="certificates"><CertificatesPage /></CompanyToolRoute>} />
@@ -258,6 +292,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AppRoutes />
+        <PortalBottomNav />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

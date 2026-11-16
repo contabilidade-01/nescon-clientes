@@ -31,6 +31,9 @@ async function interpretarMensagem(db, { texto, sessao, funcionarios }) {
     `- dias só 1, 2 ou 3 (teto deste escritório; CLT art. 474 permite até 30).\n` +
     `- dias é a quantidade DE SUSPENSÃO pedida (1 data de suspensão = 1). Quantidade de faltas, atrasos ou datas citadas no motivo NÃO é dias; na dúvida, null.\n` +
     `- Se o cliente já descreveu o fato (ex. "faltou dia 30"), isso É o motivo — preencha motivo e datas_falta.\n` +
+    `- motivo é SÓ o fato que o funcionário cometeu, curto e objetivo (ex. "faltou ao serviço sem justificativa", "chegou atrasado", "desrespeitou o supervisor"). ` +
+    `NUNCA copie saudação nem o pedido do cliente ("olá", "quero fazer uma advertência", "preciso suspender o João"): isso não é motivo, use null. ` +
+    `Não coloque no motivo o nome do funcionário, os dias de suspensão nem frases como "relato do empregador".\n` +
     `- data: "hoje", "amanhã" ou dd/mm/aaaa = data do TERMO ou início da suspensão, não necessariamente o dia da falta.\n` +
     `- datas_falta: dias em que faltou/atrasou, formato dd/mm/aaaa (ano atual se faltar).\n` +
     `- Se o passo é funcionario, um número pequeno é o índice da lista, não dias.\n` +

@@ -4,6 +4,7 @@ const { getToolAccessForCompany, getToolAccessForGroup } = require("../toolAcces
 const { mergeAreas } = require("../adminAreas");
 const { jwtSecret } = require("../jwtSecret");
 const { lerManutencao, MENSAGEM_PADRAO } = require("../maintenanceMode");
+const { acessoDoGerente, rotaLiberadaParaGerente } = require("../gerentes");
 
 /**
  * Perfil do administrador na base. Devolve null se não existe ou está desativado.
@@ -44,6 +45,36 @@ function generateToken(payload, expiresIn = JWT_EXPIRES) {
   return jwt.sign(payload, jwtSecret(), { expiresIn });
 }
 
+/** JWT de gerente da empresa (CPF na tabela company_users). */
+function generateGerenteToken(gerente) {
+  return jwt.sign(
+    {
+      role: "company_user",
+      company_user_id: gerente.id,
+      company_id: gerente.company_id,
+    },
+    jwtSecret(),
+    { expiresIn: JWT_EXPIRES }
+  );
+}
+
+/**
+ * Gerente + empresa, lidos da BASE a cada requisição: desativar o gerente, mudar as
+ * permissões ou arquivar a empresa corta o acesso na hora, sem esperar o JWT expirar.
+ */
+async function getGerenteProfile(dbConn, gerenteId) {
+  const { rows } = await dbConn.query(
+    `SELECT u.id, u.nome, u.cpf, u.permissions, u.active, u.must_change_password,
+            c.id AS company_id, c.name AS company_name, c.cnpj AS company_cnpj
+       FROM company_users u
+       JOIN companies c ON c.id = u.company_id
+      WHERE u.id = $1 AND c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE`,
+    [gerenteId]
+  );
+  if (!rows.length || rows[0].active === false) return null;
+  return rows[0];
+}
+
 /** JWT de administrador (CPF na tabela platform_admins) */
 function generateAdminToken(admin) {
   return jwt.sign(
@@ -78,6 +109,25 @@ async function authMiddleware(req, res, next) {
       req.company = null;
       req.companyToolAccess = null;
       req.mustChangePassword = Boolean(perfil.mustChangePassword);
+    } else if (decoded.role === "company_user") {
+      const g = await getGerenteProfile(db, decoded.company_user_id);
+      if (!g) return res.status(401).json({ error: "Acesso não encontrado ou desativado" });
+      req.isAdmin = false;
+      req.admin = null;
+      req.personificadoPor = null;
+      req.company = {
+        id: g.company_id,
+        name: g.company_name,
+        cnpj: g.company_cnpj,
+        matrizId: null,
+        isMatriz: false,
+        personificadoPor: null,
+      };
+      // Só a empresa dele: o gerente não troca para filial.
+      req.empresas_grupo_ids = [g.company_id];
+      req.companyUser = { id: g.id, nome: g.nome, cpf: g.cpf, permissions: g.permissions };
+      req.companyToolAccess = acessoDoGerente(await getToolAccessForCompany(db, g.company_id), g.permissions);
+      req.mustChangePassword = Boolean(g.must_change_password);
     } else if (decoded.company_id) {
       req.isAdmin = false;
       req.admin = null;
@@ -144,6 +194,11 @@ async function authMiddleware(req, res, next) {
         return res.status(503).json({ error: man.mensagem || MENSAGEM_PADRAO, code: "MAINTENANCE" });
       }
     }
+    // Gerente: lista fechada de rotas (ver gerentes.js). Fica aqui pelo mesmo motivo da
+    // troca de senha abaixo: vale para toda rota autenticada, inclusive as futuras.
+    if (req.companyUser && !rotaLiberadaParaGerente(req.method, req.originalUrl)) {
+      return res.status(403).json({ error: "Seu acesso de gerente não inclui esta área.", code: "GERENTE_SEM_ACESSO" });
+    }
     // A checagem mora AQUI, e não como middleware solto no index: aplicada no app antes
     // das rotas ela rodaria antes desta função e leria `mustChangePassword` indefinido,
     // deixando tudo passar. Dentro, vale para toda rota autenticada — inclusive as que
@@ -187,6 +242,17 @@ function blockUntilPasswordChanged(req, res, next) {
   });
 }
 
+/**
+ * Só o login principal da empresa (CNPJ) — gerente e admin recebem 403. Personificação
+ * passa: o escritório pode conferir os gerentes do cliente.
+ */
+function requireCompanyOwner(req, res, next) {
+  if (req.isAdmin || !req.company?.id || req.companyUser) {
+    return res.status(403).json({ error: "Só o login principal da empresa gerencia os gerentes." });
+  }
+  next();
+}
+
 /** Rotas de cadastro/emitir documento: só empresa, não admin */
 function requireCompanyUser(req, res, next) {
   if (req.isAdmin || !req.company?.id) {
@@ -198,8 +264,10 @@ function requireCompanyUser(req, res, next) {
 module.exports = {
   generateToken,
   generateAdminToken,
+  generateGerenteToken,
   authMiddleware,
   blockUntilPasswordChanged,
   requireCompanyUser,
+  requireCompanyOwner,
   getAdminProfile,
 };

@@ -109,37 +109,51 @@ async function enviarBoletosPdf(db, { companyId, obrigacoes, numero, delayMs = 1
 
   let enviados = 0;
   const erros = [];
+  // O alerta promete o boleto: se algum não tem linha aqui (não é da Cora, cancelado...),
+  // isso também é falha de anexo e precisa aparecer.
+  for (const id of ids) {
+    if (!rows.some((r) => r.id === id)) erros.push({ id, motivo: "boleto não encontrado para anexar" });
+  }
+  const TENTATIVAS = 3;
   for (const b of rows) {
-    try {
-      const fileUrl = await urlPdfFresca(b.external_ref, b.pdf_url, coraDep);
-      if (!fileUrl) {
-        erros.push({ id: b.id, motivo: "sem PDF disponível" });
-        continue;
-      }
-      const valor = b.valor_centavos
-        ? (b.valor_centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-        : "";
-      const rotulo = b.is_honorario ? "Honorários" : "Boleto";
-      const caption =
-        `📄 *${rotulo} — ${b.empresa}*` +
-        (b.venc ? `\nVencimento: ${b.venc}` : "") +
-        (valor ? `\nValor: ${valor}` : "");
+    let ultimoErro = null;
+    for (let t = 1; t <= TENTATIVAS; t += 1) {
+      try {
+        const fileUrl = await urlPdfFresca(b.external_ref, b.pdf_url, coraDep);
+        if (!fileUrl) {
+          ultimoErro = "sem PDF disponível";
+        } else {
+          const valor = b.valor_centavos
+            ? (b.valor_centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+            : "";
+          const rotulo = b.is_honorario ? "Honorários" : "Boleto";
+          const caption =
+            `📄 *${rotulo} — ${b.empresa}*` +
+            (b.venc ? `\nVencimento: ${b.venc}` : "") +
+            (valor ? `\nValor: ${valor}` : "");
 
-      await uazapiDep.enviarDocumento({
-        numero,
-        fileUrl,
-        docName: nomeArquivo(b.empresa, b.venc),
-        caption,
-        delayMs,
-      });
-      if (typeof marcar === "function") marcar();
-      enviados += 1;
-    } catch (err) {
-      // Best-effort: mesmo token inválido só é logado. O texto já saiu; não vale
-      // interromper o resto por causa de um anexo.
-      console.error(`[boletoPdf] enviar ${b.id}:`, err.message);
-      erros.push({ id: b.id, motivo: err.message });
+          await uazapiDep.enviarDocumento({
+            numero,
+            fileUrl,
+            docName: nomeArquivo(b.empresa, b.venc),
+            caption,
+            delayMs,
+          });
+          if (typeof marcar === "function") marcar();
+          enviados += 1;
+          ultimoErro = null;
+          break;
+        }
+      } catch (err) {
+        // Best-effort: o texto já saiu. Mas repete antes de desistir (URL da Cora que
+        // acabou de expirar, instabilidade momentânea) para o PDF não faltar.
+        console.error(`[boletoPdf] enviar ${b.id} (tentativa ${t}/${TENTATIVAS}):`, err.message);
+        ultimoErro = err.message;
+        if (err && err.constructor && err.constructor.name === "UazapiTokenInvalido") break;
+      }
+      if (t < TENTATIVAS) await new Promise((r) => setTimeout(r, 2000 * t));
     }
+    if (ultimoErro) erros.push({ id: b.id, motivo: ultimoErro });
   }
   return { enviados, erros };
 }

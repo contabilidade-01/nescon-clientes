@@ -148,6 +148,7 @@ const CertificatesPage = () => {
               label="Funcionário *"
               placeholder="Selecione o funcionário"
               loading={loadingEmployees}
+              onCreated={() => queryClient.invalidateQueries({ queryKey: ["employees"] })}
             />
 
             <div>

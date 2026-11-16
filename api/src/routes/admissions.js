@@ -575,7 +575,7 @@ router.get("/:id/anexos/:anexoId/file", authMiddleware, requireCompanyUser, asyn
 // ---------- admin ----------
 
 adminRouter.use(authMiddleware);
-adminRouter.use(requireArea("funcionarios"));
+adminRouter.use(requireArea("admissoes"));
 
 adminRouter.get("/", async (req, res) => {
   try {

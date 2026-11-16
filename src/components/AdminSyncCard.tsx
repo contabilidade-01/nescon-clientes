@@ -66,7 +66,26 @@ export function AdminSyncCard() {
               {status.ultima.erros > 0 && (
                 <span className="text-destructive">{status.ultima.erros} erro(s)</span>
               )}
+              {status.ultima.avisos_enviados !== undefined && (
+                <span>
+                  <span className="text-muted-foreground">WhatsApp:</span>{" "}
+                  <strong>{status.ultima.avisos_enviados}</strong> enviado(s)
+                  {!!status.ultima.avisos_agendados && <>, {status.ultima.avisos_agendados} agendado(s)</>}
+                  {!!status.ultima.avisos_nao_enviados && (
+                    <span className="text-destructive">, {status.ultima.avisos_nao_enviados} não enviado(s)</span>
+                  )}
+                </span>
+              )}
             </div>
+            {!!status.ultima.avisos_detalhe?.length && (
+              <ul className="space-y-0.5 border-t border-border/60 pt-1">
+                {status.ultima.avisos_detalhe.map((a, i) => (
+                  <li key={i} className={a.agendado ? "text-muted-foreground" : "text-destructive"}>
+                    <strong>{a.empresa}</strong> ({a.documentos.join(", ")}): {a.motivo}
+                  </li>
+                ))}
+              </ul>
+            )}
             <p className="text-muted-foreground">
               Última: {format(new Date(status.ultima.em), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}{" "}
               · {status.ultima.segundos}s

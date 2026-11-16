@@ -193,6 +193,40 @@ function diasDesde(ts, agora = Date.now()) {
   return Math.floor((agora - t) / 86400000);
 }
 
+const MOTIVO_CORA_SEM_RESPOSTA = "Cora não respondeu à consulta";
+
+/** Quem recebe o aviso de cobrança que não saiu por falta de resposta da Cora. */
+function numeroAvisoCora() {
+  return process.env.HONORARIOS_AVISO_WHATSAPP || "5511984630568";
+}
+
+/** Texto do aviso ao escritório. Função pura. */
+function montarAvisoCoraSemResposta(empresas, hoje) {
+  const lista = empresas.slice(0, 30).map((e) => `• ${e}`);
+  if (empresas.length > 30) lista.push(`• ... e mais ${empresas.length - 30}`);
+  return [
+    `⚠️ *Cobrança de honorários ${hoje.split("-").reverse().join("/")}:* a Cora não respondeu à consulta e ${empresas.length} cobrança(s) NÃO foram enviadas hoje:`,
+    "",
+    ...lista,
+    "",
+    "Sem a consulta não dá para saber se já pagaram. Confira na Cora e, se for o caso, cobre pelo botão manual em Boletos.",
+  ].join("\n");
+}
+
+/** Best-effort: falha no aviso só vai para o log, não derruba a rotina. */
+async function avisarCoraSemResposta(empresas, agora = new Date()) {
+  try {
+    const v = numeroWpp.validar(numeroAvisoCora());
+    if (!v.ok) {
+      console.error("[honorarios] número do aviso Cora inválido:", v.motivo);
+      return;
+    }
+    await uazapi.enviarTexto({ numero: v.numero, texto: montarAvisoCoraSemResposta(empresas, hojeSP(agora)), delayMs: 0 });
+  } catch (err) {
+    console.error("[honorarios] aviso Cora sem resposta:", err.message);
+  }
+}
+
 /**
  * Roda a cobrança de honorários do dia. Só dias úteis e dentro da janela diurna.
  *
@@ -271,7 +305,14 @@ async function cobrarHonorarios({ simular = false, agora = new Date() } = {}) {
         const invoiceId = String(b.external_ref || "").replace(/^cora_/, "");
         if (invoiceId) {
           const detalhe = await cora.getInvoiceDetail(invoiceId);
-          if (detalhe && detalhe.status && cora.mapCoraStatusToPortal(detalhe.status) === "paid") {
+          // Sem resposta da Cora (ex.: HTTP 429 mesmo depois das repetições) não dá para
+          // saber se já pagou: não cobra hoje. Antes seguia e cobrava às cegas.
+          if (!detalhe || !detalhe.status) {
+            pulados += 1;
+            resultados.push({ empresa: b.empresa_nome, status: "pulado", motivo: MOTIVO_CORA_SEM_RESPOSTA });
+            continue;
+          }
+          if (cora.mapCoraStatusToPortal(detalhe.status) === "paid") {
             await db.query("UPDATE deliverables SET status='paid', paid_at=now() WHERE id=$1", [b.id]);
             pulados += 1;
             resultados.push({ empresa: b.empresa_nome, status: "pulado", motivo: "já pago na Cora" });
@@ -342,8 +383,21 @@ async function cobrarHonorarios({ simular = false, agora = new Date() } = {}) {
     }
   }
 
+  // Quem ficou sem cobrança porque a Cora não respondeu: o escritório precisa saber no
+  // mesmo dia, senão o cliente simplesmente não é cobrado e ninguém percebe.
+  const semCora = resultados.filter((r) => r.motivo === MOTIVO_CORA_SEM_RESPOSTA);
+  if (!simular && semCora.length) await avisarCoraSemResposta(semCora.map((r) => r.empresa));
+
   if (!simular && (enviados || pulados)) {
-    console.log(`[honorarios] cobrança do dia: ${enviados} enviado(s), ${pulados} pulado(s), ${erros.length} erro(s).`);
+    // Motivos dos pulados no log: sem isto "11 pulado(s)" não dizia se era regra de
+    // cadência, número inválido ou a Cora sem responder.
+    const motivos = {};
+    for (const r of resultados) if (r.motivo) motivos[r.motivo] = (motivos[r.motivo] || 0) + 1;
+    const detalhe = Object.entries(motivos).map(([m, n]) => `${n} ${m}`).join("; ");
+    console.log(
+      `[honorarios] cobrança do dia: ${enviados} enviado(s), ${pulados} pulado(s), ${erros.length} erro(s).` +
+        (detalhe ? ` Motivos: ${detalhe}.` : "")
+    );
   }
   return { enviados, pulados, erros, resultados };
 }
@@ -353,6 +407,8 @@ module.exports = {
   decidirCobranca,
   montarMensagemHonorario,
   montarMensagemVencimento,
+  montarAvisoCoraSemResposta,
+  numeroAvisoCora,
   rodapeAutomatico,
   faseDe,
   competenciaBR,

@@ -68,6 +68,27 @@ const LoginPage = () => {
         navigate("/admin/hub");
         return;
       }
+      if (data.role === "company_user") {
+        const trocarSenhaGerente = Boolean(data.company.must_change_password);
+        login({
+          role: "company",
+          id: data.company.id,
+          name: data.company.name,
+          cnpj: data.company.cnpj,
+          token: data.token,
+          toolAccess: mergeClientToolAccess(data.company.tool_access),
+          mustChangePassword: trocarSenhaGerente,
+          escala12x36: Boolean(data.company.escala_12x36),
+          gerente: data.gerente,
+        });
+        if (trocarSenhaGerente) {
+          navigate("/alterar-senha");
+          return;
+        }
+        toast.success(`Bem-vindo, ${data.gerente.nome}`);
+        navigate(destino);
+        return;
+      }
       const precisaTrocarSenha = Boolean(data.company.must_change_password);
       login({
         role: "company",

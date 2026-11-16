@@ -720,7 +720,7 @@ function Editor({
               <SecaoContratante d={dados} set={set} ro={ro} />
               <SecaoHonorarios d={dados} set={set} ro={ro} />
               <SecaoRegras d={dados} set={set} ro={ro} />
-              <SecaoPrazosVigencia d={dados} set={set} ro={ro} semTestemunhas />
+              <SecaoPrazosVigencia d={dados} set={set} ro={ro} />
             </>
           ) : (
             <>
@@ -1063,8 +1063,8 @@ function DialogAssinatura({
               </Campo>
             </div>
           ))}
-          <Button variant="outline" size="sm" onClick={() => setSigners((a) => [...a, { nome: "", email: "", telefone: "", qualificacao: "Testemunha" }])}>
-            <Plus className="h-4 w-4 mr-1" /> Adicionar signatário (ex.: testemunha)
+          <Button variant="outline" size="sm" onClick={() => setSigners((a) => [...a, { nome: "", email: "", telefone: "", qualificacao: "" }])}>
+            <Plus className="h-4 w-4 mr-1" /> Adicionar signatário
           </Button>
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <label className="flex items-center gap-2">

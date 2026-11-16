@@ -8,6 +8,7 @@ const { mergeToolAccess } = require("../companyTools");
 const { listCompanies, insertCompanyRow, PG_UNDEFINED_COLUMN } = require("../toolAccessDb");
 const { CARTEIRAS } = require("../ensureCarteiraSchema");
 const { importEmployeesForCompany } = require("../employeeImport");
+const employeeUnify = require("../employeeUnify");
 const { parseExtratoEmployees } = require("../extratoEmployees");
 const { resolveUploadPath, uploadPdf, removeUploadFile } = require("../uploads");
 const arquivosIntegridade = require("../arquivosIntegridade");
@@ -218,6 +219,33 @@ router.get("/companies", async (_req, res) => {
     res.json(rows.map((r) => ({ ...r, tool_access: mergeToolAccess(r.tool_access) })));
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/**
+ * Listagem para exportar em Excel: nome, CNPJ, telefone, WhatsApp, e-mail e endereço.
+ *
+ * O cadastro (`companies`) não tem endereço; ele só existe no cadastro de contrato
+ * (`contrato_cadastros.dados.contratante.endereco`). Telefone e e-mail seguem a ordem
+ * cadastro → contrato → espelho do G-Click, a mesma prioridade da tela de empresas.
+ */
+router.get("/companies/exportacao", requireArea("empresas"), async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT c.name, c.cnpj, c.whatsapp, c.carteira, c.gclick_status,
+              COALESCE(NULLIF(c.phone, ''), NULLIF(ct.dados->'contratante'->>'telefone', ''), g.phone) AS phone,
+              COALESCE(NULLIF(c.contact_email, ''), NULLIF(ct.dados->'contratante'->>'email', ''), g.email) AS email,
+              NULLIF(ct.dados->'contratante'->>'endereco', '') AS endereco
+         FROM companies c
+         LEFT JOIN gclick_clients g ON g.company_id = c.id
+         LEFT JOIN contrato_cadastros ct ON ct.company_id = c.id
+        WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
+        ORDER BY c.name`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("[companies/exportacao]", err);
     res.status(500).json({ error: "Erro interno" });
   }
 });
@@ -1650,7 +1678,7 @@ router.get("/companies/:id/extrato-employees", requireArea("funcionarios"), asyn
     }
 
     const { rows: jaTem } = await db.query(
-      "SELECT name, cpf, active FROM employees WHERE company_id = $1",
+      "SELECT name, cpf, active, codigo, origem FROM employees WHERE company_id = $1",
       [id]
     );
     const existentes = new Set(jaTem.map((r) => String(r.cpf).replace(/\D/g, "")));
@@ -1660,7 +1688,9 @@ router.get("/companies/:id/extrato-employees", requireArea("funcionarios"), asyn
     // (continuam visíveis ao admin, somem para a empresa).
     const noExtrato = new Set(funcionarios.map((f) => f.cpf));
     const ausentes = jaTem
-      .filter((r) => r.active && !noExtrato.has(String(r.cpf).replace(/\D/g, "")))
+      .filter(
+        (r) => r.active && !employeeUnify.ehProvisorio(r) && !noExtrato.has(String(r.cpf).replace(/\D/g, ""))
+      )
       .map((r) => r.name);
 
     res.json({
@@ -1693,12 +1723,15 @@ router.post("/extrato-employees/scan-all", requireArea("funcionarios"), async (_
     for (const c of companies) {
       const { extrato, funcionarios } = await funcionariosDoExtrato(c.id);
       if (!extrato || !funcionarios.length) continue;
-      const { rows: jaTem } = await db.query("SELECT cpf, active FROM employees WHERE company_id = $1", [c.id]);
+      const { rows: jaTem } = await db.query(
+        "SELECT cpf, active, codigo, origem FROM employees WHERE company_id = $1",
+        [c.id]
+      );
       const existentes = new Set(jaTem.map((r) => String(r.cpf).replace(/\D/g, "")));
       const noExtrato = new Set(funcionarios.map((f) => f.cpf));
       const novos = funcionarios.filter((f) => !existentes.has(f.cpf)).length;
       const inativar = jaTem.filter(
-        (r) => r.active && !noExtrato.has(String(r.cpf).replace(/\D/g, ""))
+        (r) => r.active && !employeeUnify.ehProvisorio(r) && !noExtrato.has(String(r.cpf).replace(/\D/g, ""))
       ).length;
       resultados.push({ id: c.id, name: c.name, competencia: extrato.competencia,
         encontrados: funcionarios.length, novos, inativar });
@@ -1756,11 +1789,13 @@ router.post("/extrato-employees/import", requireArea("funcionarios"), async (req
           porEmpresa.push({ name: c.name, erro: r.body.error });
           continue;
         }
-        // Demissão: ativos que não estão no extrato atual viram inativos.
+        // Demissão: ativos que não estão no extrato atual viram inativos — menos o
+        // cadastro provisório do cliente (admissão que a folha ainda não trouxe).
         const cpfs = funcionarios.map((f) => f.cpf);
         const inat = await client.query(
           `UPDATE employees SET active = false
            WHERE company_id = $1 AND active IS TRUE AND cpf <> ALL($2::text[])
+             AND NOT (codigo IS NULL AND (origem = 'cliente' OR length(cpf) <> 11))
            RETURNING id, name`,
           [c.id, cpfs]
         );
@@ -1796,6 +1831,97 @@ router.post("/extrato-employees/import", requireArea("funcionarios"), async (req
   } catch (err) {
     console.error("[extrato-import]", err);
     res.status(500).json({ error: "Erro ao cadastrar funcionários do extrato" });
+  }
+});
+
+/**
+ * Cadastros feitos pelo cliente (ou por listagem sem CPF) que a folha ainda não
+ * confirmou, com o candidato mais provável a ser a mesma pessoa. Os óbvios (mesmo CPF
+ * ou mesmo nome) já são unidos sozinhos na importação — aqui sobra o que pede um olho.
+ */
+router.get("/employee-unificacao", requireArea("funcionarios"), async (req, res) => {
+  try {
+    const filtro = (req.query.company_id || "").toString();
+    if (filtro && !validateUUID(filtro)) return res.status(400).json({ error: "company_id inválido" });
+    const { rows: empresas } = await db.query(
+      `SELECT DISTINCT c.id, c.name
+         FROM employees e JOIN companies c ON c.id = e.company_id
+        WHERE e.codigo IS NULL AND e.conferido_em IS NULL AND e.active IS TRUE
+          AND (e.origem = 'cliente' OR length(e.cpf) <> 11)
+          AND ($1::uuid IS NULL OR c.id = $1::uuid)
+        ORDER BY c.name`,
+      [filtro || null]
+    );
+    const pendentes = [];
+    for (const c of empresas) {
+      const funcionarios = await employeeUnify.carregarFuncionarios(db, c.id);
+      const opcoes = funcionarios.map((f) => ({ id: f.id, name: f.name, cpf: f.cpf, active: f.active }));
+      for (const s of employeeUnify.sugestoesManuais(funcionarios)) {
+        pendentes.push({
+          company_id: c.id,
+          company_name: c.name,
+          provisorio: {
+            id: s.provisorio.id,
+            name: s.provisorio.name,
+            cpf: s.provisorio.cpf,
+            origem: s.provisorio.origem,
+            created_at: s.provisorio.created_at,
+          },
+          sugestao: s.sugestao
+            ? { id: s.sugestao.id, name: s.sugestao.name, cpf: s.sugestao.cpf, active: s.sugestao.active }
+            : null,
+          semelhanca: s.semelhanca,
+          opcoes: opcoes.filter((o) => o.id !== s.provisorio.id),
+        });
+      }
+    }
+    res.json({ total: pendentes.length, pendentes });
+  } catch (err) {
+    console.error("[employee-unificacao]", err);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/** Une o cadastro provisório (`absorver_id`) ao oficial (`manter_id`). */
+router.post("/employee-unificacao/unificar", requireArea("funcionarios"), async (req, res) => {
+  const manterId = (req.body?.manter_id || "").toString();
+  const absorverId = (req.body?.absorver_id || "").toString();
+  if (!validateUUID(manterId) || !validateUUID(absorverId)) {
+    return res.status(400).json({ error: "IDs inválidos" });
+  }
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query("SELECT company_id FROM employees WHERE id = $1", [manterId]);
+    if (!rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Funcionário não encontrado" });
+    }
+    await employeeUnify.unificar(client, rows[0].company_id, manterId, absorverId);
+    await client.query("COMMIT");
+    res.json({ ok: true });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("[employee-unificacao unificar]", err);
+    res.status(400).json({ error: err.message || "Não foi possível unificar" });
+  } finally {
+    client.release();
+  }
+});
+
+/** "É funcionário novo": mantém separado e tira da lista de conferência. */
+router.post("/employee-unificacao/:id/conferir", requireArea("funcionarios"), async (req, res) => {
+  try {
+    if (!validateUUID(req.params.id)) return res.status(400).json({ error: "ID inválido" });
+    const { rowCount } = await db.query(
+      "UPDATE employees SET conferido_em = now() WHERE id = $1",
+      [req.params.id]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Funcionário não encontrado" });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[employee-unificacao conferir]", err);
+    res.status(500).json({ error: "Erro interno" });
   }
 });
 
@@ -1935,7 +2061,7 @@ router.post("/config/ia/testar", adminOnly, async (req, res) => {
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: require("../iaProvider").MODELO_CLAUDE,
           max_tokens: 10,
           messages: [{ role: "user", content: "Responda apenas: ok" }],
         }),
@@ -1968,7 +2094,18 @@ router.post("/config/ia/testar", adminOnly, async (req, res) => {
     }
 
     clearTimeout(timeoutId);
-    res.json({ ok: resultado.ok, erro: resultado.ok ? null : `HTTP ${resultado.status}` });
+    // Devolve o motivo que o provedor deu (chave inválida, modelo inexistente, sem
+    // crédito...), não só o código HTTP: é o que diz ao escritório o que corrigir.
+    let motivo = null;
+    if (!resultado.ok) {
+      const corpo = await resultado.json().catch(() => null);
+      motivo = corpo?.error?.message || corpo?.error?.type || null;
+    }
+    res.json({
+      ok: resultado.ok,
+      erro: resultado.ok ? null : `HTTP ${resultado.status}${motivo ? `: ${motivo}` : ""}`,
+      modelo: provider === "claude" ? require("../iaProvider").MODELO_CLAUDE : undefined,
+    });
   } catch (err) {
     res.json({ ok: false, erro: err.message });
   }

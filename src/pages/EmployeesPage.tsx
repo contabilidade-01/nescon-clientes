@@ -1,6 +1,17 @@
 import { type ChangeEvent, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Pencil, Trash2, Users, Save, X, Upload } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Users, Save, X, Upload, UserMinus, UserCheck, ClipboardCheck, Clock } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +21,55 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { maskCPF, maskPIS } from "@/lib/masks";
-import { parseEmployeeImportFile } from "@/lib/parseEmployeeSpreadsheet";
+import { type EmployeeJornada } from "@/lib/api";
+import { AditivoJornadaDialog } from "@/components/AditivoJornadaDialog";
+import {
+  ESCALAS_FUNCIONARIO,
+  FOLGAS_FUNCIONARIO,
+  dataBR,
+  hojeISO,
+  proximoProblema,
+  resumoJornada,
+  situacaoJornada,
+  type NivelJornada,
+} from "@/lib/jornadaFuncionario";
+
+type FormJornada = {
+  carga: string;
+  escala: string;
+  folga: string;
+  entrada: string;
+  saida: string;
+  hiper: boolean;
+};
+const JORNADA_VAZIA: FormJornada = { carga: "", escala: "", folga: "", entrada: "", saida: "", hiper: false };
+
+function jornadaParaApi(j: FormJornada): EmployeeJornada {
+  return {
+    carga_semanal: j.carga.trim() ? j.carga.trim() : null,
+    escala: j.escala || null,
+    folga: j.folga || null,
+    horario_entrada: j.entrada || null,
+    horario_saida: j.saida || null,
+    hipersuficiente: j.hiper,
+  };
+}
+
+const COR_NIVEL: Record<NivelJornada, string> = {
+  ok: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  atencao: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  fora: "border-destructive/40 bg-destructive/10 text-destructive",
+  sem_dado: "border-border bg-muted text-muted-foreground",
+};
+
+const campoSelect =
+  "mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
+import {
+  type EmployeeImportRow,
+  describeImportResult,
+  parseEmployeeImportFile,
+  toImportPayload,
+} from "@/lib/parseEmployeeSpreadsheet";
 
 const EmployeesPage = () => {
   const navigate = useNavigate();
@@ -21,18 +80,56 @@ const EmployeesPage = () => {
   const [name, setName] = useState("");
   const [cpf, setCpf] = useState("");
   const [pis, setPis] = useState("");
+  const [jornada, setJornada] = useState<FormJornada>(JORNADA_VAZIA);
+  const hoje = hojeISO();
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingImport, setPendingImport] = useState<{
     fileName: string;
     fileCnpj: string;
-    rows: Array<{ name: string; cpf: string }>;
+    rows: EmployeeImportRow[];
+    dismissed: EmployeeImportRow[];
     skippedDismissed: number;
+    withoutCpf: number;
   } | null>(null);
+
+  const [aba, setAba] = useState<"ativos" | "inativos">("ativos");
 
   const { data: employees, isLoading } = useQuery({
     queryKey: ["employees", company?.id],
     queryFn: () => api.employees.list({ companyId: company!.id }),
     enabled: !!company,
+  });
+
+  // Quem saiu fica numa lista à parte: some das telas do dia a dia (advertência,
+  // atestado…), mas dá para conferir e reativar se foi engano.
+  const { data: inativos, isLoading: loadingInativos } = useQuery({
+    queryKey: ["employees", company?.id, "inativos"],
+    queryFn: () => api.employees.list({ companyId: company!.id, inativos: true }),
+    enabled: !!company,
+  });
+
+  const { data: conferencia } = useQuery({
+    queryKey: ["employees-conferencia", company?.id],
+    queryFn: () => api.employees.conferencia(),
+    enabled: !!company,
+  });
+
+  const conferirMutation = useMutation({
+    mutationFn: () => api.employees.confirmarConferencia(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["employees-conferencia"] });
+      toast.success("Lista conferida. O escritório vê a data da sua conferência.");
+    },
+    onError: (e: Error) => toast.error(e.message || "Erro ao registrar a conferência"),
+  });
+
+  const situacaoMutation = useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) => api.employees.update(id, { active }),
+    onSuccess: (_r, { active }) => {
+      queryClient.invalidateQueries({ queryKey: ["employees"] });
+      toast.success(active ? "Funcionário reativado" : "Funcionário inativado — está na aba Inativos");
+    },
+    onError: (e: Error) => toast.error(e.message || "Erro ao alterar a situação"),
   });
 
   const addMutation = useMutation({
@@ -42,6 +139,7 @@ const EmployeesPage = () => {
         name: name.trim().toUpperCase(),
         cpf: cpf.trim(),
         pis: pis.trim() || null,
+        ...jornadaParaApi(jornada),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
@@ -49,9 +147,10 @@ const EmployeesPage = () => {
       setName("");
       setCpf("");
       setPis("");
+      setJornada(JORNADA_VAZIA);
       toast.success("Funcionário adicionado");
     },
-    onError: () => toast.error("Erro ao adicionar"),
+    onError: (e: Error) => toast.error(e.message || "Erro ao adicionar"),
   });
 
   const updateMutation = useMutation({
@@ -60,6 +159,7 @@ const EmployeesPage = () => {
         name: name.trim().toUpperCase(),
         cpf: cpf.trim(),
         pis: pis.trim() || null,
+        ...jornadaParaApi(jornada),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
@@ -67,26 +167,28 @@ const EmployeesPage = () => {
       setName("");
       setCpf("");
       setPis("");
+      setJornada(JORNADA_VAZIA);
       toast.success("Funcionário atualizado");
     },
-    onError: () => toast.error("Erro ao atualizar"),
+    onError: (e: Error) => toast.error(e.message || "Erro ao atualizar"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.employees.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
-      toast.success("Funcionário removido");
+      toast.success("Funcionário excluído");
     },
+    onError: (e: Error) => toast.error(e.message || "Erro ao excluir"),
   });
 
   const importMutation = useMutation({
-    mutationFn: ({ rows, fileCnpj }: { rows: Array<{ name: string; cpf: string }>; fileCnpj: string }) =>
+    mutationFn: ({ rows, fileCnpj }: { rows: ReturnType<typeof toImportPayload>; fileCnpj: string }) =>
       api.employees.import(rows, fileCnpj),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
       setPendingImport(null);
-      toast.success(`Importação concluída: ${result.inserted} inseridos, ${result.skipped} ignorados`);
+      toast.success(describeImportResult(result));
       if (result.errors.length) {
         toast.warning(`${result.errors.length} linhas com erro foram ignoradas`);
       }
@@ -110,20 +212,18 @@ const EmployeesPage = () => {
         return;
       }
 
-      const { rows, skippedDismissed, fileCnpj } = parsed;
-      if (!rows.length) {
-        if (skippedDismissed > 0) {
-          toast.error("Nenhum funcionário ativo: todas as linhas tinham data de demissão ou dados inválidos");
-        } else {
-          toast.error("Planilha sem funcionários válidos para importar");
-        }
+      const { rows, dismissed, skippedDismissed, withoutCpf, fileCnpj } = parsed;
+      if (!rows.length && !dismissed.length) {
+        toast.error("Planilha sem funcionários válidos para importar");
         return;
       }
       setPendingImport({
         fileName: file.name,
         fileCnpj,
         rows,
+        dismissed,
         skippedDismissed,
+        withoutCpf,
       });
     } catch {
       toast.error("Não foi possível ler a planilha. Use CSV ou Excel (.xls, .xlsx).");
@@ -132,12 +232,21 @@ const EmployeesPage = () => {
     }
   };
 
-  const startEdit = (emp: { id: string; name: string; cpf: string; pis: string | null }) => {
+  const startEdit = (emp: { id: string; name: string; cpf: string; pis: string | null } & EmployeeJornada) => {
     setEditingId(emp.id);
     setName(emp.name);
     setCpf(emp.cpf);
     setPis(emp.pis || "");
+    setJornada({
+      carga: emp.carga_semanal != null ? String(Number(emp.carga_semanal)).replace(".", ",") : "",
+      escala: emp.escala || "",
+      folga: emp.folga || "",
+      entrada: emp.horario_entrada || "",
+      saida: emp.horario_saida || "",
+      hiper: Boolean(emp.hipersuficiente),
+    });
     setShowAdd(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const cancelEdit = () => {
@@ -146,7 +255,23 @@ const EmployeesPage = () => {
     setName("");
     setCpf("");
     setPis("");
+    setJornada(JORNADA_VAZIA);
   };
+
+  // Resumo da conferência: o que o cliente precisa olhar antes de confirmar a lista.
+  const resumo = (() => {
+    const lista = employees ?? [];
+    let semJornada = 0;
+    let foraHoje = 0;
+    let foraDepois = 0;
+    for (const e of lista) {
+      const s = situacaoJornada(e, hoje);
+      if (s.nivel === "sem_dado") semJornada++;
+      else if (s.nivel === "fora") foraHoje++;
+      else if (proximoProblema(e, hoje)?.situacao.nivel === "fora") foraDepois++;
+    }
+    return { total: lista.length, semJornada, foraHoje, foraDepois };
+  })();
 
   const formatCnpj = (value: string): string =>
     value
@@ -185,7 +310,7 @@ const EmployeesPage = () => {
               >
                 <Upload className="h-4 w-4 mr-1" /> Importar planilha
               </Button>
-              <Button size="sm" onClick={() => { setShowAdd(true); setName(""); setCpf(""); setPis(""); }}>
+              <Button size="sm" onClick={() => { setShowAdd(true); setName(""); setCpf(""); setPis(""); setJornada(JORNADA_VAZIA); }}>
                 <Plus className="h-4 w-4 mr-1" /> Novo
               </Button>
             </div>
@@ -194,6 +319,49 @@ const EmployeesPage = () => {
       </header>
 
       <main className="mx-auto max-w-2xl px-4 py-6 space-y-3">
+        {!showAdd && !editingId && !isLoading && (
+          <Card>
+            <CardContent className="space-y-3 p-4">
+              <div className="flex items-start gap-3">
+                <ClipboardCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">Conferência da lista</p>
+                  <p className="text-xs text-muted-foreground">
+                    Confira se todos que trabalham hoje estão aqui, com a jornada certa. Adicione quem falta,
+                    inative quem saiu e exclua cadastro feito por engano.
+                    {conferencia?.conferido_em
+                      ? ` Última conferência: ${new Date(conferencia.conferido_em).toLocaleDateString("pt-BR")}.`
+                      : " A lista ainda não foi conferida."}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="rounded-md border px-2 py-1">{resumo.total} ativo(s)</span>
+                {resumo.semJornada > 0 && (
+                  <span className={`rounded-md border px-2 py-1 ${COR_NIVEL.sem_dado}`}>{resumo.semJornada} sem jornada</span>
+                )}
+                {resumo.foraHoje > 0 && (
+                  <span className={`rounded-md border px-2 py-1 ${COR_NIVEL.fora}`}>{resumo.foraHoje} fora da regra hoje</span>
+                )}
+                {resumo.foraDepois > 0 && (
+                  <span className={`rounded-md border px-2 py-1 ${COR_NIVEL.atencao}`}>
+                    {resumo.foraDepois} precisam mudar até a próxima etapa
+                  </span>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                disabled={conferirMutation.isPending}
+                onClick={() => conferirMutation.mutate()}
+              >
+                <ClipboardCheck className="h-4 w-4" /> A lista está certa
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {pendingImport && (
           <Card className="border-primary/50">
             <CardContent className="p-4 space-y-3">
@@ -204,13 +372,21 @@ const EmployeesPage = () => {
                 CNPJ detectado no arquivo: <strong>{formatCnpj(pendingImport.fileCnpj)}</strong> • A importar:{" "}
                 <strong>{pendingImport.rows.length}</strong>
                 {pendingImport.skippedDismissed > 0 && (
-                  <> • <span className="text-amber-600 dark:text-amber-500">{pendingImport.skippedDismissed} com demissão (não importados)</span></>
+                  <> • <span className="text-amber-600 dark:text-amber-500">{pendingImport.skippedDismissed} com demissão (inativados se estiverem cadastrados)</span></>
                 )}
               </p>
+              {pendingImport.withoutCpf > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Esta lista não traz CPF: os funcionários são reconhecidos pelo nome. Quem for novo
+                  entra com CPF pendente e é completado pela folha do escritório.
+                </p>
+              )}
               <div className="flex gap-2">
                 <Button
                   className="gap-2"
-                  onClick={() => importMutation.mutate({ rows: pendingImport.rows, fileCnpj: pendingImport.fileCnpj })}
+                  onClick={() =>
+                    importMutation.mutate({ rows: toImportPayload(pendingImport), fileCnpj: pendingImport.fileCnpj })
+                  }
                   disabled={importMutation.isPending}
                 >
                   <Upload className="h-4 w-4" />
@@ -241,6 +417,78 @@ const EmployeesPage = () => {
                   <Input placeholder="000.00000.00-0" value={pis} onChange={(e) => setPis(maskPIS(e.target.value))} className="mt-1" />
                 </div>
               </div>
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs font-medium">Jornada de trabalho</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Horas por semana</Label>
+                    <Input
+                      inputMode="decimal"
+                      placeholder="Ex: 44, 42, 40"
+                      value={jornada.carga}
+                      onChange={(e) => setJornada({ ...jornada, carga: e.target.value.replace(/[^\d,.]/g, "") })}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Escala</Label>
+                    <select
+                      className={campoSelect}
+                      value={jornada.escala}
+                      onChange={(e) => setJornada({ ...jornada, escala: e.target.value })}
+                      aria-label="Escala"
+                    >
+                      <option value="">Não informada</option>
+                      {ESCALAS_FUNCIONARIO.map((o) => (
+                        <option key={o.id} value={o.id}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs">Folga</Label>
+                    <select
+                      className={campoSelect}
+                      value={jornada.folga}
+                      onChange={(e) => setJornada({ ...jornada, folga: e.target.value })}
+                      aria-label="Folga"
+                    >
+                      <option value="">Não informada</option>
+                      {FOLGAS_FUNCIONARIO.map((f) => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Entrada</Label>
+                    <Input type="time" value={jornada.entrada} onChange={(e) => setJornada({ ...jornada, entrada: e.target.value })} className="mt-1" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Saída</Label>
+                    <Input type="time" value={jornada.saida} onChange={(e) => setJornada({ ...jornada, saida: e.target.value })} className="mt-1" />
+                  </div>
+                </div>
+                <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={jornada.hiper}
+                    onChange={(e) => setJornada({ ...jornada, hiper: e.target.checked })}
+                  />
+                  Tem nível superior e salário de pelo menos 2,5 vezes o teto do INSS (fica fora do limite de horas da emenda).
+                </label>
+                {(() => {
+                  const s = situacaoJornada(jornadaParaApi(jornada), hoje);
+                  const prox = proximoProblema(jornadaParaApi(jornada), hoje);
+                  if (s.nivel === "sem_dado") return null;
+                  return (
+                    <p className={`rounded-md border px-2 py-1.5 text-xs ${COR_NIVEL[s.nivel]}`}>
+                      {s.rotulo}
+                      {s.detalhe ? `: ${s.detalhe}` : ""}
+                      {prox ? ` A partir de ${dataBR(prox.etapa.inicio)}: ${prox.situacao.rotulo.toLowerCase()}.` : ""}
+                    </p>
+                  );
+                })()}
+              </div>
               <div className="flex gap-2">
                 <Button
                   className="flex-1 gap-1"
@@ -257,7 +505,63 @@ const EmployeesPage = () => {
           </Card>
         )}
 
-        {isLoading ? (
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm">
+          {(["ativos", "inativos"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setAba(k)}
+              className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+                aba === k ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+              }`}
+            >
+              {k === "ativos" ? "Ativos" : "Inativos"}
+              {k === "ativos" && employees ? ` (${employees.length})` : ""}
+              {k === "inativos" && inativos ? ` (${inativos.length})` : ""}
+            </button>
+          ))}
+        </div>
+
+        {aba === "inativos" ? (
+          loadingInativos ? (
+            <div className="py-12 text-center text-muted-foreground">Carregando...</div>
+          ) : !inativos?.length ? (
+            <div className="py-12 text-center text-muted-foreground">
+              <UserMinus className="mx-auto mb-3 h-12 w-12 opacity-30" />
+              <p>Nenhum funcionário inativo</p>
+            </div>
+          ) : (
+            inativos.map((emp) => (
+              <Card key={emp.id} className="opacity-80">
+                <CardContent className="flex items-center gap-3 p-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                    <UserMinus className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-foreground truncate">{emp.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {emp.cpf ? `CPF: ${maskCPF(emp.cpf)}` : "CPF pendente"}
+                      {emp.inativado_em
+                        ? ` • saiu em ${new Date(emp.inativado_em).toLocaleDateString("pt-BR")}${
+                            emp.inativado_por === "cliente" ? " (por você)" : ""
+                          }`
+                        : ""}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1"
+                    disabled={situacaoMutation.isPending}
+                    onClick={() => situacaoMutation.mutate({ id: emp.id, active: true })}
+                  >
+                    <UserCheck className="h-4 w-4" /> Reativar
+                  </Button>
+                </CardContent>
+              </Card>
+            ))
+          )
+        ) : isLoading ? (
           <div className="py-12 text-center text-muted-foreground">Carregando...</div>
         ) : !employees?.length ? (
           <div className="py-12 text-center text-muted-foreground">
@@ -274,22 +578,112 @@ const EmployeesPage = () => {
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-foreground truncate">{emp.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    CPF: {emp.cpf}
+                    {emp.cpf ? `CPF: ${maskCPF(emp.cpf)}` : "CPF pendente"}
                     {emp.pis && ` • PIS: ${emp.pis}`}
                   </p>
+                  {(() => {
+                    const s = situacaoJornada(emp, hoje);
+                    const prox = proximoProblema(emp, hoje);
+                    const txt = resumoJornada(emp);
+                    return (
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                        {txt && (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground">
+                            <Clock className="h-3 w-3" /> {txt}
+                          </span>
+                        )}
+                        <span className={`rounded border px-1.5 py-0.5 ${COR_NIVEL[s.nivel]}`} title={s.detalhe}>
+                          {s.rotulo}
+                        </span>
+                        {prox && (
+                          <span
+                            className={`rounded border px-1.5 py-0.5 ${COR_NIVEL[prox.situacao.nivel]}`}
+                            title={prox.situacao.detalhe}
+                          >
+                            a partir de {dataBR(prox.etapa.inicio)}: {prox.situacao.rotulo.toLowerCase()}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {emp.origem === "cliente" && !emp.codigo && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Cadastrado por você · o escritório confirma no próximo fechamento da folha
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => startEdit(emp)} className="h-8 w-8">
+                  {company && (
+                    <AditivoJornadaDialog
+                      empresa={{ name: company.name, cnpj: company.cnpj || "" }}
+                      funcionario={emp}
+                      onSalvarJornada={async (j) => {
+                        await api.employees.update(emp.id, j);
+                        queryClient.invalidateQueries({ queryKey: ["employees"] });
+                      }}
+                    />
+                  )}
+                  <Button variant="ghost" size="icon" onClick={() => startEdit(emp)} className="h-8 w-8" title="Editar">
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteMutation.mutate(emp.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        title="Inativar (saiu da empresa)"
+                        disabled={situacaoMutation.isPending}
+                      >
+                        <UserMinus className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>{emp.name} saiu da empresa?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Ele deixa de aparecer nas listas do dia a dia e vai para a aba Inativos, onde
+                          você pode reativar se precisar. O escritório vê no painel que a saída foi dada por você.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => situacaoMutation.mutate({ id: emp.id, active: false })}>
+                          Sim, inativar
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                  {/* Excluir é para cadastro errado (pessoa que nunca trabalhou aqui, duplicado).
+                      Quem saiu se inativa: o histórico fica. O servidor recusa excluir quem
+                      tem atestado. Se a pessoa ainda vier na folha, a próxima importação a traz de volta. */}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        title="Excluir cadastro errado"
+                        disabled={deleteMutation.isPending}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Excluir {emp.name}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Use só para cadastro errado (pessoa que não trabalha aqui ou duplicada). Se a pessoa
+                          saiu da empresa, prefira Inativar, que guarda o histórico.
+                          {emp.codigo ? " Este cadastro veio da folha do escritório: se a pessoa ainda estiver na folha, ela volta na próxima importação." : ""}
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => deleteMutation.mutate(emp.id)}>Sim, excluir</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </CardContent>
             </Card>

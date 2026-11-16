@@ -7,6 +7,8 @@ const router = express.Router();
 const db = require("../db");
 const { enviarTexto } = require("../uazapi");
 const guiasMei = require("../guiasMei");
+const numeroWpp = require("../whatsappNumero");
+const { funcionarioRealSql } = require("../payrollRoles");
 
 const INTERNAL_TOKEN = process.env.INTERNAL_API_TOKEN || "";
 
@@ -24,16 +26,26 @@ function authInterno(req, res, next) {
 
 /**
  * GET /api/interno/empresas-contatos
- * Retorna lista de {cnpj, contact_email, phone} de todas as empresas ativas.
- * Usado pelo central-ecac para sincronizar contatos antes da rotina fiscal.
+ * Lista {cnpj, name, contact_email, phone, whatsapp, gclick_phone, whatsapp_envio}
+ * de todas as empresas ativas. `whatsapp_envio` é o número que o portal usa para
+ * mandar WhatsApp (`celularSql`: primeiro celular válido entre o WhatsApp manual, o
+ * telefone do Cadastro e o do G-Click) — o mesmo critério dos alertas e cobranças.
+ *
+ * Usado pelo AtendeChat para vincular cada contato ao CNPJ. Antes só vinham cnpj,
+ * contact_email e phone: empresa com o celular no campo WhatsApp e fixo em phone
+ * ficava sem vínculo lá.
  */
 router.get("/empresas-contatos", authInterno, async (_req, res) => {
   try {
     const { rows } = await db.query(
-      `SELECT cnpj, contact_email, phone
-       FROM companies
-       WHERE arquivada IS NOT TRUE AND excluida IS NOT TRUE
-         AND cnpj IS NOT NULL AND cnpj <> ''`
+      `SELECT c.cnpj, c.name, c.contact_email, c.phone, c.whatsapp,
+              g.phone AS gclick_phone,
+              ${numeroWpp.celularSql()} AS whatsapp_envio
+         FROM companies c
+         LEFT JOIN gclick_clients g ON g.company_id = c.id
+        WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
+          AND c.cnpj IS NOT NULL AND c.cnpj <> ''
+        ORDER BY c.name`
     );
     res.json(rows);
   } catch (err) {
@@ -61,6 +73,31 @@ router.get("/clientes-carteira", authInterno, async (_req, res) => {
     res.json({ gerado_em: new Date().toISOString(), clientes: rows });
   } catch (err) {
     console.error("[INTERNO] clientes-carteira:", err.message);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+/**
+ * GET /api/interno/empresas-funcionarios
+ * Para a Central e-CAC saber quais empresas têm FGTS a recolher: CNPJ e quantos
+ * funcionários ativos cada empresa tem (pró-labore, diretor e estagiário não contam,
+ * mesma regra dos alertas). Não devolve nome, CPF nem salário de ninguém.
+ */
+router.get("/empresas-funcionarios", authInterno, async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT c.cnpj,
+              (SELECT count(*)::int FROM employees e WHERE e.company_id = c.id AND ${funcionarioRealSql("e")}) AS funcionarios
+         FROM companies c
+        WHERE c.cnpj IS NOT NULL AND c.cnpj <> ''
+          AND c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE`
+    );
+    const empresas = rows
+      .map((r) => ({ cnpj: String(r.cnpj).replace(/\D/g, ""), funcionarios: Number(r.funcionarios) || 0 }))
+      .filter((r) => r.cnpj.length === 14);
+    res.json({ gerado_em: new Date().toISOString(), empresas });
+  } catch (err) {
+    console.error("[INTERNO] empresas-funcionarios:", err.message);
     res.status(500).json({ error: "Erro interno" });
   }
 });

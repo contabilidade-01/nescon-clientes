@@ -9,6 +9,7 @@ const { ensurePasswordResetSchema } = require("./ensurePasswordResetSchema");
 const { ensureToolAccessSchema } = require("./ensureToolAccessSchema");
 const { ensureDeliverablesSchema } = require("./ensureDeliverablesSchema");
 const { ensureLicensesSchema } = require("./ensureLicensesSchema");
+const { ensureCertificadosSchema } = require("./ensureCertificadosSchema");
 const { ensureAdminUsersSchema } = require("./ensureAdminUsersSchema");
 const {
   ensureGclickClientsSchema,
@@ -17,6 +18,7 @@ const {
 const { ensureAppSettings } = require("./appSettings");
 const { resolverJwtSecret } = require("./jwtSecret");
 const { ensureEmployeePayrollFields } = require("./ensureEmployeePayrollFields");
+const { ensureJornadaSchema } = require("./ensureJornadaSchema");
 const { ensureExtratoAutoSchema } = require("./ensureExtratoAutoSchema");
 const { ensureVacationSchema } = require("./ensureVacationSchema");
 const { ensureEngagementSchema } = require("./ensureEngagementSchema");
@@ -43,6 +45,8 @@ const { ensureContratosSchema } = require("./ensureContratosSchema");
 const { ensurePropostasSchema } = require("./ensurePropostasSchema");
 const { ensureOnboardingSchema } = require("./ensureOnboardingSchema");
 const { ensureEscalasSchema } = require("./ensureEscalasSchema");
+const { ensureRegimeSchema } = require("./ensureRegimeSchema");
+const { ensureGerentesSchema } = require("./ensureGerentesSchema");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
@@ -124,10 +128,16 @@ const onboardingRoutes = require("./routes/onboarding");
 app.use("/api/admin/onboarding", onboardingRoutes.adminRouter);
 app.use("/api/onboarding/public", onboardingRoutes.publicRouter);
 app.use("/api/onboarding/portal", onboardingRoutes.portalRouter);
+// Certificado digital: validade e aviso (painel e portal). Antes de /api/admin.
+const certificadosRoutes = require("./routes/certificadosDigitais");
+app.use("/api/admin/certificados", certificadosRoutes.adminRouter);
+app.use("/api/certificado-digital", certificadosRoutes.portalRouter);
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/chat", require("./routes/chat"));
 app.use("/api/employees", require("./routes/employees"));
+app.use("/api/gerentes", require("./routes/gerentes"));
 app.use("/api/escalas", require("./routes/escalas"));
+app.use("/api/regime", require("./routes/regime"));
 app.use("/api/admissoes", admissionsRoutes.router);
 app.use("/api/documents", require("./routes/documents"));
 app.use("/api/certificates", require("./routes/certificates"));
@@ -155,6 +165,8 @@ app.use("/api/acesso", require("./routes/acesso"));
 app.use("/api/whatsapp", require("./routes/whatsappWebhook"));
 // Download público (token opaco) dos termos emitidos pelo assistente do WhatsApp.
 app.use("/api/dp-docs", require("./routes/dpDocs"));
+// Advertência/suspensão por link avulso (sem login): ver routes/dpAvulso.js.
+app.use("/api/dp-avulso", require("./routes/dpAvulso"));
 // Integração com central-ecac: endpoints internos (sync contatos, disparo WhatsApp).
 app.use("/api/interno", require("./routes/interno"));
 
@@ -183,6 +195,7 @@ async function start() {
     await ensureToolAccessSchema(db);
     await ensureDeliverablesSchema(db);
     await ensureLicensesSchema(db);
+    await ensureCertificadosSchema(db);
     await ensureAdminUsersSchema(db);
     await ensureGclickClientsSchema(db);
     await ensureAppSettings(db);
@@ -199,6 +212,7 @@ async function start() {
     // ensureEmployeePayrollFields atualiza: precisa vir antes (banco limpo).
     await ensureExtratoAutoSchema(db);
     await ensureEmployeePayrollFields(db);
+    await ensureJornadaSchema(db);
     await ensureVacationSchema(db);
     await ensureEngagementSchema(db);
     await ensureAlertasSchema(db);
@@ -224,6 +238,8 @@ async function start() {
     await ensurePropostasSchema(db);
     await ensureOnboardingSchema(db);
     await ensureEscalasSchema(db);
+    await ensureRegimeSchema(db);
+    await ensureGerentesSchema(db);
     // Circular que estava enviando quando a API caiu volta como "pausada" para retomar.
     await require("./circular").recuperarNoArranque(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).

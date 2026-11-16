@@ -1,7 +1,10 @@
 # PLANO — Sub-usuários do Cliente (o cliente vira admin da própria conta)
 
-> Status: **plano aprovado para execução no próximo turno.** Nada implementado ainda.
-> Escrito em 2026-08-14.
+> Status (2026-10-30): **1ª entrega feita — gerentes com advertência e suspensão.**
+> Tabela `company_users`, login por CPF, trava de rotas (`api/src/gerentes.js`), CRUD em
+> `/api/gerentes` e tela `/gerentes` no portal (só o login principal). A senha nova é
+> gerada pela empresa (sem recuperação por e-mail). Atestados e "falta sem atestado"
+> continuam fora. Escrito em 2026-08-14.
 
 ## 1. Objetivo
 

@@ -20,6 +20,8 @@ export const COMPANY_TOOL_KEYS = [
   "escalas",
   // Impostos em aberto no e-CAC (fase de teste, liberado por empresa)
   "impostos_ecac",
+  // Simulador de regime no Simples após a reforma (IBS/CBS dentro ou fora do DAS)
+  "regime_tributario",
 ] as const;
 
 export type CompanyToolKey = (typeof COMPANY_TOOL_KEYS)[number];
@@ -54,6 +56,11 @@ export const COMPANY_TOOL_LABELS: Record<
   impostos_ecac: {
     title: "Impostos em aberto (e-CAC) — teste",
     description: "Débitos da Receita e guia atualizada gerada pelo cliente (DAS Simples/MEI)",
+    group: "financeiro",
+  },
+  regime_tributario: {
+    title: "Simulador de regime (IBS/CBS)",
+    description: "Simples puro, IBS/CBS por fora ou Lucro Presumido: o que compensa",
     group: "financeiro",
   },
   boletos: {
@@ -105,9 +112,9 @@ export const COMPANY_TOOL_LABELS: Record<
 
 /**
  * Ferramentas que nascem DESLIGADAS: só aparecem ao cliente depois que o escritório
- * liga na empresa. Espelho de api/src/companyTools.js (escalas e impostos_ecac: false).
+ * liga na empresa. Espelho de api/src/companyTools.js (escalas, impostos_ecac e regime_tributario: false).
  */
-const OPT_IN_TOOLS: ReadonlySet<CompanyToolKey> = new Set(["escalas", "impostos_ecac"]);
+const OPT_IN_TOOLS: ReadonlySet<CompanyToolKey> = new Set(["escalas", "impostos_ecac", "regime_tributario"]);
 
 export function defaultToolAccess(): CompanyToolAccess {
   return COMPANY_TOOL_KEYS.reduce((acc, key) => {

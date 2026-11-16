@@ -11,6 +11,8 @@ import {
   decidirCobranca,
   montarMensagemHonorario,
   montarMensagemVencimento,
+  montarAvisoCoraSemResposta,
+  numeroAvisoCora,
   faseDe,
   competenciaBR,
   diasDesde,
@@ -129,5 +131,26 @@ describe("diasUteisAposVencimento (carência)", () => {
     expect(diasUteisAposVencimento("2026-08-15", "2026-08-17")).toBe(0);
     expect(diasUteisAposVencimento("2026-08-15", "2026-08-18")).toBe(1);
     expect(diasUteisAposVencimento("2026-08-15", "2026-08-19")).toBe(2);
+  });
+});
+
+describe("montarAvisoCoraSemResposta", () => {
+  it("lista as empresas que ficaram sem cobrança e a data do dia", () => {
+    const t = montarAvisoCoraSemResposta(["Empresa A", "Empresa B"], "2026-10-27");
+    expect(t).toContain("27/10/2026");
+    expect(t).toContain("2 cobrança(s) NÃO foram enviadas");
+    expect(t).toContain("• Empresa A");
+    expect(t).toContain("• Empresa B");
+  });
+
+  it("corta a lista longa", () => {
+    const empresas = Array.from({ length: 35 }, (_, i) => `E${i}`);
+    const t = montarAvisoCoraSemResposta(empresas, "2026-10-27");
+    expect(t).toContain("... e mais 5");
+    expect(t).not.toContain("• E34");
+  });
+
+  it("vai para o 11 98463-0568 por padrão", () => {
+    expect(numeroAvisoCora()).toBe("5511984630568");
   });
 });

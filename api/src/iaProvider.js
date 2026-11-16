@@ -12,6 +12,13 @@
 const { getSetting, getSecretSetting } = require("./appSettings");
 
 /**
+ * Modelo do Claude usado na extração (CNPJ, vencimento) e no "Testar conexão" da tela de
+ * IA. Um lugar só: o teste precisa chamar o MESMO modelo da extração, senão ele dá "ok"
+ * enquanto as leituras falham (foi o que aconteceu com o claude-3-5-sonnet aposentado).
+ */
+const MODELO_CLAUDE = process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5";
+
+/**
  * Interpreta a resposta de texto do modelo como JSON, tolerante ao que os modelos
  * costumam fazer mesmo instruídos a devolver "só JSON":
  *  - embrulhar em cerca markdown (```json ... ``` ou ``` ... ```);
@@ -61,7 +68,7 @@ async function chamarClaude(prompt, apiKey, timeout) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
+        model: MODELO_CLAUDE,
         max_tokens: 256,
         messages: [{ role: "user", content: prompt }],
       }),
@@ -168,4 +175,4 @@ async function chamarIaConfigurada(db, { prompt, timeoutMs } = {}) {
   return { resposta, provider };
 }
 
-module.exports = { chamarIaConfigurada, obterChaveApi };
+module.exports = { chamarIaConfigurada, obterChaveApi, MODELO_CLAUDE };

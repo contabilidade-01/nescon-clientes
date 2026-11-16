@@ -87,6 +87,16 @@ async function ensureCoraSchema(db) {
       ADD COLUMN IF NOT EXISTS agradecimento_enviado_em TIMESTAMPTZ
     `);
 
+    /*
+     * Quando o ENVIO do boleto (PDF, ~5 dias antes do vencimento) foi feito (NULL = ainda
+     * não). Carimbo de dedup de boletoEnvio.js: o envio é por ESTADO (hoje >= dia do envio e
+     * ainda não enviado), então boleto emitido tarde ainda sai, e uma vez só.
+     */
+    await db.query(`
+      ALTER TABLE deliverables
+      ADD COLUMN IF NOT EXISTS boleto_enviado_em TIMESTAMPTZ
+    `);
+
     console.log("[DB] cora: colunas verificadas/criadas.");
   } catch (err) {
     console.error("[DB] ensureCoraSchema falhou:", err.message, err.code || "");

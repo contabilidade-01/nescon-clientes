@@ -100,6 +100,10 @@ services:
       IA_PDF_API_KEY: ${IA_PDF_API_KEY:-}
       IA_PDF_BASE_URL: ${IA_PDF_BASE_URL:-}
       IA_PDF_MODELO: ${IA_PDF_MODELO:-}
+      # Assistente de IA das escalas (API do Claude). Sem a variável, usa a chave do Claude
+      # salva em Configuração de IA. Modelo padrão: claude-opus-5-5.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ESCALA_IA_MODELO: ${ESCALA_IA_MODELO:-}
       # Cifra em repouso da chave de IA (Claude/Gemini/ChatGPT) salva pela tela de
       # Configuração de IA. Sem ela, a chave é gravada em texto puro (com aviso no log).
       SETTINGS_ENC_KEY: ${SETTINGS_ENC_KEY:-}

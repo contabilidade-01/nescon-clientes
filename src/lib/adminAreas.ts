@@ -17,6 +17,7 @@ export const ADMIN_AREAS = [
   "atendimento",
   "acessos",
   "acompanhamentos",
+  "admissoes",
   // Ação, não página: enviar ao cliente o alerta de impostos em atraso (link de recálculo).
   "ecac_alerta_cliente",
 ] as const;
@@ -48,10 +49,19 @@ export const ADMIN_AREA_LABELS: Record<AdminArea, { title: string; description: 
     title: "Acompanhamentos mensais",
     description: "Folha, impostos, NFs de MEI e destinação a quem executa",
   },
+  admissoes: {
+    title: "Admissões",
+    description: "Só as fichas e os documentos de admissão",
+  },
   ecac_alerta_cliente: {
     title: "Enviar alerta de impostos ao cliente",
     description: "Na tela Impostos e-CAC: mandar ao cliente o link para gerar/recalcular as guias",
   },
+};
+
+/** Área que vem junto com outra — espelho de AREA_INCLUIDA_EM em api/src/adminAreas.js. */
+export const AREA_INCLUIDA_EM: Partial<Record<AdminArea, AdminArea[]>> = {
+  admissoes: ["funcionarios"],
 };
 
 /** Chave ausente = sem acesso. `null`/`undefined` = acesso total (logins antigos). */
@@ -71,5 +81,6 @@ export function canSeeArea(
 ): boolean {
   if (isOwner) return true;
   if (!areas) return false;
-  return Boolean(areas[area]);
+  if (areas[area]) return true;
+  return (AREA_INCLUIDA_EM[area] ?? []).some((a) => Boolean(areas[a]));
 }

@@ -77,7 +77,7 @@ function formatar(valor) {
  * celular no Cadastro e fixo no G-Click recebia "Parece telefone fixo" no alerta.
  *
  * Nenhum válido? Devolve o primeiro preenchido, para a validação explicar o que está errado.
- * Exige o JOIN `LEFT JOIN gclick_clients g ON g.company_id = c.id`.
+ * Exige o JOIN do espelho G-Click com alias `g` — de preferência `JOIN_ESPELHO` (alertas.js).
  */
 function celularSql(c = "c", g = "g") {
   const valido = (col) =>

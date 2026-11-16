@@ -265,8 +265,36 @@ function perguntaDiasSuspensao() {
   );
 }
 
+/**
+ * Tira do recado o que é conversa, não fato: saudação ("Olá, bom dia") e o próprio pedido
+ * ("eu quero fazer uma advertência pro João"). Sobra só o que o funcionário fez — é isso
+ * que a IA/fluxo guarda como motivo. Sem isso, "Olá, eu quero fazer uma advertência" ia
+ * parar no termo como se fosse o fato.
+ */
+const RE_SAUDACAO = /^\s*(ol[aá]|oi+|opa|e\s+a[ií]|bom\s+dia|boa\s+tarde|boa\s+noite|tudo\s+bem\??|tudo\s+bom\??|com\s+licen[cç]a)[\s,!.?;:-]*/i;
+const RE_PEDIDO =
+  /^\s*(eu\s+|n[oó]s\s+|a\s+gente\s+)?(quero|queria|quer[ií]amos|preciso|precisava|precisamos|gostaria(\s+de)?|gostar[ií]amos(\s+de)?|vou|vamos|desejo|tenho\s+que|temos\s+que|pode|poderia|favor|por\s+favor)?\s*(de\s+)?((fazer|emitir|aplicar|dar|gerar|lan[cç]ar|mandar|registrar|solicitar)\s+)?(uma?\s+)?(advert[eê]ncia|suspens[aã]o|advertir|suspender)\b/i;
+const RE_CAUSA = /\b(porque|pois|por\s+que|por\s+causa\s+d[eoa]s?|pelo\s+motivo\s+de|motivo\s*:|devido\s+a[os]?|j[aá]\s+que|que)\b\s*/i;
+
+function limparPedido(texto) {
+  let t = String(texto || "").trim();
+  for (let i = 0; i < 3 && RE_SAUDACAO.test(t); i++) t = t.replace(RE_SAUDACAO, "");
+  const m = t.match(RE_PEDIDO);
+  if (m && m[0].trim()) {
+    // O que vem depois do pedido costuma ser "pro João porque faltou" ou "pro João, faltou".
+    const resto = t.slice(m[0].length);
+    const causa = resto.match(RE_CAUSA);
+    if (causa) t = resto.slice(causa.index + causa[0].length);
+    else {
+      const sep = resto.search(/[,.;:!?\n-]/);
+      t = sep >= 0 ? resto.slice(sep + 1) : "";
+    }
+  }
+  return t.replace(/^[\s,.;:!?-]+/, "").trim();
+}
+
 function pareceFato(texto) {
-  const t = String(texto || "").trim();
+  const t = limparPedido(texto);
   if (t.length < 8) return false;
   if (soNumeroLista(t)) return false;
   if (parseData(t) && t.length < 18) return false;
@@ -279,15 +307,16 @@ function patchDeSlots({ ia, texto, step, diasAtuais }) {
   const t = String(texto || "").trim();
   const iaObj = ia && typeof ia === "object" ? ia : {};
 
-  if (iaObj.motivo && String(iaObj.motivo).trim().length >= 3) {
-    patch.motivo = String(iaObj.motivo).trim();
+  const motivoIa = limparPedido(iaObj.motivo);
+  if (motivoIa.length >= 3) {
+    patch.motivo = motivoIa;
   } else if (
     pareceFato(t) &&
     step !== "data" &&
     step !== "plantao" &&
     step !== "conduta"
   ) {
-    patch.motivo = t;
+    patch.motivo = limparPedido(t);
   }
 
   const datas = [];
@@ -361,12 +390,12 @@ function calendarioSuspensao12x36({ anuncio, diasPlantao, anuncioEhPlantao }) {
 }
 
 function redigirMotivoAdvertencia(d) {
-  const base = String(d.motivo || "").trim();
+  const base = limparPedido(d.motivo);
+  // Falta/atraso: o termo diz o fato e as datas. A fala do cliente não entra no documento.
   if (d.datasFatoBR) {
     return (
       `Falta(s) ou atraso(s) injustificado(s) ao serviço na(s) data(s) ${d.datasFatoBR}, ` +
-      `em descumprimento ao contrato de trabalho e ao dever de assiduidade. ` +
-      `Relato do empregador: ${base.replace(/\.+$/, "")}.`
+      `em descumprimento ao contrato de trabalho e ao dever de assiduidade.`
     );
   }
   if (base.length < 50) {
@@ -611,7 +640,7 @@ async function emitirDocumento({ phone, sessao }) {
   const empresa = emp[0];
   const ehSuspensao = sessao.tema === "suspensao";
   const data = new Date(d.dataISO);
-  const motivoDoc = ehSuspensao ? d.motivo : redigirMotivoAdvertencia(d);
+  const motivoDoc = ehSuspensao ? limparPedido(d.motivo) || d.motivo : redigirMotivoAdvertencia(d);
 
   const { pdf, docx, nomeBase } = await gerarArquivos({
     tipo: sessao.tema,
@@ -913,8 +942,9 @@ async function seguirFluxo(phone, sessao, texto) {
 
   if (step === "motivo" || step === "motivo_sus") {
     if (!String(d.motivo || "").trim()) {
-      if (t.length < 3) return "Descreva o *motivo* com um pouco mais de detalhe — ele vai no documento.";
-      await saveSessao(phone, { dados: { motivo: t } });
+      const motivo = limparPedido(t);
+      if (motivo.length < 3) return "Descreva o *motivo* com um pouco mais de detalhe — ele vai no documento.";
+      await saveSessao(phone, { dados: { motivo } });
     }
     return perguntarProximo(phone);
   }
@@ -1074,6 +1104,8 @@ module.exports = {
   lerDiasSuspensao,
   lerDiasExplicitos,
   patchDeSlots,
+  limparPedido,
+  redigirMotivoAdvertencia,
   extrairResposta,
   calendarioSuspensao12x36,
   eh12x36PorId,

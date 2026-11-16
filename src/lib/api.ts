@@ -140,6 +140,17 @@ async function requestBlob(path: string): Promise<Blob> {
   return res.blob();
 }
 
+/** Jornada no cadastro do funcionário (ver api/src/ensureJornadaSchema.js). */
+export type EmployeeJornada = {
+  carga_semanal?: number | string | null;
+  escala?: string | null;
+  folga?: string | null;
+  horario_entrada?: string | null;
+  horario_saida?: string | null;
+  hipersuficiente?: boolean;
+  jornada_atualizada_em?: string | null;
+};
+
 export type DeliverableCategory = "guia" | "boleto" | "folha" | "outro" | "avulso";
 /** De quem é o cliente: do escritório ('nescon') ou pessoal do Jean ('jean'). */
 export type CarteiraCliente = "nescon" | "jean";
@@ -173,6 +184,55 @@ export type PublicDeliverable = {
   status: DeliverableStatus;
   file_name: string;
   company_name: string;
+};
+
+/** Certificado digital: estado calculado da validade (nunca gravado). */
+export type CertificadoStatus = "ativo" | "a_vencer" | "vencido" | "ausente";
+export type CertificadoTipo = "a1" | "a3";
+export type CertificadoTitular = "e_cnpj" | "e_cpf";
+
+export type CertificadoDados = {
+  tipo: CertificadoTipo;
+  titular: CertificadoTitular;
+  emissor?: string | null;
+  emitido_em?: string | null;
+  vence_em: string;
+  observacao?: string | null;
+};
+
+export type CertificadoItem = {
+  company_id: string;
+  name: string;
+  cnpj: string;
+  whatsapp: string | null;
+  certificado_id: string | null;
+  tipo: CertificadoTipo | null;
+  titular: CertificadoTitular | null;
+  emissor: string | null;
+  emitido_em: string | null;
+  vence_em: string | null;
+  observacao: string | null;
+  origem: "escritorio" | "cliente" | null;
+  avisado_em: string | null;
+  status: CertificadoStatus;
+  dias_restantes: number | null;
+};
+
+export type CertificadoPortal = {
+  dias_aviso: number;
+  status: CertificadoStatus;
+  certificado: {
+    id: string;
+    tipo: CertificadoTipo;
+    titular: CertificadoTitular;
+    emissor: string | null;
+    emitido_em: string | null;
+    vence_em: string;
+    origem: "escritorio" | "cliente";
+    updated_at: string;
+    status: CertificadoStatus;
+    dias_restantes: number;
+  } | null;
 };
 
 export type LicenseType = "funcionamento" | "avcb_clcb" | "sanitaria";
@@ -469,7 +529,35 @@ export type LoginResponse =
       is_matriz?: boolean;
       /** Empresas do grupo (vazio quando a empresa é independente). */
       empresas_grupo?: Array<{ id: string; name: string; cnpj: string; is_matriz: boolean }>;
+    }
+  | {
+      token: string;
+      /** Gerente criado pela empresa: entra por CPF e só emite advertência/suspensão. */
+      role: "company_user";
+      gerente: { id: string; nome: string };
+      company: {
+        id: string;
+        name: string;
+        cnpj: string;
+        tool_access?: CompanyToolAccessApi;
+        must_change_password?: boolean;
+        escala_12x36?: boolean;
+      };
     };
+
+/** Gerente da empresa, como a tela "Gerentes" do portal lista. */
+export type Gerente = {
+  id: string;
+  cpf: string;
+  nome: string;
+  email: string | null;
+  permissions: { warning?: boolean; suspension?: boolean };
+  active: boolean;
+  must_change_password: boolean;
+  password_expires_at: string | null;
+  ultimo_login_em: string | null;
+  criado_em: string;
+};
 
 /** Uma obrigação do catálogo, com o vencimento do mês já calculado pelo servidor. */
 export interface AlertObligation {
@@ -787,6 +875,8 @@ export interface AlertOpConfig {
   escritorio_whatsapp: string;
   /** Antecedência do lembrete do boleto Cora, em dias (0 = sem véspera). */
   boleto_dias_antes: number;
+  /** Quantos dias antes do vencimento o boleto (PDF) é enviado ao cliente (0 = desligado). */
+  boleto_envio_dias_antes: number;
   /** Marcos de cobrança do boleto vencido, em dias após o vencimento (ex.: [3,10,30]; vazio = desligado). */
   boleto_cobranca_dias: number[];
 }
@@ -927,6 +1017,8 @@ export const api = {
       request<{
         company: { id: string; name: string; cnpj: string };
         tool_access: CompanyToolAccessApi;
+        /** Preenchido quando quem está logado é um gerente da empresa. */
+        gerente?: { id: string; nome: string } | null;
         /** Falso quando a empresa só tem pró-labore: a seção Férias não aparece. */
         tem_funcionarios?: boolean;
         /** 12x36: suspensão conta PLANTÕES e o retorno pula a folga (ver suspensaoPeriodo.ts). null = servidor não soube. */
@@ -1018,6 +1110,32 @@ export const api = {
    * empresa da sessão e exige a ferramenta `escalas` ligada).
    */
   escalas: {
+    /**
+     * Uma volta da conversa com o assistente de IA. `messages` vai e volta no formato da
+     * API do Claude (blocos); as ferramentas rodam no navegador (assistenteFerramentas.ts).
+     */
+    assistente: (messages: unknown[], companyId?: string) =>
+      request<{ content: Array<{ type: string; [k: string]: unknown }>; stop_reason: string | null; model: string }>(
+        `/escalas/assistente${qsEmpresa(companyId)}`,
+        { method: "POST", body: JSON.stringify({ messages }) },
+      ),
+    /** Prontidão da carteira para 42h/40h (só escritório). */
+    prontidao: () =>
+      request<
+        Array<{
+          id: string;
+          name: string;
+          cnpj: string;
+          escala_12x36: boolean;
+          escalas_liberado: boolean;
+          conferido_em: string | null;
+          atividade_definida: boolean;
+          tem_acordo: boolean;
+          segmento: string | null;
+          meses: string[];
+          funcionarios: Array<{ id: string; company_id: string; name: string } & EmployeeJornada>;
+        }>
+      >("/escalas/prontidao"),
     config: (companyId?: string) =>
       request<{ dados: unknown; atualizado_em: string | null; atualizado_por: string | null }>(
         `/escalas/config${qsEmpresa(companyId)}`
@@ -1044,7 +1162,50 @@ export const api = {
       request<{ ok: true }>(`/escalas/planos/${mes}${qsEmpresa(companyId)}`, { method: "DELETE" }),
   },
 
+  /**
+   * Simulador de regime no Simples (IBS/CBS). O escritório passa `companyId`; o cliente
+   * omite (a API usa a empresa da sessão e exige a ferramenta `regime_tributario` ligada).
+   */
+  regime: {
+    carregar: (companyId?: string) =>
+      request<{ dados: unknown; atualizado_em: string | null; atualizado_por: string | null }>(
+        `/regime${qsEmpresa(companyId)}`
+      ),
+    salvar: (dados: unknown, companyId?: string) =>
+      request<{ atualizado_em: string; atualizado_por: string | null }>(`/regime${qsEmpresa(companyId)}`, {
+        method: "PUT",
+        body: JSON.stringify({ dados }),
+      }),
+  },
+
   /** Licenças (funcionamento, AVCB/CLCB, vigilância sanitária). Só admin. */
+  /** Certificado digital — painel (área licenças; aviso pelo WhatsApp exige alertas). */
+  certificados: {
+    overview: () =>
+      request<{ dias_aviso: number; por_status: Record<CertificadoStatus, number> }>(
+        "/admin/certificados/overview"
+      ),
+    itens: (filtros?: { status?: CertificadoStatus; q?: string }) => {
+      const p = new URLSearchParams();
+      if (filtros?.status) p.set("status", filtros.status);
+      if (filtros?.q) p.set("q", filtros.q);
+      const q = p.toString();
+      return request<CertificadoItem[]>(`/admin/certificados/itens${q ? `?${q}` : ""}`);
+    },
+    criar: (data: CertificadoDados & { company_id: string }) =>
+      request<{ id: string }>("/admin/certificados", { method: "POST", body: JSON.stringify(data) }),
+    editar: (id: string, data: CertificadoDados) =>
+      request<{ id: string }>(`/admin/certificados/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    apagar: (id: string) => request<{ ok: boolean }>(`/admin/certificados/${id}`, { method: "DELETE" }),
+    avisar: (companyId: string) =>
+      request<{ ok: boolean; numero: string }>(`/admin/certificados/avisar/${companyId}`, { method: "POST" }),
+  },
+  /** Certificado digital — portal do cliente. */
+  certificadoDigital: {
+    meu: () => request<CertificadoPortal>("/certificado-digital"),
+    informar: (data: CertificadoDados) =>
+      request<{ id: string }>("/certificado-digital", { method: "POST", body: JSON.stringify(data) }),
+  },
   licencas: {
     overview: () => request<LicenseOverview>("/licencas/overview"),
     itens: (opts?: { status?: LicenseStatus; tipo?: LicenseType; companyId?: string; q?: string }) => {
@@ -1573,6 +1734,21 @@ export const api = {
           carteira: CarteiraCliente;
         }>
       >("/admin/companies"),
+    /** Empresas ativas com os contatos e o endereço (do cadastro de contrato), para o Excel. */
+    companiesExportacao: () =>
+      request<
+        Array<{
+          name: string;
+          cnpj: string;
+          phone: string | null;
+          whatsapp: string | null;
+          email: string | null;
+          /** Só existe quando a empresa tem cadastro de contrato preenchido. */
+          endereco: string | null;
+          carteira: CarteiraCliente;
+          gclick_status: string | null;
+        }>
+      >("/admin/companies/exportacao"),
     /**
      * Vincula/desvincula a empresa a um grupo. `matriz_id` = id da empresa-âncora do
      * grupo, ou null para deixar independente. Entrar em qualquer empresa do grupo passa
@@ -1678,10 +1854,10 @@ export const api = {
       }),
     importEmployees: (
       companyId: string,
-      rows: Array<{ name: string; cpf: string; pis?: string | null }>,
+      rows: Array<{ name: string; cpf: string; pis?: string | null; active?: boolean }>,
       fileCnpj: string
     ) =>
-      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }> }>(
+      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }>; inativados?: number; reativados?: number; unificados?: number; cpfsCompletados?: number }>(
         `/admin/companies/${companyId}/import-employees`,
         { method: "POST", body: JSON.stringify({ rows, fileCnpj }) }
       ),
@@ -2179,6 +2355,27 @@ export const api = {
       },
     },
 
+    /** Cadastros do cliente que a folha ainda não confirmou, com o provável par. */
+    employeeUnificacao: (companyId?: string) =>
+      request<{
+        total: number;
+        pendentes: Array<{
+          company_id: string;
+          company_name: string;
+          provisorio: { id: string; name: string; cpf: string; origem: string; created_at: string };
+          sugestao: { id: string; name: string; cpf: string; active: boolean } | null;
+          semelhanca: number;
+          opcoes: Array<{ id: string; name: string; cpf: string; active: boolean }>;
+        }>;
+      }>(`/admin/employee-unificacao${companyId ? `?company_id=${encodeURIComponent(companyId)}` : ""}`),
+    unificarFuncionarios: (manterId: string, absorverId: string) =>
+      request<{ ok: boolean }>("/admin/employee-unificacao/unificar", {
+        method: "POST",
+        body: JSON.stringify({ manter_id: manterId, absorver_id: absorverId }),
+      }),
+    conferirFuncionario: (id: string) =>
+      request<{ ok: boolean }>(`/admin/employee-unificacao/${id}/conferir`, { method: "POST" }),
+
     /** Quem está cadastrado mas não veio no último extrato — aguarda confirmação. */
     saidasFolha: () =>
       request<{
@@ -2222,7 +2419,11 @@ export const api = {
           em: string;
           /** Avisos de "documento novo" mandados pelo próprio portal ao fim desta sincronização. */
           avisos_enviados?: number;
+          /** Fora do horário comercial: vão às 07:50 do dia seguinte. */
+          avisos_agendados?: number;
           avisos_nao_enviados?: number;
+          /** Empresas que não receberam o aviso na hora, com o motivo. */
+          avisos_detalhe?: { empresa: string; documentos: string[]; agendado: boolean; motivo: string }[];
         } | null;
       }>("/admin/sync-gclick/status"),
     /** Dispara a sincronização com o G-Click (traz documentos e cria empresas que faltam). */
@@ -2472,11 +2673,11 @@ export const api = {
   },
 
   employees: {
-    list: (opts?: { companyId?: string }) => {
-      const q =
-        opts?.companyId && opts.companyId.length
-          ? `?company_id=${encodeURIComponent(opts.companyId)}`
-          : "";
+    list: (opts?: { companyId?: string; inativos?: boolean }) => {
+      const p = new URLSearchParams();
+      if (opts?.companyId) p.set("company_id", opts.companyId);
+      if (opts?.inativos) p.set("inativos", "1");
+      const q = p.toString() ? `?${p.toString()}` : "";
       return request<
         Array<{
           id: string;
@@ -2486,19 +2687,35 @@ export const api = {
           active: boolean;
           company_id: string;
           created_at: string;
+          codigo?: string | null;
+          /** 'cliente' = cadastrado pelo portal; provisório até a folha confirmar. */
+          origem?: string;
+          inativado_em?: string | null;
+          /** Quem deu a saída: 'cliente' (portal) ou 'escritorio'. */
+          inativado_por?: string | null;
           company_name?: string;
           company_cnpj?: string;
-        }>
+        } & EmployeeJornada>
       >(`/employees${q}`);
     },
-    create: (data: { company_id?: string; name: string; cpf: string; pis?: string | null; active?: boolean }) =>
-      request("/employees", { method: "POST", body: JSON.stringify(data) }),
-    import: (rows: Array<{ name: string; cpf: string; pis?: string | null }>, fileCnpj: string) =>
-      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }> }>("/employees/import", {
+    /** Última conferência da lista pelo cliente. */
+    conferencia: (companyId?: string) =>
+      request<{ conferido_em: string | null; conferido_por: string | null }>(
+        `/employees/conferencia${companyId ? `?company_id=${encodeURIComponent(companyId)}` : ""}`,
+      ),
+    confirmarConferencia: () =>
+      request<{ conferido_em: string; conferido_por: string }>("/employees/conferencia", { method: "POST" }),
+    create: (data: { company_id?: string; name: string; cpf: string; pis?: string | null; active?: boolean } & EmployeeJornada) =>
+      request<{ id: string; name: string; cpf: string; pis: string | null; active: boolean }>("/employees", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    import: (rows: Array<{ name: string; cpf: string; pis?: string | null; active?: boolean }>, fileCnpj: string) =>
+      request<{ inserted: number; skipped: number; errors: Array<{ row: number; message: string }>; inativados?: number; reativados?: number; unificados?: number; cpfsCompletados?: number }>("/employees/import", {
         method: "POST",
         body: JSON.stringify({ rows, fileCnpj }),
       }),
-    update: (id: string, data: { name?: string; cpf?: string; pis?: string | null; active?: boolean }) =>
+    update: (id: string, data: { name?: string; cpf?: string; pis?: string | null; active?: boolean } & EmployeeJornada) =>
       request(`/employees/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: string) =>
       request(`/employees/${id}`, { method: "DELETE" }),
@@ -2910,6 +3127,19 @@ export const api = {
   },
 
   /** Telemetria de uso do portal (cliente logado). Best-effort — nunca atrapalha a navegação. */
+  /** Gerentes da empresa — só o login principal da empresa usa. */
+  gerentes: {
+    list: () => request<Gerente[]>("/gerentes"),
+    create: (body: { cpf: string; nome: string; email?: string; permissions: Gerente["permissions"] }) =>
+      request<{ gerente: Gerente; senha: string }>("/gerentes", { method: "POST", body: JSON.stringify(body) }),
+    update: (
+      id: string,
+      body: Partial<{ nome: string; email: string | null; permissions: Gerente["permissions"]; active: boolean }>
+    ) => request<Gerente>(`/gerentes/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    novaSenha: (id: string) =>
+      request<{ gerente: Gerente; senha: string }>(`/gerentes/${id}/nova-senha`, { method: "POST" }),
+    remove: (id: string) => request<{ ok: boolean }>(`/gerentes/${id}`, { method: "DELETE" }),
+  },
   portal: {
     registrarUso: (ferramenta: string) =>
       request<{ ok: boolean }>("/portal/uso", {
@@ -2919,6 +3149,26 @@ export const api = {
   },
 
   /** Link público do cliente novo (sem login): roteiro de primeiros passos e envio de documentos. */
+  /** Advertência/suspensão por link avulso (sem login) — ver api/src/routes/dpAvulso.js. */
+  dpAvulso: {
+    empresa: (cnpj: string) =>
+      publicRequest<{
+        encontrada: boolean;
+        nome?: string;
+        escala_12x36?: boolean;
+        advertencia?: boolean;
+        suspensao?: boolean;
+      }>(`/dp-avulso/empresa?cnpj=${encodeURIComponent(cnpj.replace(/\D/g, ""))}`),
+    emitir: async (dados: Record<string, unknown>, blob: Blob, fileName: string) => {
+      const form = new FormData();
+      form.append("dados", JSON.stringify(dados));
+      form.append("file", blob, fileName);
+      const res = await fetch(`${API_BASE}/dp-avulso/emitir`, { method: "POST", body: form });
+      const data = await parseResponseJson<{ ok?: boolean; error?: string }>(res);
+      if (!res.ok) throw new Error(data.error || "Não foi possível registrar o documento.");
+      return data;
+    },
+  },
   onboarding: {
     get: (token: string) =>
       publicRequest<import("@/lib/onboardingModelo").OnboardingCliente>(`/onboarding/public/${encodeURIComponent(token)}`),

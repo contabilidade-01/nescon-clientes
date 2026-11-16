@@ -3,7 +3,12 @@ import { Upload, Download } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { parseEmployeeImportFile } from "@/lib/parseEmployeeSpreadsheet";
+import {
+  type EmployeeImportRow,
+  describeImportResult,
+  parseEmployeeImportFile,
+  toImportPayload,
+} from "@/lib/parseEmployeeSpreadsheet";
 import { toast } from "sonner";
 import { maskCNPJ } from "@/lib/masks";
 
@@ -19,18 +24,21 @@ export function AdminEmployeeImport({ companyId, companyCnpj, companyName }: Pro
   const [pendingImport, setPendingImport] = useState<{
     fileName: string;
     fileCnpj: string;
-    rows: Array<{ name: string; cpf: string }>;
+    rows: EmployeeImportRow[];
+    dismissed: EmployeeImportRow[];
     skippedDismissed: number;
+    withoutCpf: number;
   } | null>(null);
 
   const importMutation = useMutation({
-    mutationFn: ({ rows, fileCnpj }: { rows: Array<{ name: string; cpf: string }>; fileCnpj: string }) =>
+    mutationFn: ({ rows, fileCnpj }: { rows: ReturnType<typeof toImportPayload>; fileCnpj: string }) =>
       api.admin.importEmployees(companyId, rows, fileCnpj),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
       queryClient.invalidateQueries({ queryKey: ["admin-summary"] });
       setPendingImport(null);
-      toast.success(`Importação concluída: ${result.inserted} inseridos, ${result.skipped} ignorados`);
+      queryClient.invalidateQueries({ queryKey: ["employee-unificacao"] });
+      toast.success(describeImportResult(result));
       if (result.errors.length) {
         toast.warning(`${result.errors.length} linhas com erro foram ignoradas`);
       }
@@ -56,12 +64,12 @@ export function AdminEmployeeImport({ companyId, companyCnpj, companyName }: Pro
         return;
       }
 
-      const { rows, skippedDismissed, fileCnpj } = parsed;
-      if (!rows.length) {
+      const { rows, dismissed, skippedDismissed, withoutCpf, fileCnpj } = parsed;
+      if (!rows.length && !dismissed.length) {
         toast.error("Planilha sem funcionários válidos para importar");
         return;
       }
-      setPendingImport({ fileName: file.name, fileCnpj, rows, skippedDismissed });
+      setPendingImport({ fileName: file.name, fileCnpj, rows, dismissed, skippedDismissed, withoutCpf });
     } catch {
       toast.error("Não foi possível ler a planilha. Use CSV ou Excel (.xls, .xlsx).");
     } finally {
@@ -74,9 +82,9 @@ export function AdminEmployeeImport({ companyId, companyCnpj, companyName }: Pro
       <div>
         <p className="text-xs font-semibold text-foreground">Importar funcionários (planilha)</p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Aceita CSV, .xls ou .xlsx. Precisa de <strong>Nome</strong> e <strong>CPF</strong> por linha, e o
-          CNPJ <strong>{maskCNPJ(companyCnpj)}</strong> em algum lugar do arquivo. Quem tiver data de demissão
-          não é importado.
+          Aceita CSV, .xls ou .xlsx, inclusive a <strong>Relação de Empregados</strong> do Domínio (com ou
+          sem CPF — sem CPF, reconhece pelo nome). Precisa do CNPJ <strong>{maskCNPJ(companyCnpj)}</strong> em
+          algum lugar do arquivo. Quem tiver data de demissão não é cadastrado e, se já estiver, é inativado.
         </p>
         <a
           href="/modelo-importar-funcionarios.xlsx"
@@ -98,14 +106,16 @@ export function AdminEmployeeImport({ companyId, companyCnpj, companyName }: Pro
       {pendingImport ? (
         <div className="rounded-md border bg-background/60 p-3 space-y-2 text-xs">
           <p>
-            Arquivo: <strong>{pendingImport.fileName}</strong> · {pendingImport.rows.length} funcionário(s)
+            Arquivo: <strong>{pendingImport.fileName}</strong> · {pendingImport.rows.length} ativo(s)
+            {pendingImport.skippedDismissed > 0 ? ` · ${pendingImport.skippedDismissed} demitido(s)` : ""}
+            {pendingImport.withoutCpf > 0 ? " · sem CPF (casa pelo nome)" : ""}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
               className="gap-1"
               onClick={() =>
-                importMutation.mutate({ rows: pendingImport.rows, fileCnpj: pendingImport.fileCnpj })
+                importMutation.mutate({ rows: toImportPayload(pendingImport), fileCnpj: pendingImport.fileCnpj })
               }
               disabled={importMutation.isPending}
             >

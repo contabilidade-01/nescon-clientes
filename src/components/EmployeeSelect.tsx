@@ -1,10 +1,13 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Search, UserPlus } from "lucide-react";
+import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { maskCPF } from "@/lib/masks";
+import { api } from "@/lib/api";
 
 export type EmployeeOption = {
   id: string;
@@ -21,7 +24,64 @@ type Props = {
   className?: string;
   /** Enquanto true, mostra "Carregando..." em vez do aviso de lista vazia. */
   loading?: boolean;
+  /**
+   * Quando informado, o cliente pode cadastrar ali mesmo quem ainda não está na lista
+   * (admissão recente que a folha ainda não trouxe). Recebe o funcionário criado.
+   */
+  onCreated?: (employee: EmployeeOption) => void;
 };
+
+/** Cadastro rápido: só nome e CPF. O escritório unifica com a folha depois. */
+function QuickAddEmployee({
+  onCreated,
+  onCancel,
+}: {
+  onCreated: (employee: EmployeeOption) => void;
+  onCancel?: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [cpf, setCpf] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const salvar = async () => {
+    setSaving(true);
+    try {
+      const emp = await api.employees.create({ name: name.trim().toUpperCase(), cpf: cpf.trim() });
+      toast.success("Funcionário cadastrado");
+      onCreated({ id: emp.id, name: emp.name, cpf: emp.cpf });
+    } catch (e) {
+      toast.error((e as Error).message || "Erro ao cadastrar funcionário");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 space-y-2 rounded-md border bg-muted/30 p-3">
+      <p className="text-xs text-muted-foreground">
+        Entrou há pouco e ainda não aparece? Cadastre aqui — o escritório confirma no próximo
+        fechamento da folha.
+      </p>
+      <Input placeholder="Nome completo" value={name} onChange={(e) => setName(e.target.value)} />
+      <Input placeholder="CPF" inputMode="numeric" value={cpf} onChange={(e) => setCpf(maskCPF(e.target.value))} />
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          size="sm"
+          onClick={salvar}
+          disabled={saving || name.trim().length < 2 || cpf.replace(/\D/g, "").length !== 11}
+        >
+          <UserPlus className="mr-1 h-4 w-4" /> {saving ? "Cadastrando..." : "Cadastrar"}
+        </Button>
+        {onCancel && (
+          <Button type="button" size="sm" variant="outline" onClick={onCancel} disabled={saving}>
+            Cancelar
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /** A partir de quantos funcionários o campo de busca aparece. */
 const SEARCH_THRESHOLD = 8;
@@ -35,8 +95,17 @@ export function EmployeeSelect({
   placeholder = "Escolha o funcionário",
   className,
   loading = false,
+  onCreated,
 }: Props) {
   const [query, setQuery] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const handleCreated = (emp: EmployeeOption) => {
+    setAdding(false);
+    setQuery("");
+    onCreated?.(emp);
+    onChange(emp.id);
+  };
 
   const filtered = useMemo(() => {
     const text = query.trim().toLowerCase();
@@ -62,6 +131,9 @@ export function EmployeeSelect({
     return (
       <div className={className}>
         <Label>{label}</Label>
+        {onCreated ? (
+          <QuickAddEmployee onCreated={handleCreated} />
+        ) : (
         <div className="mt-1 rounded-md border border-dashed bg-muted/40 px-3 py-4 text-center text-sm text-muted-foreground">
           Nenhum funcionário cadastrado.
           <Link
@@ -71,6 +143,7 @@ export function EmployeeSelect({
             <UserPlus className="h-4 w-4" /> Cadastrar funcionários
           </Link>
         </div>
+        )}
       </div>
     );
   }
@@ -109,7 +182,8 @@ export function EmployeeSelect({
         </option>
         {options.map((emp) => (
           <option key={emp.id} value={emp.id}>
-            {emp.name} - {maskCPF(String(emp.cpf || ""))}
+            {emp.name}
+            {emp.cpf ? ` - ${maskCPF(String(emp.cpf))}` : " (CPF pendente)"}
           </option>
         ))}
       </select>
@@ -120,6 +194,18 @@ export function EmployeeSelect({
             : `${options.length} funcionários encontrados — selecione acima.`}
         </p>
       )}
+      {onCreated && !loading &&
+        (adding ? (
+          <QuickAddEmployee onCreated={handleCreated} onCancel={() => setAdding(false)} />
+        ) : (
+          <button
+            type="button"
+            className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            onClick={() => setAdding(true)}
+          >
+            <UserPlus className="h-3.5 w-3.5" /> Não está na lista? Cadastrar funcionário
+          </button>
+        ))}
     </div>
   );
 }

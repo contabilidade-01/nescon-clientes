@@ -18,7 +18,7 @@ const {
   obrigacoesSemGuia,
   montarMensagemAlerta,
 } = require("./alertasRegras");
-const { hojeSP, somarDias, ehDiaBancario, proximoDiaBancario } = require("./diasBancarios");
+const { hojeSP, somarDias, ehDiaBancario, proximoDiaBancario, diaBancarioAnterior, ddmm, diasCobertosPeloAviso } = require("./diasBancarios");
 const { lerConfig } = require("./alertasConfig");
 const { trechoDeIncentivo } = require("./engagement");
 const numeroWpp = require("./whatsappNumero");
@@ -38,8 +38,17 @@ function whatsappSql(aliasCompany = "c") {
   return numeroWpp.celularSql(aliasCompany, "g");
 }
 
-/** JOIN que acompanha `whatsappSql`. */
-const JOIN_ESPELHO = `LEFT JOIN gclick_clients g ON g.company_id = c.id`;
+/**
+ * JOIN que acompanha `whatsappSql`.
+ *
+ * Casa pelo vínculo (`company_id`) e, enquanto o cliente ainda não foi aceito no painel
+ * (espelho sem vínculo), pelo CNPJ. Sem o segundo caso, cliente novo — cuja empresa foi
+ * criada pela sincronização de documentos ou cadastrada à mão sem celular — ficava sem
+ * número, e o aviso de "documento novo" (ex.: o primeiro DAS) não saía, mesmo com o
+ * celular no G-Click. O CNPJ é único no espelho, então continua no máximo uma linha.
+ */
+const JOIN_ESPELHO =
+  "LEFT JOIN gclick_clients g ON (g.company_id = c.id OR (g.company_id IS NULL AND g.cnpj = c.cnpj))";
 
 function portalUrl(caminho = "/") {
   const base = (process.env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
@@ -407,13 +416,26 @@ function diasUteisAposVencimento(dueDate, hoje) {
   return count;
 }
 
+/**
+ * Dia em que o LEMBRETE de um boleto deve sair: vencimento menos a antecedência. Se esse dia
+ * cai em fim de semana (ou feriado), vai para o dia útil ANTERIOR. Sem isso, boleto com
+ * vencimento no domingo teria o lembrete na véspera de sábado — e o motor não manda mensagem
+ * de honorário no fim de semana nem reenvia depois (a comparação é pela data exata), então o
+ * cliente ficava sem aviso nenhum. Função pura.
+ */
+function diaDoLembreteBoleto(dueDate, diasAntes) {
+  if (!dueDate) return null;
+  const dia = somarDias(dueDate, -(Number(diasAntes) || 0));
+  return diaBancarioAnterior(dia) || dia;
+}
+
 function itensBoletoDoDia(
   boletos,
   { hoje, diasAntes, cobrancaDias, honorariosCobrancaDias, lembreteOn, cobrancaOn }
 ) {
   const itens = [];
   for (const b of boletos || []) {
-    const eLembrete = lembreteOn && b.due_date === somarDias(hoje, diasAntes);
+    const eLembrete = lembreteOn && hoje === diaDoLembreteBoleto(b.due_date, diasAntes);
     // A COBRANÇA de honorário saiu deste motor: agora tem mensagem própria em 2 fases
     // (ver honorariosCobranca.js). Aqui o honorário só gera LEMBRETE (antes do
     // vencimento). A cobrança de atraso segue valendo só para BOLETO COMUM.
@@ -640,7 +662,12 @@ async function previsao(db, { data = null, simular = true, diaUtil = true } = {}
     const proximaGuia = guiasPorEmpresa.get(e.id) || new Map();
 
     // Tributo com guia só entra se a guia está no portal; o salário sai pelo catálogo.
-    itens.push(...itensTributariosDoDia({ codigos, proximaGuia, hoje }));
+    // Na sexta, cobre também o sábado e o domingo: não se manda WhatsApp no fim de
+    // semana, e o aviso de tributo não pode se perder por isso. O item leva a data do
+    // vencimento, então a mensagem continua correta.
+    for (const diaAviso of diasCobertosPeloAviso(hoje)) {
+      itens.push(...itensTributariosDoDia({ codigos, proximaGuia, hoje: diaAviso }));
+    }
     if (!itens.length) continue;
 
     // Para férias, a chave de duplicidade inclui os nomes dos funcionários alertados,
@@ -1014,6 +1041,7 @@ module.exports = {
   panorama,
   previsao,
   itensBoletoDoDia,
+  diaDoLembreteBoleto,
   diasUteisAposVencimento,
   registrarEnvio,
   salvarPreferencias,

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Archive, Building2, Eye, KeyRound, Plus, RotateCcw, ShieldAlert, Trash2 } from "lucide-react";
+import { Archive, Building2, Eye, FileSpreadsheet, KeyRound, Plus, RotateCcw, ShieldAlert, Trash2 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { CompanyFilter } from "@/components/admin/CompanyFilter";
 import { useAdminCompanies } from "@/hooks/useAdminCompanies";
@@ -14,6 +14,7 @@ import { api } from "@/lib/api";
 import { maskCNPJ } from "@/lib/masks";
 import { useAuth } from "@/hooks/useAuth";
 import { mergeClientToolAccess } from "@/lib/companyTools";
+import { exportarClientesXlsx } from "@/lib/exportClientesXlsx";
 
 const EmpresasPage = () => {
   const queryClient = useQueryClient();
@@ -24,7 +25,8 @@ const EmpresasPage = () => {
   const [confirmArquivar, setConfirmArquivar] = useState(false);
   const [motivoExcluir, setMotivoExcluir] = useState("");
   const [confirmExcluir, setConfirmExcluir] = useState(false);
-  const [buscaEmpresa, setBuscaEmpresa] = useState("");
+  // A Central e-CAC abre esta tela com ?busca=<CNPJ> ("Abrir no Portal" na ficha da empresa).
+  const [buscaEmpresa, setBuscaEmpresa] = useState(() => new URLSearchParams(window.location.search).get("busca") || "");
 
   // A senha inicial é mostrada UMA vez, num aviso persistente. Não existe rota que a
   // consulte depois: uma tela que exibe senha de cliente é uma tela que vaza senha.
@@ -188,6 +190,19 @@ const EmpresasPage = () => {
 
   const selected = companies?.find((c) => c.id === companyId);
 
+  const exportar = useMutation({
+    mutationFn: () => api.admin.companiesExportacao(),
+    onSuccess: (clientes) => {
+      exportarClientesXlsx(clientes);
+      const semEndereco = clientes.filter((c) => !c.endereco).length;
+      toast.success(
+        `${clientes.length} clientes exportados.` +
+          (semEndereco ? ` ${semEndereco} sem endereço (só vem do cadastro de contrato).` : "")
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   return (
     <AdminLayout title="Empresas" description="Cadastro, contactos e permissões por CNPJ">
       {/* A senha aparece UMA vez, e este aviso não some sozinho. */}
@@ -270,9 +285,15 @@ const EmpresasPage = () => {
       {/* Lista completa de empresas ativas (PRIMEIRO ITEM) */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Building2 className="h-4 w-4" /> Empresas ativas ({companies?.length || 0})
-          </CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Building2 className="h-4 w-4" /> Empresas ativas ({companies?.length || 0})
+            </CardTitle>
+            <Button variant="outline" size="sm" onClick={() => exportar.mutate()} disabled={exportar.isPending}>
+              <FileSpreadsheet className="mr-1.5 h-4 w-4" />
+              {exportar.isPending ? "Gerando..." : "Exportar Excel"}
+            </Button>
+          </div>
           <CardDescription>
             Clique em "Entrar como" para personificar a empresa ou em "Arquivar" para desativá-la.
           </CardDescription>
