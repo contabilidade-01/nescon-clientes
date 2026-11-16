@@ -232,7 +232,13 @@ export function WarningForm({ avulso }: { avulso?: ModoAvulso } = {}) {
         </CardHeader>
         <CardContent className="space-y-4">
           {avulso ? (
-            <FuncionarioManual nome={nomeManual} cpf={cpfManual} onNome={setNomeManual} onCpf={setCpfManual} />
+            <FuncionarioManual
+              nomes={avulso.funcionarios}
+              nome={nomeManual}
+              cpf={cpfManual}
+              onNome={setNomeManual}
+              onCpf={setCpfManual}
+            />
           ) : (
             <EmployeeSelect
               employees={employees}

@@ -41,6 +41,7 @@ export default function DpAvulsoPage() {
   const [buscando, setBuscando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
+  const [funcionarios, setFuncionarios] = useState<string[]>([]);
 
   useEffect(() => {
     document.title = tipo ? `${TITULOS[tipo]} · Nescon` : "Advertência e Suspensão · Nescon";
@@ -55,6 +56,7 @@ export default function DpAvulsoPage() {
     setBuscando(true);
     setErro(null);
     setEmpresa(null);
+    setFuncionarios([]);
     try {
       const r = await api.dpAvulso.empresa(digits);
       if (!r.encontrada || !r.nome) {
@@ -68,6 +70,11 @@ export default function DpAvulsoPage() {
         advertencia: Boolean(r.advertencia),
         suspensao: Boolean(r.suspensao),
       });
+      // A lista é ajuda, não requisito: se falhar, a pessoa digita o nome.
+      api.dpAvulso
+        .funcionarios(digits)
+        .then((l) => setFuncionarios(Array.isArray(l?.nomes) ? l.nomes : []))
+        .catch(() => setFuncionarios([]));
       try {
         localStorage.setItem(LS_CNPJ, digits);
       } catch {
@@ -85,10 +92,11 @@ export default function DpAvulsoPage() {
       empresa
         ? {
             empresa: { nome: empresa.nome, cnpj: empresa.cnpj, escala12x36: empresa.escala12x36 },
+            funcionarios,
             emitir: (dados, blob, fileName) => api.dpAvulso.emitir(dados, blob, fileName),
           }
         : null,
-    [empresa]
+    [empresa, funcionarios]
   );
 
   const liberado = empresa && tipo ? (tipo === "advertencia" ? empresa.advertencia : empresa.suspensao) : false;

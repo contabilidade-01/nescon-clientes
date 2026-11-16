@@ -3,6 +3,7 @@
  * Regras e modelo de proteção em ../dpAvulso.js.
  *
  *   GET  /empresa?cnpj=  → { encontrada, nome, escala_12x36, advertencia, suspensao }
+ *   GET  /funcionarios?cnpj= → { nomes: string[] } (só nomes dos funcionários ativos)
  *   POST /emitir         → multipart: `dados` (JSON) + `file` (DOCX gerado na tela)
  */
 const router = require("express").Router();
@@ -15,7 +16,8 @@ const db = require("../db");
 const { UPLOAD_DIR } = require("../uploads");
 const { isSmtpConfigured, createTransport, getPublicAppUrl } = require("../mailer");
 const { configurado: whatsappConfigurado, enviarTexto } = require("../uazapi");
-const { validarEmissao, ferramentasDaEmpresa, digitos } = require("../dpAvulso");
+const { validarEmissao, ferramentasDaEmpresa, digitos, nomesParaLista } = require("../dpAvulso");
+const { funcionarioFeriasSql } = require("../payrollRoles");
 
 const ADMIN_EMAIL = process.env.DP_EMAIL || "dp@nesconcontabilidade.com.br";
 const ADMIN_WHATSAPP = (process.env.ADMIN_WHATSAPP || "5511948626605").replace(/\D/g, "");
@@ -73,6 +75,27 @@ router.get("/empresa", limiteConsulta, async (req, res) => {
     });
   } catch (err) {
     console.error("[dp-avulso] empresa:", err.message);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+// Lista para escolher o funcionário na tela. Só NOMES de quem está ativo e não é
+// pró-labore: nada de CPF, cargo ou salário (o link é público, basta saber o CNPJ).
+router.get("/funcionarios", limiteConsulta, async (req, res) => {
+  try {
+    const cnpj = digitos(req.query.cnpj);
+    if (cnpj.length !== 14) return res.status(400).json({ error: "CNPJ inválido." });
+    const empresa = await empresaPorCnpj(cnpj);
+    if (!empresa) return res.json({ nomes: [] });
+    const f = ferramentasDaEmpresa(empresa.tool_access);
+    if (!f.advertencia && !f.suspensao) return res.json({ nomes: [] });
+    const { rows } = await db.query(
+      `SELECT e.name FROM employees e WHERE e.company_id = $1 AND ${funcionarioFeriasSql("e")}`,
+      [empresa.id]
+    );
+    return res.json({ nomes: nomesParaLista(rows) });
+  } catch (err) {
+    console.error("[dp-avulso] funcionarios:", err.message);
     res.status(500).json({ error: "Erro interno" });
   }
 });

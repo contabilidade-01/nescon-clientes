@@ -3,12 +3,15 @@
  *
  * A tela pública (/avulso/advertencia e /avulso/suspensao) deixa o cliente digitar o
  * CNPJ, achar a empresa no cadastro e gerar o termo com o mesmo modelo do portal. O
- * funcionário, as datas, os dias e o retorno são digitados à mão: o link não lê a lista
- * de funcionários nem o histórico da empresa (nada de dado pessoal sai do servidor).
+ * funcionário pode ser escolhido da lista da empresa (só os NOMES dos ativos) ou digitado
+ * à mão; datas, dias e retorno são digitados. CPF, salário, cargo e histórico nunca saem
+ * do servidor por aqui.
  *
  * Proteção mínima (o link é público):
  *  - só empresa cadastrada, ativa e com a ferramenta (advertência/suspensão) ligada;
- *  - a consulta do CNPJ devolve só nome e escala, nunca e-mail, telefone ou funcionários;
+ *  - a consulta do CNPJ devolve só nome e escala, nunca e-mail ou telefone;
+ *  - a lista de funcionários devolve só nomes (sem CPF/cargo/salário), e só para empresa
+ *    com advertência ou suspensão ligada — é o mínimo para escolher na tela;
  *  - limite de tentativas por IP (rota);
  *  - cada emissão fica no histórico com origem 'link_avulso' + IP e avisa o escritório.
  */
@@ -73,4 +76,18 @@ function validarEmissao(body) {
   return out;
 }
 
-module.exports = { validarEmissao, ferramentasDaEmpresa, digitos, TIPOS };
+/** Nomes para a lista do link avulso: sem vazios nem repetidos, em ordem alfabética. */
+function nomesParaLista(linhas) {
+  const vistos = new Set();
+  const out = [];
+  for (const l of linhas || []) {
+    const nome = String((l && l.name) || "").replace(/\s+/g, " ").trim();
+    const chave = nome.toLocaleUpperCase("pt-BR");
+    if (nome.length < 3 || vistos.has(chave)) continue;
+    vistos.add(chave);
+    out.push(nome);
+  }
+  return out.sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+module.exports = { validarEmissao, ferramentasDaEmpresa, digitos, nomesParaLista, TIPOS };
