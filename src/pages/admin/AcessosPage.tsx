@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { empresaCasaBusca } from "@/lib/buscaEmpresa";
 import {
   Select,
   SelectContent,
@@ -85,9 +86,7 @@ const AcessosPage = () => {
     let lista: AcessoCliente[] = data?.clientes ?? [];
     const q = busca.trim().toLowerCase();
     if (q) {
-      lista = lista.filter(
-        (c) => c.name.toLowerCase().includes(q) || c.cnpj.replace(/\D/g, "").includes(q.replace(/\D/g, ""))
-      );
+      lista = lista.filter((c) => empresaCasaBusca(c, q));
     }
     if (status === "ativos") lista = lista.filter((c) => !c.nunca_acessou);
     if (status === "nunca") lista = lista.filter((c) => c.nunca_acessou);

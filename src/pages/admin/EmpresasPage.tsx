@@ -9,6 +9,7 @@ import { CompanyManageRow } from "@/components/admin/CompanyManageRow";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { empresaCasaBusca } from "@/lib/buscaEmpresa";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { maskCNPJ } from "@/lib/masks";
@@ -183,9 +184,7 @@ const EmpresasPage = () => {
   });
 
   const empresasFiltradas = (companies || []).filter((c) => {
-    if (!buscaEmpresa) return true;
-    const termo = buscaEmpresa.toLowerCase();
-    return c.name.toLowerCase().includes(termo) || c.cnpj.includes(buscaEmpresa.replace(/\D/g, ""));
+    return empresaCasaBusca(c, buscaEmpresa);
   });
 
   const selected = companies?.find((c) => c.id === companyId);
