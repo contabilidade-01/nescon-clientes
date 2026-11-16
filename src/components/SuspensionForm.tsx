@@ -16,11 +16,12 @@ import { EmployeeSelect } from "@/components/EmployeeSelect";
 import { downloadSuspensionDoc, buildSuspensionDocFile, type SuspensionData } from "@/lib/generateSuspensionDoc";
 import { calcularPeriodoSuspensao, empresaEh12x36 } from "@/lib/suspensaoPeriodo";
 import { saveAs } from "file-saver";
+import { DocumentoPronto, type DocumentoGerado } from "@/components/DocumentoPronto";
 import { FuncionarioManual } from "@/components/avulso/FuncionarioManual";
 import { cpfParaDocumento, nomeFuncionarioOk, type ModoAvulso } from "@/lib/dpAvulso";
 import { useEscala12x36 } from "@/hooks/useEscala12x36";
 import { DiasSuspensaoInput } from "@/components/DiasSuspensaoInput";
-import { api } from "@/lib/api";
+import { api, dpDocDocxUrl } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { maskCPF } from "@/lib/masks";
@@ -80,6 +81,7 @@ export function SuspensionForm({ avulso }: { avulso?: ModoAvulso } = {}) {
 
   const [newWarning, setNewWarning] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [docGerado, setDocGerado] = useState<DocumentoGerado | null>(null);
   const [isThirdSuspension, setIsThirdSuspension] = useState(false);
   const [thirdManuallySet, setThirdManuallySet] = useState(false);
   // Detecção pela empresa (cadastro atual no servidor, sessão ou CNPJ conhecido) é a fonte de verdade.
@@ -180,6 +182,7 @@ export function SuspensionForm({ avulso }: { avulso?: ModoAvulso } = {}) {
     if (!selectedEmployee || !startDate) return;
 
     setIsGenerating(true);
+    setDocGerado(null);
 
     const sortedSuspensions = [...previousSuspensionDates].sort((a, b) => a.getTime() - b.getTime());
     const sortedAbsences = [...absenceDates].sort((a, b) => a.getTime() - b.getTime());
@@ -207,7 +210,7 @@ export function SuspensionForm({ avulso }: { avulso?: ModoAvulso } = {}) {
     if (avulso) {
       try {
         const { blob, fileName } = await buildSuspensionDocFile(data);
-        await avulso.emitir(
+        const r = (await avulso.emitir(
           {
             tipo: "suspensao",
             cnpj: empresaCnpj,
@@ -220,9 +223,10 @@ export function SuspensionForm({ avulso }: { avulso?: ModoAvulso } = {}) {
           },
           blob,
           fileName
-        );
+        )) as { token?: string } | undefined;
         saveAs(blob, fileName);
-        toast.success("Suspensão gerada! O arquivo foi baixado e a Nescon recebeu uma cópia.");
+        setDocGerado({ blob, fileName, url: r?.token ? dpDocDocxUrl(r.token) : undefined });
+        toast.success("Suspensão gerada! A Nescon recebeu uma cópia.");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao gerar documento");
       } finally {
@@ -249,6 +253,7 @@ export function SuspensionForm({ avulso }: { avulso?: ModoAvulso } = {}) {
       });
 
       const { blob, fileName } = await downloadSuspensionDoc(data);
+      setDocGerado({ blob, fileName });
       // Enviar por e-mail (best-effort)
       api.documents.enviarEmail(created.id, blob, fileName).catch(() => {});
       toast.success("Documento gerado e salvo no histórico!");
@@ -566,6 +571,9 @@ export function SuspensionForm({ avulso }: { avulso?: ModoAvulso } = {}) {
 
       {/* Generate Button */}
       <div className="sticky bottom-0 left-0 right-0 z-10 border-t bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:static md:z-auto md:border-0 md:bg-transparent md:p-0">
+        <div className="mb-3 empty:hidden">
+          <DocumentoPronto doc={docGerado} titulo="Suspensão gerada" />
+        </div>
         <Button onClick={handleGenerate} disabled={isGenerating} className="w-full gap-2 h-12 text-base font-semibold" size="lg">
           <Download className="h-5 w-5" />
           {isGenerating ? "Gerando..." : "Gerar Documento de Suspensão"}

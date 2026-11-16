@@ -14,9 +14,10 @@ import { Separator } from "@/components/ui/separator";
 import { EmployeeSelect } from "@/components/EmployeeSelect";
 import { downloadWarningDoc, buildWarningDocFile, type WarningData } from "@/lib/generateWarningDoc";
 import { saveAs } from "file-saver";
+import { DocumentoPronto, type DocumentoGerado } from "@/components/DocumentoPronto";
 import { FuncionarioManual } from "@/components/avulso/FuncionarioManual";
 import { cpfParaDocumento, nomeFuncionarioOk, type ModoAvulso } from "@/lib/dpAvulso";
-import { api } from "@/lib/api";
+import { api, dpDocDocxUrl } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { maskCPF } from "@/lib/masks";
@@ -82,6 +83,7 @@ export function WarningForm({ avulso }: { avulso?: ModoAvulso } = {}) {
 
   const [newWarning, setNewWarning] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [docGerado, setDocGerado] = useState<DocumentoGerado | null>(null);
 
   const selectedEmployee: Employee | undefined = avulso
     ? nomeFuncionarioOk(nomeManual)
@@ -157,6 +159,7 @@ export function WarningForm({ avulso }: { avulso?: ModoAvulso } = {}) {
     if (!selectedEmployee || !warningDate || !reason) return;
 
     setIsGenerating(true);
+    setDocGerado(null);
 
     const sortedAbsences = [...absenceDates].sort((a, b) => a.getTime() - b.getTime());
 
@@ -174,7 +177,7 @@ export function WarningForm({ avulso }: { avulso?: ModoAvulso } = {}) {
     if (avulso) {
       try {
         const { blob, fileName } = await buildWarningDocFile(data);
-        await avulso.emitir(
+        const r = (await avulso.emitir(
           {
             tipo: "advertencia",
             cnpj: empresaCnpj,
@@ -185,9 +188,10 @@ export function WarningForm({ avulso }: { avulso?: ModoAvulso } = {}) {
           },
           blob,
           fileName
-        );
+        )) as { token?: string } | undefined;
         saveAs(blob, fileName);
-        toast.success("Advertência gerada! O arquivo foi baixado e a Nescon recebeu uma cópia.");
+        setDocGerado({ blob, fileName, url: r?.token ? dpDocDocxUrl(r.token) : undefined });
+        toast.success("Advertência gerada! A Nescon recebeu uma cópia.");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao gerar documento");
       } finally {
@@ -210,6 +214,7 @@ export function WarningForm({ avulso }: { avulso?: ModoAvulso } = {}) {
       });
 
       const { blob, fileName } = await downloadWarningDoc(data);
+      setDocGerado({ blob, fileName });
       // Enviar por e-mail (best-effort)
       api.documents.enviarEmail(created.id, blob, fileName).catch(() => {});
       toast.success("Advertência gerada e salva no histórico!");
@@ -448,6 +453,9 @@ export function WarningForm({ avulso }: { avulso?: ModoAvulso } = {}) {
 
       {/* Generate Button */}
       <div className="sticky bottom-0 left-0 right-0 z-10 border-t bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:static md:z-auto md:border-0 md:bg-transparent md:p-0">
+        <div className="mb-3 empty:hidden">
+          <DocumentoPronto doc={docGerado} titulo="Advertência gerada" />
+        </div>
         <Button onClick={handleGenerate} disabled={isGenerating} className="w-full gap-2 h-12 text-base font-semibold" size="lg">
           <Download className="h-5 w-5" />
           {isGenerating ? "Gerando..." : "Gerar Documento de Advertência"}

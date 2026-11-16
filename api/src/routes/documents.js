@@ -7,6 +7,7 @@ const { validateString, validateUUID, validateDate } = require("../middleware/va
 const { isSmtpConfigured, createTransport, getPublicAppUrl } = require("../mailer");
 const { configurado: whatsappConfigurado, enviarTexto } = require("../uazapi");
 const multer = require("multer");
+const { gravarDocx, ehDocx, novoToken } = require("../dpArquivo");
 
 const uploadMem = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 const ADMIN_EMAIL = process.env.DP_EMAIL || "dp@nesconcontabilidade.com.br";
@@ -155,12 +156,12 @@ router.delete("/:id", async (req, res) => {
 });
 
 /**
- * POST /documents/:id/enviar-email — recebe o DOCX gerado pelo frontend e envia
- * por e-mail para o admin (dp@) e para o e-mail da empresa (se houver).
+ * POST /documents/:id/enviar-email — recebe o DOCX gerado pelo frontend, guarda o
+ * arquivo no servidor e envia por e-mail para o admin (dp@) e para o e-mail da empresa (se houver).
  */
 router.post("/:id/enviar-email", requireCompanyUser, uploadMem.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "Envie o arquivo DOCX" });
-  if (!isSmtpConfigured()) return res.status(503).json({ error: "E-mail não configurado no servidor" });
+  if (!validateUUID(req.params.id)) return res.status(400).json({ error: "ID inválido" });
 
   try {
     const { rows } = await db.query(
@@ -169,6 +170,22 @@ router.post("/:id/enviar-email", requireCompanyUser, uploadMem.single("file"), a
     );
     if (!rows.length) return res.status(404).json({ error: "Documento não encontrado" });
     const doc = rows[0];
+
+    // Guarda o Word no servidor (uma vez) para o escritório baixar depois pelo painel,
+    // mesmo quando o e-mail não está configurado.
+    if (!doc.file_docx && ehDocx(req.file)) {
+      try {
+        const arquivo = gravarDocx(req.file.buffer, req.file.originalname);
+        await db.query(
+          "UPDATE issued_documents SET file_docx = $1, access_token = COALESCE(access_token, $2) WHERE id = $3",
+          [arquivo, novoToken(), doc.id]
+        );
+      } catch (err) {
+        console.error("[documents] guardar docx:", err.message);
+      }
+    }
+
+    if (!isSmtpConfigured()) return res.status(503).json({ error: "E-mail não configurado no servidor" });
 
     const tipo = doc.document_type === "suspension" ? "Suspensão" : "Advertência";
     const subject = `${tipo} — ${doc.employee_name} (${req.company.name})`;

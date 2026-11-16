@@ -7,13 +7,10 @@
  *   POST /emitir         → multipart: `dados` (JSON) + `file` (DOCX gerado na tela)
  */
 const router = require("express").Router();
-const crypto = require("crypto");
-const fs = require("fs");
-const path = require("path");
 const multer = require("multer");
 const rateLimit = require("express-rate-limit");
 const db = require("../db");
-const { UPLOAD_DIR } = require("../uploads");
+const { gravarDocx, ehDocx, novoToken } = require("../dpArquivo");
 const { isSmtpConfigured, createTransport, getPublicAppUrl } = require("../mailer");
 const { configurado: whatsappConfigurado, enviarTexto } = require("../uazapi");
 const { validarEmissao, ferramentasDaEmpresa, digitos, nomesParaLista } = require("../dpAvulso");
@@ -100,18 +97,6 @@ router.get("/funcionarios", limiteConsulta, async (req, res) => {
   }
 });
 
-function gravarDocx(buffer, nome) {
-  const seguro = String(nome).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
-  const arquivo = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}-${seguro}`;
-  fs.writeFileSync(path.join(UPLOAD_DIR, arquivo), buffer);
-  return arquivo;
-}
-
-function ehDocx(file) {
-  // DOCX é um ZIP: começa com "PK\x03\x04". Barra qualquer outro arquivo no upload público.
-  return Boolean(file && file.buffer && file.buffer.length > 4 && file.buffer.readUInt32LE(0) === 0x04034b50);
-}
-
 router.post("/emitir", limiteEmissao, uploadMem.single("file"), async (req, res) => {
   try {
     let corpo = {};
@@ -136,7 +121,7 @@ router.post("/emitir", limiteEmissao, uploadMem.single("file"), async (req, res)
 
     const nomeArquivo = req.file.originalname || `${ehSuspensao ? "suspensao" : "advertencia"}.docx`;
     const arquivo = gravarDocx(req.file.buffer, nomeArquivo);
-    const token = crypto.randomBytes(24).toString("hex");
+    const token = novoToken();
     const ip = String(req.ip || "").slice(0, 60);
     const descricao = ehSuspensao
       ? `Suspensão de ${d.dias} dia(s): ${d.motivo}`.slice(0, 2000)
@@ -185,7 +170,9 @@ router.post("/emitir", limiteEmissao, uploadMem.single("file"), async (req, res)
         .catch((err) => console.error("[dp-avulso] e-mail:", err.message));
     }
 
-    return res.status(201).json({ ok: true });
+    // O token volta para a tela mostrar o botão "Baixar Word" (link real do servidor,
+    // que funciona até no navegador de dentro do WhatsApp, onde o download direto falha).
+    return res.status(201).json({ ok: true, token });
   } catch (err) {
     console.error("[dp-avulso] emitir:", err.message);
     res.status(500).json({ error: "Erro interno" });
