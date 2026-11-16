@@ -212,6 +212,8 @@ async function start() {
     // ensureEmployeePayrollFields atualiza: precisa vir antes (banco limpo).
     await ensureExtratoAutoSchema(db);
     await ensureEmployeePayrollFields(db);
+    // Advertência e suspensão fixadas para quem tem funcionário (ver dpFixado.js).
+    await require("./ensureDpFixadoSchema").ensureDpFixadoSchema(db);
     await ensureJornadaSchema(db);
     await ensureVacationSchema(db);
     await ensureEngagementSchema(db);
@@ -240,6 +242,8 @@ async function start() {
     await ensureEscalasSchema(db);
     await ensureRegimeSchema(db);
     await ensureGerentesSchema(db);
+    // Primeira varredura: liga advertência e suspensão em quem já tem funcionário hoje.
+    await require("./dpFixado").fixarDpParaQuemTemFuncionarios(db);
     // Circular que estava enviando quando a API caiu volta como "pausada" para retomar.
     await require("./circular").recuperarNoArranque(db);
     // Se há employees sem vínculo, reprocessar extratos imediatamente (não esperar 6h).

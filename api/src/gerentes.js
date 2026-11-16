@@ -48,9 +48,11 @@ const ROTAS_GERENTE = [
   ["GET", /^\/api\/auth\/company-session$/],
   ["POST", /^\/api\/auth\/change-password$/],
   ["GET", /^\/api\/health$/],
-  // Lista de funcionários para escolher quem recebe o documento. Só leitura: cadastrar,
-  // editar e inativar continuam com a empresa.
+  // Lista de funcionários para escolher quem recebe o documento, e o cadastro rápido de
+  // quem ainda não está nela (admissão recente que a folha não trouxe): nasce provisório
+  // (origem 'cliente') e a folha unifica depois. Editar e inativar continuam com a empresa.
   ["GET", /^\/api\/employees\/?$/],
+  ["POST", /^\/api\/employees\/?$/],
   // Histórico (advertências anteriores pré-preenchem a próxima) e emissão.
   ["GET", /^\/api\/documents\/?$/],
   ["POST", /^\/api\/documents\/?$/],

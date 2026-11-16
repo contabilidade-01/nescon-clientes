@@ -39,7 +39,8 @@ test("rotas liberadas ao gerente", () => {
   assert.ok(rotaLiberadaParaGerente("POST", "/api/auth/change-password"));
   assert.ok(rotaLiberadaParaGerente("GET", "/api/auth/company-session"));
 
-  assert.ok(!rotaLiberadaParaGerente("POST", "/api/employees"));
+  assert.ok(rotaLiberadaParaGerente("POST", "/api/employees"));
+  assert.ok(!rotaLiberadaParaGerente("POST", "/api/employees/import"));
   assert.ok(!rotaLiberadaParaGerente("PUT", `/api/employees/${id}`));
   assert.ok(!rotaLiberadaParaGerente("DELETE", `/api/documents/${id}`));
   assert.ok(!rotaLiberadaParaGerente("GET", "/api/deliverables"));

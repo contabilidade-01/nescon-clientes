@@ -15,6 +15,7 @@ const { parseExtratoEmployees } = require("./extratoEmployees");
 const { importEmployeesForCompany } = require("./employeeImport");
 const { resolveUploadPath } = require("./uploads");
 const { aplicarAutomaticas } = require("./alertas");
+const { fixarDpParaQuemTemFuncionarios } = require("./dpFixado");
 
 /**
  * Quem está cadastrado e ativo mas não apareceu no extrato — função pura, testada.
@@ -131,23 +132,32 @@ async function processarEmpresa(db, empresa) {
   }
 }
 
-/** Varre todas as empresas. Uma falha isolada não interrompe as demais. */
-async function processarExtratos(db) {
+/**
+ * Varre as empresas (todas, ou só `companyIds`). Uma falha isolada não interrompe as demais.
+ */
+async function processarExtratos(db, { companyIds = null } = {}) {
   if (emExecucao) return { ok: false, erro: "Leitura de extratos já em andamento" };
   emExecucao = true;
   const inicio = Date.now();
   const total = { empresas: 0, inseridos: 0, atualizados: 0, avisos: 0, erros: 0, pulados: 0 };
 
   try {
+    const filtrar = Array.isArray(companyIds) && companyIds.length > 0;
+    // "Sem vínculo" só conta quem veio do extrato (tem código). Cadastro do cliente ou de
+    // planilha nunca traz vínculo: contá-lo fazia a empresa ser relida a cada sincronização,
+    // para sempre, e rodar as marcações automáticas da carteira inteira junto.
     const { rows: empresas } = await db.query(
       `SELECT c.id, c.name, c.cnpj, c.extrato_processado_id,
               EXISTS (
                 SELECT 1 FROM employees e
                  WHERE e.company_id = c.id AND e.active IS TRUE AND e.vinculo IS NULL
+                   AND e.codigo IS NOT NULL
               ) AS tem_sem_vinculo
          FROM companies c
         WHERE c.arquivada IS NOT TRUE AND c.excluida IS NOT TRUE
-        ORDER BY c.name`
+          ${filtrar ? "AND c.id = ANY($1::uuid[])" : ""}
+        ORDER BY c.name`,
+      filtrar ? [companyIds] : []
     );
     for (const empresa of empresas) {
       const r = await processarEmpresa(db, empresa);
@@ -182,6 +192,10 @@ async function processarExtratos(db) {
         console.error("[extrato auto] aplicarAutomaticas falhou:", err.message);
       }
     }
+
+    // Quem passou a ter funcionário ganha advertência e suspensão no portal.
+    const ligadas = await fixarDpParaQuemTemFuncionarios(db, filtrar ? companyIds : null);
+    total.dp_ligado = ligadas.length;
 
     ultimoResultado = {
       ...total,
