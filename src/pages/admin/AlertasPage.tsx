@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { api, type AlertCompanyRow, type AlertOpConfig, type AlertSendResult, type AlertThanksResult } from "@/lib/api";
 import { validar as validarWhatsapp } from "@/lib/whatsappNumero";
+import { empresaCasaBusca } from "@/lib/buscaEmpresa";
 
 const ESFERA_LABEL: Record<string, string> = {
   federal: "Federal",
@@ -571,11 +572,7 @@ const AlertasPage = () => {
   const termo = busca.trim().toLowerCase();
   const empresas = (panorama.data?.empresas ?? []).filter((c) => {
     if (soSemWhatsapp && c.whatsapp) return false;
-    if (!termo) return true;
-    return (
-      c.name.toLowerCase().includes(termo) ||
-      c.cnpj.replace(/\D/g, "").includes(termo.replace(/\D/g, ""))
-    );
+    return empresaCasaBusca(c, termo);
   });
 
   /** Sem WhatsApp o alerta não tem para onde ir — daí o botão de enviar ficar travado. */
