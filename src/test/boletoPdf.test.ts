@@ -86,17 +86,26 @@ describe("enviarBoletosPdf", () => {
   });
 
   it("best-effort: falha do WhatsApp NÃO lança, só registra o erro", async () => {
+    let tentativas = 0;
+    const esperas: number[] = [];
     const uazapi = {
       configurado: () => true,
-      enviarDocumento: async () => { throw new Error("uazapi 500"); },
+      enviarDocumento: async () => { tentativas += 1; throw new Error("uazapi 500"); },
     };
     const db = fakeDb([
       { id: UUID_A, external_ref: "cora_INV1", pdf_url: "https://cora/x.pdf",
         valor_centavos: 100, is_honorario: false, venc: "20/08/2026", empresa: "ACME" },
     ]);
-    const r = await enviarBoletosPdf(db, { companyId: "c1", obrigacoes: [`BOLETO:${UUID_A}`], numero: "5511" }, { cora: coraOk, uazapi });
+    const r = await enviarBoletosPdf(db, { companyId: "c1", obrigacoes: [`BOLETO:${UUID_A}`], numero: "5511" }, {
+      cora: coraOk,
+      uazapi,
+      esperar: async (ms: number) => { esperas.push(ms); },
+    });
     expect(r.enviados).toBe(0);
     expect(r.erros).toHaveLength(1);
+    // Repete 3 vezes, esperando 2s e 4s entre elas, antes de desistir.
+    expect(tentativas).toBe(3);
+    expect(esperas).toEqual([2000, 4000]);
   });
 
   it("sem boletos na mensagem, não toca em cora/uazapi", async () => {

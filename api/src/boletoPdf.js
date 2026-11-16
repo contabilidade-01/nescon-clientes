@@ -81,6 +81,8 @@ async function enviarBoletosPdf(db, { companyId, obrigacoes, numero, delayMs = 1
   // ambos caem nos módulos reais.
   const coraDep = deps.cora || cora;
   const uazapiDep = deps.uazapi || uazapi;
+  // Espera entre tentativas (2s, 4s). Injetável para o teste não esperar de verdade.
+  const esperar = deps.esperar || ((ms) => new Promise((r) => setTimeout(r, ms)));
 
   if (!PDF_ATIVO) return { enviados: 0, erros: [], pulado: "desligado" };
 
@@ -151,7 +153,7 @@ async function enviarBoletosPdf(db, { companyId, obrigacoes, numero, delayMs = 1
         ultimoErro = err.message;
         if (err && err.constructor && err.constructor.name === "UazapiTokenInvalido") break;
       }
-      if (t < TENTATIVAS) await new Promise((r) => setTimeout(r, 2000 * t));
+      if (t < TENTATIVAS) await esperar(2000 * t);
     }
     if (ultimoErro) erros.push({ id: b.id, motivo: ultimoErro });
   }
