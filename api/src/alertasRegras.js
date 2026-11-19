@@ -233,7 +233,7 @@ function obrigacoesSemGuia({ codigos = [], guias = [], hoje, dias = 7 } = {}) {
  * gritante — é o cliente lendo o aviso que ele quis receber e encontrando uma frase a
  * mais no final, não um anúncio.
  */
-function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = "", incentivo = null } = {}) {
+function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = "", incentivo = null, linkGuias = null } = {}) {
   if (!itens.length) return null;
 
   const ferias = itens.filter((i) => i.codigo === "FERIAS_LIMITE");
@@ -356,11 +356,14 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
 
   if (obrigNormais.some((i) => i.temGuiaNoPortal) && portalUrl) {
     const base = String(portalUrl).replace(/\/+$/, "");
-    linhas.push("");
-    // A guia vai em PDF logo depois desta mensagem (guiaPdfAlerta.js), sem login.
     const nGuias = obrigNormais.filter((i) => i.temGuiaNoPortal).length;
-    linhas.push(nGuias > 1 ? "📎 As guias seguem em PDF logo abaixo." : "📎 A guia segue em PDF logo abaixo.");
-    linhas.push(`Também ${nGuias > 1 ? "estão" : "está"} no portal: ${base}/guias`);
+    linhas.push("");
+    if (linkGuias) {
+      // Página sem senha (/g/<token>): mostra só as guias da empresa e baixa o PDF.
+      linhas.push(`${nGuias > 1 ? "Baixe as guias" : "Baixe a guia"} sem senha: ${linkGuias}`);
+    } else {
+      linhas.push(`${nGuias > 1 ? "As guias estão" : "A guia está"} no portal: ${base}/guias`);
+    }
   }
 
   // Aviso sem documento: o cliente entraria no portal, não acharia nada e concluiria

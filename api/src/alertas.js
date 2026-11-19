@@ -21,6 +21,7 @@ const {
 } = require("./alertasRegras");
 const { hojeSP, somarDias, ehDiaBancario, proximoDiaBancario, diaBancarioAnterior, ddmm, diasCobertosPeloAviso } = require("./diasBancarios");
 const { lerConfig } = require("./alertasConfig");
+const acessoLinks = require("./acessoLinks");
 const { trechoDeIncentivo } = require("./engagement");
 const numeroWpp = require("./whatsappNumero");
 
@@ -472,6 +473,22 @@ function itensBoletoDoDia(
  * `jaEnviados` evita repetir. Com `simular = true` nada é gravado e o incentivo não
  * é consumido — é o modo da tela de pré-visualização.
  */
+/**
+ * Link das guias sem senha para o aviso de vencimento. Vale até o vencimento mais
+ * distante + 7 dias (mínimo 7). Reaproveita o link ativo da empresa (mesmo do aviso de
+ * documento novo), então rodar a simulação várias vezes não cria link novo. Nunca lança.
+ */
+async function linkGuiasSemSenha(db, companyId, itens, hoje) {
+  try {
+    const venc = itens.filter((i) => i.temGuiaNoPortal).map((i) => i.vencimento).sort().pop() || hoje;
+    const dias = Math.max(7, Math.round((Date.parse(`${venc}T12:00:00Z`) - Date.parse(`${hoje}T12:00:00Z`)) / 86400000) + 7);
+    return acessoLinks.urlDoLink(await acessoLinks.obterOuCriar(db, { companyId, origem: "mensal", dias }));
+  } catch (err) {
+    console.error("[alertas] link de guias:", err.message);
+    return null;
+  }
+}
+
 async function previsao(db, { data = null, simular = true, diaUtil = true } = {}) {
   const hoje = data || hojeSP();
   const permitidos = [];
@@ -697,11 +714,19 @@ async function previsao(db, { data = null, simular = true, diaUtil = true } = {}
       ? await trechoDeIncentivo(db, { companyId: e.id, portalUrl: portalUrl("/"), simular })
       : null;
 
+    // Link das guias SEM SENHA (/g/<token>, ver acessoLinks.js): a página mostra só as
+    // guias da empresa e baixa o PDF sem login. Pedido de Jeandson (19/11/2026): o aviso
+    // leva o LINK, não o PDF anexado.
+    const linkGuias = itensFinal.some((i) => i.temGuiaNoPortal)
+      ? await linkGuiasSemSenha(db, e.id, itensFinal, hoje)
+      : null;
+
     const texto = montarMensagemAlerta({
       empresaNome: e.name,
       hoje,
       itens: itensFinal,
       portalUrl: portalUrl("/"),
+      linkGuias,
       incentivo: incentivo?.texto ?? null,
     });
 
