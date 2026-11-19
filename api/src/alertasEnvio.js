@@ -563,6 +563,24 @@ function iniciarAgendadorAlertas(db) {
       if (!dentroDaJanela(minutosSP())) return;
       ultimoDiaExecutado = dia;
 
+      // Sync fresco do G-Click ANTES do alerta: o agendador de documentos roda a cada
+      // GCLICK_SYNC_INTERVAL_H (6h em produção) e o timer recomeça a cada deploy, então a
+      // guia anexada no G-Click à noite ou de madrugada podia só chegar ao portal DEPOIS
+      // do alerta das 8h — e o cliente ficava sem o "vence amanhã" (caso de 19/11/2026).
+      // Só os 2 últimos meses: é o que pode vencer agora. Best-effort: se o G-Click estiver
+      // fora ou já houver uma sincronização rodando, o alerta sai com o que há no banco.
+      try {
+        const gclickSync = require("./gclick/sync");
+        const rg = await gclickSync.sincronizar({ meses: 2 });
+        if (rg && rg.ok) {
+          console.log(`[alertas] sync G-Click pré-alerta: ${rg.criados ?? 0} novo(s), ${rg.atualizados ?? 0} atualizado(s).`);
+        } else if (rg && rg.erro) {
+          console.log(`[alertas] sync G-Click pré-alerta não rodou: ${rg.erro}`);
+        }
+      } catch (err) {
+        console.error("[alertas] sync G-Click pré-alerta:", err.message);
+      }
+
       // Sync fresco da Cora ANTES de cobrar: fecha a janela de defasagem do agendador de
       // 6h. Sem isto, um boleto pago e já compensado, mas ainda não sincronizado, seria
       // cobrado. Best-effort — se a Cora estiver fora, cobra com o que há no banco. (A
