@@ -1290,6 +1290,20 @@ export const api = {
     editar: (id: string, data: CertificadoDados) =>
       request<{ id: string }>(`/admin/certificados/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     apagar: (id: string) => request<{ ok: boolean }>(`/admin/certificados/${id}`, { method: "DELETE" }),
+    /** Guarda o .pfx e a senha (cifrados) no certificado da empresa com a mesma validade. */
+    enviarArquivo: (data: {
+      company_id: string;
+      arquivo_base64: string;
+      senha: string;
+      vence_em: string;
+      titular: CertificadoTitular;
+      emitido_em?: string | null;
+      emissor?: string | null;
+    }) =>
+      request<{ ok: boolean; id: string; criado: boolean; nao_verificado: boolean }>("/admin/certificados/arquivo", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
     avisar: (companyId: string) =>
       request<{ ok: boolean; numero: string }>(`/admin/certificados/avisar/${companyId}`, { method: "POST" }),
   },

@@ -37,3 +37,44 @@ export function prazoTexto(dias: number | null | undefined): string {
   const n = Math.abs(dias);
   return `venceu há ${n} dia${n === 1 ? "" : "s"}`;
 }
+
+/** Um certificado do lote gerado a partir da pasta do escritório (arquivo + senha). */
+export type CertificadoLoteItem = {
+  doc: string; // CNPJ (e-CNPJ) ou CPF (e-CPF), só números
+  titular: CertificadoTitular;
+  nome: string; // titular como está no certificado
+  emitido_em: string | null;
+  vence_em: string;
+  emissor: string | null;
+  senha: string;
+  arquivo_base64: string;
+};
+
+const soDigitos = (s: string | null | undefined) => String(s || "").replace(/\D/g, "");
+const normalizarNome = (s: string | null | undefined) =>
+  String(s || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^A-Za-z ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+
+/**
+ * Empresa de um certificado do lote. e-CNPJ: pelo CNPJ. e-CPF: quando a empresa é
+ * cadastrada pelo CPF, quando o CPF aparece no nome (MEI) ou quando o nome é igual.
+ */
+export function casarCertificado<T extends { company_id: string; cnpj: string; name: string }>(
+  empresas: T[],
+  item: Pick<CertificadoLoteItem, "doc" | "titular" | "nome">
+): T | null {
+  const doc = soDigitos(item.doc);
+  if (!doc) return null;
+  if (item.titular === "e_cnpj") return empresas.find((e) => soDigitos(e.cnpj) === doc) ?? null;
+  return (
+    empresas.find((e) => soDigitos(e.cnpj) === doc) ??
+    empresas.find((e) => soDigitos(e.name).length >= 11 && soDigitos(e.name).includes(doc)) ??
+    empresas.find((e) => normalizarNome(e.name) === normalizarNome(item.nome) && normalizarNome(item.nome) !== "") ??
+    null
+  );
+}

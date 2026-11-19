@@ -25,3 +25,26 @@ describe("tituloVigencia", () => {
     );
   });
 });
+
+import { casarCertificado } from "@/lib/certificadoDigital";
+
+describe("casarCertificado", () => {
+  const empresas = [
+    { company_id: "1", cnpj: "35.736.034/0001-23", name: "NESCON SERVICOS EMPRESARIAIS LTDA" },
+    { company_id: "2", cnpj: "08431324856", name: "PAULO CÉLIA" },
+    { company_id: "3", cnpj: "39492114000131", name: "MARIA NATALIA ARAUJO MATIAS 37019713823" },
+    { company_id: "4", cnpj: "47742894000159", name: "47.742.894 MARCO ANTONIO FERENSI FILHO" },
+  ];
+  it("e-CNPJ pelo CNPJ", () => {
+    expect(casarCertificado(empresas, { doc: "35736034000123", titular: "e_cnpj", nome: "X" })?.company_id).toBe("1");
+    expect(casarCertificado(empresas, { doc: "11111111000111", titular: "e_cnpj", nome: "X" })).toBeNull();
+  });
+  it("e-CPF pelo CPF no cadastro, no nome ou pelo nome igual", () => {
+    expect(casarCertificado(empresas, { doc: "08431324856", titular: "e_cpf", nome: "PAULO" })?.company_id).toBe("2");
+    expect(casarCertificado(empresas, { doc: "37019713823", titular: "e_cpf", nome: "M" })?.company_id).toBe("3");
+    expect(
+      casarCertificado(empresas, { doc: "46623343814", titular: "e_cpf", nome: "MARCO ANTONIO FERENSI FILHO" })?.company_id
+    ).toBe("4");
+    expect(casarCertificado(empresas, { doc: "99999999999", titular: "e_cpf", nome: "FULANO" })).toBeNull();
+  });
+});
