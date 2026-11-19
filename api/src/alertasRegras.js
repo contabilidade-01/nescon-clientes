@@ -357,7 +357,10 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
   if (obrigNormais.some((i) => i.temGuiaNoPortal) && portalUrl) {
     const base = String(portalUrl).replace(/\/+$/, "");
     linhas.push("");
-    linhas.push(`As guias estão no portal: ${base}/guias`);
+    // A guia vai em PDF logo depois desta mensagem (guiaPdfAlerta.js), sem login.
+    const nGuias = obrigNormais.filter((i) => i.temGuiaNoPortal).length;
+    linhas.push(nGuias > 1 ? "📎 As guias seguem em PDF logo abaixo." : "📎 A guia segue em PDF logo abaixo.");
+    linhas.push(`Também ${nGuias > 1 ? "estão" : "está"} no portal: ${base}/guias`);
   }
 
   // Aviso sem documento: o cliente entraria no portal, não acharia nada e concluiria
