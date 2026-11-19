@@ -32,6 +32,7 @@
 const uazapi = require("./uazapi");
 const numeroWpp = require("./whatsappNumero");
 const { enviarBoletosPdf } = require("./boletoPdf");
+const { enviarGuiasPdf } = require("./guiaPdfAlerta");
 const { previsao, registrarEnvio, registrarFalha } = require("./alertas");
 const { trechoDeIncentivo } = require("./engagement");
 const { hojeSP, minutosSP } = require("./diasBancarios");
@@ -225,6 +226,12 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, comp
         await trechoDeIncentivo(db, { companyId: m.company_id, portalUrl: portalUrl("/"), simular: false });
       }
 
+      // Anexa o PDF da(s) guia(s) de imposto (abre sem login). Best-effort.
+      const guias = await enviarGuiasPdf(db, {
+        companyId: m.company_id, obrigacoes: m.obrigacoes, diaAlerta: m.dia_alerta, numero: v.numero, marcar: marcarEnviado,
+      });
+      if (guias.enviados) console.log(`[alertas] ${m.empresa}: ${guias.enviados} guia(s) PDF anexada(s).`);
+
       // Anexa o(s) PDF(s) do(s) boleto(s) desta mensagem, logo após o texto. Best-effort:
       // o texto (com link do portal) já saiu, então uma falha aqui não desfaz o envio.
       const pdf = await enviarBoletosPdf(db, {
@@ -233,7 +240,7 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, comp
       if (pdf.enviados) console.log(`[alertas] ${m.empresa}: ${pdf.enviados} boleto(s) PDF anexado(s).`);
       if (pdf.erros && pdf.erros.length) await avisarPdfFaltou(db, m.empresa, pdf.erros);
 
-      resultados.push({ empresa: m.empresa, company_id: m.company_id, status: "enviado", numero: v.numero, boletosPdf: pdf.enviados });
+      resultados.push({ empresa: m.empresa, company_id: m.company_id, status: "enviado", numero: v.numero, boletosPdf: pdf.enviados, guiasPdf: guias.enviados });
     } catch (err) {
       falhas += 1;
       const tokenRuim = err instanceof uazapi.UazapiTokenInvalido;
@@ -401,6 +408,10 @@ async function drenarOutbox(db) {
       if (o.incentivo_message_id) {
         await trechoDeIncentivo(db, { companyId: o.company_id, portalUrl: portalUrl("/"), simular: false });
       }
+      const guiasFila = await enviarGuiasPdf(db, {
+        companyId: o.company_id, obrigacoes: o.obrigacoes, diaAlerta: o.dia_alerta, numero: v.numero, marcar: marcarEnviado,
+      });
+      if (guiasFila.enviados) console.log(`[alertas] fila: ${guiasFila.enviados} guia(s) PDF anexada(s).`);
       // Anexa o(s) PDF(s) do(s) boleto(s) também no reenvio pela fila. Os ids vêm do
       // `obrigacoes` salvo na outbox (CSV com `BOLETO:<uuid>`). Best-effort, igual ao
       // envio direto.
@@ -562,6 +573,24 @@ function iniciarAgendadorAlertas(db) {
       // em vez de "queimar" o dia com um envio que a trava barraria mesmo assim.
       if (!dentroDaJanela(minutosSP())) return;
       ultimoDiaExecutado = dia;
+
+      // Sync fresco do G-Click ANTES do alerta: o agendador de documentos roda a cada
+      // GCLICK_SYNC_INTERVAL_H (6h em produção) e o timer recomeça a cada deploy, então a
+      // guia anexada no G-Click à noite ou de madrugada podia só chegar ao portal DEPOIS
+      // do alerta das 8h — e o cliente ficava sem o "vence amanhã" (caso de 19/11/2026).
+      // Só os 2 últimos meses: é o que pode vencer agora. Best-effort: se o G-Click estiver
+      // fora ou já houver uma sincronização rodando, o alerta sai com o que há no banco.
+      try {
+        const gclickSync = require("./gclick/sync");
+        const rg = await gclickSync.sincronizar({ meses: 2 });
+        if (rg && rg.ok) {
+          console.log(`[alertas] sync G-Click pré-alerta: ${rg.criados ?? 0} novo(s), ${rg.atualizados ?? 0} atualizado(s).`);
+        } else if (rg && rg.erro) {
+          console.log(`[alertas] sync G-Click pré-alerta não rodou: ${rg.erro}`);
+        }
+      } catch (err) {
+        console.error("[alertas] sync G-Click pré-alerta:", err.message);
+      }
 
       // Sync fresco da Cora ANTES de cobrar: fecha a janela de defasagem do agendador de
       // 6h. Sem isto, um boleto pago e já compensado, mas ainda não sincronizado, seria

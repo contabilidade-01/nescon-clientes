@@ -15,6 +15,7 @@ const {
   sugerirPorEntregas,
   textoDaEvidencia,
   itensTributariosDoDia,
+  itensVenceHoje,
   obrigacoesSemGuia,
   montarMensagemAlerta,
 } = require("./alertasRegras");
@@ -512,6 +513,7 @@ async function previsao(db, { data = null, simular = true, diaUtil = true } = {}
   );
   const avisadosHoje = new Set(jaAvisados.map((r) => r.company_id));
 
+
   // Idem para as guias liberadas com vencimento à frente: uma consulta para a carteira,
   // agrupada em memória. O volume é de centenas de linhas, não de milhares.
   //
@@ -668,6 +670,11 @@ async function previsao(db, { data = null, simular = true, diaUtil = true } = {}
     for (const diaAviso of diasCobertosPeloAviso(hoje)) {
       itens.push(...itensTributariosDoDia({ codigos, proximaGuia, hoje: diaAviso }));
     }
+    // Aviso NO DIA ("vence hoje"), além do da véspera — regra de 19/11/2026.
+    const jaNoDia = new Set(itens.map((i) => i.codigo));
+    itens.push(
+      ...itensVenceHoje({ codigos: codigos.filter((c) => !jaNoDia.has(c)), proximaGuia, hoje })
+    );
     if (!itens.length) continue;
 
     // Para férias, a chave de duplicidade inclui os nomes dos funcionários alertados,

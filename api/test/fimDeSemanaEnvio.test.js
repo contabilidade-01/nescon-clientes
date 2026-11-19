@@ -4,10 +4,10 @@ const { diasCobertosPeloAviso, ehFimDeSemana, ddmm } = require("../src/diasBanca
 const { ehFimDeSemanaSP } = require("../src/janelaEnvio");
 const { itensTributariosDoDia } = require("../src/alertasRegras");
 
-test("sexta cobre sábado e domingo; demais dias só o próprio", () => {
+test("sexta cobre sábado e domingo; demais dias só o próprio; dia sem banco não cobre nada", () => {
   assert.deepStrictEqual(diasCobertosPeloAviso("2026-11-06"), ["2026-11-06", "2026-11-07", "2026-11-08"]);
   assert.deepStrictEqual(diasCobertosPeloAviso("2026-11-09"), ["2026-11-09"]);
-  assert.deepStrictEqual(diasCobertosPeloAviso("2026-11-07"), ["2026-11-07"]);
+  assert.deepStrictEqual(diasCobertosPeloAviso("2026-11-07"), []);
   assert.deepStrictEqual(diasCobertosPeloAviso("2026-11-04"), ["2026-11-04"]);
 });
 

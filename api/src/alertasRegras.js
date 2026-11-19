@@ -18,7 +18,15 @@
  * (`origem = 'manual'`) é definitiva, inclusive a negativa.
  */
 const { OBRIGACOES, obrigacao, calcularVencimento, obrigacoesQueVencemEm } = require("./obrigacoes");
-const { ddmm, somarDias } = require("./diasBancarios");
+const { ddmm, somarDias, ehDiaBancario } = require("./diasBancarios");
+
+const DIAS_SEMANA = ["no domingo", "na segunda-feira", "na terça-feira", "na quarta-feira", "na quinta-feira", "na sexta-feira", "no sábado"];
+
+/** 'YYYY-MM-DD' -> "na segunda-feira" etc. Meio-dia UTC para o fuso não trocar o dia. */
+function diaDaSemana(data) {
+  const d = new Date(`${data}T12:00:00Z`);
+  return Number.isNaN(d.getTime()) ? "em" : DIAS_SEMANA[d.getUTCDay()];
+}
 
 /**
  * O que marcar sozinho, dado o retrato da empresa.
@@ -160,6 +168,30 @@ function itensTributariosDoDia({ codigos = [], proximaGuia = new Map(), hoje } =
 }
 
 /**
+ * Aviso NO DIA do vencimento ("vence hoje"), além do aviso de véspera.
+ *
+ * Regra de Jeandson (19/11/2026): o cliente recebe o aviso na véspera E no dia. Também
+ * cobre a guia que entrou no portal depois do envio da véspera — antes ela ficava sem
+ * aviso nenhum, porque no dia seguinte o motor já olhava para o vencimento de amanhã.
+ *
+ * Só para tributo com guia no portal, e só em dia bancário (guia não vence em dia sem
+ * banco: FGTS/INSS antecipam, DAS adia). Obrigação que já avisa no próprio dia
+ * (`avisarDiasAntes = 0`, ex. salário) fica de fora — já sai por itensTributariosDoDia.
+ */
+function itensVenceHoje({ codigos = [], proximaGuia = new Map(), hoje } = {}) {
+  if (!ehDiaBancario(hoje)) return [];
+  const itens = [];
+  for (const codigo of codigos) {
+    const o = obrigacao(codigo);
+    if (!o || !o.docTypes.length || (o.avisarDiasAntes ?? 1) < 1) continue;
+    const tipo = o.docTypes.find((t) => proximaGuia.get(t) === hoje);
+    if (!tipo) continue;
+    itens.push({ codigo, nome: o.nome, observacao: null, vencimento: hoje, temGuiaNoPortal: true });
+  }
+  return itens;
+}
+
+/**
  * Obrigações marcadas que vencem nos próximos `dias` e não têm guia no portal.
  *
  * É o outro lado de `itensTributariosDoDia`: o cliente sem guia não é avisado, então o
@@ -220,8 +252,13 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
 
     if (todasHoje) {
       linhas.push(`*Vence hoje (${ddmm(obrigNormais[0].vencimento)}):*`);
-    } else if (datas.size === 1) {
+    } else if (datas.size === 1 && obrigNormais[0].vencimento === somarDias(hoje, 1)) {
       linhas.push(`*Vence amanhã (${ddmm(obrigNormais[0].vencimento)}):*`);
+    } else if (datas.size === 1) {
+      // Aviso antecipado por fim de semana/feriado: "amanhã" seria mentira (na quinta,
+      // véspera de feriado, o DAS de segunda não vence "amanhã").
+      const v = obrigNormais[0].vencimento;
+      linhas.push(`*Vence ${diaDaSemana(v)} (${ddmm(v)}):*`);
     } else {
       linhas.push("*Vencimentos próximos:*");
     }
@@ -320,7 +357,10 @@ function montarMensagemAlerta({ empresaNome = "", hoje, itens = [], portalUrl = 
   if (obrigNormais.some((i) => i.temGuiaNoPortal) && portalUrl) {
     const base = String(portalUrl).replace(/\/+$/, "");
     linhas.push("");
-    linhas.push(`As guias estão no portal: ${base}/guias`);
+    // A guia vai em PDF logo depois desta mensagem (guiaPdfAlerta.js), sem login.
+    const nGuias = obrigNormais.filter((i) => i.temGuiaNoPortal).length;
+    linhas.push(nGuias > 1 ? "📎 As guias seguem em PDF logo abaixo." : "📎 A guia segue em PDF logo abaixo.");
+    linhas.push(`Também ${nGuias > 1 ? "estão" : "está"} no portal: ${base}/guias`);
   }
 
   // Aviso sem documento: o cliente entraria no portal, não acharia nada e concluiria
@@ -368,6 +408,7 @@ module.exports = {
   sugerirPorEntregas,
   textoDaEvidencia,
   itensTributariosDoDia,
+  itensVenceHoje,
   obrigacoesSemGuia,
   montarMensagemAlerta,
   nomesDe,

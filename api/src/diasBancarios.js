@@ -239,15 +239,23 @@ function ehFimDeSemana(dataISO) {
 }
 
 /**
- * Dias "cobertos" por um aviso enviado em `hoje`: o próprio dia e, se for dia útil, os
- * sábados/domingos seguintes — o portal não manda WhatsApp no fim de semana, então o
- * aviso que cairia neles sai na sexta. Fim de semana devolve só [hoje].
+ * Dias "cobertos" por um aviso enviado em `hoje`: o próprio dia e, se for dia BANCÁRIO,
+ * todos os dias sem banco que vêm logo depois (sábado, domingo, feriado nacional, 24 e
+ * 31/12). O aviso que cairia num desses dias sai no último dia bancário antes dele.
+ *
+ * Antes só fim de semana entrava aqui. Feriado ficava de fora, e o aviso de tributo
+ * caía NO feriado (ex.: 20/11/2026, sexta de Consciência Negra: o aviso do DAS que vence
+ * na segunda 23/11 ia sair no feriado em vez de na quinta 19/11).
+ *
+ * Dia sem banco devolve [] — o que venceria a partir dele já foi coberto pelo último dia
+ * bancário. Devolver [hoje] aqui faria o mesmo tributo ser avisado duas vezes (na véspera
+ * do feriado e no próprio feriado), porque a trava de duplicidade é por dia de alerta.
  */
 function diasCobertosPeloAviso(hoje) {
+  if (!ehDiaBancario(hoje)) return [];
   const dias = [hoje];
-  if (ehFimDeSemana(hoje)) return dias;
   let d = somarDias(hoje, 1);
-  while (ehFimDeSemana(d)) {
+  for (let i = 0; i < 15 && !ehDiaBancario(d); i += 1) {
     dias.push(d);
     d = somarDias(d, 1);
   }
