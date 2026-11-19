@@ -4,6 +4,7 @@ import { MessageCircle, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { CertificadoForm } from "@/components/hub/CertificadoForm";
+import { ImportarCertificadosLote } from "@/components/admin/ImportarCertificadosLote";
 import { Indicador } from "@/components/hub/Hub";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -106,12 +107,15 @@ export default function CertificadosPage() {
         ))}
       </section>
 
-      <Input
-        placeholder="Buscar empresa por nome ou CNPJ"
-        value={busca}
-        onChange={(e) => setBusca(e.target.value)}
-        className="max-w-sm"
-      />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <Input
+          placeholder="Buscar empresa por nome ou CNPJ"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          className="max-w-sm"
+        />
+        <ImportarCertificadosLote empresas={itens ?? []} onFim={atualizar} />
+      </div>
 
       {isLoading ? (
         <Skeleton className="h-64 rounded-2xl" />
@@ -136,7 +140,10 @@ export default function CertificadosPage() {
                 <tr key={i.company_id} className="border-t">
                   <td className="px-4 py-2.5">
                     <p className="font-medium">{i.name}</p>
-                    <p className="text-xs text-muted-foreground">{i.cnpj}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {i.cnpj}
+                      {i.tem_arquivo && ` · arquivo guardado${i.tem_senha ? " com senha" : ""}`}
+                    </p>
                   </td>
                   <td className="px-4 py-2.5 tabular-nums">
                     {dataBr(i.vence_em)}

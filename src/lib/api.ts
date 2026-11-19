@@ -258,6 +258,9 @@ export type CertificadoDados = {
 
 export type CertificadoItem = {
   company_id: string;
+  /** Arquivo (.pfx) e senha guardados, cifrados, para o cliente baixar. */
+  tem_arquivo?: boolean;
+  tem_senha?: boolean;
   name: string;
   cnpj: string;
   whatsapp: string | null;
@@ -288,6 +291,10 @@ export type CertificadoPortal = {
     updated_at: string;
     status: CertificadoStatus;
     dias_restantes: number;
+    /** O escritório guardou o arquivo (.pfx) cifrado para o cliente baixar. */
+    tem_arquivo?: boolean;
+    /** A senha está guardada; o cliente vê depois do código por e-mail. */
+    tem_senha?: boolean;
   } | null;
 };
 
@@ -1283,12 +1290,31 @@ export const api = {
     editar: (id: string, data: CertificadoDados) =>
       request<{ id: string }>(`/admin/certificados/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     apagar: (id: string) => request<{ ok: boolean }>(`/admin/certificados/${id}`, { method: "DELETE" }),
+    /** Guarda o .pfx e a senha (cifrados) no certificado da empresa com a mesma validade. */
+    enviarArquivo: (data: {
+      company_id: string;
+      arquivo_base64: string;
+      senha: string;
+      vence_em: string;
+      titular: CertificadoTitular;
+      emitido_em?: string | null;
+      emissor?: string | null;
+    }) =>
+      request<{ ok: boolean; id: string; criado: boolean; nao_verificado: boolean }>("/admin/certificados/arquivo", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
     avisar: (companyId: string) =>
       request<{ ok: boolean; numero: string }>(`/admin/certificados/avisar/${companyId}`, { method: "POST" }),
   },
   /** Certificado digital — portal do cliente. */
   certificadoDigital: {
     meu: () => request<CertificadoPortal>("/certificado-digital"),
+    baixarArquivo: () => requestBlob("/certificado-digital/arquivo"),
+    pedirCodigoSenha: () =>
+      request<{ ok: boolean; email: string; minutos: number }>("/certificado-digital/senha/codigo", { method: "POST" }),
+    verSenha: (codigo: string) =>
+      request<{ senha: string }>("/certificado-digital/senha", { method: "POST", body: JSON.stringify({ codigo }) }),
     informar: (data: CertificadoDados) =>
       request<{ id: string }>("/certificado-digital", { method: "POST", body: JSON.stringify(data) }),
   },
