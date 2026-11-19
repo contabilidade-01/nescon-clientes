@@ -17,6 +17,7 @@
 const TIPOS = [
   { chave: "extrato", rotulo: "Extrato bancário", setor: "contabil" },
   { chave: "notas", rotulo: "Notas fiscais (PDF ou XML)", setor: "fiscal" },
+  { chave: "advertencia_assinada", rotulo: "Advertência / suspensão assinada", setor: "dp" },
   { chave: "folha", rotulo: "Folha de ponto / horas / faltas", setor: "dp" },
   { chave: "atestado", rotulo: "Atestado médico", setor: "dp" },
   { chave: "funcionario", rotulo: "Documentos de funcionário (admissão, rescisão)", setor: "dp" },
