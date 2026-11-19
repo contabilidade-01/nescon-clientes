@@ -15,7 +15,7 @@ const {
   sugerirPorEntregas,
   textoDaEvidencia,
   itensTributariosDoDia,
-  itensVenceHojeSemAviso,
+  itensVenceHoje,
   obrigacoesSemGuia,
   montarMensagemAlerta,
 } = require("./alertasRegras");
@@ -513,18 +513,6 @@ async function previsao(db, { data = null, simular = true, diaUtil = true } = {}
   );
   const avisadosHoje = new Set(jaAvisados.map((r) => r.company_id));
 
-  // Tributos já avisados nos dias anteriores (por empresa). Base da rede de segurança do
-  // "vence hoje": guia que vence hoje e não foi avisada na véspera ainda sai hoje.
-  const { rows: enviosRecentes } = await db.query(
-    `SELECT company_id, obrigacoes FROM alert_sends
-      WHERE dia_alerta < $1::date AND dia_alerta >= $1::date - 7`,
-    [hoje]
-  );
-  const avisadosAntes = new Map();
-  for (const r of enviosRecentes) {
-    if (!avisadosAntes.has(r.company_id)) avisadosAntes.set(r.company_id, new Set());
-    for (const c of String(r.obrigacoes || "").split(",")) if (c) avisadosAntes.get(r.company_id).add(c);
-  }
 
   // Idem para as guias liberadas com vencimento à frente: uma consulta para a carteira,
   // agrupada em memória. O volume é de centenas de linhas, não de milhares.
@@ -682,16 +670,10 @@ async function previsao(db, { data = null, simular = true, diaUtil = true } = {}
     for (const diaAviso of diasCobertosPeloAviso(hoje)) {
       itens.push(...itensTributariosDoDia({ codigos, proximaGuia, hoje: diaAviso }));
     }
-    // Guia que vence HOJE e não foi avisada na véspera (entrou tarde no portal, ou o
-    // envio da véspera não rodou): sai como "vence hoje" em vez de ficar sem aviso.
+    // Aviso NO DIA ("vence hoje"), além do da véspera — regra de 19/11/2026.
     const jaNoDia = new Set(itens.map((i) => i.codigo));
     itens.push(
-      ...itensVenceHojeSemAviso({
-        codigos: codigos.filter((c) => !jaNoDia.has(c)),
-        proximaGuia,
-        hoje,
-        jaAvisados: avisadosAntes.get(e.id) || new Set(),
-      })
+      ...itensVenceHoje({ codigos: codigos.filter((c) => !jaNoDia.has(c)), proximaGuia, hoje })
     );
     if (!itens.length) continue;
 

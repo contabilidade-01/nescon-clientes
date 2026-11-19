@@ -168,23 +168,22 @@ function itensTributariosDoDia({ codigos = [], proximaGuia = new Map(), hoje } =
 }
 
 /**
- * Rede de segurança do "vence hoje": guia que vence HOJE e cujo tributo não foi avisado
- * nos últimos dias.
+ * Aviso NO DIA do vencimento ("vence hoje"), além do aviso de véspera.
  *
- * O aviso normal é na véspera. Se a guia só entrou no portal depois do envio da véspera
- * (ou o envio da véspera não rodou), o cliente nunca era avisado: no dia seguinte o motor
- * já olha para o vencimento de amanhã. Aqui ele recebe ao menos "vence hoje".
+ * Regra de Jeandson (19/11/2026): o cliente recebe o aviso na véspera E no dia. Também
+ * cobre a guia que entrou no portal depois do envio da véspera — antes ela ficava sem
+ * aviso nenhum, porque no dia seguinte o motor já olhava para o vencimento de amanhã.
  *
- * `jaAvisados` = Set dos códigos de obrigação que saíram para a empresa nos dias
- * anteriores (alert_sends). Só vale em dia bancário — guia não vence em dia sem banco.
+ * Só para tributo com guia no portal, e só em dia bancário (guia não vence em dia sem
+ * banco: FGTS/INSS antecipam, DAS adia). Obrigação que já avisa no próprio dia
+ * (`avisarDiasAntes = 0`, ex. salário) fica de fora — já sai por itensTributariosDoDia.
  */
-function itensVenceHojeSemAviso({ codigos = [], proximaGuia = new Map(), hoje, jaAvisados = new Set() } = {}) {
+function itensVenceHoje({ codigos = [], proximaGuia = new Map(), hoje } = {}) {
   if (!ehDiaBancario(hoje)) return [];
   const itens = [];
   for (const codigo of codigos) {
     const o = obrigacao(codigo);
     if (!o || !o.docTypes.length || (o.avisarDiasAntes ?? 1) < 1) continue;
-    if (jaAvisados.has(codigo)) continue;
     const tipo = o.docTypes.find((t) => proximaGuia.get(t) === hoje);
     if (!tipo) continue;
     itens.push({ codigo, nome: o.nome, observacao: null, vencimento: hoje, temGuiaNoPortal: true });
@@ -406,7 +405,7 @@ module.exports = {
   sugerirPorEntregas,
   textoDaEvidencia,
   itensTributariosDoDia,
-  itensVenceHojeSemAviso,
+  itensVenceHoje,
   obrigacoesSemGuia,
   montarMensagemAlerta,
   nomesDe,

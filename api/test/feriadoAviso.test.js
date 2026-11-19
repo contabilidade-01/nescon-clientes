@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const { diasCobertosPeloAviso } = require("../src/diasBancarios");
-const { itensTributariosDoDia, itensVenceHojeSemAviso, montarMensagemAlerta } = require("../src/alertasRegras");
+const { itensTributariosDoDia, itensVenceHoje, montarMensagemAlerta } = require("../src/alertasRegras");
 
 // Novembro/2026: sexta 20/11 é feriado nacional (Consciência Negra).
 // INSS/FGTS antecipam para quinta 19/11; DAS adia para segunda 23/11.
@@ -32,21 +32,21 @@ test("DAS de segunda 23/11 é avisado na quinta 19/11, não no feriado", () => {
   assert.doesNotMatch(texto, /amanhã/);
 });
 
-test("guia que vence hoje sem aviso na véspera sai como 'vence hoje'", () => {
-  const itens = itensVenceHojeSemAviso({ codigos, proximaGuia: guias, hoje: "2026-11-19" });
+test("no dia do vencimento sai 'vence hoje' (além da véspera)", () => {
+  const itens = itensVenceHoje({ codigos, proximaGuia: guias, hoje: "2026-11-19" });
   assert.deepStrictEqual(itens.map((i) => i.codigo).sort(), ["FGTS", "INSS_DCTFWEB"]);
   const texto = montarMensagemAlerta({ empresaNome: "X", hoje: "2026-11-19", itens });
   assert.match(texto, /Vence hoje \(19\/11\)/);
 });
 
-test("guia já avisada na véspera não é repetida no dia", () => {
-  const itens = itensVenceHojeSemAviso({
-    codigos,
-    proximaGuia: guias,
-    hoje: "2026-11-19",
-    jaAvisados: new Set(["FGTS", "INSS_DCTFWEB"]),
-  });
-  assert.strictEqual(itens.length, 0);
+test("DAS de segunda 23/11 também tem o aviso no dia", () => {
+  const itens = itensVenceHoje({ codigos, proximaGuia: guias, hoje: "2026-11-23" });
+  assert.deepStrictEqual(itens.map((i) => i.codigo), ["DAS"]);
+});
+
+test("feriado e fim de semana não geram 'vence hoje'", () => {
+  const g = new Map([["DAS", "2026-11-20"]]);
+  assert.strictEqual(itensVenceHoje({ codigos: ["DAS"], proximaGuia: g, hoje: "2026-11-20" }).length, 0);
 });
 
 test("véspera comum continua dizendo 'vence amanhã'", () => {
