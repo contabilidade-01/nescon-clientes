@@ -57,3 +57,14 @@ test("véspera comum continua dizendo 'vence amanhã'", () => {
   const texto = montarMensagemAlerta({ empresaNome: "X", hoje: "2026-10-19", itens });
   assert.match(texto, /Vence amanhã \(20\/10\)/);
 });
+
+test("aviso com guia leva o link sem senha, não anexo", () => {
+  const itens = [{ codigo: "FGTS", nome: "FGTS", vencimento: "2026-11-19", temGuiaNoPortal: true }];
+  const comLink = montarMensagemAlerta({
+    empresaNome: "X", hoje: "2026-11-19", itens, portalUrl: "https://p.ex", linkGuias: "https://p.ex/g/abc",
+  });
+  assert.match(comLink, /Baixe a guia sem senha: https:\/\/p\.ex\/g\/abc/);
+  assert.doesNotMatch(comLink, /PDF logo abaixo/);
+  const semLink = montarMensagemAlerta({ empresaNome: "X", hoje: "2026-11-19", itens, portalUrl: "https://p.ex" });
+  assert.match(semLink, /A guia está no portal: https:\/\/p\.ex\/guias/);
+});

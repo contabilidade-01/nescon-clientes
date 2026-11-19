@@ -32,7 +32,6 @@
 const uazapi = require("./uazapi");
 const numeroWpp = require("./whatsappNumero");
 const { enviarBoletosPdf } = require("./boletoPdf");
-const { enviarGuiasPdf } = require("./guiaPdfAlerta");
 const { previsao, registrarEnvio, registrarFalha } = require("./alertas");
 const { trechoDeIncentivo } = require("./engagement");
 const { hojeSP, minutosSP } = require("./diasBancarios");
@@ -226,12 +225,6 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, comp
         await trechoDeIncentivo(db, { companyId: m.company_id, portalUrl: portalUrl("/"), simular: false });
       }
 
-      // Anexa o PDF da(s) guia(s) de imposto (abre sem login). Best-effort.
-      const guias = await enviarGuiasPdf(db, {
-        companyId: m.company_id, obrigacoes: m.obrigacoes, diaAlerta: m.dia_alerta, numero: v.numero, marcar: marcarEnviado,
-      });
-      if (guias.enviados) console.log(`[alertas] ${m.empresa}: ${guias.enviados} guia(s) PDF anexada(s).`);
-
       // Anexa o(s) PDF(s) do(s) boleto(s) desta mensagem, logo após o texto. Best-effort:
       // o texto (com link do portal) já saiu, então uma falha aqui não desfaz o envio.
       const pdf = await enviarBoletosPdf(db, {
@@ -240,7 +233,7 @@ async function enviarAlertasDoDia(db, { data = null, apenasSimular = false, comp
       if (pdf.enviados) console.log(`[alertas] ${m.empresa}: ${pdf.enviados} boleto(s) PDF anexado(s).`);
       if (pdf.erros && pdf.erros.length) await avisarPdfFaltou(db, m.empresa, pdf.erros);
 
-      resultados.push({ empresa: m.empresa, company_id: m.company_id, status: "enviado", numero: v.numero, boletosPdf: pdf.enviados, guiasPdf: guias.enviados });
+      resultados.push({ empresa: m.empresa, company_id: m.company_id, status: "enviado", numero: v.numero, boletosPdf: pdf.enviados });
     } catch (err) {
       falhas += 1;
       const tokenRuim = err instanceof uazapi.UazapiTokenInvalido;
@@ -408,10 +401,6 @@ async function drenarOutbox(db) {
       if (o.incentivo_message_id) {
         await trechoDeIncentivo(db, { companyId: o.company_id, portalUrl: portalUrl("/"), simular: false });
       }
-      const guiasFila = await enviarGuiasPdf(db, {
-        companyId: o.company_id, obrigacoes: o.obrigacoes, diaAlerta: o.dia_alerta, numero: v.numero, marcar: marcarEnviado,
-      });
-      if (guiasFila.enviados) console.log(`[alertas] fila: ${guiasFila.enviados} guia(s) PDF anexada(s).`);
       // Anexa o(s) PDF(s) do(s) boleto(s) também no reenvio pela fila. Os ids vêm do
       // `obrigacoes` salvo na outbox (CSV com `BOLETO:<uuid>`). Best-effort, igual ao
       // envio direto.
