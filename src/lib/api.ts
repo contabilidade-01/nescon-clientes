@@ -258,6 +258,9 @@ export type CertificadoDados = {
 
 export type CertificadoItem = {
   company_id: string;
+  /** Arquivo (.pfx) e senha guardados, cifrados, para o cliente baixar. */
+  tem_arquivo?: boolean;
+  tem_senha?: boolean;
   name: string;
   cnpj: string;
   whatsapp: string | null;
@@ -288,6 +291,10 @@ export type CertificadoPortal = {
     updated_at: string;
     status: CertificadoStatus;
     dias_restantes: number;
+    /** O escritório guardou o arquivo (.pfx) cifrado para o cliente baixar. */
+    tem_arquivo?: boolean;
+    /** A senha está guardada; o cliente vê depois do código por e-mail. */
+    tem_senha?: boolean;
   } | null;
 };
 
@@ -1289,6 +1296,11 @@ export const api = {
   /** Certificado digital — portal do cliente. */
   certificadoDigital: {
     meu: () => request<CertificadoPortal>("/certificado-digital"),
+    baixarArquivo: () => requestBlob("/certificado-digital/arquivo"),
+    pedirCodigoSenha: () =>
+      request<{ ok: boolean; email: string; minutos: number }>("/certificado-digital/senha/codigo", { method: "POST" }),
+    verSenha: (codigo: string) =>
+      request<{ senha: string }>("/certificado-digital/senha", { method: "POST", body: JSON.stringify({ codigo }) }),
     informar: (data: CertificadoDados) =>
       request<{ id: string }>("/certificado-digital", { method: "POST", body: JSON.stringify(data) }),
   },

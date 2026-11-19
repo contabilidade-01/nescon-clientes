@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { PortalPage } from "@/components/PortalPage";
 import { HubCard, IconBox } from "@/components/hub/Hub";
 import { CertificadoForm } from "@/components/hub/CertificadoForm";
+import { CertificadoArquivoCard } from "@/components/hub/CertificadoArquivoCard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, type CertificadoDados } from "@/lib/api";
@@ -91,6 +92,14 @@ export default function CertificadoDigitalPage() {
           </HubCard>
         )}
 
+        {cert && (
+          <CertificadoArquivoCard
+            venceEm={cert.vence_em}
+            temArquivo={!!cert.tem_arquivo}
+            temSenha={!!cert.tem_senha}
+          />
+        )}
+
         {(status === "vencido" || status === "a_vencer") && (
           <div className="rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm">
             <p className="font-semibold">O que fazer</p>
@@ -123,7 +132,7 @@ export default function CertificadoDigitalPage() {
             </div>
           ) : (
             <p className="mt-2 text-xs text-muted-foreground">
-              Pedimos só as datas. O arquivo e a senha do certificado nunca são enviados pelo portal.
+              Pedimos só as datas. Se renovou, mande o arquivo novo para o escritório.
             </p>
           )}
         </HubCard>

@@ -136,7 +136,10 @@ export default function CertificadosPage() {
                 <tr key={i.company_id} className="border-t">
                   <td className="px-4 py-2.5">
                     <p className="font-medium">{i.name}</p>
-                    <p className="text-xs text-muted-foreground">{i.cnpj}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {i.cnpj}
+                      {i.tem_arquivo && ` · arquivo guardado${i.tem_senha ? " com senha" : ""}`}
+                    </p>
                   </td>
                   <td className="px-4 py-2.5 tabular-nums">
                     {dataBr(i.vence_em)}
