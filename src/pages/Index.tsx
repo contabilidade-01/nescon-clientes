@@ -7,7 +7,6 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronRight,
-  FileBadge,
   FileX,
   KeyRound,
   LogOut,
@@ -29,6 +28,7 @@ import { LgpdConsentDialog } from "@/components/LgpdConsentDialog";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
 import { LinkAvulsoCard } from "@/components/LinkAvulsoCard";
 import { Atalho, HubCard, IconBox, Indicador, RoscaPagamentos } from "@/components/hub/Hub";
+import { CertificadoVigenciaCard } from "@/components/hub/CertificadoVigenciaCard";
 import {
   ATALHOS_INICIO,
   ITEM_CHAT,
@@ -151,7 +151,7 @@ const Index = () => {
   });
   const passos = onboarding?.onboarding && onboarding.onboarding.status !== "concluido" ? onboarding.onboarding : null;
 
-  // Certificado digital: só avisa na entrada quando vence logo ou já venceu.
+  // Certificado digital: vigência fixa no topo da tela inicial.
   const { data: certificado } = useQuery({
     queryKey: ["certificado-digital"],
     queryFn: () => api.certificadoDigital.meu(),
@@ -181,9 +181,6 @@ const Index = () => {
       window.location.href = "/admin/hub";
     }
   };
-
-  const certStatus = certificado?.status;
-  const certDias = certificado?.certificado?.dias_restantes ?? null;
 
   return (
     <div className="min-h-screen">
@@ -248,6 +245,9 @@ const Index = () => {
       </header>
 
       <main className="mx-auto w-full max-w-5xl space-y-4 px-4 py-5 sm:space-y-6">
+        {/* Certificado digital: fixo no topo para o cliente ver a vigência logo de cara. */}
+        {!isGerente && certificado && <CertificadoVigenciaCard dados={certificado} onAbrir={() => navigate("/certificado-digital")} />}
+
         {/* Primeiros passos do cliente novo */}
         {passos && (
           <section aria-label="Primeiros passos" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
@@ -365,31 +365,6 @@ const Index = () => {
           <LinkAvulsoCard />
         )}
 
-        {/* Avisos: só quando há o que resolver — cartão vazio vira ruído. */}
-        {!isGerente && (certStatus === "vencido" || certStatus === "a_vencer") && (
-          <button
-            type="button"
-            onClick={() => navigate("/certificado-digital")}
-            className={`flex w-full items-center gap-3 rounded-2xl border-2 px-4 py-3 text-left ${
-              certStatus === "vencido" ? "border-destructive/50 bg-destructive/10" : "border-warning/50 bg-warning/10"
-            }`}
-          >
-            <IconBox icon={FileBadge} tom={certStatus === "vencido" ? "destructive" : "warning"} />
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold">
-                {certStatus === "vencido"
-                  ? "Seu certificado digital venceu"
-                  : certDias === 0
-                    ? "Seu certificado digital vence hoje"
-                    : `Seu certificado digital vence em ${certDias} dia${certDias === 1 ? "" : "s"}`}
-              </span>
-              <span className="block text-xs text-muted-foreground">
-                Sem ele não emitimos notas nem entregamos declarações. Toque para ver e informar a renovação.
-              </span>
-            </span>
-            <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
-          </button>
-        )}
 
         {podeFerias && ferias?.resumo && (ferias.resumo.vencidas > 0 || ferias.resumo.em_risco_faltas > 0) && (
           <button
