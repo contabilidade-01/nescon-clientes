@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   Building2,
@@ -38,9 +39,14 @@ function extensao(nome: string) {
  * As regras de verdade (formato, tamanho, limites) ficam no servidor; aqui só adianta o aviso.
  */
 export default function EnvioAvulsoPage() {
+  // ?cnpj= e ?tipo= vêm do botão do portal (cliente logado): já abre com a empresa buscada.
+  const [params] = useSearchParams();
+  const cnpjUrl = (params.get("cnpj") || "").replace(/\D/g, "").slice(0, 14);
+  const tipoUrl = params.get("tipo") || "";
   const [config, setConfig] = useState<EnvioAvulsoConfig | null>(null);
   const [erroConfig, setErroConfig] = useState(false);
   const [cnpj, setCnpj] = useState(() => {
+    if (cnpjUrl.length === 14) return cnpjUrl;
     try {
       return localStorage.getItem(LS_CNPJ) || "";
     } catch {
@@ -49,7 +55,7 @@ export default function EnvioAvulsoPage() {
   });
   const [buscando, setBuscando] = useState(false);
   const [empresa, setEmpresa] = useState<string | null>(null);
-  const [tipo, setTipo] = useState("");
+  const [tipo, setTipo] = useState(tipoUrl);
   const [arquivos, setArquivos] = useState<File[]>([]);
   const [observacao, setObservacao] = useState("");
   const [remetente, setRemetente] = useState("");
@@ -67,6 +73,13 @@ export default function EnvioAvulsoPage() {
       .then(setConfig)
       .catch(() => setErroConfig(true));
   }, []);
+
+  // Tipo vindo da URL só vale se existir na lista do servidor.
+  useEffect(() => {
+    if (config && tipo && !config.tipos.some((t) => t.chave === tipo)) setTipo("");
+  }, [config, tipo]);
+
+  const buscouUrl = useRef(false);
 
   const aceitos = (config?.accept || "").split(",").filter(Boolean);
   const maxArquivos = config?.max_arquivos ?? 10;
@@ -101,6 +114,13 @@ export default function EnvioAvulsoPage() {
       setBuscando(false);
     }
   };
+
+  useEffect(() => {
+    if (buscouUrl.current || cnpjUrl.length !== 14) return;
+    buscouUrl.current = true;
+    void buscar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const adicionar = (lista: FileList | File[] | null) => {
     if (!lista) return;
