@@ -140,6 +140,33 @@ async function requestBlob(path: string): Promise<Blob> {
   return res.blob();
 }
 
+/** Certidão de inteiro teor guardada como entrega (ver api/src/certidaoInteiroTeor.js). */
+export type CertidaoItem = {
+  id: string;
+  company_id: string;
+  company_name: string;
+  company_cnpj: string;
+  title: string;
+  file_name: string;
+  competencia: string | null;
+  created_at: string;
+  released_at: string | null;
+  cancelado: boolean | null;
+};
+
+export type CertidaoImportResultado = {
+  arquivo: string;
+  status: "importada" | "duplicada" | "sem_empresa" | "nao_certidao" | "erro";
+  id?: string;
+  company_id?: string;
+  empresa?: string;
+  nome?: string | null;
+  cnpjs?: string[];
+  expedicao?: string | null;
+  arquivamento?: string | null;
+  erro?: string;
+};
+
 /** Jornada no cadastro do funcionário (ver api/src/ensureJornadaSchema.js). */
 export type EmployeeJornada = {
   carga_semanal?: number | string | null;
@@ -1285,6 +1312,31 @@ export const api = {
     apagar: (id: string) => request<{ ok: boolean }>(`/admin/certificados/${id}`, { method: "DELETE" }),
     avisar: (companyId: string) =>
       request<{ ok: boolean; numero: string }>(`/admin/certificados/avisar/${companyId}`, { method: "POST" }),
+  },
+  /** Certidão de inteiro teor — painel (área entregas). Entra retida; o admin libera. */
+  certidoes: {
+    listar: () => request<CertidaoItem[]>("/admin/certidoes-inteiro-teor"),
+    importar: async (files: File[], companyId?: string) => {
+      const fd = new FormData();
+      files.forEach((f) => fd.append("files", f));
+      if (companyId) fd.append("company_id", companyId);
+      const token = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(`${API_BASE}/admin/certidoes-inteiro-teor/importar`, { method: "POST", body: fd, headers });
+      const data = await parseResponseJson<unknown>(res);
+      if (res.status === 401) {
+        localStorage.removeItem("company_session");
+        window.location.href = "/login";
+        throw new Error("Sessão expirada");
+      }
+      if (!res.ok) throw new Error((data as { error?: string })?.error || `HTTP ${res.status}`);
+      return data as { resultados: CertidaoImportResultado[] };
+    },
+    liberar: (id: string) =>
+      request<{ ok: boolean; substituidas: number }>(`/admin/certidoes-inteiro-teor/${id}/liberar`, { method: "POST" }),
+    reter: (id: string) => request<{ ok: boolean }>(`/admin/certidoes-inteiro-teor/${id}/reter`, { method: "POST" }),
+    descartar: (id: string) => request<{ ok: boolean }>(`/admin/certidoes-inteiro-teor/${id}`, { method: "DELETE" }),
   },
   /** Certificado digital — portal do cliente. */
   certificadoDigital: {

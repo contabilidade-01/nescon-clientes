@@ -148,6 +148,7 @@ app.use("/api/certificado-digital", certificadosRoutes.portalRouter);
 // Documentos enviados pelo cliente na página pública /enviar (ver routes/envioAvulso.js).
 const envioAvulsoRoutes = require("./routes/envioAvulso");
 app.use("/api/admin/envios-avulsos", envioAvulsoRoutes.adminRouter);
+app.use("/api/admin/certidoes-inteiro-teor", require("./routes/certidoesInteiroTeor"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/chat", require("./routes/chat"));
 app.use("/api/employees", require("./routes/employees"));
