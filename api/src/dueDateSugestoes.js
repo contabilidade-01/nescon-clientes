@@ -74,7 +74,7 @@ async function executarVarredura(db, { desde, limite }) {
      WHERE d.cancelado IS NOT TRUE
        AND d.source <> 'cora'
        AND d.category IN ('guia', 'boleto', 'outro', 'avulso')
-       AND (d.doc_type IS NULL OR d.doc_type NOT IN ('EXTRATO_FOLHA', 'RECIBO_PAGTO'))
+       AND (d.doc_type IS NULL OR d.doc_type NOT IN ('EXTRATO_FOLHA', 'RECIBO_PAGTO', 'certidao_inteiro_teor'))
        AND (
          (d.competencia IS NOT NULL AND d.competencia >= $1)
          OR (d.competencia IS NULL AND d.created_at >= $2::date)
