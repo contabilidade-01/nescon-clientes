@@ -31,6 +31,107 @@ export const MODELOS: Record<ModeloChave, string> = {
   "12x36": "12x36",
 };
 
+/**
+ * O modelo em palavras, para quem não é do DP: a sigla aparece pequena ao lado.
+ */
+export const MODELOS_EXPLICADOS: Record<ModeloChave, string> = {
+  "6x1": "6 dias de trabalho e 1 folga",
+  "5x2": "5 dias de trabalho, folgas fixas",
+  "5x2_rev": "5 dias de trabalho, folgas que mudam a cada semana",
+  "5x2_fechado": "5 dias de trabalho, folga no dia em que a empresa fecha e em mais 1",
+  "4x3": "4 dias de 10 horas e 3 folgas",
+  "12x36": "Plantão de 12 horas e folga de 36 horas",
+};
+
+const NOMES_DIA_LONGO = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+
+function listaDias(ds: number[]): string {
+  const n = ds.map((d) => NOMES_DIA_LONGO[d]);
+  return n.length > 1 ? `${n.slice(0, -1).join(", ")} e ${n.at(-1)}` : n[0] || "";
+}
+
+/** "Trabalha 5 dias e folga sábado e domingo, das 08:00 às 17:00." */
+export function fraseDaPessoa(c: ConfigPessoa): string {
+  const horario = `das ${c.entrada} às ${c.saida}`;
+  switch (c.modelo) {
+    case "6x1":
+      return `Trabalha 6 dias e folga ${listaDias([c.folga6x1])}, ${horario}.`;
+    case "5x2":
+      return `Trabalha 5 dias e folga ${listaDias(c.folgas5x2)}, ${horario}.`;
+    case "5x2_rev":
+      return `Trabalha 5 dias; as folgas mudam a cada semana e caem no domingo a cada ${c.semanasRodizio} semanas, ${horario}.`;
+    case "5x2_fechado":
+      return `Trabalha 5 dias; folga ${listaDias([c.diaFechado])} (empresa fechada) e mais 1 dia, ${horario}.`;
+    case "4x3":
+      return `Trabalha 4 dias de 10 horas e folga 3, ${horario}.`;
+    case "12x36":
+      return `Plantão de 12 horas em dias alternados (turma ${c.turma}), ${horario}.`;
+  }
+}
+
+/** O que o cadastro do funcionário diz da jornada (conferência feita pelo cliente). */
+export interface CadastroJornada {
+  escala?: string | null;
+  folga?: string | null;
+  horario_entrada?: string | null;
+  horario_saida?: string | null;
+}
+
+const FOLGA_DIA: Record<string, number> = {
+  domingo: 0,
+  "segunda-feira": 1,
+  "terça-feira": 2,
+  "quarta-feira": 3,
+  "quinta-feira": 4,
+  "sexta-feira": 5,
+  sábado: 6,
+};
+
+const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * Primeira escala de quem ainda não tem mês salvo, a partir do cadastro: modelo, folga e
+ * horário que o cliente já informou. A 6x1 depois de 16/12/2026 vira o modelo padrão do mês
+ * (com a 6x1 até a virada, quando é o mês dela); 4x3 sem acordo também cai no padrão.
+ * Sem escala no cadastro, devolve null e vale o padrão.
+ */
+export function configDoCadastro(
+  id: string,
+  nome: string,
+  cad: CadastroJornada | undefined,
+  padrao: ModeloChave,
+  opcoes: { permite6x1?: boolean; temAcordo?: boolean } = {},
+): ConfigPessoa | null {
+  if (!cad?.escala || cad.escala === "outra") return null;
+  const folga = (cad.folga || "").trim().toLowerCase();
+  const diaFolga = folga in FOLGA_DIA ? FOLGA_DIA[folga] : null;
+  const horario = (c: ConfigPessoa): ConfigPessoa =>
+    cad.horario_entrada && cad.horario_saida && HORA.test(cad.horario_entrada) && HORA.test(cad.horario_saida)
+      ? { ...c, entrada: cad.horario_entrada, saida: cad.horario_saida }
+      : c;
+  switch (cad.escala) {
+    case "12x36":
+      return horario(configPadrao(id, nome, "12x36"));
+    case "4x3":
+      return opcoes.temAcordo ? horario(configPadrao(id, nome, "4x3")) : null;
+    case "6x1": {
+      if (opcoes.permite6x1) return horario({ ...configPadrao(id, nome, "6x1"), folga6x1: diaFolga ?? 0 });
+      // Depois da emenda: modelo novo com o horário padrão dele (o de 44h não serve) e,
+      // no mês da virada, a 6x1 com a mesma folga até o domingo antes da semana do dia 16.
+      return { ...configPadrao(id, nome, padrao), folga6x1: diaFolga ?? 0 };
+    }
+    case "5x2": {
+      if (folga === "sábado e domingo") return horario({ ...configPadrao(id, nome, "5x2"), folgas5x2: [6, 0] });
+      if (folga === "domingo e segunda-feira") return horario({ ...configPadrao(id, nome, "5x2"), folgas5x2: [0, 1] });
+      if (folga.includes("rodízio") || folga.includes("variável")) return horario(configPadrao(id, nome, "5x2_rev"));
+      if (diaFolga !== null && diaFolga > 0) return horario({ ...configPadrao(id, nome, "5x2_rev"), folgaFixa: diaFolga });
+      return horario(configPadrao(id, nome, "5x2"));
+    }
+    default:
+      return null;
+  }
+}
+
 /** Data base dos rodízios: um domingo fixo, para a semana do rodízio não depender do mês aberto. */
 export const BASE_RODIZIO = "2026-01-04";
 
@@ -326,6 +427,13 @@ export interface ConfigEmpresa {
   usa12x36: boolean;
   /** Dias da semana em que a casa não abre (0 = domingo). Cenário que escala gente neles sai da lista. */
   diasFechados: number[];
+  /**
+   * Atividade e acordo coletivo marcados pelo escritório: no portal o cliente só vê, não
+   * muda (são respostas que o cliente raramente sabe).
+   */
+  atividadePeloEscritorio: boolean;
+  /** O que o cliente respondeu "Não sei" (o sistema usou a regra mais segura): o escritório confere. */
+  naoSabe: Array<"atividade" | "acordo">;
 }
 
 /** A escala de um mês (escala_planejamentos). */
@@ -347,6 +455,8 @@ export function configEmpresaPadrao(): ConfigEmpresa {
     atividadeDefinida: false,
     usa12x36: false,
     diasFechados: [],
+    atividadePeloEscritorio: false,
+    naoSabe: [],
   };
 }
 
@@ -383,6 +493,8 @@ export function normalizarConfigEmpresa(raw: unknown): ConfigEmpresa {
     diasFechados: Array.isArray(o.diasFechados)
       ? [...new Set(o.diasFechados.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort().slice(0, 5)
       : [],
+    atividadePeloEscritorio: Boolean(o.atividadePeloEscritorio),
+    naoSabe: Array.isArray(o.naoSabe) ? [...new Set(o.naoSabe.filter((x): x is "atividade" | "acordo" => x === "atividade" || x === "acordo"))] : [],
   };
 }
 
@@ -417,13 +529,25 @@ export function normalizarConfigPessoa(raw: ConfigPessoa, padrao: ModeloChave): 
  * Junta a escala salva com o quadro atual: quem saiu da empresa some, quem entrou ganha
  * o modelo padrão, vagas simuladas ficam.
  */
-export function mesclarPlano(plano: PlanoMes | null, pessoas: Array<{ id: string; name: string }>, padrao: ModeloChave): PlanoMes {
+export function mesclarPlano(
+  plano: PlanoMes | null,
+  pessoas: Array<{ id: string; name: string; cadastro?: CadastroJornada }>,
+  padrao: ModeloChave,
+  opcoes: { permite6x1?: boolean; temAcordo?: boolean } = {},
+): PlanoMes {
   const salvos = new Map((plano?.configs || []).map((c) => [c.id, c]));
   const configs: ConfigPessoa[] = pessoas.map((p, i) => {
     const s = salvos.get(p.id);
-    return s
-      ? { ...normalizarConfigPessoa(s, padrao), nome: p.name }
-      : { ...configPadrao(p.id, p.name, padrao), turma: i % 2 === 0 ? "A" : "B", folgaFixa: (i % 6) + 1, rodizio: i % 2 };
+    if (s) return { ...normalizarConfigPessoa(s, padrao), nome: p.name };
+    // Quem entra sem mês salvo começa no que o cadastro diz; espalha turmas e folgas.
+    const espalha = { turma: i % 2 === 0 ? "A" : "B", folgaFixa: (i % 6) + 1, rodizio: i % 2 } as const;
+    const doCadastro = configDoCadastro(p.id, p.name, p.cadastro, padrao, opcoes);
+    if (doCadastro) {
+      const folga = (p.cadastro?.folga || "").trim().toLowerCase();
+      const folgaDoCadastro = doCadastro.modelo === "5x2_rev" && (FOLGA_DIA[folga] ?? 0) > 0;
+      return { ...doCadastro, turma: espalha.turma, rodizio: espalha.rodizio, folgaFixa: folgaDoCadastro ? doCadastro.folgaFixa : espalha.folgaFixa };
+    }
+    return { ...configPadrao(p.id, p.name, padrao), ...espalha };
   });
   for (const c of plano?.configs || []) if (c.id.startsWith("vaga-")) configs.push(normalizarConfigPessoa(c, padrao));
   const ids = new Set(configs.map((c) => c.id));

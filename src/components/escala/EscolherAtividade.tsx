@@ -61,7 +61,7 @@ export function EscolherAtividade({
   return (
     <Card className="overflow-hidden">
       <div className="border-b bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-6 py-5">
-        <p className="text-xs font-medium uppercase tracking-wide text-primary">Passo 1 de 3</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-primary">Antes de começar</p>
         <h2 className="mt-1 text-lg font-semibold">Qual é a atividade da empresa?</h2>
         <p className="text-sm text-muted-foreground">
           A atividade define a regra de domingos e de feriados. As simulações só oferecem escalas que cumprem essa regra.

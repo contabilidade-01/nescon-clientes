@@ -109,6 +109,8 @@ const PESSOAS = [
 
 describe("tela do planejador", () => {
   beforeEach(() => {
+    // Estes testes são das abas completas (modo avançado); o portal abre no caminho guiado.
+    localStorage.setItem("escala-modo-portal", "avancado");
     mockApi.config.mockResolvedValue({ dados: null, atualizado_em: null, atualizado_por: null });
     mockApi.salvarConfig.mockReset().mockResolvedValue({});
   });
@@ -150,6 +152,8 @@ describe("tela do planejador", () => {
 
 describe("edição em lote na tela", () => {
   beforeEach(() => {
+    // Estes testes são das abas completas (modo avançado); o portal abre no caminho guiado.
+    localStorage.setItem("escala-modo-portal", "avancado");
     mockApi.config.mockResolvedValue({ dados: { segmento: "outro", atividadeDefinida: true }, atualizado_em: null, atualizado_por: null });
   });
 
@@ -167,6 +171,8 @@ describe("edição em lote na tela", () => {
 
 describe("12x36, lote e caixa do funcionário", () => {
   beforeEach(() => {
+    // Estes testes são das abas completas (modo avançado); o portal abre no caminho guiado.
+    localStorage.setItem("escala-modo-portal", "avancado");
     mockApi.config.mockResolvedValue({ dados: { segmento: "restaurante", atividadeDefinida: true, usa12x36: true }, atualizado_em: null, atualizado_por: null });
   });
 
