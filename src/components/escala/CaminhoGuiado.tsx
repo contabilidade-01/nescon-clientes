@@ -22,6 +22,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { DIAS_TRABALHO_SEMANA, turnoQuePreenche } from "@/lib/escala/cenarios";
+import { minutosTrabalhados, type Turno } from "@/lib/escala/modelos";
 import { BotoesBaixar } from "@/components/escala/BotoesBaixar";
 import type { ResultadoCenario } from "@/lib/escala/cenarios";
 import type { Demanda } from "@/lib/escala/contingente";
@@ -71,6 +73,13 @@ const DIAS_POR_SEMANA: Record<ModeloChave, string> = {
   "12x36": "dia sim, dia não",
 };
 
+/** 504 -> "8h24"; 480 -> "8h". */
+function fmtHoras(min: number) {
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
+}
+
 function num(n: number) {
   return (Math.round(n * 10) / 10).toString().replace(".", ",");
 }
@@ -114,6 +123,9 @@ export function CaminhoGuiado({
   onSalvar,
   onMaisOpcoes,
   onBaixar,
+  limiteSemanal,
+  pode42h,
+  onHorario,
 }: {
   mes: string;
   cfg: ConfigEmpresa;
@@ -136,6 +148,12 @@ export function CaminhoGuiado({
   onSalvar: () => void;
   onMaisOpcoes: () => void;
   onBaixar: (tipo: "pdf" | "xlsx") => void;
+  /** Limite de horas por semana no fim do mês (42 na etapa 1). */
+  limiteSemanal: number;
+  /** Acordo coletivo e sem bloqueio de hora extra: dá para alongar o dia até o limite. */
+  pode42h: boolean;
+  /** Troca o horário de uma sugestão (null volta ao padrão). */
+  onHorario: (cenarioId: string, turno: Turno | null) => void;
 }) {
   // Empresa já respondida (por ela ou pelo escritório): abre no passo da escala.
   const [passo, setPasso] = useState<Passo>(cfg.atividadeDefinida ? 3 : 1);
@@ -218,6 +236,9 @@ export function CaminhoGuiado({
           onSalvar={onSalvar}
           onMaisOpcoes={onMaisOpcoes}
           onBaixar={onBaixar}
+          limiteSemanal={limiteSemanal}
+          pode42h={pode42h}
+          onHorario={onHorario}
           onVoltar={() => setPasso(2)}
         />
       )}
@@ -545,6 +566,9 @@ function PassoEscala({
   onSalvar,
   onMaisOpcoes,
   onBaixar,
+  limiteSemanal,
+  pode42h,
+  onHorario,
   onVoltar,
 }: {
   mes: string;
@@ -562,6 +586,12 @@ function PassoEscala({
   onSalvar: () => void;
   onMaisOpcoes: () => void;
   onBaixar: (tipo: "pdf" | "xlsx") => void;
+  /** Limite de horas por semana no fim do mês (42 na etapa 1). */
+  limiteSemanal: number;
+  /** Acordo coletivo e sem bloqueio de hora extra: dá para alongar o dia até o limite. */
+  pode42h: boolean;
+  /** Troca o horário de uma sugestão (null volta ao padrão). */
+  onHorario: (cenarioId: string, turno: Turno | null) => void;
   onVoltar: () => void;
 }) {
   const temDemanda = cfg.demanda.some((n) => n > 0);
@@ -660,6 +690,9 @@ function PassoEscala({
                 temDemanda={temDemanda}
                 emUso={cenarioAtual === c.id}
                 onEscolher={() => onEscolher(c)}
+                limiteSemanal={limiteSemanal}
+                pode42h={pode42h}
+                onHorario={(t) => onHorario(c.id, t)}
               />
             ))}
           </div>
@@ -738,6 +771,9 @@ function CartaoSugestao({
   temDemanda,
   emUso,
   onEscolher,
+  limiteSemanal,
+  pode42h,
+  onHorario,
 }: {
   titulo: string;
   descricao: string;
@@ -745,7 +781,13 @@ function CartaoSugestao({
   temDemanda: boolean;
   emUso: boolean;
   onEscolher: () => void;
+  limiteSemanal?: number;
+  pode42h?: boolean;
+  onHorario?: (t: Turno | null) => void;
 }) {
+  const dias = DIAS_TRABALHO_SEMANA[c.modelo];
+  const semana = dias ? (minutosTrabalhados(c.turno) * dias) / 60 : null;
+  const preencher = limiteSemanal && onHorario ? turnoQuePreenche(c.turno, c.modelo, limiteSemanal) : null;
   return (
     <div className={cn("flex flex-col gap-2 rounded-xl border p-4", emUso && "border-primary bg-primary/5 ring-2 ring-primary/30")}>
       <div className="flex items-start justify-between gap-2">
@@ -766,7 +808,32 @@ function CartaoSugestao({
           </div>
         ))}
       </div>
-      <p className="text-xs text-muted-foreground">Pessoas trabalhando por dia · {num(c.horasDia)}h por dia, {DIAS_POR_SEMANA[c.modelo]}</p>
+      <p className="text-xs text-muted-foreground">
+        Pessoas trabalhando por dia · {fmtHoras(minutosTrabalhados(c.turno))} por dia, {DIAS_POR_SEMANA[c.modelo]}
+        {semana !== null && (
+          <>
+            {" "}
+            · <span className="font-medium text-foreground">{fmtHoras(semana * 60)} por semana</span>
+            {limiteSemanal && semana < limiteSemanal ? ` (o limite é ${limiteSemanal}h)` : ""}
+          </>
+        )}
+        {c.modelo === "12x36" && " · média de 2 semanas abaixo do limite"}
+      </p>
+      {preencher && pode42h && (
+        <Button size="sm" variant="outline" className="h-auto whitespace-normal py-1 text-xs" onClick={() => onHorario?.(preencher)}>
+          Usar as {limiteSemanal}h: {preencher.entrada} às {preencher.saida} ({fmtHoras(minutosTrabalhados(preencher))} por dia)
+        </Button>
+      )}
+      {preencher && !pode42h && (
+        <p className="text-[11px] text-muted-foreground">
+          Para usar as {limiteSemanal}h em {dias} dias ({fmtHoras(minutosTrabalhados(preencher))} por dia) é preciso acordo coletivo de compensação.
+        </p>
+      )}
+      {c.personalizado && onHorario && (
+        <button type="button" className="self-start text-[11px] text-primary underline" onClick={() => onHorario(null)}>
+          Voltar ao horário padrão
+        </button>
+      )}
       {temDemanda && (
         <p className={cn("text-xs", c.diasDescobertos ? "text-destructive" : "text-emerald-700 dark:text-emerald-400")}>
           {c.diasDescobertos

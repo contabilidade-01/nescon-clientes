@@ -16,6 +16,8 @@ export interface PessoaExportada {
   descricao: string;
   /** Dias do mês planejado (folga = turno null). */
   dias: DiaEscala[];
+  /** 12x36: a lei mede a semana pela média de duas, então o arquivo mostra a média. */
+  doze36?: boolean;
 }
 
 export interface EscalaExportada {
@@ -68,15 +70,26 @@ function minutosNos(dias: DiaEscala[], datas: Array<string | null>): number {
   return dias.filter((d) => datas.includes(d.data) && d.turno).reduce((a, d) => a + minutosTrabalhados(d.turno!), 0);
 }
 
+/** Média de horas por semana nas semanas inteiras (domingo a sábado) do mês. */
+export function mediaSemanal(dias: DiaEscala[], datas: string[]): number | null {
+  const cheias = semanasDoMes(datas).filter((w) => w.every(Boolean));
+  if (!cheias.length) return null;
+  return cheias.reduce((a, w) => a + minutosNos(dias, w), 0) / cheias.length;
+}
+
 /** Linhas da planilha: cabeçalho com os dias, uma linha por pessoa e as horas do mês. */
 export function linhasDaPlanilha(e: EscalaExportada): string[][] {
   const datas = e.pessoas[0]?.dias.map((d) => d.data) ?? [];
-  const cabecalho = ["Funcionário", ...datas.map((d) => `${DIAS_CURTOS[diaDaSemana(d)]} ${ddmm(d)}`), "Horas no mês"];
-  const linhas = e.pessoas.map((p) => [
-    p.nome,
-    ...datas.map((d) => textoDoDia(p.dias.find((x) => x.data === d), e.feriados.get(d))),
-    horas(minutosNos(p.dias, datas)),
-  ]);
+  const cabecalho = ["Funcionário", ...datas.map((d) => `${DIAS_CURTOS[diaDaSemana(d)]} ${ddmm(d)}`), "Horas no mês", "Média por semana"];
+  const linhas = e.pessoas.map((p) => {
+    const media = mediaSemanal(p.dias, datas);
+    return [
+      p.nome,
+      ...datas.map((d) => textoDoDia(p.dias.find((x) => x.data === d), e.feriados.get(d))),
+      horas(minutosNos(p.dias, datas)),
+      media === null ? "" : horas(media),
+    ];
+  });
   return [cabecalho, ...linhas];
 }
 
@@ -93,7 +106,7 @@ function nomeArquivo(e: EscalaExportada, ext: string) {
 export function baixarEscalaXlsx(e: EscalaExportada): void {
   const grade = linhasDaPlanilha(e);
   const sheet = XLSX.utils.aoa_to_sheet(grade);
-  sheet["!cols"] = [{ wch: 28 }, ...grade[0].slice(1, -1).map(() => ({ wch: 13 })), { wch: 12 }];
+  sheet["!cols"] = [{ wch: 28 }, ...grade[0].slice(1, -2).map(() => ({ wch: 13 })), { wch: 12 }, { wch: 16 }];
   sheet["!freeze"] = { xSplit: 1, ySplit: 1 };
   const resumo = XLSX.utils.aoa_to_sheet([
     [`Escala de ${nomeMes(e.mes)}${e.empresa ? ` · ${e.empresa}` : ""}`],
@@ -102,6 +115,8 @@ export function baixarEscalaXlsx(e: EscalaExportada): void {
     [],
     ["Funcionário", "Como trabalha"],
     ...e.pessoas.map((p) => [p.nome, p.descricao]),
+    [],
+    ["Média por semana: conta só as semanas inteiras (domingo a sábado) do mês. Na 12x36, a lei mede pela média de duas semanas."],
   ]);
   resumo["!cols"] = [{ wch: 28 }, { wch: 90 }];
   const wb = XLSX.utils.book_new();
@@ -141,7 +156,7 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
   }
 
   const datas = e.pessoas[0]?.dias.map((d) => d.data) ?? [];
-  const larguraDia = (pageW - 2 * margin - 52 - 18) / 7;
+  const larguraDia = (pageW - 2 * margin - 52 - 24) / 7;
   for (const semana of semanasDoMes(datas)) {
     const dentro = semana.filter((d): d is string => Boolean(d));
     autoTable(doc, {
@@ -149,13 +164,15 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
       margin: { left: margin, right: margin },
       theme: "grid",
       rowPageBreak: "avoid",
+      // Cada semana inteira na mesma página.
+      pageBreak: "avoid",
       styles: { font: "helvetica", fontSize: 8, cellPadding: 1.5, halign: "center", valign: "middle" },
       headStyles: { fillColor: [30, 64, 120], textColor: 255, fontStyle: "bold" },
       // Colunas dos dias com a mesma largura em todas as semanas, para o mural ficar alinhado.
       columnStyles: {
         0: { halign: "left", cellWidth: 52, fontStyle: "bold" },
         ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((i) => [i, { cellWidth: larguraDia }])),
-        8: { cellWidth: 18 },
+        8: { cellWidth: 24 },
       },
       head: [
         [
@@ -167,7 +184,7 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
       body: e.pessoas.map((p) => [
         p.nome,
         ...semana.map((d) => (d ? textoDoDia(p.dias.find((x) => x.data === d)) : "")),
-        horas(minutosNos(p.dias, semana)),
+        textoHorasSemana(p, semana, datas),
       ]),
       didParseCell: (c) => {
         if (c.section === "body" && c.cell.raw === "Folga") {
@@ -177,6 +194,22 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
       },
     });
     y = doc.lastAutoTable?.finalY ?? y;
+  }
+
+  // Notas das horas: semana cortada pelo mês e média da 12x36.
+  const notas: string[] = [];
+  if (semanasDoMes(datas).some((w) => w.some((d) => !d))) notas.push("(parcial) = semana cortada pelo início ou fim do mês: soma só os dias deste mês.");
+  if (e.pessoas.some((p) => p.doze36)) notas.push("12x36: a lei mede pela média de duas semanas seguidas; a média do mês aparece ao lado.");
+  if (notas.length) {
+    if (y > pageH - 30) {
+      doc.addPage();
+      y = margin;
+    }
+    doc.setFontSize(8);
+    for (const n of notas) {
+      y += 4.5;
+      doc.text(n, margin, y);
+    }
   }
 
   const feriadosDoMes = [...e.feriados].filter(([d]) => d.startsWith(e.mes)).sort();
@@ -200,6 +233,16 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
     doc.setTextColor(0);
   }
   return doc;
+}
+
+function textoHorasSemana(p: PessoaExportada, semana: Array<string | null>, datas: string[]): string {
+  const h = horas(minutosNos(p.dias, semana));
+  if (semana.some((d) => !d)) return `${h} (parcial)`;
+  if (p.doze36) {
+    const m = mediaSemanal(p.dias, datas);
+    return m === null ? h : `${h} (média ${horas(m)})`;
+  }
+  return h;
 }
 
 export function baixarEscalaPdf(e: EscalaExportada): void {

@@ -702,7 +702,7 @@ export function PlanejadorEscala({
       mes,
       empresa: empresaNome,
       regra: regraFrase,
-      pessoas: linhas.map((l) => ({ nome: l.config.nome, descricao: fraseDaPessoa(l.config), dias: l.dias })),
+      pessoas: linhas.map((l) => ({ nome: l.config.nome, descricao: fraseDaPessoa(l.config), dias: l.dias, doze36: l.config.modelo === "12x36" })),
       feriados: new Map(feriadosDoMes),
       erros: totalErros,
     };
@@ -892,6 +892,9 @@ export function PlanejadorEscala({
           onEscolher={(c) => aplicarCenario(c, true)}
           onSalvar={() => salvar.mutate()}
           onBaixar={baixar}
+          limiteSemanal={vigencia.limiteSemanalHoras}
+          pode42h={cfg.temAcordoColetivo && cfg.bloqueio !== "sem_hora_extra"}
+          onHorario={mudarHorario}
           onMaisOpcoes={() => {
             setModo("avancado");
             setAba("cenarios");
