@@ -53,6 +53,7 @@ const EscalasPage = () => {
         ) : (
           <PlanejadorEscala
             pessoas={pessoas}
+            empresaNome={company?.name}
             regime12x36Padrao={empresaEh12x36({ escala12x36: company?.escala12x36, cnpj: company?.cnpj })}
           />
         )}

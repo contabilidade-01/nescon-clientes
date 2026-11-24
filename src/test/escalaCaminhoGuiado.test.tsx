@@ -113,6 +113,8 @@ describe("caminho guiado na tela", () => {
     await waitFor(() => expect(screen.getAllByText("Em uso").length).toBe(1));
     expect(screen.getByText("Mudanças ainda não salvas")).toBeInTheDocument();
     expect(screen.getByText(/Semana de cada pessoa/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Baixar PDF/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Baixar Excel/ })).toBeInTheDocument();
   });
 
   it("atividade marcada pelo escritório: abre na escala e o cliente só vê a empresa", async () => {

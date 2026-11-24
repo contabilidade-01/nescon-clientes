@@ -62,6 +62,7 @@ import { feriadosDaEmpresa } from "@/lib/escala/feriados";
 import type { Turno } from "@/lib/escala/modelos";
 import {
   MODELOS,
+  fraseDaPessoa,
   REGRAS_DO_DIA,
   ajustesEmLote,
   aplicarLote,
@@ -84,6 +85,8 @@ import {
   type PlanoMes,
 } from "@/lib/escala/planejamento";
 import { CaminhoGuiado } from "@/components/escala/CaminhoGuiado";
+import { BotoesBaixar } from "@/components/escala/BotoesBaixar";
+import { baixarEscalaPdf, baixarEscalaXlsx, type EscalaExportada } from "@/lib/escala/exportarEscala";
 import { SEGMENTOS, VIGENCIAS, mesInicialDaSimulacao, viradaNoMes, vigenciaEm } from "@/lib/escala/regras";
 import type { Ocorrencia } from "@/lib/escala/validar";
 
@@ -147,9 +150,12 @@ export function PlanejadorEscala({
   pessoas,
   regime12x36Padrao = false,
   companyId,
+  empresaNome,
 }: {
   pessoas: Pessoa[];
   regime12x36Padrao?: boolean;
+  /** Vai no cabeçalho e no nome do arquivo baixado. */
+  empresaNome?: string;
   companyId?: string;
 }) {
   const qc = useQueryClient();
@@ -684,6 +690,30 @@ export function PlanejadorEscala({
 
   const podeSalvar = totalErros === 0 && !salvar.isPending;
 
+  const regraFrase =
+    virada && anterior
+      ? `A partir de ${dataBR(virada.inicio)}: no máximo ${virada.limiteSemanalHoras}h por semana e ${virada.repousosSemanais} folgas para cada pessoa.`
+      : `Neste mês: no máximo ${vigencia.limiteSemanalHoras}h por semana e ${vigencia.repousosSemanais === 1 ? "1 folga" : `${vigencia.repousosSemanais} folgas`} para cada pessoa.`;
+
+  /** A escala que está na tela (salva ou só simulada), para baixar em PDF ou Excel. */
+  function baixar(tipo: "pdf" | "xlsx") {
+    if (!linhas.length) return toast.error("Não há ninguém na escala para baixar.");
+    const escala: EscalaExportada = {
+      mes,
+      empresa: empresaNome,
+      regra: regraFrase,
+      pessoas: linhas.map((l) => ({ nome: l.config.nome, descricao: fraseDaPessoa(l.config), dias: l.dias })),
+      feriados: new Map(feriadosDoMes),
+      erros: totalErros,
+    };
+    try {
+      if (tipo === "pdf") baixarEscalaPdf(escala);
+      else baixarEscalaXlsx(escala);
+    } catch (e) {
+      toast.error("Não foi possível gerar o arquivo.", { description: (e as Error).message });
+    }
+  }
+
   return (
     <div className="space-y-4">
       <Card className="overflow-hidden">
@@ -737,6 +767,7 @@ export function PlanejadorEscala({
             ) : (
               <span className="text-xs text-muted-foreground">Este mês ainda não foi salvo</span>
             )}
+            <BotoesBaixar onBaixar={baixar} />
           </div>
           )}
         </div>
@@ -756,11 +787,7 @@ export function PlanejadorEscala({
             <Label className="flex items-center gap-1">
               <Gavel className="h-3.5 w-3.5" /> Regra deste mês
             </Label>
-            <p className="text-sm font-medium">
-              {virada && anterior
-                ? `A partir de ${dataBR(virada.inicio)}: no máximo ${virada.limiteSemanalHoras}h por semana e ${virada.repousosSemanais} folgas para cada pessoa.`
-                : `Neste mês: no máximo ${vigencia.limiteSemanalHoras}h por semana e ${vigencia.repousosSemanais === 1 ? "1 folga" : `${vigencia.repousosSemanais} folgas`} para cada pessoa.`}
-            </p>
+            <p className="text-sm font-medium">{regraFrase}</p>
             <details className="text-xs text-muted-foreground">
               <summary className="cursor-pointer select-none text-primary">Saiba mais</summary>
               <div className="mt-1 space-y-1">
@@ -864,6 +891,7 @@ export function PlanejadorEscala({
           }}
           onEscolher={(c) => aplicarCenario(c, true)}
           onSalvar={() => salvar.mutate()}
+          onBaixar={baixar}
           onMaisOpcoes={() => {
             setModo("avancado");
             setAba("cenarios");

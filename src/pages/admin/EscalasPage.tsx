@@ -64,7 +64,7 @@ const EscalasPage = () => {
         ) : isLoading ? (
           <Skeleton className="h-64 w-full" />
         ) : (
-          <PlanejadorEscala key={companyId} companyId={companyId} pessoas={pessoas} regime12x36Padrao={Boolean(empresa?.escala_12x36)} />
+          <PlanejadorEscala key={companyId} companyId={companyId} empresaNome={empresa?.name} pessoas={pessoas} regime12x36Padrao={Boolean(empresa?.escala_12x36)} />
         )}
       </div>
     </AdminLayout>

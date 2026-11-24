@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { BotoesBaixar } from "@/components/escala/BotoesBaixar";
 import type { ResultadoCenario } from "@/lib/escala/cenarios";
 import type { Demanda } from "@/lib/escala/contingente";
 import { diaDaSemana } from "@/lib/escala/datas";
@@ -112,6 +113,7 @@ export function CaminhoGuiado({
   onEscolher,
   onSalvar,
   onMaisOpcoes,
+  onBaixar,
 }: {
   mes: string;
   cfg: ConfigEmpresa;
@@ -133,6 +135,7 @@ export function CaminhoGuiado({
   onEscolher: (c: ResultadoCenario) => void;
   onSalvar: () => void;
   onMaisOpcoes: () => void;
+  onBaixar: (tipo: "pdf" | "xlsx") => void;
 }) {
   // Empresa já respondida (por ela ou pelo escritório): abre no passo da escala.
   const [passo, setPasso] = useState<Passo>(cfg.atividadeDefinida ? 3 : 1);
@@ -214,6 +217,7 @@ export function CaminhoGuiado({
           onEscolher={onEscolher}
           onSalvar={onSalvar}
           onMaisOpcoes={onMaisOpcoes}
+          onBaixar={onBaixar}
           onVoltar={() => setPasso(2)}
         />
       )}
@@ -540,6 +544,7 @@ function PassoEscala({
   onEscolher,
   onSalvar,
   onMaisOpcoes,
+  onBaixar,
   onVoltar,
 }: {
   mes: string;
@@ -556,6 +561,7 @@ function PassoEscala({
   onEscolher: (c: ResultadoCenario) => void;
   onSalvar: () => void;
   onMaisOpcoes: () => void;
+  onBaixar: (tipo: "pdf" | "xlsx") => void;
   onVoltar: () => void;
 }) {
   const temDemanda = cfg.demanda.some((n) => n > 0);
@@ -621,6 +627,7 @@ function PassoEscala({
             <span className="text-xs text-muted-foreground">
               {alterado ? "Mudanças ainda não salvas" : salvo ? "Escala salva" : "Ainda não salva"}
             </span>
+            <BotoesBaixar onBaixar={onBaixar} />
           </div>
         </CardContent>
       </Card>
