@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as XLSX from "xlsx";
-import { linhasDaPlanilha, mediaSemanal, pdfDaEscala, semanasDoMes, textoDoDia, type EscalaExportada } from "@/lib/escala/exportarEscala";
+import { linhasDaPlanilha, mediaDe2Semanas, mediaSemanal, pdfDaEscala, semanasDoMes, textoDoDia, type EscalaExportada } from "@/lib/escala/exportarEscala";
 import { avaliarPessoa, configEmpresaPadrao, configPadrao, diasDoMes, diasParaValidar } from "@/lib/escala/planejamento";
 import { simularCenarios, turnoQuePreenche } from "@/lib/escala/cenarios";
 import { feriadosDaEmpresa } from "@/lib/escala/feriados";
@@ -68,5 +68,21 @@ describe("usar as 42h", () => {
     expect(c.podeAplicar).toBe(true);
     const a = avaliarPessoa(c.configs[0], mes, {}, cfg, fer);
     expect(mediaSemanal(a.dias, diasDoMes(mes))).toBe(42 * 60);
+  });
+});
+
+describe("12x36 igual na tela e no arquivo", () => {
+  it("turma A com 16 plantões e B com 15 em dez/2026; média de 2 semanas 38h30 nas duas", () => {
+    const mes = "2026-12";
+    const fer = new Set(feriadosDaEmpresa([2025, 2026], [], false).keys());
+    const cfg = { ...configEmpresaPadrao(), atividadeDefinida: true, usa12x36: true };
+    const datas = diasDoMes(mes);
+    for (const [turma, plantoes] of [["A", 16], ["B", 15]] as const) {
+      const a = avaliarPessoa({ ...configPadrao(turma, turma, "12x36"), turma }, mes, {}, cfg, fer);
+      expect(a.dias.filter((d) => d.turno).length).toBe(plantoes);
+      expect(a.horas).toBe(plantoes * 11);
+      expect(mediaDe2Semanas(a.dias, datas)).toBe(38.5 * 60);
+      expect(a.maiorSemana).toBe(38.5);
+    }
   });
 });

@@ -77,12 +77,24 @@ export function mediaSemanal(dias: DiaEscala[], datas: string[]): number | null 
   return cheias.reduce((a, w) => a + minutosNos(dias, w), 0) / cheias.length;
 }
 
+/**
+ * 12x36: a mesma régua da tela ("Maior semana"), a maior média de duas semanas inteiras
+ * seguidas. Na 12x36 as semanas alternam 44h e 33h, então a média de cada par é 38h30.
+ */
+export function mediaDe2Semanas(dias: DiaEscala[], datas: string[]): number | null {
+  const cheias = semanasDoMes(datas).filter((w) => w.every(Boolean));
+  if (cheias.length < 2) return null;
+  let maior = 0;
+  for (let i = 1; i < cheias.length; i++) maior = Math.max(maior, (minutosNos(dias, cheias[i - 1]) + minutosNos(dias, cheias[i])) / 2);
+  return maior;
+}
+
 /** Linhas da planilha: cabeçalho com os dias, uma linha por pessoa e as horas do mês. */
 export function linhasDaPlanilha(e: EscalaExportada): string[][] {
   const datas = e.pessoas[0]?.dias.map((d) => d.data) ?? [];
   const cabecalho = ["Funcionário", ...datas.map((d) => `${DIAS_CURTOS[diaDaSemana(d)]} ${ddmm(d)}`), "Horas no mês", "Média por semana"];
   const linhas = e.pessoas.map((p) => {
-    const media = mediaSemanal(p.dias, datas);
+    const media = p.doze36 ? mediaDe2Semanas(p.dias, datas) : mediaSemanal(p.dias, datas);
     return [
       p.nome,
       ...datas.map((d) => textoDoDia(p.dias.find((x) => x.data === d), e.feriados.get(d))),
@@ -116,7 +128,7 @@ export function baixarEscalaXlsx(e: EscalaExportada): void {
     ["Funcionário", "Como trabalha"],
     ...e.pessoas.map((p) => [p.nome, p.descricao]),
     [],
-    ["Média por semana: conta só as semanas inteiras (domingo a sábado) do mês. Na 12x36, a lei mede pela média de duas semanas."],
+    ["Média por semana: conta só as semanas inteiras (domingo a sábado) do mês. Na 12x36, é a maior média de duas semanas seguidas, como na tela."],
   ]);
   resumo["!cols"] = [{ wch: 28 }, { wch: 90 }];
   const wb = XLSX.utils.book_new();
@@ -199,7 +211,7 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
   // Notas das horas: semana cortada pelo mês e média da 12x36.
   const notas: string[] = [];
   if (semanasDoMes(datas).some((w) => w.some((d) => !d))) notas.push("(parcial) = semana cortada pelo início ou fim do mês: soma só os dias deste mês.");
-  if (e.pessoas.some((p) => p.doze36)) notas.push("12x36: a lei mede pela média de duas semanas seguidas; a média do mês aparece ao lado.");
+  if (e.pessoas.some((p) => p.doze36)) notas.push("12x36: a lei mede pela média de duas semanas seguidas (a mesma “Maior semana” da tela), que aparece ao lado.");
   if (notas.length) {
     if (y > pageH - 30) {
       doc.addPage();
@@ -239,7 +251,7 @@ function textoHorasSemana(p: PessoaExportada, semana: Array<string | null>, data
   const h = horas(minutosNos(p.dias, semana));
   if (semana.some((d) => !d)) return `${h} (parcial)`;
   if (p.doze36) {
-    const m = mediaSemanal(p.dias, datas);
+    const m = mediaDe2Semanas(p.dias, datas);
     return m === null ? h : `${h} (média ${horas(m)})`;
   }
   return h;
