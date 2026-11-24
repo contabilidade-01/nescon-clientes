@@ -86,3 +86,18 @@ describe("12x36 igual na tela e no arquivo", () => {
     }
   });
 });
+
+describe("PDF da 12x36 com equipe grande", () => {
+  it("19 pessoas com nomes longos: cada semana cabe em uma página (5 semanas = 5 páginas)", () => {
+    const mes = "2026-12";
+    const fer = new Set(feriadosDaEmpresa([2025, 2026], [], false).keys());
+    const cfg = { ...configEmpresaPadrao(), atividadeDefinida: true, usa12x36: true };
+    const pessoas = Array.from({ length: 19 }, (_, i) => {
+      const turma = i % 2 ? "B" : "A";
+      const a = avaliarPessoa({ ...configPadrao(String(i), `PESSOA ${i}`, "12x36"), turma }, mes, {}, cfg, fer);
+      return { nome: i % 2 ? "ANA CLAUDIA CICERO DE FREITAS SALES" : "DANIELA ADAMOLI VILAR PRIETO EVANGELISTA", descricao: "12x36", dias: a.dias.filter((d) => d.data.startsWith(mes)), doze36: true };
+    });
+    const doc = pdfDaEscala({ mes, empresa: "RESTAURANTE EXEMPLO LTDA", regra: "A partir de 16/12/2026: no máximo 42h por semana.", pessoas, feriados: new Map([["2026-12-25", "Natal"]]), erros: 0 });
+    expect(doc.getNumberOfPages()).toBe(5);
+  });
+});

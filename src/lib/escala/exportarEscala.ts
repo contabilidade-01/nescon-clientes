@@ -168,7 +168,12 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
   }
 
   const datas = e.pessoas[0]?.dias.map((d) => d.data) ?? [];
-  const larguraDia = (pageW - 2 * margin - 52 - 24) / 7;
+  // Nome e horas largos o bastante para caber em uma linha ("44h (média 38h30)"): com linhas de
+  // altura única, uma semana de até ~20 pessoas cabe inteira na página, sem sobrar uma linha órfã.
+  const larguraNome = 62;
+  const larguraHoras = 34;
+  const larguraDia = (pageW - 2 * margin - larguraNome - larguraHoras) / 7;
+  const fonte = e.pessoas.length > 16 ? 7.5 : 8;
   for (const semana of semanasDoMes(datas)) {
     const dentro = semana.filter((d): d is string => Boolean(d));
     autoTable(doc, {
@@ -178,13 +183,13 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
       rowPageBreak: "avoid",
       // Cada semana inteira na mesma página.
       pageBreak: "avoid",
-      styles: { font: "helvetica", fontSize: 8, cellPadding: 1.5, halign: "center", valign: "middle" },
+      styles: { font: "helvetica", fontSize: fonte, cellPadding: 1.2, halign: "center", valign: "middle" },
       headStyles: { fillColor: [30, 64, 120], textColor: 255, fontStyle: "bold" },
       // Colunas dos dias com a mesma largura em todas as semanas, para o mural ficar alinhado.
       columnStyles: {
-        0: { halign: "left", cellWidth: 52, fontStyle: "bold" },
+        0: { halign: "left", cellWidth: larguraNome, fontStyle: "bold" },
         ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((i) => [i, { cellWidth: larguraDia }])),
-        8: { cellWidth: 24 },
+        8: { cellWidth: larguraHoras },
       },
       head: [
         [
