@@ -139,4 +139,18 @@ describe("caminho guiado na tela", () => {
     await waitFor(() => expect(screen.getByRole("tab", { name: /Escala do mês/ })).toBeInTheDocument());
     expect(localStorage.getItem("escala-modo-portal")).toBe("avancado");
   });
+  it("com acordo coletivo oferece usar as 42h e mostra as horas da semana", async () => {
+    mockApi.config.mockResolvedValue({
+      dados: { segmento: "comercio", atividadeDefinida: true, temAcordoColetivo: true },
+      atualizado_em: null,
+      atualizado_por: null,
+    });
+    comQuery(<PlanejadorEscala pessoas={PESSOAS} />);
+    await waitFor(() => expect(screen.getByText("Escolha uma escala")).toBeInTheDocument());
+    expect(screen.getAllByText(/40h por semana/).length).toBeGreaterThan(0);
+    const usar = screen.getAllByRole("button", { name: /Usar as 42h: 08:00 às 17:24/ });
+    fireEvent.click(usar[0]);
+    await waitFor(() => expect(screen.getAllByText(/42h por semana/).length).toBeGreaterThan(0));
+    expect(screen.getByRole("button", { name: /Voltar ao horário padrão/ })).toBeInTheDocument();
+  });
 });

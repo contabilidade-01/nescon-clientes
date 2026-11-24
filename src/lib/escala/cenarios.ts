@@ -290,3 +290,28 @@ export function avaliarEscalaAtual(
     ajustes,
   );
 }
+
+/** Dias de trabalho por semana de cada modelo (12x36 fica de fora: é medida pela média). */
+export const DIAS_TRABALHO_SEMANA: Partial<Record<ModeloChave, number>> = {
+  "6x1": 6,
+  "5x2": 5,
+  "5x2_rev": 5,
+  "5x2_fechado": 5,
+  "4x3": 4,
+};
+
+/**
+ * Horário que preenche o limite da semana: mesma entrada e intervalo, saída mais tarde.
+ * 42h em 5 dias = 8h24 por dia (com acordo coletivo, art. 7º da EC 141/2026, não é hora
+ * extra). Devolve null quando o turno já preenche o limite ou o modelo não se aplica.
+ */
+export function turnoQuePreenche(turno: Turno, modelo: ModeloChave, limiteSemanalHoras: number): Turno | null {
+  const dias = DIAS_TRABALHO_SEMANA[modelo];
+  if (!dias || modelo === "4x3") return null;
+  const alvo = Math.floor((limiteSemanalHoras * 60) / dias);
+  if (minutosTrabalhados(turno) >= alvo) return null;
+  const [h, m] = turno.entrada.split(":").map(Number);
+  const fim = (h * 60 + m + alvo + turno.intervaloMin) % 1440;
+  const saida = `${String(Math.floor(fim / 60)).padStart(2, "0")}:${String(fim % 60).padStart(2, "0")}`;
+  return { ...turno, saida };
+}
