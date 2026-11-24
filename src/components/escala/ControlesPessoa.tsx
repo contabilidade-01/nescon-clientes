@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { MODELOS, configPadrao, proximaFolga, segundaFolga, ultimoDiaDa6x1, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
+import { MODELOS, MODELOS_EXPLICADOS, configPadrao, proximaFolga, segundaFolga, ultimoDiaDa6x1, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
 import { PARES_5X2 } from "@/lib/escala/porPessoa";
 
 const NOMES_DIA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -31,7 +31,7 @@ export function ControlesPessoa({
   return (
   <div className="flex flex-wrap items-center gap-1">
       <select
-        className={sel}
+        className={cn(sel, "w-full")}
         value={c.modelo}
         onChange={(e) => {
           const modelo = e.target.value as ModeloChave;
@@ -42,7 +42,7 @@ export function ControlesPessoa({
       >
         {(Object.keys(MODELOS) as ModeloChave[]).map((m) => (
           <option key={m} value={m} disabled={m === "6x1" && repousos > 1 && c.modelo !== "6x1"}>
-            {MODELOS[m]}
+            {MODELOS_EXPLICADOS[m]} ({MODELOS[m]})
             {m === "6x1" && repousos > 1 ? " (proibida)" : ""}
           </option>
         ))}

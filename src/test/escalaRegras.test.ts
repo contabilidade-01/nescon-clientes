@@ -5,6 +5,7 @@
  * no sábado 19/12, já dentro da etapa 1 (16/12/2026).
  */
 import { describe, it, expect } from "vitest";
+import { somarDias } from "@/lib/escala/datas";
 import {
   escala12x36,
   escala5x2,
@@ -81,12 +82,33 @@ describe("domingos", () => {
 describe("12x36", () => {
   const perfil: PerfilJornada = { segmento: "outro", temAcordoColetivo: true, regime12x36: true };
 
-  it("não tem erro, mas avisa as semanas acima de 40h na etapa 2", () => {
-    const r = validarEscala(gerarDias(escala12x36("2028-01-02"), "2028-01-02", "2028-01-29"), perfil);
-    expect(r.ocorrencias.filter((o) => o.gravidade === "erro")).toEqual([]);
-    const avisos = r.ocorrencias.filter((o) => o.regra === "LIMITE_SEMANAL");
+  it("com 1h de intervalo a média é 38h30: nenhum aviso de horas, nem na etapa 2", () => {
+    // Semanas de 4 plantões (44h) não contam sozinhas: a régua é a média do ciclo.
+    for (const de of ["2027-01-03", "2028-01-02"]) {
+      const r = validarEscala(gerarDias(escala12x36(de), de, somarDias(de, 27)), perfil);
+      expect(r.ocorrencias).toEqual([]);
+    }
+  });
+
+  it("com intervalo indenizado (12h trabalhadas) cabe nas 42h e só avisa nas 40h", () => {
+    const sem = (de: string) => validarEscala(gerarDias(escala12x36(de, "07:00", 0), de, somarDias(de, 27)), { ...perfil, temAcordoColetivo: false });
+    const etapa1 = sem("2027-01-03");
+    expect(etapa1.ocorrencias.filter((o) => o.gravidade === "erro")).toEqual([]);
+    expect(etapa1.ocorrencias.filter((o) => o.regra === "LIMITE_SEMANAL")).toEqual([]);
+    expect(etapa1.ocorrencias.filter((o) => o.regra === "INTERVALO").every((o) => o.gravidade === "atencao")).toBe(true);
+    const etapa2 = sem("2028-01-02");
+    const avisos = etapa2.ocorrencias.filter((o) => o.regra === "LIMITE_SEMANAL");
     expect(avisos.length).toBeGreaterThan(0);
-    expect(avisos.every((o) => o.gravidade === "atencao")).toBe(true);
+    expect(avisos.every((o) => o.gravidade === "atencao" && /média de 42h/.test(o.mensagem))).toBe(true);
+  });
+
+  it("plantão extra que quebra o ciclo aparece na média", () => {
+    const de = "2028-01-02";
+    const dias = gerarDias(escala12x36(de), de, somarDias(de, 27));
+    // Folgas viram plantão por duas semanas seguidas: média acima de 40h.
+    for (const i of [1, 3, 5, 7, 9, 11]) dias[i] = { data: dias[i].data, turno: { entrada: "07:00", saida: "19:00", intervaloMin: 60 } };
+    const r = validarEscala(dias, perfil);
+    expect(r.ocorrencias.some((o) => o.regra === "LIMITE_SEMANAL")).toBe(true);
   });
 });
 

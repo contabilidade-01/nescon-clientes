@@ -29,7 +29,11 @@ const EscalasPage = () => {
   });
 
   const pessoas = useMemo(
-    () => (funcionarios || []).filter((f) => f.active).map((f) => ({ id: f.id, name: f.name })),
+    () => (funcionarios || []).filter((f) => f.active).map((f) => ({
+          id: f.id,
+          name: f.name,
+          cadastro: { escala: f.escala, folga: f.folga, horario_entrada: f.horario_entrada, horario_saida: f.horario_saida },
+        })),
     [funcionarios],
   );
 
@@ -60,7 +64,7 @@ const EscalasPage = () => {
         ) : isLoading ? (
           <Skeleton className="h-64 w-full" />
         ) : (
-          <PlanejadorEscala key={companyId} companyId={companyId} pessoas={pessoas} regime12x36Padrao={Boolean(empresa?.escala_12x36)} />
+          <PlanejadorEscala key={companyId} companyId={companyId} empresaNome={empresa?.name} pessoas={pessoas} regime12x36Padrao={Boolean(empresa?.escala_12x36)} />
         )}
       </div>
     </AdminLayout>

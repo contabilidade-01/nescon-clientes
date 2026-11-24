@@ -41,10 +41,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarraLote, type AtalhoDias } from "@/components/escala/BarraLote";
-import { ControlesPessoa } from "@/components/escala/ControlesPessoa";
+import { BarraLote, type AtalhoDias, type MarcarPessoas } from "@/components/escala/BarraLote";
+import { DialogoPessoa } from "@/components/escala/DialogoPessoa";
+import { agruparOcorrencias } from "@/lib/escala/ocorrencias";
 import { DiasFechados, EscolherAtividade, type EscolhaAtividade } from "@/components/escala/EscolherAtividade";
 import { FeriadosLocais } from "@/components/escala/FeriadosLocais";
 import { PainelCenarios } from "@/components/escala/PainelCenarios";
@@ -62,6 +62,7 @@ import { feriadosDaEmpresa } from "@/lib/escala/feriados";
 import type { Turno } from "@/lib/escala/modelos";
 import {
   MODELOS,
+  fraseDaPessoa,
   REGRAS_DO_DIA,
   ajustesEmLote,
   aplicarLote,
@@ -78,10 +79,14 @@ import {
   trocarCelulas,
   ultimoDiaDa6x1,
   type Ajustes,
+  type CadastroJornada,
   type ConfigEmpresa,
   type ConfigPessoa,
   type PlanoMes,
 } from "@/lib/escala/planejamento";
+import { CaminhoGuiado } from "@/components/escala/CaminhoGuiado";
+import { BotoesBaixar } from "@/components/escala/BotoesBaixar";
+import { baixarEscalaPdf, baixarEscalaXlsx, type EscalaExportada } from "@/lib/escala/exportarEscala";
 import { SEGMENTOS, VIGENCIAS, mesInicialDaSimulacao, viradaNoMes, vigenciaEm } from "@/lib/escala/regras";
 import type { Ocorrencia } from "@/lib/escala/validar";
 
@@ -127,7 +132,9 @@ function abrev(d: number) {
   return NOMES_DIA[d].slice(0, 3).toLowerCase();
 }
 
-type Pessoa = { id: string; name: string };
+type Pessoa = { id: string; name: string; cadastro?: CadastroJornada };
+/** Simples: caminho guiado em 3 passos. Avançado: as abas completas (grade, contingente…). */
+type Modo = "simples" | "avancado";
 type Aba = "cenarios" | "automatica" | "assistente" | "escala" | "pessoa" | "contingente" | "regras";
 
 /**
@@ -143,9 +150,12 @@ export function PlanejadorEscala({
   pessoas,
   regime12x36Padrao = false,
   companyId,
+  empresaNome,
 }: {
   pessoas: Pessoa[];
   regime12x36Padrao?: boolean;
+  /** Vai no cabeçalho e no nome do arquivo baixado. */
+  empresaNome?: string;
   companyId?: string;
 }) {
   const qc = useQueryClient();
@@ -166,6 +176,22 @@ export function PlanejadorEscala({
   const [trocandoAtividade, setTrocandoAtividade] = useState(false);
   // Simulação por funcionário: a pessoa aberta.
   const [foco, setFoco] = useState<string | null>(null);
+  // Caixa de personalização de um funcionário (clique no nome).
+  const [aberta, setAberta] = useState<string | null>(null);
+  // O cliente começa no caminho guiado; o escritório, nas abas completas. A escolha fica no navegador.
+  const chaveModo = `escala-modo-${companyId ? "escritorio" : "portal"}`;
+  const [modo, setModoEstado] = useState<Modo>(() => {
+    const salvo = typeof localStorage !== "undefined" ? localStorage.getItem(chaveModo) : null;
+    return salvo === "simples" || salvo === "avancado" ? salvo : companyId ? "avancado" : "simples";
+  });
+  function setModo(m: Modo) {
+    setModoEstado(m);
+    try {
+      localStorage.setItem(chaveModo, m);
+    } catch {
+      /* navegador sem armazenamento: vale só nesta visita */
+    }
+  }
 
   const configQuery = useQuery({
     queryKey: ["escala-config", chave],
@@ -183,26 +209,35 @@ export function PlanejadorEscala({
     retry: false,
   });
 
+  // O caminho guiado decide o passo inicial pela configuração: espera ela chegar ao estado.
+  const [cfgPronta, setCfgPronta] = useState(false);
   useEffect(() => {
     if (configQuery.data) setCfg(normalizarConfigEmpresa(configQuery.data.dados));
-  }, [configQuery.data]);
+    if (!configQuery.isLoading) setCfgPronta(true);
+  }, [configQuery.data, configQuery.isLoading]);
 
   // Modelo de quem entra sem escala salva: o que já nasce dentro da regra do mês.
   const modeloPadrao = modeloPadraoDoMes(mes, cfg.atividadeDefinida ? cfg.usa12x36 : regime12x36Padrao);
-  const modeloPadraoRef = useRef(modeloPadrao);
-  modeloPadraoRef.current = modeloPadrao;
 
   // Mês salvo (ou o modelo padrão) mesclado com o quadro atual de funcionários. Espera a
   // configuração da empresa para saber o modelo padrão (12x36 ou não).
+  // O modelo padrão sai da configuração CARREGADA, não do estado `cfg`: os dois efeitos
+  // rodam no mesmo ciclo e o `cfg` ainda estaria no padrão (empresa 12x36 abria em 5x2).
+  const cfgCarregada = configQuery.data ? normalizarConfigEmpresa(configQuery.data.dados) : null;
+  const usa12x36Carregado = cfgCarregada?.atividadeDefinida ? cfgCarregada.usa12x36 : regime12x36Padrao;
   useEffect(() => {
     if (planoQuery.isLoading || configQuery.isLoading) return;
     const salvo = planoQuery.data?.dados as PlanoMes | undefined;
-    const plano = mesclarPlano(salvo && Array.isArray(salvo.configs) ? salvo : null, pessoas, modeloPadraoRef.current);
+    const plano = mesclarPlano(salvo && Array.isArray(salvo.configs) ? salvo : null, pessoas, modeloPadraoDoMes(mes, usa12x36Carregado), {
+      permite6x1: vigenciaEm(diasDoMes(mes).at(-1)!).repousosSemanais < 2,
+      temAcordo: Boolean(cfgCarregada?.temAcordoColetivo),
+    });
     setConfigs(plano.configs);
     setAjustes(plano.ajustes);
     setAlterado(false);
     setCenarioAtual(null);
-  }, [planoQuery.data, planoQuery.isLoading, configQuery.isLoading, pessoas]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planoQuery.data, planoQuery.isLoading, configQuery.isLoading, pessoas, usa12x36Carregado]);
 
   const salvar = useMutation({
     mutationFn: async () => {
@@ -426,6 +461,15 @@ export function PlanejadorEscala({
     );
   }
 
+  /** Muda dias de uma pessoa só (caixa do funcionário), com bloqueio e trava das regras. */
+  function diasDaPessoa(id: string, datas: string[], acao: AcaoDia): boolean {
+    if (!datas.length) return false;
+    if (acao.tipo === "horario" && !liberado(id, acao.turno)) return false;
+    const ok = aplicarSeguro(configs, { ...ajustes, [id]: ajustesEmLote(ajustes[id] || {}, datas, acao) }, [id]);
+    if (ok) toast.success(`${acao.tipo === "folga" ? "Folga" : acao.tipo === "horario" ? `Horário ${acao.turno.entrada}–${acao.turno.saida}` : "Volta ao modelo"} em ${datas.length} dia(s).`);
+    return ok;
+  }
+
   function alternar<T>(set: Set<T>, v: T): Set<T> {
     const n = new Set(set);
     if (n.has(v)) n.delete(v);
@@ -466,6 +510,13 @@ export function PlanejadorEscala({
     }
   }
 
+  function marcarPessoas(filtro: MarcarPessoas) {
+    if (filtro === "nenhuma") return setSelPessoas(new Set());
+    const passa = (c: ConfigPessoa) =>
+      filtro === "todas" ? true : filtro === "turmaA" ? c.modelo === "12x36" && c.turma === "A" : filtro === "turmaB" ? c.modelo === "12x36" && c.turma === "B" : c.modelo === filtro;
+    setSelPessoas(new Set(configs.filter(passa).map((c) => c.id)));
+  }
+
   function loteDias(acao: AcaoDia) {
     const datas = [...selDias].sort();
     if (!datas.length) return toast.error("Marque os dias clicando no cabeçalho da grade.");
@@ -487,8 +538,9 @@ export function PlanejadorEscala({
   }
 
   function lotePessoas(patch: Partial<ConfigPessoa>) {
-    const ids = configs.filter((c) => selPessoas.has(c.id)).map((c) => c.id);
-    if (!ids.length) return toast.error("Marque as pessoas na caixa ao lado do nome.");
+    // Sem pessoa marcada, vale para todos (como nos dias).
+    const ids = selPessoas.size ? configs.filter((c) => selPessoas.has(c.id)).map((c) => c.id) : configs.map((c) => c.id);
+    if (!ids.length) return toast.error("Nenhuma pessoa na escala.");
     const mudaModelo = CAMPOS_DO_MODELO.some((k) => k in patch);
     for (const id of ids) {
       const c = configs.find((x) => x.id === id)!;
@@ -530,11 +582,15 @@ export function PlanejadorEscala({
     qc.invalidateQueries({ queryKey: ["escala-plano", chave, e.mes] });
   }
 
-  function aplicarCenario(c: ResultadoCenario) {
+  function aplicarCenario(c: ResultadoCenario, ficarNaTela = false) {
     setConfigs(c.configs);
     setAjustes({});
     setAlterado(true);
     setCenarioAtual(c.id);
+    if (ficarNaTela) {
+      toast.success("Escala escolhida. Confira a semana de cada pessoa e salve.");
+      return;
+    }
     setAba("escala");
     toast.success(`Cenário aplicado: ${c.nome}.`, { description: "Ajuste na grade; o que sair da regra é recusado." });
   }
@@ -550,7 +606,14 @@ export function PlanejadorEscala({
   }
 
   function confirmarAtividade(e: EscolhaAtividade) {
-    const novo: ConfigEmpresa = { ...cfg, ...e, atividadeDefinida: true };
+    const novo: ConfigEmpresa = {
+      ...cfg,
+      ...e,
+      atividadeDefinida: true,
+      // Quem confirma pelo painel do escritório responde pelo cliente: some o "Não sei".
+      atividadePeloEscritorio: Boolean(companyId) || cfg.atividadePeloEscritorio,
+      naoSabe: companyId ? [] : cfg.naoSabe,
+    };
     const mudou =
       !cfg.atividadeDefinida ||
       e.segmento !== cfg.segmento ||
@@ -572,6 +635,28 @@ export function PlanejadorEscala({
     salvarAtividade.mutate(novo);
   }
 
+  /**
+   * Passo 1 do caminho guiado: grava a empresa sem refazer a escala de ninguém (quem já
+   * veio do cadastro continua igual; as sugestões do passo 3 é que trocam a equipe toda).
+   */
+  function confirmarEmpresaGuiada(patch: Partial<ConfigEmpresa>) {
+    const novo: ConfigEmpresa = { ...cfg, ...patch, atividadeDefinida: true };
+    if (companyId) {
+      novo.atividadePeloEscritorio = true;
+      novo.naoSabe = [];
+    }
+    const mudou12x36 = cfg.atividadeDefinida ? novo.usa12x36 !== cfg.usa12x36 : novo.usa12x36 !== regime12x36Padrao;
+    setCfg(novo);
+    if (mudou12x36) {
+      const modelo = modeloPadraoDoMes(mes, novo.usa12x36);
+      setConfigs((cs) => cs.map((c, i) => ({ ...configPadrao(c.id, c.nome, modelo), turma: i % 2 ? "B" : "A", folgaFixa: (i % 6) + 1, rodizio: i % 2 })));
+      setAjustes({});
+      setCenarioAtual(null);
+      setAlterado(true);
+    }
+    salvarAtividade.mutate(novo);
+  }
+
   // As datas da emenda: cada etapa abre no mês em que começa.
   const atalhos = [
     { rotulo: "Hoje", valor: mesAtual() },
@@ -582,9 +667,12 @@ export function PlanejadorEscala({
   const pessoasPorDia = (d: string) => linhas.filter((l) => l.dias.find((x) => x.data === d)?.turno).length;
   const temDemanda = cfg.demanda.some((n) => n > 0);
 
-  if (configQuery.isLoading) return <Skeleton className="h-64 w-full" />;
+  if (configQuery.isLoading || !cfgPronta) return <Skeleton className="h-64 w-full" />;
 
-  if (!cfg.atividadeDefinida || trocandoAtividade) {
+  // No portal, atividade e acordo marcados pelo escritório ficam só para leitura.
+  const travadoPeloEscritorio = !companyId && cfg.atividadeDefinida && cfg.atividadePeloEscritorio;
+
+  if (trocandoAtividade || (!cfg.atividadeDefinida && modo === "avancado")) {
     return (
       <EscolherAtividade
         inicial={{
@@ -602,6 +690,30 @@ export function PlanejadorEscala({
 
   const podeSalvar = totalErros === 0 && !salvar.isPending;
 
+  const regraFrase =
+    virada && anterior
+      ? `A partir de ${dataBR(virada.inicio)}: no máximo ${virada.limiteSemanalHoras}h por semana e ${virada.repousosSemanais} folgas para cada pessoa.`
+      : `Neste mês: no máximo ${vigencia.limiteSemanalHoras}h por semana e ${vigencia.repousosSemanais === 1 ? "1 folga" : `${vigencia.repousosSemanais} folgas`} para cada pessoa.`;
+
+  /** A escala que está na tela (salva ou só simulada), para baixar em PDF ou Excel. */
+  function baixar(tipo: "pdf" | "xlsx") {
+    if (!linhas.length) return toast.error("Não há ninguém na escala para baixar.");
+    const escala: EscalaExportada = {
+      mes,
+      empresa: empresaNome,
+      regra: regraFrase,
+      pessoas: linhas.map((l) => ({ nome: l.config.nome, descricao: fraseDaPessoa(l.config), dias: l.dias })),
+      feriados: new Map(feriadosDoMes),
+      erros: totalErros,
+    };
+    try {
+      if (tipo === "pdf") baixarEscalaPdf(escala);
+      else baixarEscalaXlsx(escala);
+    } catch (e) {
+      toast.error("Não foi possível gerar o arquivo.", { description: (e as Error).message });
+    }
+  }
+
   return (
     <div className="space-y-4">
       <Card className="overflow-hidden">
@@ -609,17 +721,38 @@ export function PlanejadorEscala({
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium uppercase tracking-wide text-primary">Escala de {nomeMes(mes)}</p>
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
-              <Badge variant="secondary">{SEGMENTOS[cfg.segmento].nome}</Badge>
-              <Badge variant="outline">{cfg.temAcordoColetivo ? "Com acordo coletivo" : "Sem acordo coletivo"}</Badge>
-              {cfg.usa12x36 && <Badge variant="outline">Usa 12x36</Badge>}
-              {cfg.diasFechados.length > 0 && (
-                <Badge variant="outline">Fecha {cfg.diasFechados.map((d) => abrev(d)).join(", ")}</Badge>
+              {cfg.atividadeDefinida && (
+                <>
+                  <Badge variant="secondary">{SEGMENTOS[cfg.segmento].nome}</Badge>
+                  <Badge variant="outline">{cfg.temAcordoColetivo ? "Com acordo coletivo" : "Sem acordo coletivo"}</Badge>
+                  {cfg.usa12x36 && <Badge variant="outline">Usa 12x36</Badge>}
+                  {cfg.diasFechados.length > 0 && (
+                    <Badge variant="outline">Fecha {cfg.diasFechados.map((d) => abrev(d)).join(", ")}</Badge>
+                  )}
+                </>
               )}
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setTrocandoAtividade(true)}>
-                <Pencil className="mr-1 h-3 w-3" /> Trocar atividade
+              {companyId && cfg.atividadeDefinida && !cfg.atividadePeloEscritorio && (
+                <Badge variant="outline" className="border-amber-500 text-amber-700 dark:text-amber-300">
+                  Marcado pelo cliente{cfg.naoSabe.length ? ` (não soube: ${cfg.naoSabe.map((x) => (x === "acordo" ? "acordo coletivo" : x)).join(" e ")})` : ""}: confira
+                </Badge>
+              )}
+              {modo === "avancado" && !travadoPeloEscritorio && (
+                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setTrocandoAtividade(true)}>
+                  <Pencil className="mr-1 h-3 w-3" /> {companyId ? "Confirmar atividade" : "Trocar atividade"}
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() => setModo(modo === "simples" ? "avancado" : "simples")}
+              >
+                <Settings2 className="mr-1 h-3 w-3" /> {modo === "simples" ? "Modo avançado" : "Voltar ao modo simples"}
               </Button>
             </div>
           </div>
+          {/* No caminho guiado, salvar e situação ficam no passo 3. */}
+          {modo === "avancado" && (
           <div className="flex flex-col items-end gap-1">
             <Button onClick={() => salvar.mutate()} disabled={!podeSalvar}>
               {totalErros ? <Lock className="mr-1.5 h-4 w-4" /> : <Save className="mr-1.5 h-4 w-4" />}
@@ -634,9 +767,11 @@ export function PlanejadorEscala({
             ) : (
               <span className="text-xs text-muted-foreground">Este mês ainda não foi salvo</span>
             )}
+            <BotoesBaixar onBaixar={baixar} />
           </div>
+          )}
         </div>
-        <CardContent className="grid gap-4 p-4 md:grid-cols-3">
+        <CardContent className={cn("grid gap-4 p-4", modo === "avancado" ? "md:grid-cols-3" : "md:grid-cols-2")}>
           <div className="space-y-1.5">
             <Label>Mês planejado</Label>
             <Input type="month" value={mes} onChange={(e) => e.target.value && trocarMes(e.target.value)} />
@@ -652,32 +787,38 @@ export function PlanejadorEscala({
             <Label className="flex items-center gap-1">
               <Gavel className="h-3.5 w-3.5" /> Regra deste mês
             </Label>
-            {virada && anterior ? (
-              <>
-                <p className="text-sm">
-                  <span className="text-muted-foreground">Até {ddmm(somarDias(virada.inicio, -1))}:</span> {anterior.nome}
-                </p>
-                <p className="text-sm font-medium">
-                  <span className="font-normal text-muted-foreground">A partir de {ddmm(virada.inicio)}:</span> {virada.nome}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  A partir de {dataBR(virada.inicio)}, até {virada.limiteSemanalHoras}h por semana e {virada.repousosSemanais} folgas semanais (antes,{" "}
-                  {anterior.limiteSemanalHoras}h e {anterior.repousosSemanais}). A semana que passa pelo dia {virada.inicio.slice(8)} já segue a regra nova.
-                  {viradaComFolgas &&
-                    ` Quem estava na 6x1 segue nela até o domingo ${ddmm(ultimoDiaDa6x1(virada.inicio))} e entra no modelo novo na segunda seguinte, para essa semana já ter as 2 folgas (dá para desligar por pessoa).`}
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-medium">{vigencia.nome}</p>
-                <p className="text-xs text-muted-foreground">
-                  Até {vigencia.limiteSemanalHoras}h por semana e {vigencia.repousosSemanais} folga(s) semanal(is). Domingo de folga ao menos a cada{" "}
-                  {SEGMENTOS[cfg.segmento].domingoACadaSemanas} semanas.
-                </p>
-              </>
-            )}
+            <p className="text-sm font-medium">{regraFrase}</p>
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer select-none text-primary">Saiba mais</summary>
+              <div className="mt-1 space-y-1">
+                {virada && anterior ? (
+                  <>
+                    <p className="text-sm">
+                      <span className="text-muted-foreground">Até {ddmm(somarDias(virada.inicio, -1))}:</span> {anterior.nome}
+                    </p>
+                    <p className="text-sm font-medium">
+                      <span className="font-normal text-muted-foreground">A partir de {ddmm(virada.inicio)}:</span> {virada.nome}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      A partir de {dataBR(virada.inicio)}, até {virada.limiteSemanalHoras}h por semana e {virada.repousosSemanais} folgas semanais (antes,{" "}
+                      {anterior.limiteSemanalHoras}h e {anterior.repousosSemanais}). A semana que passa pelo dia {virada.inicio.slice(8)} já segue a regra nova.
+                      {viradaComFolgas &&
+                        ` Quem estava na 6x1 segue nela até o domingo ${ddmm(ultimoDiaDa6x1(virada.inicio))} e entra no modelo novo na segunda seguinte, para essa semana já ter as 2 folgas (dá para desligar por pessoa).`}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium">{vigencia.nome}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Até {vigencia.limiteSemanalHoras}h por semana e {vigencia.repousosSemanais} folga(s) semanal(is). Domingo de folga ao menos a cada{" "}
+                      {SEGMENTOS[cfg.segmento].domingoACadaSemanas} semanas.
+                    </p>
+                  </>
+                )}
+              </div>
+            </details>
           </div>
-          <div className="space-y-1.5">
+          <div className={cn("space-y-1.5", modo === "simples" && "hidden")}>
             <Label>Situação</Label>
             <div className="flex flex-wrap items-center gap-2">
               {totalErros ? (
@@ -714,6 +855,7 @@ export function PlanejadorEscala({
             )}
           </div>
         </CardContent>
+        {modo === "avancado" && (
         <div className="flex items-start gap-2 border-t bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <span>
@@ -722,8 +864,40 @@ export function PlanejadorEscala({
             dentro disso.
           </span>
         </div>
+        )}
       </Card>
 
+      {modo === "simples" ? (
+        <CaminhoGuiado
+          mes={mes}
+          cfg={cfg}
+          travadoPeloEscritorio={travadoPeloEscritorio}
+          regime12x36Padrao={regime12x36Padrao}
+          linhas={linhas}
+          cenarios={cenarios}
+          escalaAtual={escalaAtual}
+          cenarioAtual={cenarioAtual}
+          totalErros={totalErros}
+          totalAvisos={totalAvisos}
+          alterado={alterado}
+          salvo={Boolean(salvoEsteMes)}
+          salvando={salvar.isPending}
+          onEmpresa={confirmarEmpresaGuiada}
+          onAbrirPessoa={setAberta}
+          onVaga={adicionarVaga}
+          onRemoverVaga={(id) => {
+            setConfigs((cs) => cs.filter((x) => x.id !== id));
+            setAlterado(true);
+          }}
+          onEscolher={(c) => aplicarCenario(c, true)}
+          onSalvar={() => salvar.mutate()}
+          onBaixar={baixar}
+          onMaisOpcoes={() => {
+            setModo("avancado");
+            setAba("cenarios");
+          }}
+        />
+      ) : (
       <Tabs value={aba} onValueChange={(v) => setAba(v as Aba)}>
         <TabsList className="h-auto w-full flex-wrap justify-start gap-1 bg-muted/60 p-1">
           <TabsTrigger value="cenarios" className="gap-1.5">
@@ -809,6 +983,8 @@ export function PlanejadorEscala({
               repousos={vigencia.repousosSemanais}
               onAtalho={atalhoDias}
               onLimparPessoas={() => setSelPessoas(new Set())}
+              modelos={[...new Set(configs.map((c) => c.modelo))]}
+              onMarcarPessoas={marcarPessoas}
               onDias={loteDias}
               onPessoas={lotePessoas}
             />
@@ -900,11 +1076,9 @@ export function PlanejadorEscala({
                               <LinhaConfig
                                 c={c}
                                 erros={erros}
-                                repousos={vigencia.repousosSemanais}
-                                viradaEm={viradaComFolgas ? virada?.inicio : undefined}
                                 selecionado={selPessoas.has(c.id)}
                                 onSelecionar={() => setSelPessoas((s) => alternar(s, c.id))}
-                                onChange={(p) => atualizar(c.id, p)}
+                                onAbrir={() => setAberta(c.id)}
                                 onRemover={
                                   c.id.startsWith("vaga-")
                                     ? () => {
@@ -935,10 +1109,12 @@ export function PlanejadorEscala({
                                 semanaAcima === "erro" && "bg-destructive/15 font-semibold text-destructive",
                                 semanaAcima === "atencao" && "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
                               )}
-                              title={`Limite: ${limiteSemana}h`}
+                              title={c.modelo === "12x36" ? `Média semanal da 12x36 (duas semanas seguidas). Limite: ${limiteSemana}h` : `Limite: ${limiteSemana}h`}
                             >
                               {maiorSemana.toFixed(1).replace(".", ",")}h
-                              <span className="block text-[10px] font-normal opacity-70">de {limiteSemana}h</span>
+                              <span className="block text-[10px] font-normal opacity-70">
+                                {c.modelo === "12x36" ? "média · " : ""}de {limiteSemana}h
+                              </span>
                             </td>
                           </tr>
                         );
@@ -1026,7 +1202,7 @@ export function PlanejadorEscala({
               </CardHeader>
               <CardContent className="space-y-3">
                 <label className="flex items-center gap-2 text-sm">
-                  <Switch checked={cfg.temAcordoColetivo} onCheckedChange={(v) => mudarCfg({ temAcordoColetivo: v })} />
+                  <Switch checked={cfg.temAcordoColetivo} disabled={travadoPeloEscritorio} onCheckedChange={(v) => mudarCfg({ temAcordoColetivo: v })} />
                   Tem acordo/convenção coletiva de compensação
                 </label>
                 <div className="space-y-1.5">
@@ -1035,7 +1211,7 @@ export function PlanejadorEscala({
                 </div>
                 <div className="space-y-1.5">
                   <Label>Bloqueio de jornada diária</Label>
-                  <Select value={cfg.bloqueio} onValueChange={(v) => mudarCfg({ bloqueio: v as ModoBloqueio })}>
+                  <Select value={cfg.bloqueio} disabled={travadoPeloEscritorio} onValueChange={(v) => mudarCfg({ bloqueio: v as ModoBloqueio })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -1047,7 +1223,10 @@ export function PlanejadorEscala({
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">Com bloqueio, o sistema recusa o horário que passa do limite do dia.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Com bloqueio, o sistema recusa o horário que passa do limite do dia.
+                    {travadoPeloEscritorio && " Acordo coletivo e bloqueio são definidos pelo escritório."}
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -1094,6 +1273,27 @@ export function PlanejadorEscala({
           </p>
         </TabsContent>
       </Tabs>
+      )}
+
+      {aberta &&
+        (() => {
+          const linha = linhas.find((l) => l.config.id === aberta);
+          if (!linha) return null;
+          return (
+            <DialogoPessoa
+              linha={linha}
+              mes={mes}
+              ajustes={ajustes}
+              feriados={feriados}
+              feriadosSet={feriadosSet}
+              repousos={vigencia.repousosSemanais}
+              viradaEm={viradaComFolgas ? virada?.inicio : undefined}
+              onChange={(p) => atualizar(linha.config.id, p)}
+              onDias={(datas, acao) => diasDaPessoa(linha.config.id, datas, acao)}
+              onFechar={() => setAberta(null)}
+            />
+          );
+        })()}
 
       {editando && (
         <EditarDia
@@ -1129,20 +1329,16 @@ function SemEquipe({ onVaga }: { onVaga: () => void }) {
 function LinhaConfig({
   c,
   erros,
-  repousos,
   selecionado,
   onSelecionar,
-  onChange,
+  onAbrir,
   onRemover,
-  viradaEm,
 }: {
   c: ConfigPessoa;
   erros: number;
-  repousos: number;
-  viradaEm?: string;
   selecionado: boolean;
   onSelecionar: () => void;
-  onChange: (p: Partial<ConfigPessoa>) => void;
+  onAbrir: () => void;
   onRemover?: () => void;
 }) {
   return (
@@ -1150,33 +1346,32 @@ function LinhaConfig({
       <div className="flex min-w-0 items-center gap-1.5">
         <Checkbox checked={selecionado} onCheckedChange={onSelecionar} aria-label={`Marcar ${c.nome}`} />
         {erros ? <XCircle className="h-3.5 w-3.5 shrink-0 text-destructive" /> : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
-        <span className="truncate text-xs font-medium" title={c.nome}>
+        <button
+          type="button"
+          onClick={onAbrir}
+          className="truncate text-left text-xs font-medium hover:text-primary hover:underline"
+          title={`Personalizar a escala de ${c.nome}`}
+        >
           {c.nome}
-        </span>
+        </button>
         {onRemover && (
           <button type="button" className="ml-auto text-muted-foreground hover:text-destructive" onClick={onRemover} aria-label="Remover vaga">
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className="flex w-full items-center gap-1 truncate rounded border border-dashed px-1.5 py-0.5 text-left text-[11px] text-muted-foreground hover:border-primary hover:text-foreground"
-            aria-label={`Configurar escala de ${c.nome}`}
-          >
-            <Settings2 className="h-3 w-3 shrink-0" />
-            <span className="truncate">
-              {MODELOS[c.modelo]} · {c.entrada}–{c.saida}
-            </span>
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-[380px] p-3">
-      <p className="mb-2 text-xs font-medium">Escala de {c.nome}</p>
-      <ControlesPessoa c={c} repousos={repousos} viradaEm={viradaEm} onChange={onChange} />
-        </PopoverContent>
-      </Popover>
+      <button
+        type="button"
+        onClick={onAbrir}
+        className="flex w-full items-center gap-1 truncate rounded border border-dashed px-1.5 py-0.5 text-left text-[11px] text-muted-foreground hover:border-primary hover:text-foreground"
+        aria-label={`Configurar escala de ${c.nome}`}
+      >
+        <Settings2 className="h-3 w-3 shrink-0" />
+        <span className="truncate">
+          {MODELOS[c.modelo]}
+          {c.modelo === "12x36" ? ` ${c.turma}` : ""} · {c.entrada}–{c.saida}
+        </span>
+      </button>
     </div>
   );
 }
@@ -1295,23 +1490,6 @@ function EditarDia({
   );
 }
 
-/**
- * A mesma falha semanal se repete em todas as semanas do mês (um 6x1 de 44h estoura o
- * limite em cada uma). Agrupa por mensagem para a lista dizer uma vez, com as semanas.
- */
-function agrupar(ocorrencias: Ocorrencia[]) {
-  const grupos = new Map<string, { gravidade: Ocorrencia["gravidade"]; mensagem: string; datas: string[]; semanal: boolean }>();
-  for (const o of ocorrencias) {
-    const k = `${o.gravidade}|${o.mensagem}`;
-    if (!grupos.has(k)) grupos.set(k, { gravidade: o.gravidade, mensagem: o.mensagem, datas: [], semanal: !REGRAS_DO_DIA.has(o.regra) });
-    grupos.get(k)!.datas.push(o.data);
-  }
-  return [...grupos.values()].map((g) => ({
-    ...g,
-    quando: `${g.semanal ? (g.datas.length > 1 ? "semanas de " : "semana de ") : ""}${g.datas.map(ddmm).join(", ")}`,
-  }));
-}
-
 function ListaOcorrencias({ linhas }: { linhas: Array<{ nome: string; ocorrencias: Ocorrencia[] }> }) {
   const comProblema = linhas.filter((l) => l.ocorrencias.length);
   if (!comProblema.length) {
@@ -1333,7 +1511,7 @@ function ListaOcorrencias({ linhas }: { linhas: Array<{ nome: string; ocorrencia
           <div key={l.nome}>
             <p className="text-sm font-medium">{l.nome}</p>
             <ul className="mt-1 space-y-0.5">
-              {agrupar(l.ocorrencias).map((g, i) => (
+              {agruparOcorrencias(l.ocorrencias).map((g, i) => (
                 <li key={i} className="flex items-start gap-1.5 text-xs">
                   {g.gravidade === "erro" ? (
                     <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />

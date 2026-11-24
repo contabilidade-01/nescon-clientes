@@ -6,6 +6,8 @@ import type { Turno } from "@/lib/escala/modelos";
 import { MODELOS, configPadrao, type AcaoDia, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
 
 export type AtalhoDias = "todos" | "uteis" | "sabados" | "domingos" | "limpar";
+/** Atalho para marcar pessoas: todas, nenhuma, um modelo inteiro ou uma turma da 12x36. */
+export type MarcarPessoas = "todas" | "nenhuma" | "turmaA" | "turmaB" | ModeloChave;
 
 const campo = "h-8 rounded border bg-background px-1.5 text-xs";
 
@@ -22,6 +24,8 @@ export function BarraLote({
   onLimparPessoas,
   onDias,
   onPessoas,
+  modelos = [],
+  onMarcarPessoas,
 }: {
   pessoas: number;
   totalPessoas: number;
@@ -31,6 +35,9 @@ export function BarraLote({
   onLimparPessoas: () => void;
   onDias: (acao: AcaoDia) => void;
   onPessoas: (patch: Partial<ConfigPessoa>) => void;
+  /** Modelos que aparecem na equipe, para o atalho de marcar por modelo. */
+  modelos?: ModeloChave[];
+  onMarcarPessoas?: (m: MarcarPessoas) => void;
 }) {
   const [turno, setTurno] = useState<Turno>({ entrada: "08:00", saida: "17:00", intervaloMin: 60 });
   const [modelo, setModelo] = useState<ModeloChave | "">("");
@@ -41,7 +48,8 @@ export function BarraLote({
         <Layers className="h-4 w-4 text-primary" />
         <span className="font-medium">Edição em lote</span>
         <span className="text-xs text-muted-foreground">
-          Marque pessoas na caixa ao lado do nome e dias clicando no cabeçalho do dia. Sem pessoa marcada, vale para todos.
+          Marque pessoas na caixa ao lado do nome (ou pelos atalhos) e dias clicando no cabeçalho do dia. Sem pessoa marcada, vale para todos.
+          Clique no nome para personalizar uma pessoa só.
         </span>
       </div>
 
@@ -54,6 +62,29 @@ export function BarraLote({
             </button>
           )}
         </span>
+        {onMarcarPessoas && (
+          <select
+            className={campo}
+            value=""
+            onChange={(e) => e.target.value && onMarcarPessoas(e.target.value as MarcarPessoas)}
+            aria-label="Marcar pessoas"
+          >
+            <option value="">Marcar pessoas…</option>
+            <option value="todas">Todas</option>
+            {modelos.map((m) => (
+              <option key={m} value={m}>
+                Quem está em {MODELOS[m]}
+              </option>
+            ))}
+            {modelos.includes("12x36") && (
+              <>
+                <option value="turmaA">12x36 turma A</option>
+                <option value="turmaB">12x36 turma B</option>
+              </>
+            )}
+            <option value="nenhuma">Desmarcar todas</option>
+          </select>
+        )}
         <span className="flex items-center gap-1 rounded-full bg-background px-2 py-1 text-xs">
           <CalendarCheck className="h-3.5 w-3.5" /> {dias} dia(s)
         </span>
@@ -73,27 +104,32 @@ export function BarraLote({
         ))}
       </div>
 
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs font-medium">Horário para aplicar:</span>
+        <input type="time" className={campo} value={turno.entrada} onChange={(e) => e.target.value && setTurno({ ...turno, entrada: e.target.value })} aria-label="Entrada em lote" />
+        <span className="text-xs">às</span>
+        <input type="time" className={campo} value={turno.saida} onChange={(e) => e.target.value && setTurno({ ...turno, saida: e.target.value })} aria-label="Saída em lote" />
+        <input
+          type="number"
+          min={0}
+          step={15}
+          className={cn(campo, "w-14")}
+          value={turno.intervaloMin}
+          onChange={(e) => setTurno({ ...turno, intervaloMin: Math.max(0, Number(e.target.value) || 0) })}
+          aria-label="Intervalo em lote"
+          title="Intervalo (min)"
+        />
+        <span className="text-[11px] text-muted-foreground">intervalo em min (na 12x36 pode ser 0: intervalo indenizado)</span>
+      </div>
+
       <div className="grid gap-2 lg:grid-cols-2">
         <div className={cn("flex flex-wrap items-center gap-1.5 rounded-lg border bg-background p-2", !dias && "opacity-60")}>
           <span className="text-xs font-medium">Nos {dias || "—"} dia(s) marcados:</span>
           <Button size="sm" variant="outline" className="h-8 text-xs" disabled={!dias} onClick={() => onDias({ tipo: "folga" })}>
             Dar folga
           </Button>
-          <input type="time" className={campo} value={turno.entrada} onChange={(e) => e.target.value && setTurno({ ...turno, entrada: e.target.value })} aria-label="Entrada em lote" />
-          <span className="text-xs">às</span>
-          <input type="time" className={campo} value={turno.saida} onChange={(e) => e.target.value && setTurno({ ...turno, saida: e.target.value })} aria-label="Saída em lote" />
-          <input
-            type="number"
-            min={0}
-            step={15}
-            className={cn(campo, "w-14")}
-            value={turno.intervaloMin}
-            onChange={(e) => setTurno({ ...turno, intervaloMin: Math.max(0, Number(e.target.value) || 0) })}
-            aria-label="Intervalo em lote"
-            title="Intervalo (min)"
-          />
           <Button size="sm" className="h-8 text-xs" disabled={!dias} onClick={() => onDias({ tipo: "horario", turno })}>
-            Aplicar horário
+            Aplicar o horário
           </Button>
           <span className="w-full text-[11px] text-muted-foreground">O horário muda só nos dias trabalhados; folga continua folga.</span>
           <Button size="sm" variant="ghost" className="h-8 text-xs" disabled={!dias} onClick={() => onDias({ tipo: "modelo" })}>
@@ -101,8 +137,8 @@ export function BarraLote({
           </Button>
         </div>
 
-        <div className={cn("flex flex-wrap items-center gap-1.5 rounded-lg border bg-background p-2", !pessoas && "opacity-60")}>
-          <span className="text-xs font-medium">Nas {pessoas || "—"} pessoa(s) marcadas, o mês todo:</span>
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-background p-2">
+          <span className="text-xs font-medium">{pessoas ? `Nas ${pessoas} pessoa(s) marcadas` : `Em todos (${totalPessoas})`}, o mês todo:</span>
           <select className={campo} value={modelo} onChange={(e) => setModelo(e.target.value as ModeloChave)} aria-label="Modelo em lote">
             <option value="">Manter modelo</option>
             {(Object.keys(MODELOS) as ModeloChave[]).map((m) => (
@@ -115,15 +151,18 @@ export function BarraLote({
           <Button
             size="sm"
             className="h-8 text-xs"
-            disabled={!pessoas}
+            disabled={!alvoPessoas}
             onClick={() => {
               if (!modelo) return onPessoas({ entrada: turno.entrada, saida: turno.saida, intervaloMin: turno.intervaloMin });
               const p = configPadrao("x", "x", modelo);
               onPessoas({ modelo, entrada: p.entrada, saida: p.saida, intervaloMin: p.intervaloMin });
             }}
           >
-            {modelo ? `Trocar para ${MODELOS[modelo]}` : "Usar o horário acima como padrão"}
+            {modelo ? `Trocar para ${MODELOS[modelo]}` : "Usar o horário como padrão"}
           </Button>
+          <span className="w-full text-[11px] text-muted-foreground">
+            O horário padrão vale para todos os dias trabalhados do mês (sem precisar marcar dias); ajustes feitos à mão em dias soltos ficam.
+          </span>
         </div>
       </div>
       <p className="text-[11px] text-muted-foreground">

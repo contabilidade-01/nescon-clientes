@@ -21,9 +21,10 @@ describe("situacaoJornada", () => {
     expect(situacaoJornada({ carga_semanal: "42", escala: "5x2" }, "2027-12-16").nivel).toBe("fora");
   });
 
-  it("12x36 vira aviso de renegociação depois da etapa 1", () => {
+  it("12x36 cabe nas 42h (média 38h30 a 42h) e só vira aviso nas 40h", () => {
     expect(situacaoJornada({ escala: "12x36" }, "2026-11-20").nivel).toBe("ok");
-    expect(situacaoJornada({ escala: "12x36" }, "2026-12-16").nivel).toBe("atencao");
+    expect(situacaoJornada({ escala: "12x36" }, "2026-12-16").nivel).toBe("ok");
+    expect(situacaoJornada({ escala: "12x36" }, "2027-12-16").nivel).toBe("atencao");
   });
 
   it("hipersuficiente fica fora do limite de horas", () => {

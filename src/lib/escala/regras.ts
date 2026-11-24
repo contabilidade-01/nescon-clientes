@@ -109,9 +109,11 @@ export interface PerfilJornada {
    */
   hipersuficiente?: boolean;
   /**
-   * Regime 12x36 (art. 59-A). A emenda mantém o regime, mas a média semanal dele (42h)
-   * passa do limite novo: a validação avisa em vez de barrar, porque a saída é a
-   * renegociação na convenção. É o mesmo dado de `companies.escala_12x36`.
+   * Regime 12x36 (art. 59-A). A emenda mantém o regime. As horas são medidas pela
+   * MÉDIA do ciclo (3,5 plantões por semana): 38h30 com 1h de intervalo usufruído, 42h
+   * com intervalo indenizado. Só a média acima do limite vira aviso (renegociar na
+   * convenção); a semana de 4 plantões sozinha não conta. É o mesmo dado de
+   * `companies.escala_12x36`.
    */
   regime12x36?: boolean;
 }

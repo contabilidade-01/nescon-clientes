@@ -76,6 +76,8 @@ function comQuery(ui: ReactNode) {
 
 describe("aba Por funcionário", () => {
   beforeEach(() => {
+    // Estes testes são das abas completas (modo avançado); o portal abre no caminho guiado.
+    localStorage.setItem("escala-modo-portal", "avancado");
     mockApi.config.mockResolvedValue({ dados: { segmento: "comercio", atividadeDefinida: true }, atualizado_em: null, atualizado_por: null });
   });
 
