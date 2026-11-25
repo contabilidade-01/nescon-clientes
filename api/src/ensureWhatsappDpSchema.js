@@ -10,6 +10,14 @@ async function ensureWhatsappDpSchema(db) {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
     `);
+    // Controle da resposta automática "este canal é só para documentos e alertas":
+    // último envio por telefone, para não repetir o aviso a cada mensagem.
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS whatsapp_auto_resposta (
+        phone TEXT PRIMARY KEY,
+        enviado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
     await db.query(`ALTER TABLE companies ADD COLUMN IF NOT EXISTS escala_12x36 BOOLEAN`);
     // Queijeiro 3 e 4 são 12x36 POR DEFINIÇÃO — sempre automático, sem chaveamento. Força
     // `true` no banco (idempotente) mesmo que a linha já tenha ficado false, casando com a

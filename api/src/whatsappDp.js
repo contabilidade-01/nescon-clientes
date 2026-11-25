@@ -20,6 +20,7 @@ const fs = require("fs");
 const path = require("path");
 const db = require("./db");
 const { interpretarMensagem } = require("./whatsappDpIa");
+const { autoRespostaPara } = require("./whatsappAutoResposta");
 const { enviarTexto, enviarDocumento, configurado } = require("./uazapi");
 const { getPublicAppUrl } = require("./mailer");
 const { gerarArquivos, CONDUTAS, CONDUTA_ORDEM, condutaDe } = require("./dpDocumento");
@@ -1049,9 +1050,10 @@ async function processarTexto({ phone, texto }) {
   }
 
   const tema = await classificarTema(raw);
-  // Fora do escopo (qualquer assunto que não seja advertência/suspensão): silêncio. O
-  // escritório decidiu não mandar mais o aviso "aqui eu trato somente de…".
-  if (tema === "outro") return null;
+  // Fora do escopo (qualquer assunto que não seja advertência/suspensão): aviso automático
+  // de que o canal é só para documentos e alertas — no máximo uma vez a cada 12h por
+  // telefone (ver whatsappAutoResposta.js). Dentro do intervalo: silêncio.
+  if (tema === "outro") return autoRespostaPara(db, phone);
 
   // Identidade: sem empresa cadastrada neste número, não emite nada.
   const empresas = await empresasDoTelefone(phone);
