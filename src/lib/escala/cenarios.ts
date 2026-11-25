@@ -140,6 +140,19 @@ export function montarCenarios(
       configs: cada("5x2_rev", (_, i) => ({ folgaFixa: espalha(i), rodizio: (i + v) % 3, semanasRodizio: 3 })),
     },
     {
+      id: "5x2_corrida",
+      nome: "5x2 com folga corrida (as 2 folgas andam um dia por semana)",
+      descricao:
+        "Abre todo dia. Cada pessoa folga 2 dias seguidos, que andam um dia por semana (seg+ter, ter+qua, …); a equipe começa em pontos diferentes do ciclo de 7 semanas.",
+      modelo: "5x2_corrida",
+      configs: cada("5x2_corrida", (_, i) => ({ rodizio: (i + v) % 7 })),
+      // O domingo de folga cai 2 vezes a cada 7 semanas: até 5 domingos seguidos de trabalho.
+      indisponivel:
+        domingoACada < 6
+          ? `O domingo de folga só volta depois de 5 semanas; em ${SEGMENTOS[empresa.segmento].nome.toLowerCase()} ele precisa cair a cada ${domingoACada}.`
+          : undefined,
+    },
+    {
       id: "4x3",
       nome: "4x3 de 10h",
       descricao: "Quatro dias de 10h (40h) e três folgas, uma no domingo. Compensação de jornada: exige acordo.",
@@ -296,6 +309,7 @@ export const DIAS_TRABALHO_SEMANA: Partial<Record<ModeloChave, number>> = {
   "6x1": 6,
   "5x2": 5,
   "5x2_rev": 5,
+  "5x2_corrida": 5,
   "5x2_fechado": 5,
   "4x3": 4,
 };
@@ -303,7 +317,7 @@ export const DIAS_TRABALHO_SEMANA: Partial<Record<ModeloChave, number>> = {
 /**
  * Horário que preenche o limite da semana: mesma entrada e intervalo, saída mais tarde.
  * 42h em 5 dias = 8h24 por dia (com acordo coletivo, art. 7º da EC 141/2026, não é hora
- * extra). Devolve null quando o turno já preenche o limite ou o modelo não se aplica.
+ * extra; sem acordo, os 24 minutos além das 8h são hora extra paga). Devolve null quando o turno já preenche o limite ou o modelo não se aplica.
  */
 export function turnoQuePreenche(turno: Turno, modelo: ModeloChave, limiteSemanalHoras: number): Turno | null {
   const dias = DIAS_TRABALHO_SEMANA[modelo];

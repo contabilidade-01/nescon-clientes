@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { MODELOS, MODELOS_EXPLICADOS, configPadrao, proximaFolga, segundaFolga, ultimoDiaDa6x1, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
+import { MODELOS, MODELOS_EXPLICADOS, SEMANAS_CORRIDA, configPadrao, proximaFolga, segundaFolga, ultimoDiaDa6x1, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
 import { PARES_5X2 } from "@/lib/escala/porPessoa";
 
 const NOMES_DIA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -160,6 +160,15 @@ export function ControlesPessoa({
             ))}
           </select>
         </>
+      )}
+      {c.modelo === "5x2_corrida" && (
+        <select className={sel} value={((c.rodizio % 7) + 7) % 7} onChange={(e) => onChange({ rodizio: Number(e.target.value) })} aria-label="Começa folgando">
+          {SEMANAS_CORRIDA.map((par, i) => (
+            <option key={i} value={i}>
+              Começa folgando {par.map(abrev).join("+")}
+            </option>
+          ))}
+        </select>
       )}
       {c.modelo === "12x36" && (
         <select className={sel} value={c.turma} onChange={(e) => onChange({ turma: e.target.value as "A" | "B" })} aria-label="Turma">

@@ -236,6 +236,11 @@ export async function executarFerramenta(
         if (f.length !== 2 || f.some((x) => x === null) || f[0] === f[1]) return falha("folgas_5x2: dois dias diferentes (0-6).", "Alteração recusada");
         novo.folgas5x2 = f as number[];
       }
+      if (input.grupo_corrida !== undefined) {
+        const g = Number(input.grupo_corrida);
+        if (!Number.isInteger(g) || g < 0 || g > 6) return falha("grupo_corrida inválido (0-6).", "Alteração recusada");
+        novo.rodizio = g;
+      }
       if (input.folga_fixa !== undefined) {
         const d = dia(input.folga_fixa);
         if (d === null) return falha("folga_fixa inválida.", "Alteração recusada");

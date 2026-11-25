@@ -893,7 +893,7 @@ export function PlanejadorEscala({
           onSalvar={() => salvar.mutate()}
           onBaixar={baixar}
           limiteSemanal={vigencia.limiteSemanalHoras}
-          pode42h={cfg.temAcordoColetivo && cfg.bloqueio !== "sem_hora_extra"}
+          pode42h={cfg.bloqueio === "sem_hora_extra" ? false : cfg.temAcordoColetivo ? "acordo" : "hora_extra"}
           onHorario={mudarHorario}
           onMaisOpcoes={() => {
             setModo("avancado");
