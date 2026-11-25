@@ -14,6 +14,7 @@ const { processarTexto, ehAssuntoDp } = require("../whatsappDp");
 const { enviarTexto } = require("../uazapi");
 const db = require("../db");
 const { ehCliente } = require("../whatsappDestino");
+const { autoRespostaPara } = require("../whatsappAutoResposta");
 
 const router = express.Router();
 const processed = new Map();
@@ -191,6 +192,16 @@ router.post("/webhook", async (req, res) => {
         console.warn(`[whatsapp-dp] mensagem de ${phone} sem texto — tipo="${messageType}/${mediaType}"`);
       }
       registrar({ resultado: "sem_texto", tel: phone.slice(-4), tipo: `${messageType}/${mediaType}` });
+      // Foto, arquivo, figurinha… sem texto: também recebe o aviso de que o canal é só
+      // para documentos e alertas (mesmo limite de uma vez a cada 12h por telefone).
+      // Não vale para quem está no meio de um fluxo de advertência/suspensão.
+      if (!(await ehAssuntoDp(phone, "").catch(() => true))) {
+        const aviso = await autoRespostaPara(db, phone);
+        if (aviso) {
+          await enviarTexto({ numero: phone, texto: aviso, delayMs: 900 }).catch(() => {});
+          registrar({ resultado: "auto_resposta_sem_texto", tel: phone.slice(-4) });
+        }
+      }
       return;
     }
 
