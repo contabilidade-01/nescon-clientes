@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
@@ -57,7 +57,7 @@ import { PainelPorPessoa } from "@/components/escala/PainelPorPessoa";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { MODOS_BLOQUEIO, motivoBloqueio, type ModoBloqueio } from "@/lib/escala/bloqueio";
-import { avaliarEscalaAtual, simularCenarios, type ResultadoCenario } from "@/lib/escala/cenarios";
+import { avaliarEscalaAtual, modelosImpraticaveis, simularCenarios, type ResultadoCenario } from "@/lib/escala/cenarios";
 import { diaDaSemana, somarDias } from "@/lib/escala/datas";
 import { feriadosDaEmpresa } from "@/lib/escala/feriados";
 import type { Turno } from "@/lib/escala/modelos";
@@ -138,7 +138,7 @@ function abrev(d: number) {
 type Pessoa = { id: string; name: string; cadastro?: CadastroJornada };
 /** Simples: caminho guiado em 3 passos. Avançado: as abas completas (grade, contingente…). */
 type Modo = "simples" | "avancado";
-type Aba = "cenarios" | "automatica" | "assistente" | "escala" | "pessoa" | "contingente" | "regras";
+type Aba = "assistente" | "escala" | "pessoa" | "contingente" | "regras";
 
 /**
  * Planejador de escalas. O escritório passa `companyId` (simula qualquer cliente); no
@@ -169,7 +169,9 @@ export function PlanejadorEscala({
   const [ajustes, setAjustes] = useState<Ajustes>({});
   const [alterado, setAlterado] = useState(false);
   const [editando, setEditando] = useState<{ pessoa: ConfigPessoa; data: string } | null>(null);
-  const [aba, setAba] = useState<Aba>("cenarios");
+  const [aba, setAba] = useState<Aba>("escala");
+  /** Página à parte para escolher o modelo de escala (cenários e montagem automática). */
+  const [escolhendo, setEscolhendo] = useState(false);
   const [variacao, setVariacao] = useState(0);
   const [cenarioAtual, setCenarioAtual] = useState<string | null>(null);
   const [horarios, setHorarios] = useState<Record<string, Turno>>({});
@@ -327,6 +329,8 @@ export function PlanejadorEscala({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [equipeChave, mes, feriadosSet, variacao, horarios, cfg.segmento, cfg.temAcordoColetivo, cfg.bloqueio, cfg.demanda, cfg.diasFechados],
   );
+  // Só o que a empresa consegue praticar entra na escolha (o resto nem aparece).
+  const cenariosPossiveis = useMemo(() => cenarios.filter((c) => c.podeAplicar), [cenarios]);
   const escalaAtual = useMemo(
     () => avaliarEscalaAtual(configsDaUnidade, ajustes, mes, cfg, feriadosSet),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -615,6 +619,7 @@ export function PlanejadorEscala({
       return;
     }
     setAba("escala");
+    setEscolhendo(false);
     toast.success(`Cenário aplicado: ${c.nome}.`, { description: "Ajuste na grade; o que sair da regra é recusado." });
   }
 
@@ -659,7 +664,7 @@ export function PlanejadorEscala({
       setAjustes({});
       setCenarioAtual(null);
       setAlterado(true);
-      setAba("cenarios");
+      setEscolhendo(true);
     }
     salvarAtividade.mutate(novo);
   }
@@ -740,7 +745,7 @@ export function PlanejadorEscala({
     setUnidade(u);
     setSelPessoas(new Set());
     setModo("avancado");
-    setAba("cenarios");
+    setEscolhendo(true);
     setTimesAberto(false);
   }
 
@@ -805,7 +810,7 @@ export function PlanejadorEscala({
 
   return (
     <div className="space-y-4">
-      {configs.length + cfg.foraDaEscala.length > 1 && (
+      {configs.length + cfg.foraDaEscala.length > 1 && !(escolhendo && modo !== "simples") && (
         <TimesPorUnidade
           pessoas={pessoasDoTime}
           unidades={unidadesDoTime}
@@ -816,7 +821,7 @@ export function PlanejadorEscala({
           onMontar={montarTime}
         />
       )}
-      <Card className="overflow-hidden">
+      <Card className={cn("overflow-hidden", escolhendo && modo !== "simples" && "hidden")}>
         <div className="flex flex-wrap items-center gap-3 border-b bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium uppercase tracking-wide text-primary">Escala de {nomeMes(mes)}</p>
@@ -1001,7 +1006,7 @@ export function PlanejadorEscala({
           travadoPeloEscritorio={travadoPeloEscritorio}
           regime12x36Padrao={regime12x36Padrao}
           linhas={linhasVisiveis}
-          cenarios={cenarios}
+          cenarios={cenariosPossiveis}
           escalaAtual={escalaAtual}
           cenarioAtual={cenarioAtual}
           totalErros={totalErros}
@@ -1024,18 +1029,41 @@ export function PlanejadorEscala({
           onHorario={mudarHorario}
           onMaisOpcoes={() => {
             setModo("avancado");
-            setAba("cenarios");
+            setEscolhendo(true);
           }}
+        />
+      ) : escolhendo ? (
+        <PaginaEscolha
+          unidade={filtroUnidade}
+          mes={nomeMes(mes)}
+          temEquipe={configsDaUnidade.length > 0}
+          onVoltar={() => setEscolhendo(false)}
+          semEquipe={<SemEquipe onVaga={adicionarVaga} />}
+          cenarios={
+            <PainelCenarios
+              cenarios={cenariosPossiveis}
+              escalaAtual={escalaAtual}
+              demanda={cfg.demanda}
+              emUso={cenarioAtual}
+              onAplicar={aplicarCenario}
+              onVariar={() => setVariacao((v) => v + 1)}
+              onHorario={mudarHorario}
+            />
+          }
+          automatica={
+            <PainelDistribuicao
+              pessoas={equipe}
+              mes={mes}
+              empresa={cfg}
+              feriados={feriadosSet}
+              modeloPadrao={modeloPadrao}
+              onAplicar={aplicarCenario}
+            />
+          }
         />
       ) : (
       <Tabs value={aba} onValueChange={(v) => setAba(v as Aba)}>
         <TabsList className="h-auto w-full flex-wrap justify-start gap-1 bg-muted/60 p-1">
-          <TabsTrigger value="cenarios" className="gap-1.5">
-            <Sparkles className="h-4 w-4" /> Cenários
-          </TabsTrigger>
-          <TabsTrigger value="automatica" className="gap-1.5">
-            <Wand2 className="h-4 w-4" /> Automática
-          </TabsTrigger>
           <TabsTrigger value="assistente" className="gap-1.5">
             <Bot className="h-4 w-4" /> Assistente IA
           </TabsTrigger>
@@ -1054,37 +1082,6 @@ export function PlanejadorEscala({
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="cenarios" className="mt-4">
-          {configsDaUnidade.length === 0 ? (
-            <SemEquipe onVaga={adicionarVaga} />
-          ) : (
-            <PainelCenarios
-              cenarios={cenarios}
-              escalaAtual={escalaAtual}
-              demanda={cfg.demanda}
-              emUso={cenarioAtual}
-              onAplicar={aplicarCenario}
-              onVariar={() => setVariacao((v) => v + 1)}
-              onHorario={mudarHorario}
-            />
-          )}
-        </TabsContent>
-
-        <TabsContent value="automatica" className="mt-4">
-          {configsDaUnidade.length === 0 ? (
-            <SemEquipe onVaga={adicionarVaga} />
-          ) : (
-            <PainelDistribuicao
-              pessoas={equipe}
-              mes={mes}
-              empresa={cfg}
-              feriados={feriadosSet}
-              modeloPadrao={modeloPadrao}
-              onAplicar={aplicarCenario}
-            />
-          )}
-        </TabsContent>
-
         <TabsContent value="assistente" className="mt-4">
           <PainelAssistente
             estado={{ mes, cfg, configs, ajustes, feriados: feriadosSet }}
@@ -1096,6 +1093,9 @@ export function PlanejadorEscala({
 
         <TabsContent value="escala" className="mt-4 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={() => setEscolhendo(true)}>
+              <Sparkles className="mr-1 h-4 w-4" /> Escolher modelo de escala
+            </Button>
             <Button variant="outline" size="sm" onClick={adicionarVaga}>
               <Plus className="mr-1 h-4 w-4" /> Vaga simulada
             </Button>
@@ -1460,6 +1460,7 @@ export function PlanejadorEscala({
               feriados={feriados}
               feriadosSet={feriadosSet}
               repousos={vigencia.repousosSemanais}
+              ocultar={modelosImpraticaveis(cfg, vigencia.repousosSemanais)}
               viradaEm={viradaComFolgas ? virada?.inicio : undefined}
               unidades={unidades}
               abreNosFeriados={cfg.abreNosFeriados}
@@ -1708,5 +1709,57 @@ function ListaOcorrencias({ linhas }: { linhas: Array<{ nome: string; ocorrencia
         ))}
       </CardContent>
     </Card>
+  );
+}
+
+/** Página à parte para escolher o modelo de escala, sem o resto da tela em volta. */
+function PaginaEscolha({
+  unidade,
+  mes,
+  temEquipe,
+  onVoltar,
+  semEquipe,
+  cenarios,
+  automatica,
+}: {
+  unidade: string;
+  mes: string;
+  temEquipe: boolean;
+  onVoltar: () => void;
+  semEquipe: ReactNode;
+  cenarios: ReactNode;
+  automatica: ReactNode;
+}) {
+  const [verAutomatica, setVerAutomatica] = useState(false);
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+          <Button variant="outline" size="sm" onClick={onVoltar}>
+            ← Voltar à escala
+          </Button>
+          <div>
+            <p className="font-semibold">Escolher o modelo de escala · {mes}</p>
+            <p className="text-xs text-muted-foreground">
+              {unidade ? `Só o time da unidade ${unidade}.` : "Toda a equipe."} Aparecem só os modelos que a empresa consegue praticar dentro da regra; ao
+              escolher, a escala volta para a grade para conferir e salvar.
+            </p>
+          </div>
+        </div>
+      </Card>
+      {!temEquipe ? (
+        semEquipe
+      ) : (
+        <>
+          {cenarios}
+          <Card>
+            <button type="button" className="w-full px-4 py-3 text-left text-sm font-medium" onClick={() => setVerAutomatica((v) => !v)}>
+              {verAutomatica ? "▾" : "▸"} Montar automaticamente (sorteio com parâmetros)
+            </button>
+            {verAutomatica && <div className="border-t p-4">{automatica}</div>}
+          </Card>
+        </>
+      )}
+    </div>
   );
 }

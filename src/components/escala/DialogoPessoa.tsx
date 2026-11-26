@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { diaDaSemana } from "@/lib/escala/datas";
 import type { Turno } from "@/lib/escala/modelos";
 import { agruparOcorrencias } from "@/lib/escala/ocorrencias";
-import { MODELOS, type AcaoDia, type Ajustes, type AvaliacaoPessoa, type ConfigPessoa } from "@/lib/escala/planejamento";
+import { MODELOS, type AcaoDia, type Ajustes, type AvaliacaoPessoa, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
 
 const LETRAS = ["D", "S", "T", "Q", "Q", "S", "S"];
 const NOMES_DIA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -64,6 +64,7 @@ export function DialogoPessoa({
   feriados,
   feriadosSet,
   repousos,
+  ocultar,
   viradaEm,
   unidades,
   abreNosFeriados,
@@ -77,6 +78,7 @@ export function DialogoPessoa({
   feriados: Map<string, string>;
   feriadosSet: Set<string>;
   repousos: number;
+  ocultar?: ModeloChave[];
   viradaEm?: string;
   /** Unidades já usadas na equipe (sugestões do campo Unidade). */
   unidades: string[];
@@ -146,7 +148,7 @@ export function DialogoPessoa({
           <div className="space-y-4">
             <section className="space-y-2 rounded-lg border p-3">
               <p className="text-sm font-medium">Modelo, horário padrão e folgas</p>
-              <ControlesPessoa c={c} repousos={repousos} viradaEm={viradaEm} unidades={unidades} onChange={(p) => void onChange(p)} />
+              <ControlesPessoa c={c} repousos={repousos} ocultar={ocultar} viradaEm={viradaEm} unidades={unidades} onChange={(p) => void onChange(p)} />
               <p className="text-[11px] text-muted-foreground">Trocar o modelo ou as folgas desfaz os ajustes feitos à mão nesta pessoa.</p>
             </section>
 

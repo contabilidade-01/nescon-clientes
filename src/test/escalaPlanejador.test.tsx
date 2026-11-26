@@ -130,6 +130,8 @@ describe("tela do planejador", () => {
   it("aplica um cenário e monta a grade com as pessoas", async () => {
     mockApi.config.mockResolvedValue({ dados: { segmento: "comercio", atividadeDefinida: true }, atualizado_em: null, atualizado_por: null });
     comQuery(<PlanejadorEscala pessoas={PESSOAS} />);
+    // A escolha do modelo fica numa página à parte.
+    fireEvent.click(await screen.findByRole("button", { name: /Escolher modelo de escala/ }));
     await waitFor(() => expect(screen.getAllByRole("button", { name: /Usar este cenário/ }).length).toBeGreaterThan(0));
     fireEvent.click(screen.getAllByRole("button", { name: /Usar este cenário/ })[0]);
     await waitFor(() => expect(screen.getByText("Pessoas trabalhando")).toBeInTheDocument());
@@ -143,8 +145,9 @@ describe("tela do planejador", () => {
     const SEM: typeof PESSOAS = [];
     comQuery(<PlanejadorEscala pessoas={SEM} />);
     await waitFor(() => expect(screen.getByText(/ainda não foi salvo/)).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /Vaga simulada/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Vaga simulada/ })[0]);
     expect(screen.getByText("Mudanças não salvas")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Escolher modelo de escala/ }));
     fireEvent.click(screen.getAllByRole("button", { name: /Usar este cenário/ })[0]);
     await waitFor(() => expect(screen.getAllByText("Vaga simulada 1").length).toBeGreaterThan(0));
   });
@@ -159,6 +162,8 @@ describe("edição em lote na tela", () => {
 
   it("marca dias pelo atalho e aplica folga a todos", async () => {
     comQuery(<PlanejadorEscala pessoas={PESSOAS} />);
+    // A escolha do modelo fica numa página à parte.
+    fireEvent.click(await screen.findByRole("button", { name: /Escolher modelo de escala/ }));
     await waitFor(() => expect(screen.getAllByRole("button", { name: /Usar este cenário/ }).length).toBeGreaterThan(0));
     fireEvent.click(screen.getAllByRole("button", { name: /Usar este cenário/ })[0]);
     await waitFor(() => expect(screen.getByText("Edição em lote")).toBeInTheDocument());

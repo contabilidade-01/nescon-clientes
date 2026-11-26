@@ -18,6 +18,7 @@ import {
   type ModeloChave,
 } from "@/lib/escala/planejamento";
 import { opcoesDaPessoa, resumoFolgas, type OpcaoPessoa } from "@/lib/escala/porPessoa";
+import { modelosImpraticaveis } from "@/lib/escala/cenarios";
 import { vigenciaEm } from "@/lib/escala/regras";
 
 const LETRAS = ["D", "S", "T", "Q", "Q", "S", "S"];
@@ -74,9 +75,14 @@ export function PainelPorPessoa({
   const [previa, setPrevia] = useState<OpcaoPessoa | null>(null);
 
   const grupos = useMemo(
-    () => (c ? opcoesDaPessoa(c, linhas, ajustes, mes, empresa, feriadosSet) : []),
+    () => {
+      if (!c) return [];
+      // Modelos que a empresa não pratica nem aparecem (fora o que a pessoa já usa).
+      const ocultos = modelosImpraticaveis(empresa, repousos);
+      return opcoesDaPessoa(c, linhas, ajustes, mes, empresa, feriadosSet).filter((g) => g.modelo === c.modelo || !ocultos.includes(g.modelo));
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [c, linhas, ajustes, mes, feriadosSet, empresa.segmento, empresa.temAcordoColetivo, empresa.bloqueio, empresa.demanda, empresa.diasFechados],
+    [c, linhas, ajustes, mes, feriadosSet, repousos, empresa.segmento, empresa.temAcordoColetivo, empresa.bloqueio, empresa.demanda, empresa.diasFechados],
   );
   const atual = grupos.find((g) => g.modelo === c?.modelo)?.opcoes.find((o) => o.atual);
   const temDemanda = empresa.demanda.some((n) => n > 0);
@@ -169,7 +175,7 @@ export function PainelPorPessoa({
               </div>
               <div className="rounded-lg border bg-muted/30 p-2">
                 <p className="mb-1.5 text-xs text-muted-foreground">Configuração de {c.nome} (só dele; o resto da equipe fica como está)</p>
-                <ControlesPessoa c={c} repousos={repousos} viradaEm={viradaEm} onChange={(p) => onChange(c.id, p)} />
+                <ControlesPessoa c={c} repousos={repousos} ocultar={modelosImpraticaveis(empresa, repousos)} viradaEm={viradaEm} onChange={(p) => onChange(c.id, p)} />
               </div>
             </CardContent>
           </Card>

@@ -16,12 +16,15 @@ function abrev(d: number) {
 export function ControlesPessoa({
   c,
   repousos,
+  ocultar = [],
   viradaEm,
   onChange,
   unidades,
 }: {
   c: ConfigPessoa;
   repousos: number;
+  /** Modelos que a empresa não pratica: não aparecem na lista (fora o que a pessoa já usa). */
+  ocultar?: ModeloChave[];
   /** Quando vem, mostra o campo da unidade (com as já usadas na equipe como sugestão). */
   unidades?: string[];
   /** Dia em que entram as 2 folgas, quando cai neste mês: mostra a 6x1 até a véspera. */
@@ -76,7 +79,7 @@ export function ControlesPessoa({
         }}
         aria-label="Modelo de escala"
       >
-        {(Object.keys(MODELOS) as ModeloChave[]).map((m) => (
+        {(Object.keys(MODELOS) as ModeloChave[]).filter((m) => m === c.modelo || !ocultar.includes(m)).map((m) => (
           <option key={m} value={m} disabled={m === "6x1" && repousos > 1 && c.modelo !== "6x1"}>
             {MODELOS_EXPLICADOS[m]} ({MODELOS[m]})
             {m === "6x1" && repousos > 1 ? " (proibida)" : ""}

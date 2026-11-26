@@ -112,3 +112,11 @@ describe("5x2 domingo a cada 3 semanas", () => {
     expect(Math.min(...r.mediaPorDia)).toBeGreaterThanOrEqual(4);
   });
 });
+
+describe("modelos que a empresa não pratica saem da escolha", () => {
+  it("restaurante sem acordo, depois de 16/12: sem 6x1, folga corrida e 4x3", async () => {
+    const { modelosImpraticaveis } = await import("@/lib/escala/cenarios");
+    expect(modelosImpraticaveis(restaurante, 2).sort()).toEqual(["4x3", "5x2_corrida", "6x1"]);
+    expect(modelosImpraticaveis({ segmento: "outro", temAcordoColetivo: true }, 1)).toEqual([]);
+  });
+});
