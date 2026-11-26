@@ -504,6 +504,14 @@ export function PlanejadorEscala({
     aplicarSeguro(configs, trocarCelulas(ajustes, { pessoa: pa, data: da, turno: ta }, { pessoa: pb, data: db, turno: tb }), [pa, pb]);
   }
 
+  /** A empresa adianta a escala nova para o começo do mês: ninguém fica na 6x1 até a virada. */
+  function comecarNoDia1() {
+    const n = configs.filter((c) => c.seisPorUmAteVirada && c.modelo !== "6x1" && c.modelo !== "12x36").length;
+    setConfigs((cs) => cs.map((c) => (c.seisPorUmAteVirada && c.modelo !== "6x1" && c.modelo !== "12x36" ? { ...c, seisPorUmAteVirada: false } : c)));
+    setAlterado(true);
+    toast.success(`${n} pessoa(s) começam o modelo novo no dia 1º.`, { description: "Confira as semanas e salve a escala." });
+  }
+
   function atualizar(id: string, patch: Partial<ConfigPessoa>): boolean {
     const atual = configs.find((c) => c.id === id);
     if (!atual) return false;
@@ -1152,6 +1160,11 @@ export function PlanejadorEscala({
                       {viradaComFolgas &&
                         ` Quem estava na 6x1 segue nela até o domingo ${ddmm(ultimoDiaDa6x1(virada.inicio))} e entra no modelo novo na segunda seguinte, para essa semana já ter as 2 folgas (dá para desligar por pessoa).`}
                     </p>
+                    {viradaComFolgas && configs.some((c) => c.seisPorUmAteVirada && c.modelo !== "6x1" && c.modelo !== "12x36") && (
+                      <Button size="sm" variant="outline" className="mt-1 h-7 text-xs" onClick={comecarNoDia1}>
+                        Começar o modelo novo já no dia 1º (todos)
+                      </Button>
+                    )}
                   </>
                 ) : (
                   <>
