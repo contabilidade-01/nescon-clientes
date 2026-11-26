@@ -18,6 +18,7 @@ import {
   type ConfigEmpresa,
   type ConfigPessoa,
   type ModeloChave,
+  SEMANAS_DOMINGO,
 } from "./planejamento";
 import { SEGMENTOS, vigenciaEm } from "./regras";
 
@@ -172,9 +173,9 @@ export function montarCenarios(
       id: "5x2_domingo",
       nome: "5x2 com domingo fixo e folga variável",
       descricao:
-        "Fecha no domingo. Cada pessoa folga todo domingo e mais 1 dia que anda um dia por semana (seg, ter, … sáb, ciclo de 6 semanas); a equipe começa em dias diferentes, então de segunda a sábado sempre falta só 1 de cada 6. Nunca mais de 5 dias seguidos.",
+        "Fecha no domingo. Cada pessoa folga todo domingo e mais 1 dia que anda um dia por semana (ter, qua, qui, sex, ciclo de 4 semanas); nunca duas folgas seguidas e nunca mais de 4 dias seguidos. Segunda e sábado ficam com a equipe toda.",
       modelo: "5x2_domingo",
-      configs: cada("5x2_domingo", (_, i) => ({ rodizio: (i + v) % 6 })),
+      configs: cada("5x2_domingo", (_, i) => ({ rodizio: (i + v) % SEMANAS_DOMINGO.length })),
     },
     {
       id: "4x3",

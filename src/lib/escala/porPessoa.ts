@@ -11,6 +11,7 @@ import {
   diasDoMes,
   folgasDaCorrida,
   folgasDoDomingoFixo,
+  SEMANAS_DOMINGO,
   folgasDaQuinzenal,
   folgasDo3Semanas,
   MODELOS,
@@ -71,7 +72,7 @@ export function resumoFolgas(c: ConfigPessoa): string {
     case "5x2_corrida":
       return `folgas corridas, começa ${folgasDaCorrida(c.rodizio).map((d) => ABREV[d]).join("+")} (grupo ${(((c.rodizio % 7) + 7) % 7) + 1})`;
     case "5x2_domingo":
-      return `dom. fixo + folga que anda, começa ${folgasDoDomingoFixo(c.rodizio).map((d) => ABREV[d]).join("+")} (grupo ${(((c.rodizio % 6) + 6) % 6) + 1})`;
+      return `dom. fixo + folga que anda, começa ${folgasDoDomingoFixo(c.rodizio).map((d) => ABREV[d]).join("+")} (grupo ${(((c.rodizio % SEMANAS_DOMINGO.length) + SEMANAS_DOMINGO.length) % SEMANAS_DOMINGO.length) + 1})`;
     case "5x2_quinzenal":
       return `dom. a cada 2 sem., começa ${folgasDaQuinzenal(c.rodizio).map((d) => ABREV[d]).join("+")} (grupo ${(((c.rodizio % 4) + 4) % 4) + 1})`;
     case "5x2_3semanas":
@@ -105,7 +106,7 @@ function variacoes(c: ConfigPessoa, modelo: ModeloChave, mes: string, empresa: E
     for (const n of [2, 3]) for (let f = 1; f <= 6; f++) for (let r = 0; r < n; r++) out.push({ ...base, folgaFixa: f, semanasRodizio: n, rodizio: r });
   }
   if (modelo === "5x2_corrida") for (let r = 0; r < 7; r++) out.push({ ...base, rodizio: r });
-  if (modelo === "5x2_domingo") for (let r = 0; r < 6; r++) out.push({ ...base, rodizio: r });
+  if (modelo === "5x2_domingo") for (let r = 0; r < SEMANAS_DOMINGO.length; r++) out.push({ ...base, rodizio: r });
   if (modelo === "5x2_quinzenal") for (let r = 0; r < 4; r++) out.push({ ...base, rodizio: r });
   if (modelo === "5x2_3semanas") for (let r = 0; r < 3; r++) out.push({ ...base, rodizio: r });
   if (modelo === "5x2_fechado") {
