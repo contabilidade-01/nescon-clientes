@@ -173,7 +173,7 @@ export function montarCenarios(
       id: "5x2_domingo",
       nome: "5x2 com domingo fixo e folga variável",
       descricao:
-        "Fecha no domingo. Cada pessoa folga todo domingo e mais 1 dia que anda um dia por semana (ter, qua, qui, sex, ciclo de 4 semanas); nunca duas folgas seguidas e nunca mais de 4 dias seguidos. Segunda e sábado ficam com a equipe toda.",
+        "Fecha no domingo. Cada pessoa folga todo domingo e mais 1 dia que anda um dia por semana (seg, ter, qua, qui, sex, ciclo de 5 semanas); nunca folga no sábado e só emenda domingo e segunda 1 semana a cada 5. Sábado fica com a equipe toda.",
       modelo: "5x2_domingo",
       configs: cada("5x2_domingo", (_, i) => ({ rodizio: (i + v) % SEMANAS_DOMINGO.length })),
     },
