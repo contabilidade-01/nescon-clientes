@@ -20,6 +20,8 @@ import { mediasDa12x36, validarEscala, type Ocorrencia, type ResumoSemana } from
  *   abre no domingo, a 2ª folga cai no domingo a cada `semanasRodizio` semanas.
  * - 5x2_corrida: 5x2 com as 2 folgas juntas andando um dia por semana (seg+ter, ter+qua…),
  *   sempre dentro da semana de domingo a sábado; o ciclo tem 7 semanas.
+ * - 5x2_domingo: domingo de folga toda semana + 1 folga que anda um dia por semana
+ *   (seg, ter, … sáb); ciclo de 6 semanas, nunca mais de 5 dias seguidos de trabalho.
  * - 5x2_quinzenal: 5x2 em ciclo de 4 semanas com o domingo de folga a cada 2 semanas
  *   (dom+seg, seg+ter, dom+sáb, qui+sex): serve a restaurante/comércio e a mulheres.
  * - 5x2_3semanas: 5x2 em ciclo de 3 semanas (dom+sex, qua+qui, seg+ter): domingo de folga
@@ -27,13 +29,14 @@ import { mediasDa12x36, validarEscala, type Ocorrencia, type ResumoSemana } from
  * - 4x3: 4 dias de 10h, folga no domingo e em mais 2 dias (compensação, exige acordo).
  * - 12x36: plantão dia sim, dia não.
  */
-export type ModeloChave = "6x1" | "5x2" | "5x2_rev" | "5x2_corrida" | "5x2_quinzenal" | "5x2_3semanas" | "5x2_fechado" | "4x3" | "12x36";
+export type ModeloChave = "6x1" | "5x2" | "5x2_rev" | "5x2_corrida" | "5x2_domingo" | "5x2_quinzenal" | "5x2_3semanas" | "5x2_fechado" | "4x3" | "12x36";
 
 export const MODELOS: Record<ModeloChave, string> = {
   "6x1": "6x1",
   "5x2": "5x2 fixo",
   "5x2_rev": "5x2 rodízio",
   "5x2_corrida": "5x2 folga corrida",
+  "5x2_domingo": "5x2 domingo fixo + folga variável",
   "5x2_quinzenal": "5x2 domingo quinzenal",
   "5x2_3semanas": "5x2 domingo a cada 3 semanas",
   "5x2_fechado": "5x2 casa fechada",
@@ -49,6 +52,7 @@ export const MODELOS_EXPLICADOS: Record<ModeloChave, string> = {
   "5x2": "5 dias de trabalho, folgas fixas",
   "5x2_rev": "5 dias de trabalho, folgas que mudam a cada semana",
   "5x2_corrida": "5 dias de trabalho, as 2 folgas andam um dia por semana",
+  "5x2_domingo": "5 dias de trabalho, folga todo domingo e mais 1 dia que muda a cada semana",
   "5x2_quinzenal": "5 dias de trabalho, folga no domingo a cada 2 semanas",
   "5x2_3semanas": "5 dias de trabalho, folga no domingo a cada 3 semanas",
   "5x2_fechado": "5 dias de trabalho, folga no dia em que a empresa fecha e em mais 1",
@@ -75,6 +79,8 @@ export function fraseDaPessoa(c: ConfigPessoa): string {
       return `Trabalha 5 dias; as folgas mudam a cada semana e caem no domingo a cada ${c.semanasRodizio} semanas, ${horario}.`;
     case "5x2_corrida":
       return `Trabalha 5 dias; as 2 folgas andam um dia por semana (${listaDias(folgasDaCorrida(c.rodizio))} na 1ª semana do ciclo), ${horario}.`;
+    case "5x2_domingo":
+      return `Trabalha 5 dias; folga todo domingo e mais 1 dia que anda um dia por semana (${listaDias(folgasDoDomingoFixo(c.rodizio))} na 1ª semana do ciclo), ${horario}.`;
     case "5x2_quinzenal":
       return `Trabalha 5 dias; folga no domingo a cada 2 semanas (${listaDias(folgasDaQuinzenal(c.rodizio))} na 1ª semana do ciclo), ${horario}.`;
     case "5x2_3semanas":
@@ -206,6 +212,7 @@ const HORARIOS: Record<ModeloChave, [string, string]> = {
   "5x2": ["08:00", "17:00"], // 8h x 5 = 40h
   "5x2_rev": ["08:00", "17:00"],
   "5x2_corrida": ["08:00", "17:00"],
+  "5x2_domingo": ["08:00", "17:00"],
   "5x2_quinzenal": ["08:00", "17:00"],
   "5x2_3semanas": ["08:00", "17:00"],
   "5x2_fechado": ["08:00", "17:00"],
@@ -283,6 +290,26 @@ export const SEMANAS_CORRIDA: number[][] = [
   [0, 1],
 ];
 
+/**
+ * Domingo fixo + folga variável: o domingo é folga toda semana e a 2ª folga anda um dia por
+ * semana, de segunda a sábado. Entre dois domingos há 6 dias e só 1 folga, então nunca
+ * passam de 5 dias seguidos de trabalho (sáb, dom e seg juntos na virada do ciclo).
+ */
+export const SEMANAS_DOMINGO: number[][] = [
+  [0, 1],
+  [0, 2],
+  [0, 3],
+  [0, 4],
+  [0, 5],
+  [0, 6],
+];
+
+/** Folgas da semana `grupo` do ciclo do domingo fixo (0 = dom+seg). */
+export function folgasDoDomingoFixo(grupo: number): number[] {
+  const n = SEMANAS_DOMINGO.length;
+  return SEMANAS_DOMINGO[((grupo % n) + n) % n];
+}
+
 /** Folgas da semana `grupo` do ciclo da folga corrida (0 = seg+ter). */
 export function folgasDaCorrida(grupo: number): number[] {
   const n = SEMANAS_CORRIDA.length;
@@ -345,6 +372,11 @@ export function modeloDaPessoa(c: ConfigPessoa, mes: string): ModeloEscala {
     const n = SEMANAS_CORRIDA.length;
     const base = somarDias(BASE_RODIZIO, -7 * (((c.rodizio % n) + n) % n));
     return { tipo: "rotativo", nome: "5x2 folga corrida", turno, semanas: SEMANAS_CORRIDA, base };
+  }
+  if (c.modelo === "5x2_domingo") {
+    const n = SEMANAS_DOMINGO.length;
+    const base = somarDias(BASE_RODIZIO, -7 * (((c.rodizio % n) + n) % n));
+    return { tipo: "rotativo", nome: "5x2 domingo fixo", turno, semanas: SEMANAS_DOMINGO, base };
   }
   if (c.modelo === "5x2_quinzenal") {
     const n = SEMANAS_QUINZENAL.length;

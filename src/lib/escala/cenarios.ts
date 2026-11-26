@@ -169,6 +169,14 @@ export function montarCenarios(
       configs: cada("5x2_3semanas", (_, i) => ({ rodizio: (i + v) % 3 })),
     },
     {
+      id: "5x2_domingo",
+      nome: "5x2 com domingo fixo e folga variável",
+      descricao:
+        "Fecha no domingo. Cada pessoa folga todo domingo e mais 1 dia que anda um dia por semana (seg, ter, … sáb, ciclo de 6 semanas); a equipe começa em dias diferentes, então de segunda a sábado sempre falta só 1 de cada 6. Nunca mais de 5 dias seguidos.",
+      modelo: "5x2_domingo",
+      configs: cada("5x2_domingo", (_, i) => ({ rodizio: (i + v) % 6 })),
+    },
+    {
       id: "4x3",
       nome: "4x3 de 10h",
       descricao: "Quatro dias de 10h (40h) e três folgas, uma no domingo. Compensação de jornada: exige acordo.",
@@ -339,6 +347,7 @@ export const DIAS_TRABALHO_SEMANA: Partial<Record<ModeloChave, number>> = {
   "5x2": 5,
   "5x2_rev": 5,
   "5x2_corrida": 5,
+  "5x2_domingo": 5,
   "5x2_quinzenal": 5,
   "5x2_3semanas": 5,
   "5x2_fechado": 5,
