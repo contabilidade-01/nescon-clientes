@@ -171,6 +171,11 @@ export interface ConfigPessoa {
    * já ter as 2 folgas. Nos outros meses não muda nada.
    */
   seisPorUmAteVirada: boolean;
+  /**
+   * Unidade (loja, filial com o mesmo CNPJ) em que a pessoa trabalha, ex.: "Mairiporã",
+   * "Terra Preta". Só etiqueta e filtro da grade; vazio = sem unidade.
+   */
+  unidade?: string;
 }
 
 /** Ajustes manuais: pessoa -> data -> turno (null = folga). */
@@ -557,7 +562,19 @@ export function normalizarConfigPessoa(raw: ConfigPessoa, padrao: ModeloChave): 
     folgas5x2: Array.isArray(raw.folgas5x2) ? raw.folgas5x2 : base.folgas5x2,
     turma: raw.turma === "B" ? "B" : "A",
     seisPorUmAteVirada: raw.seisPorUmAteVirada !== false,
+    unidade: nomeDeUnidade(raw.unidade),
   };
+}
+
+/** Unidade limpa (até 40 letras) ou undefined. */
+export function nomeDeUnidade(v: unknown): string | undefined {
+  const s = typeof v === "string" ? v.trim().replace(/\s+/g, " ").slice(0, 40) : "";
+  return s || undefined;
+}
+
+/** Unidades usadas na equipe, em ordem alfabética. */
+export function unidadesDa(configs: ConfigPessoa[]): string[] {
+  return [...new Set(configs.map((c) => c.unidade).filter((u): u is string => Boolean(u)))].sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
 /**

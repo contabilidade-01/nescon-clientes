@@ -96,3 +96,16 @@ describe("5x2 folga corrida no comércio", () => {
     expect(r.motivos[0]).toContain("domingo");
   });
 });
+
+describe("unidade da pessoa (lojas com o mesmo CNPJ)", () => {
+  it("fica salva no plano, é limpa e lista as unidades da equipe", async () => {
+    const { mesclarPlano, unidadesDa, nomeDeUnidade } = await import("@/lib/escala/planejamento");
+    const a = { ...configPadrao("1", "Ana", "5x2_corrida"), unidade: "  Terra   Preta " };
+    const b = { ...configPadrao("2", "Bia", "5x2_corrida"), unidade: "Mairiporã" };
+    const vaga = { ...configPadrao("vaga-1", "Maria", "5x2_corrida"), unidade: "Terra Preta" };
+    const plano = mesclarPlano({ configs: [a, b, vaga], ajustes: {} }, [{ id: "1", name: "Ana" }, { id: "2", name: "Bia" }, { id: "3", name: "Caio" }], "5x2");
+    expect(plano.configs.map((c) => c.unidade)).toEqual(["Terra Preta", "Mairiporã", undefined, "Terra Preta"]);
+    expect(unidadesDa(plano.configs)).toEqual(["Mairiporã", "Terra Preta"]);
+    expect(nomeDeUnidade("   ")).toBeUndefined();
+  });
+});

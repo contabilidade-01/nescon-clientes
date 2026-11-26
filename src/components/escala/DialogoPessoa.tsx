@@ -65,6 +65,7 @@ export function DialogoPessoa({
   feriadosSet,
   repousos,
   viradaEm,
+  unidades,
   onChange,
   onDias,
   onFechar,
@@ -76,6 +77,8 @@ export function DialogoPessoa({
   feriadosSet: Set<string>;
   repousos: number;
   viradaEm?: string;
+  /** Unidades já usadas na equipe (sugestões do campo Unidade). */
+  unidades: string[];
   onChange: (patch: Partial<ConfigPessoa>) => boolean;
   onDias: (datas: string[], acao: AcaoDia) => boolean;
   onFechar: () => void;
@@ -120,6 +123,7 @@ export function DialogoPessoa({
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             Escala de {c.nome}
+            {c.unidade && <Badge variant="outline">{c.unidade}</Badge>}
             {erros ? (
               <Badge variant="destructive">
                 <XCircle className="mr-1 h-3 w-3" /> {erros} erro(s)
@@ -140,7 +144,7 @@ export function DialogoPessoa({
           <div className="space-y-4">
             <section className="space-y-2 rounded-lg border p-3">
               <p className="text-sm font-medium">Modelo, horário padrão e folgas</p>
-              <ControlesPessoa c={c} repousos={repousos} viradaEm={viradaEm} onChange={(p) => void onChange(p)} />
+              <ControlesPessoa c={c} repousos={repousos} viradaEm={viradaEm} unidades={unidades} onChange={(p) => void onChange(p)} />
               <p className="text-[11px] text-muted-foreground">Trocar o modelo ou as folgas desfaz os ajustes feitos à mão nesta pessoa.</p>
             </section>
 
