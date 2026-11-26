@@ -45,6 +45,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DEVOLVER, FORA, TimesPorUnidade, type PessoaDoTime } from "./TimesPorUnidade";
 import { TrazerDeOutraEmpresa, type EmpresaDoGrupo } from "./TrazerDeOutraEmpresa";
+import { ExcluirFuncionario, type ComoExcluir } from "./ExcluirFuncionario";
 import { BarraLote, type AtalhoDias, type MarcarPessoas } from "@/components/escala/BarraLote";
 import { DialogoPessoa } from "@/components/escala/DialogoPessoa";
 import { agruparOcorrencias } from "@/lib/escala/ocorrencias";
@@ -197,6 +198,7 @@ export function PlanejadorEscala({
   const [timesAberto, setTimesAberto] = useState(true);
   const [cargosAberto, setCargosAberto] = useState(false);
   const [trazendo, setTrazendo] = useState(false);
+  const [excluindo, setExcluindo] = useState<string | null>(null);
   // O cliente começa no caminho guiado; o escritório, nas abas completas. A escolha fica no navegador.
   const chaveModo = `escala-modo-${companyId ? "escritorio" : "portal"}`;
   const [modo, setModoEstado] = useState<Modo>(() => {
@@ -789,6 +791,42 @@ export function PlanejadorEscala({
     }
   }
 
+  /** Tira a pessoa da escala e dos times (sem marcar "fora": ela deixa a equipe). */
+  function tirarDaEquipe(id: string) {
+    const times = { ...cfg.times };
+    delete times[id];
+    const cargos = { ...cfg.cargos };
+    delete cargos[id];
+    salvarTimes({ ...cfg, times, cargos, foraDaEscala: cfg.foraDaEscala.filter((x) => x !== id) });
+    setConfigs((cs) => cs.filter((c) => c.id !== id));
+    setAjustes((aj) => Object.fromEntries(Object.entries(aj).filter(([k]) => k !== id)));
+    setSelPessoas(new Set());
+    setAlterado(true);
+  }
+
+  async function excluirPessoa(id: string, como: ComoExcluir) {
+    const nome = pessoasDoTime.find((p) => p.id === id)?.nome || "Funcionário";
+    if (id.startsWith("vaga-")) {
+      tirarDaEquipe(id);
+      setExcluindo(null);
+      return void toast.success(`${nome} saiu da escala.`, { description: "Salve a escala para gravar." });
+    }
+    try {
+      if (como === "inativar") await api.employees.update(id, { active: false });
+      else await api.employees.delete(id);
+    } catch (e) {
+      return void toast.error(`Não foi possível ${como === "inativar" ? "inativar" : "excluir"} ${nome}.`, { description: (e as Error).message });
+    }
+    const ajustado = alterado;
+    tirarDaEquipe(id);
+    setExcluindo(null);
+    // Sem edição pendente, recarrega a equipe; com edição, a lista só muda aqui para não perder o que não foi salvo.
+    if (!ajustado) qc.invalidateQueries({ queryKey: ["employees"] });
+    toast.success(como === "inativar" ? `${nome} foi inativado.` : `${nome} foi excluído.`, {
+      description: "Saiu da equipe e da escala. Salve a escala para gravar os meses.",
+    });
+  }
+
   async function devolver(id: string) {
     const e = cfg.emprestados.find((x) => x.id === id);
     if (!e) return;
@@ -946,6 +984,15 @@ export function PlanejadorEscala({
           onNovaUnidade={novaUnidade}
           onMontar={montarTime}
           onTrazer={empresaAtual && outrasEmpresas?.length ? () => setTrazendo(true) : undefined}
+          onExcluir={setExcluindo}
+        />
+      )}
+      {excluindo && (
+        <ExcluirFuncionario
+          nome={pessoasDoTime.find((p) => p.id === excluindo)?.nome || "funcionário"}
+          vaga={excluindo.startsWith("vaga-")}
+          onFechar={() => setExcluindo(null)}
+          onConfirmar={(como) => excluirPessoa(excluindo, como)}
         />
       )}
       {trazendo && empresaAtual && outrasEmpresas && (
