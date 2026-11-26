@@ -25,7 +25,7 @@ export function ControlesPessoa({
   repousos: number;
   /** Modelos que a empresa não pratica: não aparecem na lista (fora o que a pessoa já usa). */
   ocultar?: ModeloChave[];
-  /** Quando vem, mostra o campo da unidade (com as já usadas na equipe como sugestão). */
+  /** Quando vem, mostra a lista das unidades da empresa; escolher uma move a pessoa para lá. */
   unidades?: string[];
   /** Dia em que entram as 2 folgas, quando cai neste mês: mostra a 6x1 até a véspera. */
   viradaEm?: string;
@@ -39,23 +39,20 @@ export function ControlesPessoa({
       {unidades && (
         <label className="flex w-full items-center gap-1 text-[11px] text-muted-foreground">
           Unidade
-          <input
+          <select
             className={cn(sel, "flex-1")}
-            list={`unidades-${c.id}`}
-            defaultValue={c.unidade || ""}
-            placeholder="Ex.: Mairiporã, Terra Preta"
-            maxLength={40}
-            onBlur={(e) => {
-              const u = nomeDeUnidade(e.target.value);
-              if (u !== c.unidade) onChange({ unidade: u });
-            }}
+            value={c.unidade || ""}
+            onChange={(e) => onChange({ unidade: nomeDeUnidade(e.target.value) })}
             aria-label="Unidade"
-          />
-          <datalist id={`unidades-${c.id}`}>
-            {unidades.map((u) => (
-              <option key={u} value={u} />
+            title="Escolha a unidade: a pessoa passa na hora para o time de lá"
+          >
+            {[...new Set([...unidades, ...(c.unidade ? [c.unidade] : [])])].map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
             ))}
-          </datalist>
+            <option value="">Sem unidade</option>
+          </select>
         </label>
       )}
       <select
