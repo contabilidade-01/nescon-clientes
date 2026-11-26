@@ -241,6 +241,15 @@ export async function executarFerramenta(
         if (!Number.isInteger(g) || g < 0 || g > 6) return falha("grupo_corrida inválido (0-6).", "Alteração recusada");
         novo.rodizio = g;
       }
+      if (input.grupo_quinzenal !== undefined) {
+        const g = Number(input.grupo_quinzenal);
+        if (!Number.isInteger(g) || g < 0 || g > 3) return falha("grupo_quinzenal inválido (0-3).", "Alteração recusada");
+        novo.rodizio = g;
+      }
+      if (input.sexo !== undefined) {
+        if (input.sexo !== "F" && input.sexo !== "M" && input.sexo !== "") return falha("sexo inválido ('F', 'M' ou '').", "Alteração recusada");
+        novo.sexo = input.sexo === "" ? undefined : (input.sexo as "F" | "M");
+      }
       if (input.folga_fixa !== undefined) {
         const d = dia(input.folga_fixa);
         if (d === null) return falha("folga_fixa inválida.", "Alteração recusada");

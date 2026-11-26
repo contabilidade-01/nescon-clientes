@@ -72,6 +72,8 @@ export const CLT = {
   intervaloAte6hMin: 15,
   /** 12x36 (art. 59-A): plantão de 12h. */
   plantao12x36Horas: 12,
+  /** Art. 386: na escala de revezamento, a mulher folga no domingo a cada 15 dias (2 semanas). */
+  domingoMulherACadaSemanas: 2,
 } as const;
 
 export interface RegraSegmento {
@@ -84,11 +86,15 @@ export interface RegraSegmento {
 
 /**
  * Comércio: domingo de folga a cada 3 semanas (Lei 10.101/2000, art. 6º, parágrafo único).
+ * Restaurante / bar: a Portaria MTP 671/2021 (Anexo IV) põe restaurantes entre as
+ * atividades do comércio autorizadas a abrir no domingo, então vale a mesma régua de 3
+ * semanas. Mulheres têm regra própria (a cada 2 semanas, art. 386 da CLT), ver
+ * `CLT.domingoMulherACadaSemanas`.
  * Demais: a regra geral de escala de revezamento, a cada 7 semanas (Portaria MTPS 417/1966).
  */
 export const SEGMENTOS: Record<Segmento, RegraSegmento> = {
   construcao_civil: { nome: "Construção civil", domingoACadaSemanas: 7, feriadoExigeConvencao: false },
-  restaurante: { nome: "Restaurante / bar", domingoACadaSemanas: 7, feriadoExigeConvencao: false },
+  restaurante: { nome: "Restaurante / bar", domingoACadaSemanas: 3, feriadoExigeConvencao: false },
   comercio: { nome: "Comércio em geral", domingoACadaSemanas: 3, feriadoExigeConvencao: true },
   outro: { nome: "Outro", domingoACadaSemanas: 7, feriadoExigeConvencao: false },
 };
@@ -116,4 +122,6 @@ export interface PerfilJornada {
    * `companies.escala_12x36`.
    */
   regime12x36?: boolean;
+  /** Empregada mulher: domingo de folga ao menos a cada 2 semanas (art. 386 da CLT). */
+  mulher?: boolean;
 }

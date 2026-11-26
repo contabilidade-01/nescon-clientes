@@ -16,9 +16,11 @@ import {
   type ConfigEmpresa,
 } from "@/lib/escala/planejamento";
 
+// Restaurante e comércio exigem domingo a cada 3 semanas, o que a folga corrida não cumpre;
+// ela é testada numa atividade com a régua geral de 7 semanas.
 const restaurante = (temAcordoColetivo = false): ConfigEmpresa => ({
   ...normalizarConfigEmpresa(null),
-  segmento: "restaurante",
+  segmento: "outro",
   temAcordoColetivo,
 });
 const semFeriado = new Set<string>();
@@ -44,7 +46,7 @@ describe("5x2 folga corrida", () => {
     seq.slice(1).forEach((g, i) => expect(g).toBe((seq[i] + 1) % 7));
   });
 
-  it("8h por dia: 40h, 2 folgas por semana e nenhum alerta no restaurante", () => {
+  it("8h por dia: 40h, 2 folgas por semana e nenhum alerta na régua de 7 semanas", () => {
     for (let r = 0; r < 7; r++) {
       const c = { ...configPadrao("1", "Ana", "5x2_corrida"), rodizio: r };
       for (const mes of ["2027-01", "2027-02", "2027-03", "2028-01"]) {
@@ -87,10 +89,10 @@ describe("5x2 folga corrida", () => {
   });
 });
 
-describe("5x2 folga corrida no comércio", () => {
-  it("fica indisponível: o domingo de folga não volta a cada 3 semanas", () => {
+describe("5x2 folga corrida no comércio e no restaurante", () => {
+  it.each(["comercio", "restaurante"] as const)("fica indisponível em %s: o domingo de folga não volta a cada 3 semanas", (segmento) => {
     const pessoas = Array.from({ length: 6 }, (_, i) => ({ id: String(i), nome: `P${i}` }));
-    const empresa = { ...normalizarConfigEmpresa(null), segmento: "comercio" as const, temAcordoColetivo: false };
+    const empresa = { ...normalizarConfigEmpresa(null), segmento, temAcordoColetivo: false };
     const r = simularCenarios(pessoas, "2027-01", empresa, semFeriado).find((x) => x.id === "5x2_corrida")!;
     expect(r.podeAplicar).toBe(false);
     expect(r.motivos[0]).toContain("domingo");

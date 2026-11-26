@@ -144,16 +144,19 @@ export function validarEscala(
   }
 
   // --- Domingo de folga a cada N semanas -----------------------------------------------
+  const domingoACada = perfil.mulher ? Math.min(seg.domingoACadaSemanas, CLT.domingoMulherACadaSemanas) : seg.domingoACadaSemanas;
   let domingosTrabalhados = 0;
   for (const { data, turno } of dias) {
     if (diaDaSemana(data) !== 0) continue;
     domingosTrabalhados = turno ? domingosTrabalhados + 1 : 0;
-    if (!r12 && domingosTrabalhados === seg.domingoACadaSemanas) {
+    if (!r12 && domingosTrabalhados === domingoACada) {
       add(
         data,
         "DOMINGO",
         "erro",
-        `${domingosTrabalhados} domingos seguidos trabalhados; em ${seg.nome.toLowerCase()} a folga deve cair no domingo ao menos 1 vez a cada ${seg.domingoACadaSemanas} semanas.`,
+        perfil.mulher && domingoACada < seg.domingoACadaSemanas
+          ? `${domingosTrabalhados} domingos seguidos trabalhados; mulher deve folgar no domingo ao menos 1 vez a cada ${domingoACada} semanas (art. 386 da CLT).`
+          : `${domingosTrabalhados} domingos seguidos trabalhados; em ${seg.nome.toLowerCase()} a folga deve cair no domingo ao menos 1 vez a cada ${domingoACada} semanas.`,
       );
     }
   }

@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { MODELOS, MODELOS_EXPLICADOS, SEMANAS_CORRIDA, configPadrao, nomeDeUnidade, proximaFolga, segundaFolga, ultimoDiaDa6x1, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
+import { MODELOS, MODELOS_EXPLICADOS, SEMANAS_CORRIDA, SEMANAS_QUINZENAL, configPadrao, nomeDeUnidade, proximaFolga, segundaFolga, ultimoDiaDa6x1, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
 import { PARES_5X2 } from "@/lib/escala/porPessoa";
 
 const NOMES_DIA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -55,6 +55,17 @@ export function ControlesPessoa({
           </datalist>
         </label>
       )}
+      <select
+        className={sel}
+        value={c.sexo || ""}
+        onChange={(e) => onChange({ sexo: (e.target.value || undefined) as ConfigPessoa["sexo"] })}
+        aria-label="Sexo"
+        title="Mulher: domingo de folga ao menos a cada 2 semanas (art. 386 da CLT)"
+      >
+        <option value="">Sexo: não informado</option>
+        <option value="F">Mulher (domingo a cada 2 sem.)</option>
+        <option value="M">Homem</option>
+      </select>
       <select
         className={cn(sel, "w-full")}
         value={c.modelo}
@@ -189,6 +200,15 @@ export function ControlesPessoa({
       {c.modelo === "5x2_corrida" && (
         <select className={sel} value={((c.rodizio % 7) + 7) % 7} onChange={(e) => onChange({ rodizio: Number(e.target.value) })} aria-label="Começa folgando">
           {SEMANAS_CORRIDA.map((par, i) => (
+            <option key={i} value={i}>
+              Começa folgando {par.map(abrev).join("+")}
+            </option>
+          ))}
+        </select>
+      )}
+      {c.modelo === "5x2_quinzenal" && (
+        <select className={sel} value={((c.rodizio % 4) + 4) % 4} onChange={(e) => onChange({ rodizio: Number(e.target.value) })} aria-label="Começa folgando">
+          {SEMANAS_QUINZENAL.map((par, i) => (
             <option key={i} value={i}>
               Começa folgando {par.map(abrev).join("+")}
             </option>

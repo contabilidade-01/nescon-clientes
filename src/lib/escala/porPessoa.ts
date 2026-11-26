@@ -10,6 +10,7 @@ import {
   configPadrao,
   diasDoMes,
   folgasDaCorrida,
+  folgasDaQuinzenal,
   MODELOS,
   proximaFolga,
   type Ajustes,
@@ -67,6 +68,8 @@ export function resumoFolgas(c: ConfigPessoa): string {
       return `folga ${ABREV[c.folgaFixa]}, dom. a cada ${c.semanasRodizio} sem. (grupo ${(c.rodizio % c.semanasRodizio) + 1})`;
     case "5x2_corrida":
       return `folgas corridas, começa ${folgasDaCorrida(c.rodizio).map((d) => ABREV[d]).join("+")} (grupo ${(((c.rodizio % 7) + 7) % 7) + 1})`;
+    case "5x2_quinzenal":
+      return `dom. a cada 2 sem., começa ${folgasDaQuinzenal(c.rodizio).map((d) => ABREV[d]).join("+")} (grupo ${(((c.rodizio % 4) + 4) % 4) + 1})`;
     case "5x2_fechado":
       return c.diaFechado === 0 || c.semanasRodizio <= 1
         ? `folga ${ABREV[c.diaFechado]}+${ABREV[c.folgaFixa]}`
@@ -87,7 +90,7 @@ function mesmaConfig(a: ConfigPessoa, b: ConfigPessoa): boolean {
 /** Variações de folga de um modelo para a pessoa `c`. */
 function variacoes(c: ConfigPessoa, modelo: ModeloChave, mes: string, empresa: EmpresaPessoa): ConfigPessoa[] {
   // Quem já está no modelo mantém o horário dele; quem troca entra no horário padrão do modelo.
-  const base = c.modelo === modelo ? { ...c } : { ...configPadrao(c.id, c.nome, modelo) };
+  const base = c.modelo === modelo ? { ...c } : { ...configPadrao(c.id, c.nome, modelo), sexo: c.sexo, unidade: c.unidade };
   const domingoACada = SEGMENTOS[empresa.segmento].domingoACadaSemanas;
   const out: ConfigPessoa[] = [];
   if (modelo === "6x1") for (let d = 0; d < 7; d++) out.push({ ...base, folga6x1: d });
@@ -96,6 +99,7 @@ function variacoes(c: ConfigPessoa, modelo: ModeloChave, mes: string, empresa: E
     for (const n of [2, 3]) for (let f = 1; f <= 6; f++) for (let r = 0; r < n; r++) out.push({ ...base, folgaFixa: f, semanasRodizio: n, rodizio: r });
   }
   if (modelo === "5x2_corrida") for (let r = 0; r < 7; r++) out.push({ ...base, rodizio: r });
+  if (modelo === "5x2_quinzenal") for (let r = 0; r < 4; r++) out.push({ ...base, rodizio: r });
   if (modelo === "5x2_fechado") {
     // O dia fechado vem da empresa; sem ele, fica o que a pessoa já tinha (domingo, de início).
     const fechados = empresa.diasFechados.length ? empresa.diasFechados : [base.diaFechado];
