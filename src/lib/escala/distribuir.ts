@@ -164,8 +164,8 @@ export function configsDoGrupo(
       break;
     }
     case "5x2_domingo": {
-      // O domingo é de todos; a 2ª folga espalha a equipe pelos 6 dias de segunda a sábado.
-      espalhar([0, 1, 2, 3, 4, 5], n, rnd).forEach((r, i) => (base[i].rodizio = r));
+      // O domingo é de todos; a 2ª folga espalha a equipe pelos 4 dias de terça a sexta.
+      espalhar([0, 1, 2, 3], n, rnd).forEach((r, i) => (base[i].rodizio = r));
       break;
     }
     case "5x2_3semanas": {

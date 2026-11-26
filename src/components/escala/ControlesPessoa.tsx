@@ -224,7 +224,7 @@ export function ControlesPessoa({
         </select>
       )}
       {c.modelo === "5x2_domingo" && (
-        <select className={sel} value={((c.rodizio % 6) + 6) % 6} onChange={(e) => onChange({ rodizio: Number(e.target.value) })} aria-label="Começa folgando">
+        <select className={sel} value={((c.rodizio % SEMANAS_DOMINGO.length) + SEMANAS_DOMINGO.length) % SEMANAS_DOMINGO.length} onChange={(e) => onChange({ rodizio: Number(e.target.value) })} aria-label="Começa folgando">
           {SEMANAS_DOMINGO.map((par, i) => (
             <option key={i} value={i}>
               Começa folgando {par.map(abrev).join("+")}
