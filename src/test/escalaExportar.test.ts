@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as XLSX from "xlsx";
-import { linhasDaPlanilha, mediaDe2Semanas, mediaSemanal, pdfDaEscala, linhasDasSemanas, semanaDaLei, semanasDoMes, textoDaSemanaDaLei, textoDoDia, type EscalaExportada } from "@/lib/escala/exportarEscala";
+import { gruposPorUnidade, linhasDaPlanilha, mediaDe2Semanas, mediaSemanal, pdfDaEscala, linhasDasSemanas, semanaDaLei, semanasDoMes, textoDaSemanaDaLei, textoDoDia, type EscalaExportada } from "@/lib/escala/exportarEscala";
 import { avaliarPessoa, configEmpresaPadrao, configPadrao, diasDoMes, diasParaValidar } from "@/lib/escala/planejamento";
 import { simularCenarios, turnoQuePreenche } from "@/lib/escala/cenarios";
 import { feriadosDaEmpresa } from "@/lib/escala/feriados";
@@ -47,6 +47,36 @@ describe("baixar a escala", () => {
     const doc = pdfDaEscala({ ...escala(), erros: 2 });
     expect(doc.getNumberOfPages()).toBeGreaterThanOrEqual(1);
     expect(doc.output("arraybuffer").byteLength).toBeGreaterThan(1000);
+  });
+});
+
+describe("PDF separado por unidade", () => {
+  it("agrupa por unidade, na ordem da tela, e deixa quem não tem unidade no fim", () => {
+    const e = escala();
+    const [ana, bruno] = e.pessoas;
+    const pessoas = [
+      { ...ana, nome: "Sem time" },
+      { ...ana, unidade: "Matriz" },
+      { ...bruno, unidade: "Terra Preta" },
+      { ...bruno, nome: "Carla", unidade: "Matriz" },
+    ];
+    const g = gruposPorUnidade(pessoas);
+    expect(g.map((x) => x.titulo)).toEqual(["Unidade Matriz", "Unidade Terra Preta", "Sem unidade"]);
+    expect(g[0].pessoas.map((p) => p.nome)).toEqual(["Ana", "Carla"]);
+    expect(g[2].pessoas.map((p) => p.nome)).toEqual(["Sem time"]);
+  });
+
+  it("uma unidade só (ou nenhuma) sai como antes, sem título", () => {
+    expect(gruposPorUnidade(escala().pessoas)).toEqual([{ pessoas: escala().pessoas }]);
+    const unica = escala().pessoas.map((p) => ({ ...p, unidade: "Matriz" }));
+    expect(gruposPorUnidade(unica)[0].titulo).toBeUndefined();
+  });
+
+  it("cada unidade começa em página nova", () => {
+    const e = escala();
+    const so = pdfDaEscala(e).getNumberOfPages();
+    const duas = pdfDaEscala({ ...e, pessoas: [{ ...e.pessoas[0], unidade: "Matriz" }, { ...e.pessoas[1], unidade: "Terra Preta" }] });
+    expect(duas.getNumberOfPages()).toBeGreaterThanOrEqual(so + 1);
   });
 });
 

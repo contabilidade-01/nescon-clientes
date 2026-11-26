@@ -27,6 +27,8 @@ export interface PessoaExportada {
   semanas?: SemanaExportada[];
   /** Cargo (cozinheiro, garçom…): sai embaixo do nome e conta na cobertura por cargo. */
   cargo?: string;
+  /** Unidade (loja/filial): com mais de uma, o PDF sai separado, uma unidade por página. */
+  unidade?: string;
 }
 
 export interface SemanaExportada {
@@ -221,33 +223,32 @@ export function baixarEscalaXlsx(e: EscalaExportada): void {
 
 type DocComTabela = jsPDF & { lastAutoTable?: { finalY: number } };
 
+/**
+ * Pessoas agrupadas por unidade, na ordem em que aparecem; quem não tem unidade fica em
+ * "Sem unidade", no fim. Com uma unidade só (ou nenhuma), volta um grupo sem título.
+ */
+export function gruposPorUnidade(pessoas: PessoaExportada[]): Array<{ titulo?: string; pessoas: PessoaExportada[] }> {
+  const ordem: string[] = [];
+  const porUnidade = new Map<string, PessoaExportada[]>();
+  for (const p of pessoas) {
+    const u = p.unidade?.trim() || "";
+    if (!porUnidade.has(u)) {
+      porUnidade.set(u, []);
+      ordem.push(u);
+    }
+    porUnidade.get(u)!.push(p);
+  }
+  if (porUnidade.size <= 1) return [{ pessoas }];
+  const chaves = [...ordem.filter((u) => u), ...(porUnidade.has("") ? [""] : [])];
+  return chaves.map((u) => ({ titulo: u ? `Unidade ${u}` : "Sem unidade", pessoas: porUnidade.get(u)! }));
+}
+
 /** Monta o PDF (paisagem, uma tabela por semana, para afixar no mural). */
 export function pdfDaEscala(e: EscalaExportada): jsPDF {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" }) as DocComTabela;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 12;
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text(`Escala de trabalho · ${nomeMes(e.mes)}`, margin, margin + 2);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  let y = margin + 7;
-  if (e.empresa) {
-    doc.text(e.empresa, margin, y);
-    y += 4.5;
-  }
-  doc.text(e.regra, margin, y);
-  y += 4.5;
-  if (e.erros) {
-    doc.setTextColor(200, 30, 30);
-    doc.setFont("helvetica", "bold");
-    doc.text("RASCUNHO: esta escala ainda tem pontos fora da regra. Corrija antes de usar.", margin, y);
-    doc.setTextColor(0);
-    doc.setFont("helvetica", "normal");
-    y += 4.5;
-  }
 
   const datas = e.pessoas[0]?.dias.map((d) => d.data) ?? [];
   // Nome e horas largos o bastante para caber em uma linha ("44h (média 38h30)"): com linhas de
@@ -256,70 +257,33 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
   const larguraNome = comLei ? 54 : 62;
   const larguraHoras = comLei ? 48 : 34;
   const larguraDia = (pageW - 2 * margin - larguraNome - larguraHoras) / 7;
-  const fonte = e.pessoas.length > 16 ? 7.5 : 8;
-  for (const semana of semanasDoMes(datas)) {
-    const dentro = semana.filter((d): d is string => Boolean(d));
-    autoTable(doc, {
-      startY: y + 2,
-      margin: { left: margin, right: margin },
-      theme: "grid",
-      rowPageBreak: "avoid",
-      // Cada semana inteira na mesma página.
-      pageBreak: "avoid",
-      styles: { font: "helvetica", fontSize: fonte, cellPadding: 1.2, halign: "center", valign: "middle" },
-      headStyles: { fillColor: [30, 64, 120], textColor: 255, fontStyle: "bold" },
-      // Colunas dos dias com a mesma largura em todas as semanas, para o mural ficar alinhado.
-      columnStyles: {
-        0: { halign: "left", cellWidth: larguraNome, fontStyle: "bold" },
-        ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((i) => [i, { cellWidth: larguraDia }])),
-        8: { cellWidth: larguraHoras },
-      },
-      head: [
-        [
-          `Semana de ${ddmm(dentro[0])} a ${ddmm(dentro.at(-1)!)}`,
-          ...semana.map((d, i) => (d ? `${DIAS_CURTOS[i]} ${ddmm(d)}${e.feriados.has(d) ? " *" : ""}` : DIAS_CURTOS[i])),
-          comLei ? "Horas na semana (lei)" : "Horas",
-        ],
-      ],
-      body: [
-        ...e.pessoas.map((p) => [
-          p.cargo ? `${p.nome}\n${p.cargo}` : p.nome,
-          ...semana.map((d) => (d ? textoDoDia(p.dias.find((x) => x.data === d)) : "")),
-          textoHorasSemana(p, semana, datas),
-        ]),
-        // Quantos de cada cargo trabalham no dia ("1/2" = 1 de 2 necessários).
-        ...coberturaPorCargo(
-          e.pessoas.map((p) => ({ config: { cargo: p.cargo }, dias: p.dias })),
-          dentro,
-          e.minimoPorCargo,
-        ).map((cc) => [
-          `${cc.cargo} trabalhando`,
-          ...semana.map((d) => {
-            if (!d) return "";
-            const n = cc.porDia.get(d) ?? 0;
-            const min = cc.minimo[diaDaSemana(d)];
-            return min ? `${n}/${min}${n < min ? " FALTA" : ""}` : String(n);
-          }),
-          "",
-        ]),
-      ],
-      didParseCell: (c) => {
-        if (c.section === "body" && c.cell.raw === "Folga") {
-          c.cell.styles.fillColor = [232, 236, 242];
-          c.cell.styles.textColor = 90;
-        }
-        if (c.section === "body" && c.column.index === 0 && typeof c.cell.raw === "string" && c.cell.raw.endsWith(" trabalhando")) {
-          c.cell.styles.fontStyle = "italic";
-          c.cell.styles.textColor = 90;
-        }
-        if (c.section === "body" && typeof c.cell.raw === "string" && /(\((ACIMA|FALTA FOLGA)| FALTA$)/.test(c.cell.raw)) {
-          c.cell.styles.textColor = [200, 30, 30];
-          c.cell.styles.fontStyle = "bold";
-        }
-      },
-    });
-    y = doc.lastAutoTable?.finalY ?? y;
-  }
+  let y = margin;
+
+  // Com mais de uma unidade, cada unidade começa em página nova, com o próprio cabeçalho.
+  gruposPorUnidade(e.pessoas).forEach((grupo, gi) => {
+    if (gi > 0) doc.addPage();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text(`Escala de trabalho · ${nomeMes(e.mes)}${grupo.titulo ? ` · ${grupo.titulo}` : ""}`, margin, margin + 2);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    y = margin + 7;
+    if (e.empresa) {
+      doc.text(e.empresa, margin, y);
+      y += 4.5;
+    }
+    doc.text(e.regra, margin, y);
+    y += 4.5;
+    if (e.erros) {
+      doc.setTextColor(200, 30, 30);
+      doc.setFont("helvetica", "bold");
+      doc.text("RASCUNHO: esta escala ainda tem pontos fora da regra. Corrija antes de usar.", margin, y);
+      doc.setTextColor(0);
+      doc.setFont("helvetica", "normal");
+      y += 4.5;
+    }
+    y = tabelasDasSemanas(doc, e, grupo.pessoas, datas, y, { margin, comLei, larguraNome, larguraHoras, larguraDia });
+  });
 
   // Notas das horas: semana cortada pelo mês e média da 12x36.
   const notas: string[] = [];
@@ -360,6 +324,85 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
     doc.setTextColor(0);
   }
   return doc;
+}
+
+interface MedidasPdf {
+  margin: number;
+  comLei: boolean;
+  larguraNome: number;
+  larguraHoras: number;
+  larguraDia: number;
+}
+
+/** Uma tabela por semana (domingo a sábado) com as pessoas dadas; devolve onde parou. */
+function tabelasDasSemanas(doc: DocComTabela, e: EscalaExportada, pessoas: PessoaExportada[], datas: string[], yInicial: number, m: MedidasPdf): number {
+  const { margin, comLei, larguraNome, larguraHoras, larguraDia } = m;
+  let y = yInicial;
+  const fonte = pessoas.length > 16 ? 7.5 : 8;
+  for (const semana of semanasDoMes(datas)) {
+    const dentro = semana.filter((d): d is string => Boolean(d));
+    autoTable(doc, {
+      startY: y + 2,
+      margin: { left: margin, right: margin },
+      theme: "grid",
+      rowPageBreak: "avoid",
+      // Cada semana inteira na mesma página.
+      pageBreak: "avoid",
+      styles: { font: "helvetica", fontSize: fonte, cellPadding: 1.2, halign: "center", valign: "middle" },
+      headStyles: { fillColor: [30, 64, 120], textColor: 255, fontStyle: "bold" },
+      // Colunas dos dias com a mesma largura em todas as semanas, para o mural ficar alinhado.
+      columnStyles: {
+        0: { halign: "left", cellWidth: larguraNome, fontStyle: "bold" },
+        ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((i) => [i, { cellWidth: larguraDia }])),
+        8: { cellWidth: larguraHoras },
+      },
+      head: [
+        [
+          `Semana de ${ddmm(dentro[0])} a ${ddmm(dentro.at(-1)!)}`,
+          ...semana.map((d, i) => (d ? `${DIAS_CURTOS[i]} ${ddmm(d)}${e.feriados.has(d) ? " *" : ""}` : DIAS_CURTOS[i])),
+          comLei ? "Horas na semana (lei)" : "Horas",
+        ],
+      ],
+      body: [
+        ...pessoas.map((p) => [
+          p.cargo ? `${p.nome}\n${p.cargo}` : p.nome,
+          ...semana.map((d) => (d ? textoDoDia(p.dias.find((x) => x.data === d)) : "")),
+          textoHorasSemana(p, semana, datas),
+        ]),
+        // Quantos de cada cargo trabalham no dia ("1/2" = 1 de 2 necessários).
+        ...coberturaPorCargo(
+          pessoas.map((p) => ({ config: { cargo: p.cargo }, dias: p.dias })),
+          dentro,
+          e.minimoPorCargo,
+        ).map((cc) => [
+          `${cc.cargo} trabalhando`,
+          ...semana.map((d) => {
+            if (!d) return "";
+            const n = cc.porDia.get(d) ?? 0;
+            const min = cc.minimo[diaDaSemana(d)];
+            return min ? `${n}/${min}${n < min ? " FALTA" : ""}` : String(n);
+          }),
+          "",
+        ]),
+      ],
+      didParseCell: (c) => {
+        if (c.section === "body" && c.cell.raw === "Folga") {
+          c.cell.styles.fillColor = [232, 236, 242];
+          c.cell.styles.textColor = 90;
+        }
+        if (c.section === "body" && c.column.index === 0 && typeof c.cell.raw === "string" && c.cell.raw.endsWith(" trabalhando")) {
+          c.cell.styles.fontStyle = "italic";
+          c.cell.styles.textColor = 90;
+        }
+        if (c.section === "body" && typeof c.cell.raw === "string" && /(\((ACIMA|FALTA FOLGA)| FALTA$)/.test(c.cell.raw)) {
+          c.cell.styles.textColor = [200, 30, 30];
+          c.cell.styles.fontStyle = "bold";
+        }
+      },
+    });
+    y = doc.lastAutoTable?.finalY ?? y;
+  }
+  return y;
 }
 
 function textoHorasSemana(p: PessoaExportada, semana: Array<string | null>, datas: string[]): string {
