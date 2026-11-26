@@ -2981,6 +2981,20 @@ export const api = {
     arquivoUrl: (caminho: string) => `${API_BASE}${caminho.replace(/^\/api/, "")}`,
   },
 
+  /** Recálculo SEM LOGIN (página /recalculo): CNPJ + código por e-mail — ver api/src/recalculoCodigo.js. */
+  recalculo: {
+    pedirCodigo: (cnpj: string) =>
+      publicRequest<{ ok: boolean; email: string; minutos: number; reenviar_em: number }>(`/recalculo/codigo`, {
+        method: "POST",
+        body: JSON.stringify({ cnpj: cnpj.replace(/\D/g, "") }),
+      }),
+    verificar: (cnpj: string, codigo: string) =>
+      publicRequest<{ ok: boolean; token: string; minutos: number }>(`/recalculo/verificar`, {
+        method: "POST",
+        body: JSON.stringify({ cnpj: cnpj.replace(/\D/g, ""), codigo: codigo.replace(/\D/g, "") }),
+      }),
+  },
+
   /** Chat / Atendimento — lado do cliente. */
   chat: {
     conversations: () =>

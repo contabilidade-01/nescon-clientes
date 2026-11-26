@@ -63,6 +63,7 @@ import PropostasPage from "./pages/admin/PropostasPage.tsx";
 import GuiasFiscaisPage from "./pages/GuiasFiscaisPage.tsx";
 import ImpostosPendentesPage from "./pages/ImpostosPendentesPage.tsx";
 import GuiasLinkPage from "./pages/GuiasLinkPage.tsx";
+import RecalculoPage from "./pages/RecalculoPage.tsx";
 import ImpostosEcacPage from "./pages/admin/ImpostosEcacPage.tsx";
 import BoletosPage from "./pages/BoletosPage.tsx";
 import FolhaPage from "./pages/FolhaPage.tsx";
@@ -203,6 +204,8 @@ const AppRoutes = () => (
     <Route path="/entrega/:token" element={<EntregaPublicaPage />} />
     {/* Guias sem senha (link do WhatsApp/e-mail): escopo só guias da empresa */}
     <Route path="/g/:token" element={<GuiasLinkPage />} />
+    {/* Recálculo sem login: CNPJ + código no e-mail cadastrado (10 min) → tela de guias. */}
+    <Route path="/recalculo" element={<RecalculoPage />} />
     <Route path="/onboarding/:token" element={<OnboardingPublicoPage />} />
     {/* Advertência e suspensão por link avulso (sem login): CNPJ → empresa → formulário. */}
     <Route path="/avulso" element={<DpAvulsoPage />} />

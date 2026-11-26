@@ -41,6 +41,21 @@ async function obterOuCriar(db, { companyId, origem, cobrancaId = null, dias = n
   return token;
 }
 
+/**
+ * Link CURTO de cobrança (minutos), aberto depois do código por e-mail na página
+ * /recalculo. Sempre novo. Devolve { id, token }.
+ */
+async function criarCurto(db, { companyId, minutos = 60 }) {
+  const token = novoToken();
+  const { rows } = await db.query(
+    `INSERT INTO acesso_links (token, company_id, origem, cobranca_id, expira_em)
+     VALUES ($1, $2, 'cobranca', NULL, now() + ($3::int * interval '1 minute'))
+     RETURNING id`,
+    [token, companyId, Math.max(1, Number(minutos) || 60)]
+  );
+  return { id: rows[0].id, token };
+}
+
 /** Link válido (não vencido, não revogado) → { link, empresa } ou null. */
 async function validar(db, token) {
   const tok = String(token || "").replace(/[^a-f0-9]/g, "");
@@ -89,4 +104,4 @@ async function listarDaEmpresa(db, companyId) {
   return rows;
 }
 
-module.exports = { obterOuCriar, validar, registrarAcesso, revogarDaEmpresa, listarDaEmpresa, urlDoLink, DIAS_PADRAO };
+module.exports = { obterOuCriar, criarCurto, validar, registrarAcesso, revogarDaEmpresa, listarDaEmpresa, urlDoLink, DIAS_PADRAO };

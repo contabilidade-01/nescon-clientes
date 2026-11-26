@@ -30,10 +30,14 @@ const acessoLinks = require("./acessoLinks");
 /** Validade do link sem senha do alerta manual ao cliente (desvio 20). */
 const DIAS_LINK_ALERTA = 7;
 
-/** Link do painel para as mensagens que vão ao ESCRITÓRIO (não conta como clique do cliente). */
-function linkPainel() {
+/**
+ * Link do recálculo SEM LOGIN (CNPJ + código por e-mail, ver recalculoCodigo.js) para as
+ * mensagens que vão ao ESCRITÓRIO no modo teste: o texto pode ser repassado ao cliente
+ * como está. Não é rastreado (clique do escritório não conta como "cliente abriu").
+ */
+function linkRecalculo() {
   const base = getPublicAppUrl();
-  return base ? `${base}/admin/impostos-ecac` : null;
+  return base ? `${base}/recalculo` : null;
 }
 
 const MAX_TENTATIVAS = 5;
@@ -133,9 +137,9 @@ async function registrarEEnviar({ db, cobranca, empresa, pendencia, etapa, canai
       relatorio_data: pendencia?.relatorio_data,
       parcelamento: pendencia?.parcelamento,
       pgfn: pendencia?.pgfn,
-      // Mensagem ao escritório: o link leva ao painel e não há pixel — clique do escritório
-      // não pode contar como "cliente abriu".
-      link: modoTeste ? linkPainel() : linkRastreado(tok),
+      // Mensagem ao escritório: link do recálculo sem rastreio e sem pixel — clique do
+      // escritório não pode contar como "cliente abriu".
+      link: modoTeste ? linkRecalculo() : linkRastreado(tok),
       pixel: canal === "email" && !modoTeste ? pixelUrl(tok) : null,
       escritorio: { nome: cfg.escritorio_nome, whatsapp: cfg.escritorio_whatsapp, email: cfg.escritorio_email },
     });
@@ -295,7 +299,7 @@ async function htmlDaNotificacao(db, notificacaoId) {
     relatorio_data: r.relatorio_data,
     parcelamento: r.parcelamento,
     pgfn: r.pgfn,
-    link: r.modo_teste ? linkPainel() : linkRastreado(r.token),
+    link: r.modo_teste ? linkRecalculo() : linkRastreado(r.token),
     pixel: r.modo_teste ? null : pixelUrl(r.token),
     escritorio: { nome: cfg.escritorio_nome, whatsapp: cfg.escritorio_whatsapp, email: cfg.escritorio_email },
   });
@@ -423,6 +427,7 @@ module.exports = {
   drenarPendentes,
   avisarEscritorio,
   linkRastreado,
+  linkRecalculo,
   pixelUrl,
   podeEnviarAgora,
   enviarEmail,
