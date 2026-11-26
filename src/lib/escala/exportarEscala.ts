@@ -18,6 +18,20 @@ export interface PessoaExportada {
   dias: DiaEscala[];
   /** 12x36: a lei mede a semana pela média de duas, então o arquivo mostra a média. */
   doze36?: boolean;
+  /**
+   * Semanas inteiras (domingo a sábado) como a lei conta, inclusive a cortada pelo mês,
+   * com os dias do mês vizinho. Sem elas, a semana cortada sai "(parcial)".
+   */
+  semanas?: SemanaExportada[];
+}
+
+export interface SemanaExportada {
+  /** Domingo que abre a semana. */
+  inicio: string;
+  horas: number;
+  folgas: number;
+  limiteHoras: number;
+  repousosExigidos: number;
 }
 
 export interface EscalaExportada {
@@ -66,6 +80,27 @@ export function semanasDoMes(datas: string[]): Array<Array<string | null>> {
   return semanas;
 }
 
+/** Domingo que abre a semana da tabela (a semana pode começar no mês anterior). */
+function inicioDa(semana: Array<string | null>): string {
+  const i = semana.findIndex(Boolean);
+  const d = new Date(`${semana[i]}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - i);
+  return d.toISOString().slice(0, 10);
+}
+
+/** A semana inteira da pessoa (pela lei) que corresponde à semana da tabela. */
+export function semanaDaLei(p: PessoaExportada, semana: Array<string | null>): SemanaExportada | undefined {
+  const inicio = inicioDa(semana);
+  return p.semanas?.find((s) => s.inicio === inicio);
+}
+
+/** "40h de 42h · 2 folgas" (+ "(ACIMA)" / "(FALTA FOLGA)" quando sai da regra). */
+export function textoDaSemanaDaLei(s: SemanaExportada): string {
+  const base = `${horas(s.horas * 60)} de ${s.limiteHoras}h · ${s.folgas} folga${s.folgas === 1 ? "" : "s"}`;
+  const fora = [s.horas > s.limiteHoras + 1e-9 && "ACIMA", s.folgas < s.repousosExigidos && "FALTA FOLGA"].filter(Boolean);
+  return fora.length ? `${base} (${fora.join(", ")})` : base;
+}
+
 function minutosNos(dias: DiaEscala[], datas: Array<string | null>): number {
   return dias.filter((d) => datas.includes(d.data) && d.turno).reduce((a, d) => a + minutosTrabalhados(d.turno!), 0);
 }
@@ -105,6 +140,33 @@ export function linhasDaPlanilha(e: EscalaExportada): string[][] {
   return [cabecalho, ...linhas];
 }
 
+/**
+ * Uma linha por pessoa e semana inteira (domingo a sábado), contando os dias do mês
+ * vizinho, que é como a lei mede: horas x limite e folgas x exigidas.
+ */
+export function linhasDasSemanas(e: EscalaExportada): string[][] {
+  const cab = ["Funcionário", "Semana", "Horas", "Limite", "Folgas", "Exigidas", "Situação"];
+  const linhas: string[][] = [];
+  for (const p of e.pessoas) {
+    if (p.doze36) continue;
+    for (const s of p.semanas ?? []) {
+      const fim = new Date(`${s.inicio}T12:00:00Z`);
+      fim.setUTCDate(fim.getUTCDate() + 6);
+      const problemas = [s.horas > s.limiteHoras + 1e-9 && "acima do limite", s.folgas < s.repousosExigidos && "falta folga"].filter(Boolean);
+      linhas.push([
+        p.nome,
+        `${ddmm(s.inicio)} a ${ddmm(fim.toISOString().slice(0, 10))}`,
+        horas(s.horas * 60),
+        `${s.limiteHoras}h`,
+        String(s.folgas),
+        String(s.repousosExigidos),
+        problemas.length ? problemas.join(", ") : "dentro da regra",
+      ]);
+    }
+  }
+  return [cab, ...linhas];
+}
+
 function nomeArquivo(e: EscalaExportada, ext: string) {
   const empresa = (e.empresa || "")
     .normalize("NFD")
@@ -133,6 +195,12 @@ export function baixarEscalaXlsx(e: EscalaExportada): void {
   resumo["!cols"] = [{ wch: 28 }, { wch: 90 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, sheet, "Escala do mês");
+  const semanasLei = linhasDasSemanas(e);
+  if (semanasLei.length > 1) {
+    const aba = XLSX.utils.aoa_to_sheet(semanasLei);
+    aba["!cols"] = [{ wch: 28 }, { wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 10 }, { wch: 22 }];
+    XLSX.utils.book_append_sheet(wb, aba, "Semanas (lei)");
+  }
   XLSX.utils.book_append_sheet(wb, resumo, "Resumo");
   XLSX.writeFile(wb, nomeArquivo(e, "xlsx"));
 }
@@ -170,8 +238,9 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
   const datas = e.pessoas[0]?.dias.map((d) => d.data) ?? [];
   // Nome e horas largos o bastante para caber em uma linha ("44h (média 38h30)"): com linhas de
   // altura única, uma semana de até ~20 pessoas cabe inteira na página, sem sobrar uma linha órfã.
-  const larguraNome = 62;
-  const larguraHoras = 34;
+  const comLei = e.pessoas.some((p) => p.semanas?.length);
+  const larguraNome = comLei ? 54 : 62;
+  const larguraHoras = comLei ? 48 : 34;
   const larguraDia = (pageW - 2 * margin - larguraNome - larguraHoras) / 7;
   const fonte = e.pessoas.length > 16 ? 7.5 : 8;
   for (const semana of semanasDoMes(datas)) {
@@ -195,7 +264,7 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
         [
           `Semana de ${ddmm(dentro[0])} a ${ddmm(dentro.at(-1)!)}`,
           ...semana.map((d, i) => (d ? `${DIAS_CURTOS[i]} ${ddmm(d)}${e.feriados.has(d) ? " *" : ""}` : DIAS_CURTOS[i])),
-          "Horas",
+          comLei ? "Horas na semana (lei)" : "Horas",
         ],
       ],
       body: e.pessoas.map((p) => [
@@ -208,6 +277,10 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
           c.cell.styles.fillColor = [232, 236, 242];
           c.cell.styles.textColor = 90;
         }
+        if (c.section === "body" && typeof c.cell.raw === "string" && /\((ACIMA|FALTA FOLGA)/.test(c.cell.raw)) {
+          c.cell.styles.textColor = [200, 30, 30];
+          c.cell.styles.fontStyle = "bold";
+        }
       },
     });
     y = doc.lastAutoTable?.finalY ?? y;
@@ -215,7 +288,9 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
 
   // Notas das horas: semana cortada pelo mês e média da 12x36.
   const notas: string[] = [];
-  if (semanasDoMes(datas).some((w) => w.some((d) => !d))) notas.push("(parcial) = semana cortada pelo início ou fim do mês: soma só os dias deste mês.");
+  if (comLei)
+    notas.push("Horas na semana (lei): semana inteira de domingo a sábado, como a lei conta; na semana cortada pelo mês, entram os dias do mês vizinho.");
+  else if (semanasDoMes(datas).some((w) => w.some((d) => !d))) notas.push("(parcial) = semana cortada pelo início ou fim do mês: soma só os dias deste mês.");
   if (e.pessoas.some((p) => p.doze36)) notas.push("12x36: a lei mede pela média de duas semanas seguidas (a mesma “Maior semana” da tela), que aparece ao lado.");
   if (notas.length) {
     if (y > pageH - 30) {
@@ -254,6 +329,8 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
 
 function textoHorasSemana(p: PessoaExportada, semana: Array<string | null>, datas: string[]): string {
   const h = horas(minutosNos(p.dias, semana));
+  const lei = !p.doze36 ? semanaDaLei(p, semana) : undefined;
+  if (lei) return textoDaSemanaDaLei(lei);
   if (semana.some((d) => !d)) return `${h} (parcial)`;
   if (p.doze36) {
     const m = mediaDe2Semanas(p.dias, datas);

@@ -9,7 +9,7 @@ import { MODOS_BLOQUEIO, type ModoBloqueio } from "./bloqueio";
 import { DEMANDA_VAZIA, type Demanda } from "./contingente";
 import type { FeriadoLocal } from "./feriados";
 import { SEGMENTOS, viradaNoMes, vigenciaEm, type PerfilJornada, type Segmento } from "./regras";
-import { mediasDa12x36, validarEscala, type Ocorrencia } from "./validar";
+import { mediasDa12x36, validarEscala, type Ocorrencia, type ResumoSemana } from "./validar";
 
 /**
  * - 6x1: só até 15/12/2026.
@@ -448,6 +448,12 @@ export interface AvaliacaoPessoa {
   limiteSemana: number;
   /** Como a validação trata a semana acima do limite: erro, aviso (acordo/12x36) ou nada. */
   semanaAcima: "erro" | "atencao" | null;
+  /**
+   * Semanas inteiras (domingo a sábado) que tocam o mês, com os dias do mês vizinho: é
+   * assim que a lei conta, então a semana cortada pelo mês aparece com as horas reais.
+   */
+  diasComVizinhos: DiaEscala[];
+  semanasInteiras: ResumoSemana[];
 }
 
 export function perfilDa(c: ConfigPessoa, empresa: Pick<ConfigEmpresa, "segmento" | "temAcordoColetivo">): PerfilJornada {
@@ -490,6 +496,8 @@ export function avaliarPessoa(
     maiorSemana: pior?.horas ?? 0,
     limiteSemana: pior?.limiteHoras ?? 0,
     semanaAcima,
+    diasComVizinhos: todos,
+    semanasInteiras: resultado.semanas,
   };
 }
 

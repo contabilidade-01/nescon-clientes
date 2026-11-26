@@ -24,14 +24,15 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { DIAS_TRABALHO_SEMANA, turnoQuePreenche } from "@/lib/escala/cenarios";
 import { minutosTrabalhados, type Turno } from "@/lib/escala/modelos";
+import type { DragEndEvent } from "@dnd-kit/core";
 import { BotoesBaixar } from "@/components/escala/BotoesBaixar";
+import { SemanaDaEquipe } from "@/components/escala/SemanaDaEquipe";
 import type { ResultadoCenario } from "@/lib/escala/cenarios";
 import type { Demanda } from "@/lib/escala/contingente";
 import { diaDaSemana } from "@/lib/escala/datas";
 import { agruparOcorrencias } from "@/lib/escala/ocorrencias";
 import {
   MODELOS,
-  diasDoMes,
   fraseDaPessoa,
   type AvaliacaoPessoa,
   type ConfigEmpresa,
@@ -96,18 +97,6 @@ function num(n: number) {
   return (Math.round(n * 10) / 10).toString().replace(".", ",");
 }
 
-/** Hora curta para a semana: "08:00" vira "8h", "16:20" fica "16:20". */
-function hora(hhmm: string) {
-  return hhmm.endsWith(":00") ? `${Number(hhmm.slice(0, 2))}h` : hhmm;
-}
-
-/** Última semana inteira (domingo a sábado) do mês: no mês da virada, já é a regra nova. */
-function semanaDeExemplo(mes: string): string[] {
-  const dias = diasDoMes(mes);
-  for (let i = dias.length - 7; i >= 0; i--) if (diaDaSemana(dias[i]) === 0) return dias.slice(i, i + 7);
-  return dias.slice(0, 7);
-}
-
 /**
  * Caminho guiado do planejador, para quem não é do DP: três perguntas (empresa, equipe,
  * escala) e a escala sai pronta para salvar. Usa o mesmo estado e o mesmo motor de regras
@@ -138,6 +127,7 @@ export function CaminhoGuiado({
   limiteSemanal,
   pode42h,
   onHorario,
+  onTrocar,
 }: {
   mes: string;
   cfg: ConfigEmpresa;
@@ -166,6 +156,8 @@ export function CaminhoGuiado({
   pode42h: Pode42h;
   /** Troca o horário de uma sugestão (null volta ao padrão). */
   onHorario: (cenarioId: string, turno: Turno | null) => void;
+  /** Arrastar um dia sobre outro na semana da equipe (mesma trava da grade). */
+  onTrocar?: (e: DragEndEvent) => void;
 }) {
   // Empresa já respondida (por ela ou pelo escritório): abre no passo da escala.
   const [passo, setPasso] = useState<Passo>(cfg.atividadeDefinida ? 3 : 1);
@@ -251,6 +243,8 @@ export function CaminhoGuiado({
           limiteSemanal={limiteSemanal}
           pode42h={pode42h}
           onHorario={onHorario}
+          onTrocar={onTrocar}
+          onAbrirPessoa={onAbrirPessoa}
           onVoltar={() => setPasso(2)}
         />
       )}
@@ -599,6 +593,8 @@ function PassoEscala({
   limiteSemanal,
   pode42h,
   onHorario,
+  onTrocar,
+  onAbrirPessoa,
   onVoltar,
 }: {
   mes: string;
@@ -622,6 +618,8 @@ function PassoEscala({
   pode42h: Pode42h;
   /** Troca o horário de uma sugestão (null volta ao padrão). */
   onHorario: (cenarioId: string, turno: Turno | null) => void;
+  onTrocar?: (e: DragEndEvent) => void;
+  onAbrirPessoa?: (id: string) => void;
   onVoltar: () => void;
 }) {
   const temDemanda = cfg.demanda.some((n) => n > 0);
@@ -635,7 +633,6 @@ function PassoEscala({
         .slice(0, 3),
     [cenarios],
   );
-  const semana = useMemo(() => semanaDeExemplo(mes), [mes]);
   const problemas = useMemo(
     () =>
       linhas.flatMap((l) =>
@@ -732,60 +729,7 @@ function PassoEscala({
         </Button>
       </section>
 
-      {linhas.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">
-              Semana de cada pessoa ({semana[0].slice(8, 10)}/{semana[0].slice(5, 7)} a {semana[6].slice(8, 10)}/{semana[6].slice(5, 7)})
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">As outras semanas seguem o mesmo jeito; quem tem rodízio troca o dia da folga.</p>
-          </CardHeader>
-          <CardContent className="overflow-x-auto p-0">
-            <table className="w-full min-w-[420px] text-xs">
-              <thead>
-                <tr className="border-b">
-                  <th className="p-2 text-left font-medium">Pessoa</th>
-                  {semana.map((d) => (
-                    <th key={d} className="p-1 text-center font-medium">
-                      {DIAS_LETRA[diaDaSemana(d)]}
-                      <span className="block font-normal text-muted-foreground">{d.slice(8)}</span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {linhas.map((l) => (
-                  <tr key={l.config.id} className="border-b last:border-0">
-                    <td className="max-w-[110px] truncate p-2 font-medium sm:max-w-[200px]">{l.config.nome}</td>
-                    {semana.map((d) => {
-                      const t = l.dias.find((x) => x.data === d)?.turno;
-                      return (
-                        <td key={d} className="p-0.5 text-center">
-                          <span
-                            className={cn(
-                              "block rounded px-0.5 py-1 tabular-nums leading-tight",
-                              t ? "bg-primary/10" : "bg-muted font-semibold text-muted-foreground",
-                            )}
-                          >
-                            {t ? (
-                              <>
-                                {hora(t.entrada)}
-                                <span className="block">{hora(t.saida)}</span>
-                              </>
-                            ) : (
-                              "Folga"
-                            )}
-                          </span>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-      )}
+      {linhas.length > 0 && <SemanaDaEquipe mes={mes} linhas={linhas} onTrocar={onTrocar} onAbrirPessoa={onAbrirPessoa} />}
 
       <Button variant="ghost" onClick={onVoltar}>
         <ArrowLeft className="mr-1.5 h-4 w-4" /> Voltar para a equipe
