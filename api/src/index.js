@@ -178,6 +178,8 @@ app.use("/api/portal", require("./routes/portal"));
 app.use("/api/ecac", require("./routes/ecac"));
 // Tela de guias SEM SENHA (link do WhatsApp/e-mail): escopo só guias — ver routes/acesso.js.
 app.use("/api/acesso", require("./routes/acesso"));
+// Recálculo sem login: CNPJ + código por e-mail (10 min) → link curto da tela de guias.
+app.use("/api/recalculo", require("./routes/recalculo"));
 app.use("/api/whatsapp", require("./routes/whatsappWebhook"));
 // Download público (token opaco) dos termos emitidos pelo assistente do WhatsApp.
 app.use("/api/dp-docs", require("./routes/dpDocs"));
@@ -255,6 +257,7 @@ async function start() {
     await ensureEcacSchema(db);
     await ensureGuiasMeiSchema(db);
     await ensureAcessoLinksSchema(db);
+    await require("./ensureRecalculoCodigosSchema").ensureRecalculoCodigosSchema(db);
     await ensureContratosSchema(db);
     await ensurePropostasSchema(db);
     await ensureOnboardingSchema(db);

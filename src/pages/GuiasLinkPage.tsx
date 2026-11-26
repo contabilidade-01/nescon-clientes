@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertCircle, AlertTriangle, Building2, CheckCircle2, Download, FileText, Loader2, LogIn, MessageCircle } from "lucide-react";
+import { AlertCircle, AlertTriangle, Building2, CheckCircle2, Download, FileText, KeyRound, Loader2, LogIn, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -169,9 +169,14 @@ const GuiasLinkPage = () => {
               <AlertCircle className="mx-auto h-10 w-10 text-muted-foreground/60" />
               <h1 className="mt-3 text-lg font-bold">Link vencido ou inválido</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                Peça um novo link ao escritório ou entre no portal com seu login.
+                Entre de novo com o CNPJ e um código no e-mail cadastrado, ou use o login do portal.
               </p>
               <Button asChild className="mt-4 w-full">
+                <Link to="/recalculo">
+                  <KeyRound className="mr-2 h-4 w-4" /> Receber código por e-mail
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="mt-2 w-full">
                 <Link to="/login">
                   <LogIn className="mr-2 h-4 w-4" /> Entrar no portal
                 </Link>

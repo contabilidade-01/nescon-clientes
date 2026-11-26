@@ -11,8 +11,8 @@
  * do central-ecac; aqui só se registra o evento — é ele que decide entre "regerar o
  * relatório em N dias úteis" e "mandar lembrete".
  *
- * Rotas públicas (sem login): `/r/:token` (link rastreado → portal) e `/abriu/:token.gif`
- * (pixel). O token é aleatório e não carrega dado nenhum; a página de destino exige login.
+ * Rotas públicas (sem login): `/r/:token` (link rastreado → /recalculo) e `/abriu/:token.gif`
+ * (pixel). O token é aleatório e não carrega dado nenhum; o recálculo pede CNPJ + código por e-mail.
  */
 const router = require("express").Router();
 const db = require("../db");
@@ -25,7 +25,6 @@ const cobranca = require("../ecacCobranca");
 const regras = require("../ecacRegras");
 const { getPublicAppUrl } = require("../mailer");
 const { gerarGuia, enviarPdf } = require("../ecacGuias");
-const acessoLinks = require("../acessoLinks");
 
 const GIF_1PX = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
 
@@ -33,20 +32,15 @@ const GIF_1PX = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAI
 router.get("/r/:token", async (req, res) => {
   const tok = String(req.params.token || "").replace(/[^a-f0-9]/g, "").slice(0, 64);
   const base = getPublicAppUrl() || "";
-  // O link da mensagem abre a tela de guias SEM SENHA (escopo só guias daquela empresa):
-  // quem recebeu no WhatsApp/e-mail cadastrado já provou ter o canal. Ver acessoLinks.js.
+  // O link da mensagem conta o clique e leva ao recálculo SEM LOGIN com dois fatores
+  // (CNPJ + código no e-mail cadastrado, ver recalculoCodigo.js). Não abre mais a tela
+  // de guias direto: quem pegar a mensagem encaminhada ainda precisa do e-mail.
   try {
-    const clique = tok ? await cobranca.registrarClique(db, tok) : null;
-    if (clique && clique.company_id) {
-      // Alerta manual: o envio tem o seu link (7 dias). Vencido/cancelado → página avisa.
-      if (clique.acesso_token) return res.redirect(302, `${base}/g/${clique.acesso_token}`);
-      const acesso = await acessoLinks.obterOuCriar(db, { companyId: clique.company_id, origem: "cobranca", cobrancaId: clique.cobranca_id || null });
-      return res.redirect(302, `${base}/g/${acesso}`);
-    }
+    if (tok) await cobranca.registrarClique(db, tok);
   } catch (err) {
     console.error("[ecac] link rastreado:", err.message);
   }
-  res.redirect(302, `${base}/impostos-pendentes`);
+  res.redirect(302, `${base}/recalculo`);
 });
 
 router.get("/abriu/:token.gif", async (req, res) => {
