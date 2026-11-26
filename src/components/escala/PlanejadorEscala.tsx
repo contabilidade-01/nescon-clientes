@@ -42,6 +42,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FORA, TimesPorUnidade, type PessoaDoTime } from "./TimesPorUnidade";
 import { BarraLote, type AtalhoDias, type MarcarPessoas } from "@/components/escala/BarraLote";
 import { DialogoPessoa } from "@/components/escala/DialogoPessoa";
 import { agruparOcorrencias } from "@/lib/escala/ocorrencias";
@@ -74,6 +75,7 @@ import {
   diasDoMes,
   errosNovos,
   mesclarPlano,
+  aplicarTimes,
   modeloPadraoDoMes,
   normalizarConfigEmpresa,
   trocarCelulas,
@@ -181,6 +183,7 @@ export function PlanejadorEscala({
   const [aberta, setAberta] = useState<string | null>(null);
   /** Filtro da grade por unidade (loja/filial com o mesmo CNPJ); "" = todas. */
   const [unidade, setUnidade] = useState("");
+  const [timesAberto, setTimesAberto] = useState(true);
   // O cliente começa no caminho guiado; o escritório, nas abas completas. A escolha fica no navegador.
   const chaveModo = `escala-modo-${companyId ? "escritorio" : "portal"}`;
   const [modo, setModoEstado] = useState<Modo>(() => {
@@ -235,7 +238,8 @@ export function PlanejadorEscala({
       permite6x1: vigenciaEm(diasDoMes(mes).at(-1)!).repousosSemanais < 2,
       temAcordo: Boolean(cfgCarregada?.temAcordoColetivo),
     });
-    setConfigs(plano.configs);
+    // Os times da empresa (passo 1) mandam: quem está fora sai, e a unidade vem do time.
+    setConfigs(aplicarTimes(plano.configs, cfgCarregada));
     setAjustes(plano.ajustes);
     setAlterado(false);
     setCenarioAtual(null);
@@ -690,6 +694,56 @@ export function PlanejadorEscala({
   const salvos = planosQuery.data || [];
   const salvoEsteMes = salvos.find((p) => p.mes === mes);
   const ordemUnidade = (u?: string) => (u ? unidades.indexOf(u) : unidades.length);
+  // Times por unidade (passo 1): valem para todos os meses e alimentam a escala.
+  const unidadesDoTime = [...new Set([...cfg.unidades, ...unidades])];
+  const pessoasDoTime: PessoaDoTime[] = [
+    ...pessoas.map((p) => ({ id: p.id, nome: p.name })),
+    ...configs.filter((c) => c.id.startsWith("vaga-")).map((c) => ({ id: c.id, nome: c.nome })),
+  ].map((p) => ({
+    ...p,
+    fora: cfg.foraDaEscala.includes(p.id),
+    unidade: configs.find((c) => c.id === p.id)?.unidade ?? cfg.times[p.id] ?? "",
+  }));
+
+  function salvarTimes(novo: ConfigEmpresa) {
+    setCfg(novo);
+    salvarAtividade.mutate(novo);
+  }
+
+  function moverPessoa(id: string, destino: string) {
+    const fora = destino === FORA;
+    const times = { ...cfg.times };
+    if (!fora && destino) times[id] = destino;
+    else delete times[id];
+    const foraDaEscala = fora ? [...new Set([...cfg.foraDaEscala, id])] : cfg.foraDaEscala.filter((x) => x !== id);
+    salvarTimes({ ...cfg, times, foraDaEscala });
+    const unidadeNova = fora ? undefined : destino || undefined;
+    setConfigs((cs) => {
+      if (fora) return cs.filter((c) => c.id !== id);
+      if (cs.some((c) => c.id === id)) return cs.map((c) => (c.id === id ? { ...c, unidade: unidadeNova } : c));
+      // Volta para a escala: entra no modelo padrão do mês, como quem chega sem escala salva.
+      const p = pessoas.find((x) => x.id === id);
+      if (!p) return cs;
+      return [...cs, { ...mesclarPlano(null, [p], modeloPadrao).configs[0], unidade: unidadeNova }];
+    });
+    if (fora) setAjustes((aj) => Object.fromEntries(Object.entries(aj).filter(([k]) => k !== id)));
+    setSelPessoas(new Set());
+    setAlterado(true);
+  }
+
+  function novaUnidade(nome: string) {
+    if (unidadesDoTime.includes(nome)) return toast.info(`A unidade ${nome} já existe.`);
+    salvarTimes({ ...cfg, unidades: [...cfg.unidades, nome] });
+  }
+
+  function montarTime(u: string) {
+    setUnidade(u);
+    setSelPessoas(new Set());
+    setModo("avancado");
+    setAba("cenarios");
+    setTimesAberto(false);
+  }
+
   /** Linhas da grade: a equipe toda ou só a unidade escolhida. As regras são por pessoa, então não mudam. */
   const linhasVisiveis = filtroUnidade
     ? linhas.filter((l) => l.config.unidade === filtroUnidade)
@@ -751,6 +805,17 @@ export function PlanejadorEscala({
 
   return (
     <div className="space-y-4">
+      {configs.length + cfg.foraDaEscala.length > 1 && (
+        <TimesPorUnidade
+          pessoas={pessoasDoTime}
+          unidades={unidadesDoTime}
+          aberto={timesAberto}
+          onAbrir={setTimesAberto}
+          onMover={moverPessoa}
+          onNovaUnidade={novaUnidade}
+          onMontar={montarTime}
+        />
+      )}
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-3 border-b bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3">
           <div className="min-w-0 flex-1">
