@@ -173,6 +173,17 @@ describe("edição em lote na tela", () => {
     mockApi.config.mockResolvedValue({ dados: { segmento: "outro", atividadeDefinida: true }, atualizado_em: null, atualizado_por: null });
   });
 
+  it("lixeira na linha da grade abre a exclusão do funcionário", async () => {
+    comQuery(<PlanejadorEscala pessoas={PESSOAS} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Escolher modelo de escala/ }));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /Usar este cenário/ }).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole("button", { name: /Usar este cenário/ })[0]);
+    const nome = PESSOAS[0].name;
+    const lixeiras = await screen.findAllByRole("button", { name: `Excluir ${nome}` });
+    fireEvent.click(lixeiras[lixeiras.length - 1]);
+    expect(await screen.findByText("Saiu da empresa")).toBeInTheDocument();
+  });
+
   it("marca dias pelo atalho e aplica folga a todos", async () => {
     comQuery(<PlanejadorEscala pessoas={PESSOAS} />);
     // A escolha do modelo fica numa página à parte.

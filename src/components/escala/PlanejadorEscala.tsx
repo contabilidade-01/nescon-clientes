@@ -1462,14 +1462,8 @@ export function PlanejadorEscala({
                                 selecionado={selPessoas.has(c.id)}
                                 onSelecionar={() => setSelPessoas((s) => alternar(s, c.id))}
                                 onAbrir={() => setAberta(c.id)}
-                                onRemover={
-                                  c.id.startsWith("vaga-")
-                                    ? () => {
-                                        setConfigs((cs) => cs.filter((x) => x.id !== c.id));
-                                        setAlterado(true);
-                                      }
-                                    : undefined
-                                }
+                                // Quem veio de outra empresa volta pelo "Devolver a …" do quadro de times.
+                                onRemover={cfg.emprestados.some((e) => e.id === c.id) ? undefined : () => setExcluindo(c.id)}
                               />
                             </td>
                             {ds.map((d) => (
@@ -1788,24 +1782,33 @@ function LinhaConfig({
             </span>
           )}
         </button>
+      </div>
+      {/* A lixeira fica na linha do modelo: a do nome não perde espaço. */}
+      <div className="flex min-w-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={onAbrir}
+          className="flex min-w-0 flex-1 items-center gap-1 truncate rounded border border-dashed px-1.5 py-0.5 text-left text-[11px] text-muted-foreground hover:border-primary hover:text-foreground"
+          aria-label={`Configurar escala de ${c.nome}`}
+        >
+          <Settings2 className="h-3 w-3 shrink-0" />
+          <span className="truncate">
+            {MODELOS[c.modelo]}
+            {c.modelo === "12x36" ? ` ${c.turma}` : ""} · {c.entrada}–{c.saida}
+          </span>
+        </button>
         {onRemover && (
-          <button type="button" className="ml-auto text-muted-foreground hover:text-destructive" onClick={onRemover} aria-label="Remover vaga">
+          <button
+            type="button"
+            className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            onClick={onRemover}
+            aria-label={`Excluir ${c.nome}`}
+            title="Excluir da equipe"
+          >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
-      <button
-        type="button"
-        onClick={onAbrir}
-        className="flex w-full items-center gap-1 truncate rounded border border-dashed px-1.5 py-0.5 text-left text-[11px] text-muted-foreground hover:border-primary hover:text-foreground"
-        aria-label={`Configurar escala de ${c.nome}`}
-      >
-        <Settings2 className="h-3 w-3 shrink-0" />
-        <span className="truncate">
-          {MODELOS[c.modelo]}
-          {c.modelo === "12x36" ? ` ${c.turma}` : ""} · {c.entrada}–{c.saida}
-        </span>
-      </button>
     </div>
   );
 }
