@@ -112,7 +112,13 @@ describe("caminho guiado na tela", () => {
     fireEvent.click(quero[0]);
     await waitFor(() => expect(screen.getAllByText("Em uso").length).toBe(1));
     expect(screen.getByText("Mudanças ainda não salvas")).toBeInTheDocument();
-    expect(screen.getByText(/Semana de cada pessoa/)).toBeInTheDocument();
+    expect(screen.getByText("Na semana")).toBeInTheDocument();
+    // Anda pelas semanas do mês: a semana de antes troca o título e mostra as horas contra o limite.
+    const titulo = () => screen.getByText(/^Semana de \d\d\/\d\d a \d\d\/\d\d$/).textContent;
+    const antes = titulo();
+    fireEvent.click(screen.getByRole("button", { name: "Semana anterior" }));
+    await waitFor(() => expect(titulo()).not.toBe(antes));
+    expect(screen.getByText(/Regra desta semana/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Baixar PDF/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Baixar Excel/ })).toBeInTheDocument();
   });

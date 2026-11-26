@@ -794,7 +794,13 @@ export function PlanejadorEscala({
       mes,
       empresa: [empresaNome, filtroUnidade && `Unidade ${filtroUnidade}`].filter(Boolean).join(" · ") || undefined,
       regra: regraFrase,
-      pessoas: linhasVisiveis.map((l) => ({ nome: l.config.nome, descricao: fraseDaPessoa(l.config), dias: l.dias, doze36: l.config.modelo === "12x36" })),
+      pessoas: linhasVisiveis.map((l) => ({
+        nome: l.config.nome,
+        descricao: fraseDaPessoa(l.config),
+        dias: l.dias,
+        doze36: l.config.modelo === "12x36",
+        semanas: l.semanasInteiras.map((s) => ({ inicio: s.inicio, horas: s.horas, folgas: s.folgas, limiteHoras: s.limiteHoras, repousosExigidos: s.repousosExigidos })),
+      })),
       feriados: new Map(feriadosDoMes),
       erros: filtroUnidade
         ? linhasVisiveis.reduce((a, l) => a + l.ocorrencias.filter((o) => o.gravidade === "erro").length, 0)
@@ -1027,6 +1033,7 @@ export function PlanejadorEscala({
           limiteSemanal={vigencia.limiteSemanalHoras}
           pode42h={cfg.bloqueio === "sem_hora_extra" ? false : cfg.temAcordoColetivo ? "acordo" : "hora_extra"}
           onHorario={mudarHorario}
+          onTrocar={aoSoltar}
           onMaisOpcoes={() => {
             setModo("avancado");
             setEscolhendo(true);

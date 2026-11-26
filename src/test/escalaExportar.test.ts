@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as XLSX from "xlsx";
-import { linhasDaPlanilha, mediaDe2Semanas, mediaSemanal, pdfDaEscala, semanasDoMes, textoDoDia, type EscalaExportada } from "@/lib/escala/exportarEscala";
+import { linhasDaPlanilha, mediaDe2Semanas, mediaSemanal, pdfDaEscala, linhasDasSemanas, semanaDaLei, semanasDoMes, textoDaSemanaDaLei, textoDoDia, type EscalaExportada } from "@/lib/escala/exportarEscala";
 import { avaliarPessoa, configEmpresaPadrao, configPadrao, diasDoMes, diasParaValidar } from "@/lib/escala/planejamento";
 import { simularCenarios, turnoQuePreenche } from "@/lib/escala/cenarios";
 import { feriadosDaEmpresa } from "@/lib/escala/feriados";
@@ -99,5 +99,36 @@ describe("PDF da 12x36 com equipe grande", () => {
     });
     const doc = pdfDaEscala({ mes, empresa: "RESTAURANTE EXEMPLO LTDA", regra: "A partir de 16/12/2026: no máximo 42h por semana.", pessoas, feriados: new Map([["2026-12-25", "Natal"]]), erros: 0 });
     expect(doc.getNumberOfPages()).toBe(5);
+  });
+});
+
+describe("semana pela lei no PDF e no Excel", () => {
+  const restaurante = { segmento: "restaurante" as const, temAcordoColetivo: false, abreNosFeriados: true };
+  const pessoa = (saida: string) => {
+    const c = { ...configPadrao("1", "Ana", "5x2_3semanas"), saida, seisPorUmAteVirada: false };
+    const a = avaliarPessoa(c, "2027-01", {}, restaurante, new Set());
+    return {
+      nome: "Ana",
+      descricao: "",
+      dias: a.dias,
+      semanas: a.semanasInteiras.map((s) => ({ inicio: s.inicio, horas: s.horas, folgas: s.folgas, limiteHoras: s.limiteHoras, repousosExigidos: s.repousosExigidos })),
+    };
+  };
+
+  it("a semana cortada pelo mês conta os dias do mês vizinho e mostra o limite", () => {
+    const p = pessoa("17:24");
+    const primeira = semanasDoMes(diasDoMes("2027-01"))[0]; // 27/12 a 02/01
+    const lei = semanaDaLei(p, primeira)!;
+    expect(lei.inicio).toBe("2026-12-27");
+    expect(textoDaSemanaDaLei(lei)).toBe("42h de 42h · 2 folgas");
+  });
+
+  it("acima do limite sai marcado, e a aba Semanas (lei) diz o que falta", () => {
+    const p = pessoa("18:00");
+    expect(textoDaSemanaDaLei(p.semanas[1])).toMatch(/\(ACIMA\)$/);
+    const linhas = linhasDasSemanas({ mes: "2027-01", regra: "", pessoas: [p], feriados: new Map(), erros: 1 });
+    expect(linhas[0]).toEqual(["Funcionário", "Semana", "Horas", "Limite", "Folgas", "Exigidas", "Situação"]);
+    expect(linhas[1].slice(0, 2)).toEqual(["Ana", "27/12 a 02/01"]);
+    expect(linhas[1][6]).toBe("acima do limite");
   });
 });

@@ -88,7 +88,7 @@ describe("5x2 domingo a cada 3 semanas", () => {
   it("cada dia da semana folga em só 1 das 3 semanas; domingo 1 vez", () => {
     const vezes = [0, 0, 0, 0, 0, 0, 0];
     for (const s of SEMANAS_3SEMANAS) for (const d of s) vezes[d]++;
-    expect(vezes).toEqual([1, 0, 1, 1, 1, 1, 1]);
+    expect(vezes).toEqual([1, 1, 1, 1, 1, 1, 0]);
   });
 
   it("8h e 8h24 sem acordo, desde 01/12/2026: nenhum erro em nenhum grupo no restaurante", () => {

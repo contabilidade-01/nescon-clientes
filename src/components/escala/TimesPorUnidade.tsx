@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { ChevronDown, ChevronUp, Plus, Users } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { ChevronDown, ChevronUp, GripVertical, Plus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -41,6 +42,15 @@ export function TimesPorUnidade({
   onMontar: (unidade: string) => void;
 }) {
   const [nova, setNova] = useState("");
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  // Arrastar o nome para outra coluna muda o time (o mesmo que escolher no seletor).
+  const soltar = (e: DragEndEvent) => {
+    if (!e.over) return;
+    const destino = String(e.over.id).slice(4);
+    const p = pessoas.find((x) => x.id === String(e.active.id));
+    if (!p || (p.fora ? FORA : p.unidade) === destino) return;
+    onMover(p.id, destino);
+  };
   const colunas: Array<{ chave: string; titulo: string; dica?: string }> = [
     ...unidades.map((u) => ({ chave: u, titulo: u })),
     { chave: "", titulo: "Sem unidade", dica: "Entram na escala, mas sem time." },
@@ -90,14 +100,17 @@ export function TimesPorUnidade({
             <Button size="sm" variant="outline" className="h-8 gap-1" onClick={criar} disabled={!nomeDeUnidade(nova)}>
               <Plus className="h-3.5 w-3.5" /> Criar unidade
             </Button>
-            <span className="text-xs text-muted-foreground">Para mudar alguém de time, escolha o destino ao lado do nome.</span>
+            <span className="text-xs text-muted-foreground">
+              Para mudar alguém de time, arraste o nome para a outra coluna ou escolha o destino ao lado do nome.
+            </span>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <DndContext sensors={sensors} onDragEnd={soltar}>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {colunas.map((col) => {
               const lista = doGrupo(col.chave);
               const unidade = col.chave !== "" && col.chave !== FORA;
               return (
-                <div key={col.chave || "sem"} className={cn("rounded-md border p-2", unidade ? "bg-primary/5" : "bg-muted/40")}>
+                <Coluna key={col.chave || "sem"} chave={col.chave} className={cn("rounded-md border p-2", unidade ? "bg-primary/5" : "bg-muted/40")}>
                   <div className="mb-1 flex items-center gap-1">
                     <span className="text-sm font-semibold">{col.titulo}</span>
                     <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
@@ -113,9 +126,7 @@ export function TimesPorUnidade({
                   <ul className="space-y-1">
                     {lista.map((p) => (
                       <li key={p.id} className="flex items-center gap-1 text-xs">
-                        <span className="min-w-0 flex-1 truncate" title={p.nome}>
-                          {p.nome}
-                        </span>
+                        <Arrastavel id={p.id} nome={p.nome} />
                         <select
                           className="h-6 max-w-[9rem] rounded border bg-background px-1 text-[11px]"
                           value={p.fora ? FORA : p.unidade}
@@ -134,12 +145,42 @@ export function TimesPorUnidade({
                     ))}
                     {!lista.length && <li className="text-[11px] text-muted-foreground">Ninguém</li>}
                   </ul>
-                </div>
+                </Coluna>
               );
             })}
-          </div>
+            </div>
+          </DndContext>
         </div>
       )}
     </Card>
+  );
+}
+
+function Coluna({ chave, className, children }: { chave: string; className: string; children: ReactNode }) {
+  const drop = useDroppable({ id: `col:${chave}` });
+  return (
+    <div ref={drop.setNodeRef} className={cn(className, drop.isOver && "ring-2 ring-primary")}>
+      {children}
+    </div>
+  );
+}
+
+function Arrastavel({ id, nome }: { id: string; nome: string }) {
+  const drag = useDraggable({ id });
+  const estilo = drag.transform ? { transform: `translate(${drag.transform.x}px, ${drag.transform.y}px)`, zIndex: 30 } : undefined;
+  return (
+    <span
+      ref={drag.setNodeRef}
+      style={estilo}
+      {...drag.listeners}
+      title={`${nome} (arraste para outro time)`}
+      className={cn(
+        "flex min-w-0 flex-1 cursor-grab touch-none items-center gap-0.5 rounded px-0.5 active:cursor-grabbing",
+        drag.isDragging && "relative bg-background shadow-lg ring-1 ring-primary",
+      )}
+    >
+      <GripVertical className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+      <span className="truncate">{nome}</span>
+    </span>
   );
 }

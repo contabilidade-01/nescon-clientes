@@ -164,7 +164,7 @@ export function montarCenarios(
       id: "5x2_3semanas",
       nome: "5x2 com domingo de folga a cada 3 semanas",
       descricao:
-        "Abre todo dia. Ciclo de 3 semanas: dom+sáb, qui+sex, ter+qua. Cada pessoa folga 1 domingo a cada 3 semanas (mínimo do comércio/restaurante) e todo dia fica com 2/3 da equipe.",
+        "Abre todo dia. Ciclo de 3 semanas: dom+sex, qua+qui, seg+ter. Cada pessoa folga 1 domingo a cada 3 semanas (mínimo do comércio/restaurante), trabalha de 3 a 4 dias seguidos e todo dia fica com 2/3 da equipe (sábado com todos).",
       modelo: "5x2_3semanas",
       configs: cada("5x2_3semanas", (_, i) => ({ rodizio: (i + v) % 3 })),
     },
