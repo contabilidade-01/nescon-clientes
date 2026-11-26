@@ -66,6 +66,7 @@ export function DialogoPessoa({
   repousos,
   viradaEm,
   unidades,
+  abreNosFeriados,
   onChange,
   onDias,
   onFechar,
@@ -79,6 +80,7 @@ export function DialogoPessoa({
   viradaEm?: string;
   /** Unidades já usadas na equipe (sugestões do campo Unidade). */
   unidades: string[];
+  abreNosFeriados?: boolean;
   onChange: (patch: Partial<ConfigPessoa>) => boolean;
   onDias: (datas: string[], acao: AcaoDia) => boolean;
   onFechar: () => void;
@@ -218,7 +220,7 @@ export function DialogoPessoa({
           </div>
 
           <div className="space-y-3">
-            <CalendarioPessoa c={c} mes={mes} ajustes={ajustes} feriados={feriados} feriadosSet={feriadosSet} avaliacao={linha} previa={false} onDia={escolherDia} />
+            <CalendarioPessoa c={c} mes={mes} ajustes={ajustes} feriados={feriados} feriadosSet={feriadosSet} avaliacao={linha} previa={false} abreNosFeriados={abreNosFeriados} onDia={escolherDia} />
             {dia && (
               <section className="space-y-2 rounded-lg border border-primary/40 p-3">
                 <p className="text-sm font-medium">

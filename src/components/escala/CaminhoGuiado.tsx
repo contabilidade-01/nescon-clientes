@@ -294,6 +294,7 @@ function PassoEmpresa({
   );
   const [usa12x36, setUsa12x36] = useState(definido ? cfg.usa12x36 : regime12x36Padrao);
   const [fechados, setFechados] = useState<number[]>(cfg.diasFechados);
+  const [abreFeriado, setAbreFeriado] = useState(cfg.abreNosFeriados);
   const [demanda, setDemanda] = useState<Demanda>(cfg.demanda);
   const [comDemanda, setComDemanda] = useState(cfg.demanda.some((n) => n > 0));
 
@@ -302,6 +303,7 @@ function PassoEmpresa({
   function continuar() {
     const base: Partial<ConfigEmpresa> = {
       diasFechados: [...fechados].sort(),
+      abreNosFeriados: abreFeriado,
       demanda: comDemanda ? demanda : (demanda.map(() => 0) as Demanda),
     };
     if (travado) return onContinuar(base);
@@ -413,6 +415,22 @@ function PassoEmpresa({
             </section>
           </>
         )}
+
+        <section className="space-y-2">
+          <h3 className="font-medium">A empresa abre nos feriados?</h3>
+          <p className="text-xs text-muted-foreground">
+            Sim: no feriado trabalha quem a escala põe para trabalhar naquele dia, com pagamento em dobro ou outra folga na semana. Não: todos
+            folgam no feriado.
+          </p>
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Abre nos feriados">
+            <Opcao ativo={abreFeriado} onClick={() => setAbreFeriado(true)}>
+              Sim, abre
+            </Opcao>
+            <Opcao ativo={!abreFeriado} onClick={() => setAbreFeriado(false)}>
+              Não, fecha
+            </Opcao>
+          </div>
+        </section>
 
         <section className="space-y-2">
           <h3 className="font-medium">Em que dias a empresa abre?</h3>

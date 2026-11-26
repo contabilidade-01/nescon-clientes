@@ -25,7 +25,7 @@ const NOMES_DIA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", 
 /** Pares de folga do 5x2 fixo. */
 export const PARES_5X2: number[][] = [[6, 0], [0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6]];
 
-type EmpresaPessoa = Pick<ConfigEmpresa, "segmento" | "temAcordoColetivo" | "demanda" | "bloqueio" | "diasFechados">;
+type EmpresaPessoa = Pick<ConfigEmpresa, "segmento" | "temAcordoColetivo" | "demanda" | "bloqueio" | "diasFechados"> & { abreNosFeriados?: boolean };
 
 export interface OpcaoPessoa {
   modelo: ModeloChave;

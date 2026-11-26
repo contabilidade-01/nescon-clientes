@@ -190,7 +190,7 @@ export function montarCenarios(
   });
 }
 
-type EmpresaCenario = Pick<ConfigEmpresa, "segmento" | "temAcordoColetivo" | "demanda" | "bloqueio"> & { diasFechados?: number[] };
+type EmpresaCenario = Pick<ConfigEmpresa, "segmento" | "temAcordoColetivo" | "demanda" | "bloqueio"> & { diasFechados?: number[]; abreNosFeriados?: boolean };
 
 export function avaliarCenario(
   cenario: Cenario,

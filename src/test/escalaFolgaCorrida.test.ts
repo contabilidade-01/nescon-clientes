@@ -109,3 +109,19 @@ describe("unidade da pessoa (lojas com o mesmo CNPJ)", () => {
     expect(nomeDeUnidade("   ")).toBeUndefined();
   });
 });
+
+describe("empresa escolhe se abre nos feriados", () => {
+  it("fechada: feriado nasce de folga; aberta: segue o modelo e avisa do pagamento", () => {
+    const fer = new Set(["2027-01-01"]);
+    // Grupo 0 começa seg+ter na semana de 03/01; na semana de 27/12 (grupo anterior) a sexta 01/01 é dia de trabalho.
+    const c = { ...configPadrao("1", "Ana", "5x2_corrida"), rodizio: 0 };
+    const fechada = avaliarPessoa(c, "2027-01", {}, restaurante(), fer);
+    expect(fechada.dias.find((d) => d.data === "2027-01-01")?.turno).toBeNull();
+    const aberta = avaliarPessoa(c, "2027-01", {}, { ...restaurante(), abreNosFeriados: true }, fer);
+    expect(aberta.dias.find((d) => d.data === "2027-01-01")?.turno).not.toBeNull();
+    expect(aberta.ocorrencias.some((o) => o.regra === "FERIADO")).toBe(true);
+    expect(aberta.ocorrencias.filter((o) => o.gravidade === "erro")).toEqual([]);
+    expect(normalizarConfigEmpresa({ abreNosFeriados: true }).abreNosFeriados).toBe(true);
+    expect(normalizarConfigEmpresa(null).abreNosFeriados).toBe(false);
+  });
+});
