@@ -146,10 +146,23 @@ describe("tela do planejador", () => {
     comQuery(<PlanejadorEscala pessoas={SEM} />);
     await waitFor(() => expect(screen.getByText(/ainda não foi salvo/)).toBeInTheDocument());
     fireEvent.click(screen.getAllByRole("button", { name: /Vaga simulada/ })[0]);
+    // Pede o nome: em branco fica "Vaga simulada 1".
+    fireEvent.click(screen.getByRole("button", { name: "Criar vaga" }));
     expect(screen.getByText("Mudanças não salvas")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Escolher modelo de escala/ }));
     fireEvent.click(screen.getAllByRole("button", { name: /Usar este cenário/ })[0]);
     await waitFor(() => expect(screen.getAllByText("Vaga simulada 1").length).toBeGreaterThan(0));
+  });
+
+  it("vaga simulada com o nome de uma pessoa de verdade", async () => {
+    mockApi.config.mockResolvedValue({ dados: { segmento: "outro", atividadeDefinida: true }, atualizado_em: null, atualizado_por: null });
+    const SEM: typeof PESSOAS = [];
+    comQuery(<PlanejadorEscala pessoas={SEM} />);
+    await waitFor(() => expect(screen.getByText(/ainda não foi salvo/)).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("button", { name: /Vaga simulada/ })[0]);
+    fireEvent.change(screen.getByLabelText("Nome da vaga"), { target: { value: "  Maria   de Fátima " } });
+    fireEvent.click(screen.getByRole("button", { name: "Criar vaga" }));
+    await waitFor(() => expect(screen.getAllByText("Maria de Fátima").length).toBeGreaterThan(0));
   });
 });
 

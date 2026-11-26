@@ -46,6 +46,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DEVOLVER, FORA, TimesPorUnidade, type PessoaDoTime } from "./TimesPorUnidade";
 import { TrazerDeOutraEmpresa, type EmpresaDoGrupo } from "./TrazerDeOutraEmpresa";
 import { ExcluirFuncionario, type ComoExcluir } from "./ExcluirFuncionario";
+import { NovaVaga } from "./NovaVaga";
 import { BarraLote, type AtalhoDias, type MarcarPessoas } from "@/components/escala/BarraLote";
 import { DialogoPessoa } from "@/components/escala/DialogoPessoa";
 import { agruparOcorrencias } from "@/lib/escala/ocorrencias";
@@ -199,6 +200,7 @@ export function PlanejadorEscala({
   const [cargosAberto, setCargosAberto] = useState(false);
   const [trazendo, setTrazendo] = useState(false);
   const [excluindo, setExcluindo] = useState<string | null>(null);
+  const [criandoVaga, setCriandoVaga] = useState(false);
   // O cliente começa no caminho guiado; o escritório, nas abas completas. A escolha fica no navegador.
   const chaveModo = `escala-modo-${companyId ? "escritorio" : "portal"}`;
   const [modo, setModoEstado] = useState<Modo>(() => {
@@ -664,20 +666,29 @@ export function PlanejadorEscala({
     toast.success(`Cenário aplicado: ${c.nome}.`, { description: "Ajuste na grade; o que sair da regra é recusado." });
   }
 
+  const sugestaoVaga = `Vaga simulada ${configs.filter((c) => c.id.startsWith("vaga-")).length + 1}`;
+  /** Abre a caixa que pede o nome (de uma pessoa de verdade, se quiser) e a unidade. */
   function adicionarVaga() {
-    const n = configs.filter((c) => c.id.startsWith("vaga-")).length + 1;
+    setCriandoVaga(true);
+  }
+
+  function criarVaga({ nome, unidade: u }: { nome: string; unidade?: string }) {
+    setCriandoVaga(false);
     const i = configs.length;
+    const id = `vaga-${Date.now()}`;
     setConfigs((cs) => [
       ...cs,
       {
-        ...configPadrao(`vaga-${Date.now()}`, `Vaga simulada ${n}`, modeloPadrao),
+        ...configPadrao(id, nome, modeloPadrao),
         turma: i % 2 ? "B" : "A",
         folgaFixa: (i % 6) + 1,
         rodizio: i % 2,
-        unidade: filtroUnidade || undefined,
+        unidade: u,
       },
     ]);
+    if (u) salvarTimes({ ...cfg, times: { ...cfg.times, [id]: u } });
     setAlterado(true);
+    toast.success(`${nome} entrou na escala.`, { description: "Salve a escala para gravar." });
   }
 
   function confirmarAtividade(e: EscolhaAtividade) {
@@ -985,6 +996,15 @@ export function PlanejadorEscala({
           onMontar={montarTime}
           onTrazer={empresaAtual && outrasEmpresas?.length ? () => setTrazendo(true) : undefined}
           onExcluir={setExcluindo}
+        />
+      )}
+      {criandoVaga && (
+        <NovaVaga
+          sugestao={sugestaoVaga}
+          unidades={unidadesDoTime}
+          unidadeInicial={filtroUnidade || undefined}
+          onFechar={() => setCriandoVaga(false)}
+          onCriar={criarVaga}
         />
       )}
       {excluindo && (

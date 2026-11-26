@@ -37,7 +37,7 @@ export function ExcluirFuncionario({
           <DialogTitle>Excluir {nome}</DialogTitle>
           <DialogDescription>
             {vaga
-              ? "A vaga simulada sai da escala de todos os meses depois que você salvar."
+              ? "A vaga simulada sai desta escala depois que você salvar."
               : "A pessoa sai da equipe e da escala. Para só tirar da escala e manter na equipe, use “Fora da escala”."}
           </DialogDescription>
         </DialogHeader>

@@ -36,6 +36,23 @@ export function ControlesPessoa({
   const ate6x1 = ultimo ? `${ultimo.slice(8, 10)}/${ultimo.slice(5, 7)}` : "";
   return (
   <div className="flex flex-wrap items-center gap-1">
+      {c.id.startsWith("vaga-") && (
+        <label className="flex w-full items-center gap-1 text-[11px] text-muted-foreground">
+          Nome
+          <input
+            key={c.nome}
+            className={cn(sel, "flex-1")}
+            defaultValue={c.nome}
+            maxLength={80}
+            onBlur={(e) => {
+              const n = e.target.value.trim().replace(/\s+/g, " ");
+              if (n && n !== c.nome) onChange({ nome: n });
+            }}
+            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+            aria-label="Nome da vaga"
+          />
+        </label>
+      )}
       {unidades && (
         <label className="flex w-full items-center gap-1 text-[11px] text-muted-foreground">
           Unidade
