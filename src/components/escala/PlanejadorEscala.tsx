@@ -975,6 +975,7 @@ export function PlanejadorEscala({
         dias: l.dias,
         doze36: l.config.modelo === "12x36",
         cargo: l.config.cargo,
+        unidade: l.config.unidade,
         semanas: l.semanasInteiras.map((s) => ({ inicio: s.inicio, horas: s.horas, folgas: s.folgas, limiteHoras: s.limiteHoras, repousosExigidos: s.repousosExigidos })),
       })),
       feriados: new Map(feriadosDoMes),
