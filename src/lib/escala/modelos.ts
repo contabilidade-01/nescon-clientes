@@ -23,6 +23,8 @@ export interface DiaEscala {
   data: string;
   /** null = folga. */
   turno: Turno | null;
+  /** Dia dentro de uma licença ou afastamento: não trabalha e aparece como "Licença". */
+  licenca?: true;
 }
 
 export type ModeloEscala =
