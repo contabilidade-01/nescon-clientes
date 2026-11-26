@@ -1615,21 +1615,17 @@ function LinhaConfig({
         <button
           type="button"
           onClick={onAbrir}
-          className="truncate text-left text-xs font-medium hover:text-primary hover:underline"
+          className="min-w-0 flex-1 text-left text-xs font-medium hover:text-primary hover:underline"
           title={`Personalizar a escala de ${c.nome}`}
         >
-          {c.nome}
+          <span className="block truncate">{c.nome}</span>
+          {/* Cargo e unidade numa linha miúda embaixo do nome: o nome nunca perde espaço. */}
+          {(c.cargo || c.unidade) && (
+            <span className="block truncate text-[10px] font-normal text-muted-foreground" title={[c.cargo, c.unidade && `Unidade ${c.unidade}`].filter(Boolean).join(" · ")}>
+              {[c.cargo, c.unidade].filter(Boolean).join(" · ")}
+            </span>
+          )}
         </button>
-        {c.cargo && (
-          <Badge variant="secondary" className="max-w-[7rem] shrink-0 truncate px-1 py-0 text-[10px] font-normal" title={`Cargo: ${c.cargo}`}>
-            {c.cargo}
-          </Badge>
-        )}
-        {c.unidade && (
-          <Badge variant="outline" className="shrink-0 px-1 py-0 text-[10px] font-normal" title={`Unidade ${c.unidade}`}>
-            {c.unidade}
-          </Badge>
-        )}
         {onRemover && (
           <button type="button" className="ml-auto text-muted-foreground hover:text-destructive" onClick={onRemover} aria-label="Remover vaga">
             <Trash2 className="h-3.5 w-3.5" />
