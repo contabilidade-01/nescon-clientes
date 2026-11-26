@@ -241,6 +241,11 @@ export async function executarFerramenta(
         if (!Number.isInteger(g) || g < 0 || g > 6) return falha("grupo_corrida inválido (0-6).", "Alteração recusada");
         novo.rodizio = g;
       }
+      if (input.grupo_3semanas !== undefined) {
+        const g = Number(input.grupo_3semanas);
+        if (!Number.isInteger(g) || g < 0 || g > 2) return falha("grupo_3semanas inválido (0-2).", "Alteração recusada");
+        novo.rodizio = g;
+      }
       if (input.grupo_quinzenal !== undefined) {
         const g = Number(input.grupo_quinzenal);
         if (!Number.isInteger(g) || g < 0 || g > 3) return falha("grupo_quinzenal inválido (0-3).", "Alteração recusada");

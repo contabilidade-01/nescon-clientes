@@ -163,6 +163,10 @@ export function configsDoGrupo(
       espalhar([0, 1, 2, 3, 4, 5, 6], n, rnd).forEach((r, i) => (base[i].rodizio = r));
       break;
     }
+    case "5x2_3semanas": {
+      espalhar([0, 1, 2], n, rnd).forEach((r, i) => (base[i].rodizio = r));
+      break;
+    }
     case "5x2_quinzenal": {
       espalhar([0, 1, 2, 3], n, rnd).forEach((r, i) => (base[i].rodizio = r));
       break;

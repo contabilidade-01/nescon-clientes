@@ -11,6 +11,7 @@ import {
   diasDoMes,
   folgasDaCorrida,
   folgasDaQuinzenal,
+  folgasDo3Semanas,
   MODELOS,
   proximaFolga,
   type Ajustes,
@@ -70,6 +71,8 @@ export function resumoFolgas(c: ConfigPessoa): string {
       return `folgas corridas, começa ${folgasDaCorrida(c.rodizio).map((d) => ABREV[d]).join("+")} (grupo ${(((c.rodizio % 7) + 7) % 7) + 1})`;
     case "5x2_quinzenal":
       return `dom. a cada 2 sem., começa ${folgasDaQuinzenal(c.rodizio).map((d) => ABREV[d]).join("+")} (grupo ${(((c.rodizio % 4) + 4) % 4) + 1})`;
+    case "5x2_3semanas":
+      return `dom. a cada 3 sem., começa ${folgasDo3Semanas(c.rodizio).map((d) => ABREV[d]).join("+")} (grupo ${(((c.rodizio % 3) + 3) % 3) + 1})`;
     case "5x2_fechado":
       return c.diaFechado === 0 || c.semanasRodizio <= 1
         ? `folga ${ABREV[c.diaFechado]}+${ABREV[c.folgaFixa]}`
@@ -100,6 +103,7 @@ function variacoes(c: ConfigPessoa, modelo: ModeloChave, mes: string, empresa: E
   }
   if (modelo === "5x2_corrida") for (let r = 0; r < 7; r++) out.push({ ...base, rodizio: r });
   if (modelo === "5x2_quinzenal") for (let r = 0; r < 4; r++) out.push({ ...base, rodizio: r });
+  if (modelo === "5x2_3semanas") for (let r = 0; r < 3; r++) out.push({ ...base, rodizio: r });
   if (modelo === "5x2_fechado") {
     // O dia fechado vem da empresa; sem ele, fica o que a pessoa já tinha (domingo, de início).
     const fechados = empresa.diasFechados.length ? empresa.diasFechados : [base.diaFechado];

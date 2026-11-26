@@ -7,6 +7,7 @@ import { describe, it, expect } from "vitest";
 import { simularCenarios, turnoQuePreenche } from "@/lib/escala/cenarios";
 import { feriadosDaEmpresa } from "@/lib/escala/feriados";
 import {
+  SEMANAS_3SEMANAS,
   SEMANAS_QUINZENAL,
   avaliarPessoa,
   configPadrao,
@@ -19,7 +20,7 @@ import { SEGMENTOS } from "@/lib/escala/regras";
 
 const restaurante: ConfigEmpresa = { ...normalizarConfigEmpresa(null), segmento: "restaurante", temAcordoColetivo: false };
 const semFeriado = new Set<string>();
-const domingos = (o: { regra: string }[]) => o.filter((x) => x.regra === "DOMINGO");
+const domingos = <T extends { regra: string }>(o: T[]) => o.filter((x) => x.regra === "DOMINGO");
 
 describe("regra do domingo", () => {
   it("restaurante: domingo de folga a cada 3 semanas", () => {
@@ -80,5 +81,34 @@ describe("5x2 domingo quinzenal", () => {
     expect(new Set(r.configs.map((c) => c.rodizio)).size).toBe(4);
     expect(r.configs.every((c) => c.sexo === "F")).toBe(true);
     expect(turnoQuePreenche({ entrada: "08:00", saida: "17:00", intervaloMin: 60 }, "5x2_quinzenal", 42)?.saida).toBe("17:24");
+  });
+});
+
+describe("5x2 domingo a cada 3 semanas", () => {
+  it("cada dia da semana folga em só 1 das 3 semanas; domingo 1 vez", () => {
+    const vezes = [0, 0, 0, 0, 0, 0, 0];
+    for (const s of SEMANAS_3SEMANAS) for (const d of s) vezes[d]++;
+    expect(vezes).toEqual([1, 0, 1, 1, 1, 1, 1]);
+  });
+
+  it("8h e 8h24 sem acordo, desde 01/12/2026: nenhum erro em nenhum grupo no restaurante", () => {
+    for (let r = 0; r < 3; r++) {
+      for (const saida of ["17:00", "17:24"]) {
+        const c = { ...configPadrao("1", "Ana", "5x2_3semanas"), rodizio: r, saida, seisPorUmAteVirada: false };
+        for (const mes of ["2026-12", "2027-01", "2027-02", "2027-07"]) {
+          const a = avaliarPessoa(c, mes, {}, restaurante, semFeriado);
+          expect(a.ocorrencias.filter((o) => o.gravidade === "erro")).toEqual([]);
+          if (mes !== "2026-12") expect(a.maiorSemana).toBe(saida === "17:00" ? 40 : 42);
+        }
+      }
+    }
+    expect(fraseDaPessoa(configPadrao("1", "Ana", "5x2_3semanas"))).toContain("domingo a cada 3 semanas");
+  });
+
+  it("cenário pronto: 6 pessoas, ao menos 4 trabalhando todo dia", () => {
+    const pessoas = Array.from({ length: 6 }, (_, i) => ({ id: String(i), nome: `P${i}` }));
+    const r = simularCenarios(pessoas, "2027-01", { ...restaurante, abreNosFeriados: true }, semFeriado).find((x) => x.id === "5x2_3semanas")!;
+    expect(r.podeAplicar).toBe(true);
+    expect(Math.min(...r.mediaPorDia)).toBeGreaterThanOrEqual(4);
   });
 });
