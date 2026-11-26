@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { configPadrao, folgasDoDomingoFixo, modeloDaPessoa, SEMANAS_DOMINGO } from "@/lib/escala/planejamento";
+import { configPadrao, espalharDomingoFixo, folgasDoDomingoFixo, modeloDaPessoa, SEMANAS_DOMINGO } from "@/lib/escala/planejamento";
 import { gerarDias } from "@/lib/escala/modelos";
 import { diaDaSemana } from "@/lib/escala/datas";
 
@@ -45,5 +45,38 @@ describe("equipe espalhada pelo ciclo", () => {
       const folgando = dias.filter((ds) => !ds[d].turno).length;
       expect(folgando).toBe(d === 6 ? 0 : 2);
     }
+  });
+});
+
+describe("duplas que mudam (metade da equipe com a folga andando para trás)", () => {
+  const equipe = (n: number) => Array.from({ length: n }, (_, i) => ({ ...configPadrao(String(i), `P${i}`, "5x2_domingo"), ...espalharDomingoFixo(i) }));
+
+  it("para trás também: domingo sempre, nunca sábado, dom+seg no máximo 1 a cada 5 e até 5 dias seguidos", () => {
+    for (let r = 0; r < 5; r++) {
+      const c = { ...configPadrao("x", "X", "5x2_domingo"), rodizio: r, folgaAnda: "tras" as const };
+      const dias = gerarDias(modeloDaPessoa(c, "2026-12"), "2026-11-29", "2027-03-06");
+      let seguidos = 0;
+      let maior = 0;
+      dias.forEach((d, i) => {
+        if (diaDaSemana(d.data) === 0) expect(d.turno).toBeNull();
+        if (diaDaSemana(d.data) === 6) expect(d.turno).not.toBeNull();
+        if (i > 0 && !d.turno && !dias[i - 1].turno) expect(diaDaSemana(d.data)).toBe(1);
+        seguidos = d.turno ? seguidos + 1 : 0;
+        maior = Math.max(maior, seguidos);
+      });
+      expect(maior).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it("10 pessoas: 2 de folga por dia de segunda a sexta em todas as semanas, e cada dupla junta no máximo 1 semana em 5", () => {
+    const dias = equipe(10).map((c) => gerarDias(modeloDaPessoa(c, "2026-12"), "2026-12-06", "2027-01-09"));
+    for (let w = 0; w < 5; w++)
+      for (let d = 1; d <= 5; d++) expect(dias.filter((ds) => !ds[w * 7 + d].turno).length).toBe(2);
+    for (let a = 0; a < 10; a++)
+      for (let b = a + 1; b < 10; b++) {
+        let juntas = 0;
+        for (let w = 0; w < 5; w++) for (let d = 1; d <= 5; d++) if (!dias[a][w * 7 + d].turno && !dias[b][w * 7 + d].turno) juntas++;
+        expect(juntas, `P${a} e P${b}`).toBeLessThanOrEqual(1);
+      }
   });
 });

@@ -14,7 +14,7 @@
  * o número de pessoas por dia mais uniforme.
  */
 import { avaliarCenario, type ResultadoCenario } from "./cenarios";
-import { configPadrao, type ConfigEmpresa, type ConfigPessoa, type ModeloChave } from "./planejamento";
+import { configPadrao, type ConfigEmpresa, type ConfigPessoa, type ModeloChave, espalharDomingoFixo } from "./planejamento";
 import { PARES_5X2 } from "./porPessoa";
 import { SEGMENTOS } from "./regras";
 
@@ -164,8 +164,12 @@ export function configsDoGrupo(
       break;
     }
     case "5x2_domingo": {
-      // O domingo é de todos; a 2ª folga espalha a equipe pelos 5 dias de segunda a sexta.
-      espalhar([0, 1, 2, 3, 4], n, rnd).forEach((r, i) => (base[i].rodizio = r));
+      // O domingo é de todos; a 2ª folga espalha a equipe pelos 5 dias de segunda a sexta,
+      // metade andando para a frente e metade para trás (as duplas mudam toda semana).
+      embaralhar(
+        Array.from({ length: n }, (_, i) => i),
+        rnd,
+      ).forEach((pos, i) => Object.assign(base[i], espalharDomingoFixo(pos)));
       break;
     }
     case "5x2_3semanas": {
