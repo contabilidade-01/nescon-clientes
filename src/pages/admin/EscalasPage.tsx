@@ -65,7 +65,10 @@ const EscalasPage = () => {
         ) : isLoading ? (
           <Skeleton className="h-64 w-full" />
         ) : (
-          <PlanejadorEscala key={companyId} companyId={companyId} empresaNome={empresa?.name} pessoas={pessoas} regime12x36Padrao={Boolean(empresa?.escala_12x36)} />
+          <PlanejadorEscala key={companyId} companyId={companyId} empresaNome={empresa?.name} pessoas={pessoas}
+            regime12x36Padrao={Boolean(empresa?.escala_12x36)}
+            outrasEmpresas={(companies || []).map((c) => ({ id: c.id, name: c.name, cnpj: c.cnpj }))}
+          />
         )}
       </div>
     </AdminLayout>
