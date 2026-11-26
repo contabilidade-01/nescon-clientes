@@ -154,6 +154,11 @@ export function configsDoGrupo(
       ).forEach((r, i) => (base[i].rodizio = r));
       break;
     }
+    case "5x2_corrida": {
+      // A folga anda sozinha; espalha a equipe pelos 7 pontos do ciclo.
+      espalhar([0, 1, 2, 3, 4, 5, 6], n, rnd).forEach((r, i) => (base[i].rodizio = r));
+      break;
+    }
     case "5x2_fechado": {
       const fechado = fixa ?? empresa.diasFechados[0] ?? 1;
       const semanas = 1 + Math.floor(rnd() * Math.max(1, maxSemanas));

@@ -78,6 +78,7 @@ import {
   normalizarConfigEmpresa,
   trocarCelulas,
   ultimoDiaDa6x1,
+  unidadesDa,
   type Ajustes,
   type CadastroJornada,
   type ConfigEmpresa,
@@ -178,6 +179,8 @@ export function PlanejadorEscala({
   const [foco, setFoco] = useState<string | null>(null);
   // Caixa de personalização de um funcionário (clique no nome).
   const [aberta, setAberta] = useState<string | null>(null);
+  /** Filtro da grade por unidade (loja/filial com o mesmo CNPJ); "" = todas. */
+  const [unidade, setUnidade] = useState("");
   // O cliente começa no caminho guiado; o escritório, nas abas completas. A escolha fica no navegador.
   const chaveModo = `escala-modo-${companyId ? "escritorio" : "portal"}`;
   const [modo, setModoEstado] = useState<Modo>(() => {
@@ -600,7 +603,13 @@ export function PlanejadorEscala({
     const i = configs.length;
     setConfigs((cs) => [
       ...cs,
-      { ...configPadrao(`vaga-${Date.now()}`, `Vaga simulada ${n}`, modeloPadrao), turma: i % 2 ? "B" : "A", folgaFixa: (i % 6) + 1, rodizio: i % 2 },
+      {
+        ...configPadrao(`vaga-${Date.now()}`, `Vaga simulada ${n}`, modeloPadrao),
+        turma: i % 2 ? "B" : "A",
+        folgaFixa: (i % 6) + 1,
+        rodizio: i % 2,
+        unidade: filtroUnidade || undefined,
+      },
     ]);
     setAlterado(true);
   }
@@ -664,7 +673,11 @@ export function PlanejadorEscala({
   ];
   const salvos = planosQuery.data || [];
   const salvoEsteMes = salvos.find((p) => p.mes === mes);
-  const pessoasPorDia = (d: string) => linhas.filter((l) => l.dias.find((x) => x.data === d)?.turno).length;
+  const unidades = unidadesDa(configs);
+  const filtroUnidade = unidade && unidades.includes(unidade) ? unidade : "";
+  /** Linhas da grade: a equipe toda ou só a unidade escolhida. As regras são por pessoa, então não mudam. */
+  const linhasVisiveis = filtroUnidade ? linhas.filter((l) => l.config.unidade === filtroUnidade) : linhas;
+  const pessoasPorDia = (d: string) => linhasVisiveis.filter((l) => l.dias.find((x) => x.data === d)?.turno).length;
   const temDemanda = cfg.demanda.some((n) => n > 0);
 
   if (configQuery.isLoading || !cfgPronta) return <Skeleton className="h-64 w-full" />;
@@ -697,14 +710,16 @@ export function PlanejadorEscala({
 
   /** A escala que está na tela (salva ou só simulada), para baixar em PDF ou Excel. */
   function baixar(tipo: "pdf" | "xlsx") {
-    if (!linhas.length) return toast.error("Não há ninguém na escala para baixar.");
+    if (!linhasVisiveis.length) return toast.error("Não há ninguém na escala para baixar.");
     const escala: EscalaExportada = {
       mes,
-      empresa: empresaNome,
+      empresa: [empresaNome, filtroUnidade && `Unidade ${filtroUnidade}`].filter(Boolean).join(" · ") || undefined,
       regra: regraFrase,
-      pessoas: linhas.map((l) => ({ nome: l.config.nome, descricao: fraseDaPessoa(l.config), dias: l.dias, doze36: l.config.modelo === "12x36" })),
+      pessoas: linhasVisiveis.map((l) => ({ nome: l.config.nome, descricao: fraseDaPessoa(l.config), dias: l.dias, doze36: l.config.modelo === "12x36" })),
       feriados: new Map(feriadosDoMes),
-      erros: totalErros,
+      erros: filtroUnidade
+        ? linhasVisiveis.reduce((a, l) => a + l.ocorrencias.filter((o) => o.gravidade === "erro").length, 0)
+        : totalErros,
     };
     try {
       if (tipo === "pdf") baixarEscalaPdf(escala);
@@ -893,7 +908,7 @@ export function PlanejadorEscala({
           onSalvar={() => salvar.mutate()}
           onBaixar={baixar}
           limiteSemanal={vigencia.limiteSemanalHoras}
-          pode42h={cfg.temAcordoColetivo && cfg.bloqueio !== "sem_hora_extra"}
+          pode42h={cfg.bloqueio === "sem_hora_extra" ? false : cfg.temAcordoColetivo ? "acordo" : "hora_extra"}
           onHorario={mudarHorario}
           onMaisOpcoes={() => {
             setModo("avancado");
@@ -972,6 +987,23 @@ export function PlanejadorEscala({
             <Button variant="outline" size="sm" onClick={adicionarVaga}>
               <Plus className="mr-1 h-4 w-4" /> Vaga simulada
             </Button>
+            {unidades.length > 0 && (
+              <select
+                className="h-8 rounded-md border bg-background px-2 text-xs"
+                value={filtroUnidade}
+                onChange={(e) => setUnidade(e.target.value)}
+                aria-label="Unidade"
+                title="Mostrar e baixar só a escala de uma unidade"
+              >
+                <option value="">Todas as unidades ({configs.length})</option>
+                {unidades.map((u) => (
+                  <option key={u} value={u}>
+                    Unidade {u} ({configs.filter((c) => c.unidade === u).length})
+                  </option>
+                ))}
+                {configs.some((c) => !c.unidade) && <option value="" disabled>Sem unidade: {configs.filter((c) => !c.unidade).length}</option>}
+              </select>
+            )}
             <p className="text-xs text-muted-foreground">
               Arraste uma célula sobre outra para trocar (mesma pessoa move a folga; outra pessoa troca o turno). Clique para editar o dia; clique no
               cabeçalho do dia para marcar vários.
@@ -1071,7 +1103,7 @@ export function PlanejadorEscala({
                       </tr>
                     </thead>
                     <tbody>
-                      {linhas.map(({ config: c, dias: ds, porDia, ocorrencias, horas, maiorSemana, limiteSemana, semanaAcima }) => {
+                      {linhasVisiveis.map(({ config: c, dias: ds, porDia, ocorrencias, horas, maiorSemana, limiteSemana, semanaAcima }) => {
                         const erros = ocorrencias.filter((o) => o.gravidade === "erro").length;
                         return (
                           <tr key={c.id} className="border-t">
@@ -1291,6 +1323,7 @@ export function PlanejadorEscala({
               feriadosSet={feriadosSet}
               repousos={vigencia.repousosSemanais}
               viradaEm={viradaComFolgas ? virada?.inicio : undefined}
+              unidades={unidades}
               onChange={(p) => atualizar(linha.config.id, p)}
               onDias={(datas, acao) => diasDaPessoa(linha.config.id, datas, acao)}
               onFechar={() => setAberta(null)}
@@ -1357,6 +1390,11 @@ function LinhaConfig({
         >
           {c.nome}
         </button>
+        {c.unidade && (
+          <Badge variant="outline" className="shrink-0 px-1 py-0 text-[10px] font-normal" title={`Unidade ${c.unidade}`}>
+            {c.unidade}
+          </Badge>
+        )}
         {onRemover && (
           <button type="button" className="ml-auto text-muted-foreground hover:text-destructive" onClick={onRemover} aria-label="Remover vaga">
             <Trash2 className="h-3.5 w-3.5" />

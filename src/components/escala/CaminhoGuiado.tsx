@@ -57,6 +57,7 @@ const NOME_SIMPLES: Record<string, string> = {
   "5x2_dom_seg": "Terça a sábado, folga domingo e segunda",
   "5x2_rev2": "Abre todos os dias, folgas em rodízio",
   "5x2_rev3": "Abre todos os dias, mais gente no domingo",
+  "5x2_corrida": "Abre todos os dias, as 2 folgas andam um dia por semana",
   "4x3": "4 dias de 10 horas, 3 folgas",
   "12x36": "Plantões de 12 horas, dia sim, dia não",
   "6x1": "6 dias de trabalho e 1 folga (só até 15/12/2026)",
@@ -64,10 +65,17 @@ const NOME_SIMPLES: Record<string, string> = {
 
 type Passo = 1 | 2 | 3;
 
+/**
+ * Como a tela oferece as 42h em 5 dias (8h24): pelo acordo coletivo (art. 7º da EC), como
+ * hora extra paga (sem acordo, 24min por dia) ou não oferece (bloqueio sem hora extra).
+ */
+export type Pode42h = "acordo" | "hora_extra" | false;
+
 const DIAS_POR_SEMANA: Record<ModeloChave, string> = {
   "6x1": "6 dias por semana",
   "5x2": "5 dias por semana",
   "5x2_rev": "5 dias por semana",
+  "5x2_corrida": "5 dias por semana",
   "5x2_fechado": "5 dias por semana",
   "4x3": "4 dias por semana",
   "12x36": "dia sim, dia não",
@@ -151,7 +159,7 @@ export function CaminhoGuiado({
   /** Limite de horas por semana no fim do mês (42 na etapa 1). */
   limiteSemanal: number;
   /** Acordo coletivo e sem bloqueio de hora extra: dá para alongar o dia até o limite. */
-  pode42h: boolean;
+  pode42h: Pode42h;
   /** Troca o horário de uma sugestão (null volta ao padrão). */
   onHorario: (cenarioId: string, turno: Turno | null) => void;
 }) {
@@ -589,7 +597,7 @@ function PassoEscala({
   /** Limite de horas por semana no fim do mês (42 na etapa 1). */
   limiteSemanal: number;
   /** Acordo coletivo e sem bloqueio de hora extra: dá para alongar o dia até o limite. */
-  pode42h: boolean;
+  pode42h: Pode42h;
   /** Troca o horário de uma sugestão (null volta ao padrão). */
   onHorario: (cenarioId: string, turno: Turno | null) => void;
   onVoltar: () => void;
@@ -782,7 +790,7 @@ function CartaoSugestao({
   emUso: boolean;
   onEscolher: () => void;
   limiteSemanal?: number;
-  pode42h?: boolean;
+  pode42h?: Pode42h;
   onHorario?: (t: Turno | null) => void;
 }) {
   const dias = DIAS_TRABALHO_SEMANA[c.modelo];
@@ -824,9 +832,17 @@ function CartaoSugestao({
           Usar as {limiteSemanal}h: {preencher.entrada} às {preencher.saida} ({fmtHoras(minutosTrabalhados(preencher))} por dia)
         </Button>
       )}
+      {preencher && pode42h === "hora_extra" && (
+        <p className="text-[11px] text-muted-foreground">
+          Sem acordo coletivo, o que passar de 8h por dia ({fmtHoras(minutosTrabalhados(preencher) - 480)} por dia,{" "}
+          {fmtHoras((minutosTrabalhados(preencher) - 480) * (dias ?? 5))} por semana) é hora extra paga com 50% a mais. A partir de
+          16/12/2027 o limite cai para 40h: volte ao horário de 8h.
+        </p>
+      )}
       {preencher && !pode42h && (
         <p className="text-[11px] text-muted-foreground">
-          Para usar as {limiteSemanal}h em {dias} dias ({fmtHoras(minutosTrabalhados(preencher))} por dia) é preciso acordo coletivo de compensação.
+          Para usar as {limiteSemanal}h em {dias} dias ({fmtHoras(minutosTrabalhados(preencher))} por dia) é preciso acordo coletivo de compensação ou
+          liberar a hora extra no bloqueio de jornada.
         </p>
       )}
       {c.personalizado && onHorario && (

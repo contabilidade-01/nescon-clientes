@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { MODELOS, MODELOS_EXPLICADOS, configPadrao, proximaFolga, segundaFolga, ultimoDiaDa6x1, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
+import { MODELOS, MODELOS_EXPLICADOS, SEMANAS_CORRIDA, configPadrao, nomeDeUnidade, proximaFolga, segundaFolga, ultimoDiaDa6x1, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
 import { PARES_5X2 } from "@/lib/escala/porPessoa";
 
 const NOMES_DIA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -18,9 +18,12 @@ export function ControlesPessoa({
   repousos,
   viradaEm,
   onChange,
+  unidades,
 }: {
   c: ConfigPessoa;
   repousos: number;
+  /** Quando vem, mostra o campo da unidade (com as já usadas na equipe como sugestão). */
+  unidades?: string[];
   /** Dia em que entram as 2 folgas, quando cai neste mês: mostra a 6x1 até a véspera. */
   viradaEm?: string;
   onChange: (p: Partial<ConfigPessoa>) => void;
@@ -30,6 +33,28 @@ export function ControlesPessoa({
   const ate6x1 = ultimo ? `${ultimo.slice(8, 10)}/${ultimo.slice(5, 7)}` : "";
   return (
   <div className="flex flex-wrap items-center gap-1">
+      {unidades && (
+        <label className="flex w-full items-center gap-1 text-[11px] text-muted-foreground">
+          Unidade
+          <input
+            className={cn(sel, "flex-1")}
+            list={`unidades-${c.id}`}
+            defaultValue={c.unidade || ""}
+            placeholder="Ex.: Mairiporã, Terra Preta"
+            maxLength={40}
+            onBlur={(e) => {
+              const u = nomeDeUnidade(e.target.value);
+              if (u !== c.unidade) onChange({ unidade: u });
+            }}
+            aria-label="Unidade"
+          />
+          <datalist id={`unidades-${c.id}`}>
+            {unidades.map((u) => (
+              <option key={u} value={u} />
+            ))}
+          </datalist>
+        </label>
+      )}
       <select
         className={cn(sel, "w-full")}
         value={c.modelo}
@@ -160,6 +185,15 @@ export function ControlesPessoa({
             ))}
           </select>
         </>
+      )}
+      {c.modelo === "5x2_corrida" && (
+        <select className={sel} value={((c.rodizio % 7) + 7) % 7} onChange={(e) => onChange({ rodizio: Number(e.target.value) })} aria-label="Começa folgando">
+          {SEMANAS_CORRIDA.map((par, i) => (
+            <option key={i} value={i}>
+              Começa folgando {par.map(abrev).join("+")}
+            </option>
+          ))}
+        </select>
       )}
       {c.modelo === "12x36" && (
         <select className={sel} value={c.turma} onChange={(e) => onChange({ turma: e.target.value as "A" | "B" })} aria-label="Turma">
