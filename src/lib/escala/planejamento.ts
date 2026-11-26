@@ -21,8 +21,8 @@ import { mediasDa12x36, validarEscala, type Ocorrencia, type ResumoSemana } from
  * - 5x2_corrida: 5x2 com as 2 folgas juntas andando um dia por semana (seg+ter, ter+qua…),
  *   sempre dentro da semana de domingo a sábado; o ciclo tem 7 semanas.
  * - 5x2_domingo: domingo de folga toda semana + 1 folga que anda um dia por semana
- *   (ter, qua, qui, sex); ciclo de 4 semanas, nunca duas folgas seguidas e nunca mais
- *   de 4 dias seguidos de trabalho.
+ *   (seg, ter, qua, qui, sex); ciclo de 5 semanas. Nunca no sábado (sáb+dom juntos);
+ *   dom+seg juntos só 1 semana a cada 5. Nunca mais de 5 dias seguidos de trabalho.
  * - 5x2_quinzenal: 5x2 em ciclo de 4 semanas com o domingo de folga a cada 2 semanas
  *   (dom+seg, seg+ter, dom+sáb, qui+sex): serve a restaurante/comércio e a mulheres.
  * - 5x2_3semanas: 5x2 em ciclo de 3 semanas (dom+sex, qua+qui, seg+ter): domingo de folga
@@ -293,17 +293,19 @@ export const SEMANAS_CORRIDA: number[][] = [
 
 /**
  * Domingo fixo + folga variável: o domingo é folga toda semana e a 2ª folga anda um dia por
- * semana, de terça a sexta. Ela nunca cai no sábado nem na segunda, então nunca há duas
- * folgas seguidas (sáb+dom ou dom+seg) e nunca passam de 4 dias seguidos de trabalho.
+ * semana, de segunda a sexta (ciclo de 5 semanas). Nunca cai no sábado, então nunca há
+ * sáb+dom juntos; dom+seg juntos só na semana da segunda, 1 a cada 5. Com a equipe espalhada
+ * pelos 5 pontos do ciclo, de segunda a sexta a folga fica dividida por igual.
  */
 export const SEMANAS_DOMINGO: number[][] = [
+  [0, 1],
   [0, 2],
   [0, 3],
   [0, 4],
   [0, 5],
 ];
 
-/** Folgas da semana `grupo` do ciclo do domingo fixo (0 = dom+ter). */
+/** Folgas da semana `grupo` do ciclo do domingo fixo (0 = dom+seg). */
 export function folgasDoDomingoFixo(grupo: number): number[] {
   const n = SEMANAS_DOMINGO.length;
   return SEMANAS_DOMINGO[((grupo % n) + n) % n];
