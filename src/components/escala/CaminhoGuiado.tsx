@@ -129,6 +129,7 @@ export function CaminhoGuiado({
   onHorario,
   onTrocar,
   unidades,
+  minimoPorCargo,
 }: {
   mes: string;
   cfg: ConfigEmpresa;
@@ -161,6 +162,7 @@ export function CaminhoGuiado({
   onTrocar?: (e: DragEndEvent) => void;
   /** Unidades da empresa: com elas, o nome pode ser arrastado para outra unidade. */
   unidades?: string[];
+  minimoPorCargo?: Record<string, Demanda>;
 }) {
   // Empresa já respondida (por ela ou pelo escritório): abre no passo da escala.
   const [passo, setPasso] = useState<Passo>(cfg.atividadeDefinida ? 3 : 1);
@@ -248,6 +250,7 @@ export function CaminhoGuiado({
           onHorario={onHorario}
           onTrocar={onTrocar}
           unidades={unidades}
+          minimoPorCargo={minimoPorCargo}
           onAbrirPessoa={onAbrirPessoa}
           onVoltar={() => setPasso(2)}
         />
@@ -599,6 +602,7 @@ function PassoEscala({
   onHorario,
   onTrocar,
   unidades,
+  minimoPorCargo,
   onAbrirPessoa,
   onVoltar,
 }: {
@@ -625,6 +629,7 @@ function PassoEscala({
   onHorario: (cenarioId: string, turno: Turno | null) => void;
   onTrocar?: (e: DragEndEvent) => void;
   unidades?: string[];
+  minimoPorCargo?: Record<string, Demanda>;
   onAbrirPessoa?: (id: string) => void;
   onVoltar: () => void;
 }) {
@@ -735,7 +740,7 @@ function PassoEscala({
         </Button>
       </section>
 
-      {linhas.length > 0 && <SemanaDaEquipe mes={mes} linhas={linhas} onTrocar={onTrocar} unidades={unidades} onAbrirPessoa={onAbrirPessoa} />}
+      {linhas.length > 0 && <SemanaDaEquipe mes={mes} linhas={linhas} onTrocar={onTrocar} unidades={unidades} minimoPorCargo={minimoPorCargo} onAbrirPessoa={onAbrirPessoa} />}
 
       <Button variant="ghost" onClick={onVoltar}>
         <ArrowLeft className="mr-1.5 h-4 w-4" /> Voltar para a equipe

@@ -33,6 +33,7 @@ const EscalasPage = () => {
           id: f.id,
           name: f.name,
           cadastro: { escala: f.escala, folga: f.folga, horario_entrada: f.horario_entrada, horario_saida: f.horario_saida },
+          cargo: f.cargo,
         })),
     [funcionarios],
   );

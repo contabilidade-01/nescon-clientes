@@ -89,6 +89,9 @@ import {
   type PlanoMes,
 } from "@/lib/escala/planejamento";
 import { CaminhoGuiado } from "@/components/escala/CaminhoGuiado";
+import { PainelCargos } from "@/components/escala/PainelCargos";
+import { aplicarCargos, coberturaPorCargo, nomeDeCargo } from "@/lib/escala/cargos";
+import type { Demanda } from "@/lib/escala/contingente";
 import { AlvoUnidade, BarraDeUnidades, PegadorPessoa, destinoDoArraste, ehArrasteDePessoa } from "@/components/escala/ArrastarPessoa";
 import { BotoesBaixar } from "@/components/escala/BotoesBaixar";
 import { baixarEscalaPdf, baixarEscalaXlsx, type EscalaExportada } from "@/lib/escala/exportarEscala";
@@ -137,7 +140,7 @@ function abrev(d: number) {
   return NOMES_DIA[d].slice(0, 3).toLowerCase();
 }
 
-type Pessoa = { id: string; name: string; cadastro?: CadastroJornada };
+type Pessoa = { id: string; name: string; cadastro?: CadastroJornada; cargo?: string | null };
 /** Simples: caminho guiado em 3 passos. Avançado: as abas completas (grade, contingente…). */
 type Modo = "simples" | "avancado";
 type Aba = "assistente" | "escala" | "pessoa" | "contingente" | "regras";
@@ -188,6 +191,7 @@ export function PlanejadorEscala({
   /** Filtro da grade por unidade (loja/filial com o mesmo CNPJ); "" = todas. */
   const [unidade, setUnidade] = useState("");
   const [timesAberto, setTimesAberto] = useState(true);
+  const [cargosAberto, setCargosAberto] = useState(false);
   // O cliente começa no caminho guiado; o escritório, nas abas completas. A escolha fica no navegador.
   const chaveModo = `escala-modo-${companyId ? "escritorio" : "portal"}`;
   const [modo, setModoEstado] = useState<Modo>(() => {
@@ -243,7 +247,8 @@ export function PlanejadorEscala({
       temAcordo: Boolean(cfgCarregada?.temAcordoColetivo),
     });
     // Os times da empresa (passo 1) mandam: quem está fora sai, e a unidade vem do time.
-    setConfigs(aplicarTimes(plano.configs, cfgCarregada));
+    // Cargo: o marcado na tela vale; senão o do cadastro da folha.
+    setConfigs(aplicarCargos(aplicarTimes(plano.configs, cfgCarregada), cfgCarregada?.cargos, new Map(pessoas.map((p) => [p.id, p.cargo]))));
     setAjustes(plano.ajustes);
     setAlterado(false);
     setCenarioAtual(null);
@@ -754,6 +759,23 @@ export function PlanejadorEscala({
     setAlterado(true);
   }
 
+  function mudarCargo(id: string, cargo: string | undefined) {
+    const cargos = { ...cfg.cargos };
+    if (cargo) cargos[id] = cargo;
+    else delete cargos[id];
+    salvarTimes({ ...cfg, cargos });
+    const doCadastro = pessoas.find((p) => p.id === id)?.cargo;
+    setConfigs((cs) => cs.map((c) => (c.id === id ? { ...c, cargo: cargo ?? (nomeDeCargo(doCadastro) || undefined) } : c)));
+    setAlterado(true);
+  }
+
+  function mudarMinimoCargo(cargo: string, minimo: Demanda | null) {
+    const minimoPorCargo = { ...cfg.minimoPorCargo };
+    if (minimo) minimoPorCargo[cargo] = minimo;
+    else delete minimoPorCargo[cargo];
+    salvarTimes({ ...cfg, minimoPorCargo });
+  }
+
   function novaUnidade(nome: string) {
     if (unidadesDoTime.includes(nome)) return toast.info(`A unidade ${nome} já existe.`);
     salvarTimes({ ...cfg, unidades: [...cfg.unidades, nome] });
@@ -776,6 +798,7 @@ export function PlanejadorEscala({
       : linhas;
   const pessoasPorDia = (d: string) => linhasVisiveis.filter((l) => l.dias.find((x) => x.data === d)?.turno).length;
   const temDemanda = cfg.demanda.some((n) => n > 0);
+  const coberturaCargos = coberturaPorCargo(linhasVisiveis, dias, cfg.minimoPorCargo);
 
   if (configQuery.isLoading || !cfgPronta) return <Skeleton className="h-64 w-full" />;
 
@@ -817,12 +840,14 @@ export function PlanejadorEscala({
         descricao: fraseDaPessoa(l.config),
         dias: l.dias,
         doze36: l.config.modelo === "12x36",
+        cargo: l.config.cargo,
         semanas: l.semanasInteiras.map((s) => ({ inicio: s.inicio, horas: s.horas, folgas: s.folgas, limiteHoras: s.limiteHoras, repousosExigidos: s.repousosExigidos })),
       })),
       feriados: new Map(feriadosDoMes),
       erros: filtroUnidade
         ? linhasVisiveis.reduce((a, l) => a + l.ocorrencias.filter((o) => o.gravidade === "erro").length, 0)
         : totalErros,
+      minimoPorCargo: cfg.minimoPorCargo,
     };
     try {
       if (tipo === "pdf") baixarEscalaPdf(escala);
@@ -843,6 +868,17 @@ export function PlanejadorEscala({
           onMover={moverPessoa}
           onNovaUnidade={novaUnidade}
           onMontar={montarTime}
+        />
+      )}
+      {configs.length > 0 && !(escolhendo && modo !== "simples") && (
+        <PainelCargos
+          pessoas={configs.map((c) => ({ id: c.id, nome: c.nome, cargo: c.cargo, unidade: c.unidade }))}
+          segmento={cfg.segmento}
+          minimoPorCargo={cfg.minimoPorCargo}
+          aberto={cargosAberto}
+          onAbrir={setCargosAberto}
+          onCargo={mudarCargo}
+          onMinimo={mudarMinimoCargo}
         />
       )}
       <Card className={cn("overflow-hidden", escolhendo && modo !== "simples" && "hidden")}>
@@ -1053,6 +1089,7 @@ export function PlanejadorEscala({
           onHorario={mudarHorario}
           onTrocar={aoSoltar}
           unidades={unidadesDoTime}
+          minimoPorCargo={cfg.minimoPorCargo}
           onMaisOpcoes={() => {
             setModo("avancado");
             setEscolhendo(true);
@@ -1328,6 +1365,29 @@ export function PlanejadorEscala({
                         <td />
                         <td />
                       </tr>
+                      {coberturaCargos.map((cc) => (
+                        <tr key={cc.cargo} className="bg-muted/20">
+                          <td className="sticky left-0 z-10 bg-muted px-2 py-1 text-xs text-muted-foreground" title={`Quantos ${cc.cargo} trabalham no dia (mínimo entre parênteses)`}>
+                            {cc.cargo}
+                          </td>
+                          {dias.map((d) => {
+                            const n = cc.porDia.get(d) ?? 0;
+                            const min = cc.minimo[diaDaSemana(d)];
+                            return (
+                              <td
+                                key={d}
+                                className={cn("p-1 text-center text-xs tabular-nums", diaDaSemana(d) === 0 && "border-l", n < min && "bg-destructive/10 font-semibold text-destructive")}
+                                title={min ? `${n} de ${min} necessário(s)` : undefined}
+                              >
+                                {n}
+                                {min > 0 && <span className="text-[9px] text-muted-foreground">/{min}</span>}
+                              </td>
+                            );
+                          })}
+                          <td />
+                          <td />
+                        </tr>
+                      ))}
                       {temDemanda && (
                         <tr className="bg-muted/40">
                           <td className="sticky left-0 z-10 bg-muted p-2 text-muted-foreground">Necessário (demanda)</td>
@@ -1560,6 +1620,11 @@ function LinhaConfig({
         >
           {c.nome}
         </button>
+        {c.cargo && (
+          <Badge variant="secondary" className="max-w-[7rem] shrink-0 truncate px-1 py-0 text-[10px] font-normal" title={`Cargo: ${c.cargo}`}>
+            {c.cargo}
+          </Badge>
+        )}
         {c.unidade && (
           <Badge variant="outline" className="shrink-0 px-1 py-0 text-[10px] font-normal" title={`Unidade ${c.unidade}`}>
             {c.unidade}

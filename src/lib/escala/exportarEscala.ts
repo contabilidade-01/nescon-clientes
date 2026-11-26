@@ -3,6 +3,8 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { diaDaSemana } from "./datas";
 import { minutosTrabalhados, type DiaEscala } from "./modelos";
+import { coberturaPorCargo } from "./cargos";
+import type { Demanda } from "./contingente";
 
 /**
  * Baixar a escala do mês que está na tela (salva ou só simulada): PDF para imprimir e
@@ -23,6 +25,8 @@ export interface PessoaExportada {
    * com os dias do mês vizinho. Sem elas, a semana cortada sai "(parcial)".
    */
   semanas?: SemanaExportada[];
+  /** Cargo (cozinheiro, garçom…): sai embaixo do nome e conta na cobertura por cargo. */
+  cargo?: string;
 }
 
 export interface SemanaExportada {
@@ -45,6 +49,8 @@ export interface EscalaExportada {
   feriados: Map<string, string>;
   /** Quantos pontos fora da regra: o arquivo sai marcado como rascunho. */
   erros: number;
+  /** Mínimo de cada cargo por dia da semana: o PDF mostra quantos de cada cargo trabalham. */
+  minimoPorCargo?: Record<string, Demanda>;
 }
 
 const DIAS_CURTOS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -127,11 +133,19 @@ export function mediaDe2Semanas(dias: DiaEscala[], datas: string[]): number | nu
 /** Linhas da planilha: cabeçalho com os dias, uma linha por pessoa e as horas do mês. */
 export function linhasDaPlanilha(e: EscalaExportada): string[][] {
   const datas = e.pessoas[0]?.dias.map((d) => d.data) ?? [];
-  const cabecalho = ["Funcionário", ...datas.map((d) => `${DIAS_CURTOS[diaDaSemana(d)]} ${ddmm(d)}`), "Horas no mês", "Média por semana"];
+  const comCargo = e.pessoas.some((p) => p.cargo);
+  const cabecalho = [
+    "Funcionário",
+    ...(comCargo ? ["Cargo"] : []),
+    ...datas.map((d) => `${DIAS_CURTOS[diaDaSemana(d)]} ${ddmm(d)}`),
+    "Horas no mês",
+    "Média por semana",
+  ];
   const linhas = e.pessoas.map((p) => {
     const media = p.doze36 ? mediaDe2Semanas(p.dias, datas) : mediaSemanal(p.dias, datas);
     return [
       p.nome,
+      ...(comCargo ? [p.cargo ?? ""] : []),
       ...datas.map((d) => textoDoDia(p.dias.find((x) => x.data === d), e.feriados.get(d))),
       horas(minutosNos(p.dias, datas)),
       media === null ? "" : horas(media),
@@ -267,17 +281,38 @@ export function pdfDaEscala(e: EscalaExportada): jsPDF {
           comLei ? "Horas na semana (lei)" : "Horas",
         ],
       ],
-      body: e.pessoas.map((p) => [
-        p.nome,
-        ...semana.map((d) => (d ? textoDoDia(p.dias.find((x) => x.data === d)) : "")),
-        textoHorasSemana(p, semana, datas),
-      ]),
+      body: [
+        ...e.pessoas.map((p) => [
+          p.cargo ? `${p.nome}\n${p.cargo}` : p.nome,
+          ...semana.map((d) => (d ? textoDoDia(p.dias.find((x) => x.data === d)) : "")),
+          textoHorasSemana(p, semana, datas),
+        ]),
+        // Quantos de cada cargo trabalham no dia ("1/2" = 1 de 2 necessários).
+        ...coberturaPorCargo(
+          e.pessoas.map((p) => ({ config: { cargo: p.cargo }, dias: p.dias })),
+          dentro,
+          e.minimoPorCargo,
+        ).map((cc) => [
+          `${cc.cargo} trabalhando`,
+          ...semana.map((d) => {
+            if (!d) return "";
+            const n = cc.porDia.get(d) ?? 0;
+            const min = cc.minimo[diaDaSemana(d)];
+            return min ? `${n}/${min}${n < min ? " FALTA" : ""}` : String(n);
+          }),
+          "",
+        ]),
+      ],
       didParseCell: (c) => {
         if (c.section === "body" && c.cell.raw === "Folga") {
           c.cell.styles.fillColor = [232, 236, 242];
           c.cell.styles.textColor = 90;
         }
-        if (c.section === "body" && typeof c.cell.raw === "string" && /\((ACIMA|FALTA FOLGA)/.test(c.cell.raw)) {
+        if (c.section === "body" && c.column.index === 0 && typeof c.cell.raw === "string" && c.cell.raw.endsWith(" trabalhando")) {
+          c.cell.styles.fontStyle = "italic";
+          c.cell.styles.textColor = 90;
+        }
+        if (c.section === "body" && typeof c.cell.raw === "string" && /(\((ACIMA|FALTA FOLGA)| FALTA$)/.test(c.cell.raw)) {
           c.cell.styles.textColor = [200, 30, 30];
           c.cell.styles.fontStyle = "bold";
         }

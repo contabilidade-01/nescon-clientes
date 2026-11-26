@@ -2781,6 +2781,8 @@ export const api = {
           inativado_por?: string | null;
           company_name?: string;
           company_cnpj?: string;
+          /** Cargo do cadastro da folha (Domínio). */
+          cargo?: string | null;
         } & EmployeeJornada>
       >(`/employees${q}`);
     },
