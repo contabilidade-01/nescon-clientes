@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { MODELOS, MODELOS_EXPLICADOS, SEMANAS_CORRIDA, SEMANAS_QUINZENAL, SEMANAS_3SEMANAS, configPadrao, nomeDeUnidade, proximaFolga, segundaFolga, ultimoDiaDa6x1, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
+import { MODELOS, MODELOS_EXPLICADOS, SEMANAS_CORRIDA, SEMANAS_DOMINGO, SEMANAS_QUINZENAL, SEMANAS_3SEMANAS, configPadrao, nomeDeUnidade, proximaFolga, segundaFolga, ultimoDiaDa6x1, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
 import { PARES_5X2 } from "@/lib/escala/porPessoa";
 
 const NOMES_DIA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -217,6 +217,15 @@ export function ControlesPessoa({
       {c.modelo === "5x2_corrida" && (
         <select className={sel} value={((c.rodizio % 7) + 7) % 7} onChange={(e) => onChange({ rodizio: Number(e.target.value) })} aria-label="Começa folgando">
           {SEMANAS_CORRIDA.map((par, i) => (
+            <option key={i} value={i}>
+              Começa folgando {par.map(abrev).join("+")}
+            </option>
+          ))}
+        </select>
+      )}
+      {c.modelo === "5x2_domingo" && (
+        <select className={sel} value={((c.rodizio % 6) + 6) % 6} onChange={(e) => onChange({ rodizio: Number(e.target.value) })} aria-label="Começa folgando">
+          {SEMANAS_DOMINGO.map((par, i) => (
             <option key={i} value={i}>
               Começa folgando {par.map(abrev).join("+")}
             </option>

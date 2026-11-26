@@ -42,7 +42,7 @@ Como trabalhar:
 
 const DIAS_DESC = "Dia da semana: 0 = domingo, 1 = segunda, ..., 6 = sábado.";
 const MODELOS_DESC =
-  "Modelos: '6x1' (só até 15/12/2026), '5x2' (folgas fixas), '5x2_rev' (5x2 com rodízio do domingo), '5x2_corrida' (as 2 folgas juntas andam um dia por semana, ciclo de 7 semanas), '5x2_quinzenal' (ciclo de 4 semanas dom+seg, seg+ter, dom+sáb, qui+sex: domingo de folga a cada 2 semanas), '5x2_3semanas' (ciclo de 3 semanas dom+sex, qua+qui, seg+ter: domingo de folga a cada 3 semanas, sábado nunca é folga), '5x2_fechado' (folga fixa no dia em que a casa fecha + 1 escalonada), '4x3' (4 dias de 10h, exige acordo), '12x36' (plantões).";
+  "Modelos: '6x1' (só até 15/12/2026), '5x2' (folgas fixas), '5x2_rev' (5x2 com rodízio do domingo), '5x2_corrida' (as 2 folgas juntas andam um dia por semana, ciclo de 7 semanas), '5x2_domingo' (folga todo domingo + 1 dia que anda seg, ter … sáb, ciclo de 6 semanas), '5x2_quinzenal' (ciclo de 4 semanas dom+seg, seg+ter, dom+sáb, qui+sex: domingo de folga a cada 2 semanas), '5x2_3semanas' (ciclo de 3 semanas dom+sex, qua+qui, seg+ter: domingo de folga a cada 3 semanas, sábado nunca é folga), '5x2_fechado' (folga fixa no dia em que a casa fecha + 1 escalonada), '4x3' (4 dias de 10h, exige acordo), '12x36' (plantões).";
 
 /** Ferramentas: executadas no navegador (src/lib/escala/assistenteFerramentas.ts). */
 const FERRAMENTAS = [
@@ -74,7 +74,7 @@ const FERRAMENTAS = [
           items: {
             type: "object",
             properties: {
-              modelo: { type: "string", enum: ["6x1", "5x2", "5x2_rev", "5x2_corrida", "5x2_quinzenal", "5x2_3semanas", "5x2_fechado", "4x3", "12x36"] },
+              modelo: { type: "string", enum: ["6x1", "5x2", "5x2_rev", "5x2_corrida", "5x2_domingo", "5x2_quinzenal", "5x2_3semanas", "5x2_fechado", "4x3", "12x36"] },
               quantidade: { type: ["integer", "null"], description: "Quantas pessoas; null = o resto da equipe." },
               pessoas: { type: "array", items: { type: "string" }, description: "Ids de pessoas fixadas neste grupo (opcional)." },
               folga_fixa: {
@@ -117,7 +117,7 @@ const FERRAMENTAS = [
       type: "object",
       properties: {
         pessoa_id: { type: "string" },
-        modelo: { type: "string", enum: ["6x1", "5x2", "5x2_rev", "5x2_corrida", "5x2_quinzenal", "5x2_3semanas", "5x2_fechado", "4x3", "12x36"] },
+        modelo: { type: "string", enum: ["6x1", "5x2", "5x2_rev", "5x2_corrida", "5x2_domingo", "5x2_quinzenal", "5x2_3semanas", "5x2_fechado", "4x3", "12x36"] },
         entrada: { type: "string" },
         saida: { type: "string" },
         intervalo_min: { type: "integer" },
