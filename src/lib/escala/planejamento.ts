@@ -321,6 +321,7 @@ export function diasParaValidar(
   mes: string,
   ajustes: Ajustes,
   feriados: Set<string> = new Set(),
+  opcoes: { abreNosFeriados?: boolean } = {},
 ): DiaEscala[] {
   const dias = diasDoMes(mes);
   const de = inicioDaSemana(dias[0]);
@@ -329,7 +330,9 @@ export function diasParaValidar(
   const meus = ajustes[c.id] || {};
   // Feriado nasce de folga (fora a 12x36, que já paga o feriado no plantão). Trabalhar
   // nele é escolha do cliente, feita à mão, e a validação cobra a regra do segmento.
-  const folgaNoFeriado = c.modelo !== "12x36";
+  // Se a empresa marcou que abre nos feriados, o feriado segue o modelo (quem está escalado
+  // trabalha) e a validação avisa do pagamento em dobro ou da folga compensatória.
+  const folgaNoFeriado = c.modelo !== "12x36" && !opcoes.abreNosFeriados;
   const ateVirada = diasAteAVirada(c, mes, de, ate);
   return gerarDias(modeloDaPessoa(c, mes), de, ate).map((d, i) => {
     if (Object.prototype.hasOwnProperty.call(meus, d.data)) return { data: d.data, turno: meus[d.data] };
@@ -391,10 +394,10 @@ export function avaliarPessoa(
   c: ConfigPessoa,
   mes: string,
   ajustes: Ajustes,
-  empresa: Pick<ConfigEmpresa, "segmento" | "temAcordoColetivo">,
+  empresa: Pick<ConfigEmpresa, "segmento" | "temAcordoColetivo"> & { abreNosFeriados?: boolean },
   feriados: Set<string>,
 ): AvaliacaoPessoa {
-  const todos = diasParaValidar(c, mes, ajustes, feriados);
+  const todos = diasParaValidar(c, mes, ajustes, feriados, { abreNosFeriados: empresa.abreNosFeriados });
   const resultado = validarEscala(todos, perfilDa(c, empresa), feriados);
   const dias = todos.filter((d) => d.data.startsWith(mes));
   const porDia = new Map<string, "erro" | "atencao">();
@@ -455,6 +458,11 @@ export interface ConfigEmpresa {
   temAcordoColetivo: boolean;
   bloqueio: ModoBloqueio;
   incluirFacultativos: boolean;
+  /**
+   * A casa abre nos feriados: quem o modelo põe para trabalhar no dia trabalha (pagar em
+   * dobro ou dar folga compensatória). Desligado, todo feriado nasce de folga (fora a 12x36).
+   */
+  abreNosFeriados: boolean;
   feriadosLocais: FeriadoLocal[];
   /** Pessoas necessárias por dia da semana (domingo a sábado). */
   demanda: Demanda;
@@ -488,6 +496,7 @@ export function configEmpresaPadrao(): ConfigEmpresa {
     temAcordoColetivo: false,
     bloqueio: "limite_legal",
     incluirFacultativos: false,
+    abreNosFeriados: false,
     feriadosLocais: [],
     demanda: [...DEMANDA_VAZIA] as Demanda,
     horasPorDia: 8,
@@ -524,6 +533,7 @@ export function normalizarConfigEmpresa(raw: unknown): ConfigEmpresa {
     temAcordoColetivo: Boolean(o.temAcordoColetivo),
     bloqueio,
     incluirFacultativos: Boolean(o.incluirFacultativos),
+    abreNosFeriados: Boolean(o.abreNosFeriados),
     feriadosLocais,
     demanda,
     horasPorDia: horas > 0 && horas <= 12 ? horas : base.horasPorDia,
@@ -639,7 +649,7 @@ export function aplicarLote(
   ids: string[],
   mudar: (c: ConfigPessoa, aj: Record<string, Turno | null>) => { config: ConfigPessoa; ajustes: Record<string, Turno | null> },
   mes: string,
-  empresa: Pick<ConfigEmpresa, "segmento" | "temAcordoColetivo">,
+  empresa: Pick<ConfigEmpresa, "segmento" | "temAcordoColetivo"> & { abreNosFeriados?: boolean },
   feriados: Set<string>,
 ): ResultadoLote {
   let cs = configs;

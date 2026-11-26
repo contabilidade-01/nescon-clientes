@@ -183,6 +183,7 @@ export function PainelPorPessoa({
               feriadosSet={feriadosSet}
               avaliacao={mostrada?.avaliacao ?? linha}
               previa={Boolean(mostrada)}
+              abreNosFeriados={empresa.abreNosFeriados}
               onDia={(d) => onEditarDia(c, d)}
             />
 
@@ -341,7 +342,10 @@ export function CalendarioPessoa({
   avaliacao,
   previa,
   onDia,
+  abreNosFeriados,
 }: {
+  /** A casa abre nos feriados: o feriado segue o modelo em vez de nascer de folga. */
+  abreNosFeriados?: boolean;
   c: ConfigPessoa;
   mes: string;
   ajustes: Ajustes;
@@ -351,7 +355,10 @@ export function CalendarioPessoa({
   previa: boolean;
   onDia: (data: string) => void;
 }) {
-  const todos = useMemo(() => diasParaValidar(c, mes, ajustes, feriadosSet), [c, mes, ajustes, feriadosSet]);
+  const todos = useMemo(
+    () => diasParaValidar(c, mes, ajustes, feriadosSet, { abreNosFeriados }),
+    [c, mes, ajustes, feriadosSet, abreNosFeriados],
+  );
   const semanas: DiaEscala[][] = [];
   for (let i = 0; i < todos.length; i += 7) semanas.push(todos.slice(i, i + 7));
   return (

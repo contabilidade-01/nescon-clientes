@@ -741,6 +741,7 @@ export function PlanejadorEscala({
                   <Badge variant="secondary">{SEGMENTOS[cfg.segmento].nome}</Badge>
                   <Badge variant="outline">{cfg.temAcordoColetivo ? "Com acordo coletivo" : "Sem acordo coletivo"}</Badge>
                   {cfg.usa12x36 && <Badge variant="outline">Usa 12x36</Badge>}
+                  <Badge variant="outline">{cfg.abreNosFeriados ? "Abre nos feriados" : "Fecha nos feriados"}</Badge>
                   {cfg.diasFechados.length > 0 && (
                     <Badge variant="outline">Fecha {cfg.diasFechados.map((d) => abrev(d)).join(", ")}</Badge>
                   )}
@@ -786,6 +787,29 @@ export function PlanejadorEscala({
           </div>
           )}
         </div>
+        {unidades.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 border-t px-4 pt-3" role="group" aria-label="Unidade">
+            <span className="mr-1 text-xs font-medium text-muted-foreground">Unidade:</span>
+            {["", ...unidades].map((u) => {
+              const n = u ? configs.filter((c) => c.unidade === u).length : configs.length;
+              return (
+                <Button
+                  key={u || "todas"}
+                  size="sm"
+                  variant={filtroUnidade === u ? "default" : "outline"}
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => setUnidade(u)}
+                  aria-pressed={filtroUnidade === u}
+                >
+                  {u || "Todas"} ({n})
+                </Button>
+              );
+            })}
+            <span className="text-[11px] text-muted-foreground">
+              A grade, a contagem de pessoas por dia e o PDF/Excel seguem a unidade escolhida. Para trocar a unidade de alguém, clique no nome.
+            </span>
+          </div>
+        )}
         <CardContent className={cn("grid gap-4 p-4", modo === "avancado" ? "md:grid-cols-3" : "md:grid-cols-2")}>
           <div className="space-y-1.5">
             <Label>Mês planejado</Label>
@@ -1287,10 +1311,20 @@ export function PlanejadorEscala({
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Feriados</CardTitle>
               <p className="text-xs text-muted-foreground">
-                Os feriados nacionais já entram sozinhos e nascem de folga na escala. Inclua aqui os municipais e estaduais da empresa.
+                Os feriados nacionais já entram sozinhos. Inclua aqui os municipais e estaduais da empresa e diga se a casa abre neles.
               </p>
             </CardHeader>
             <CardContent className="space-y-3">
+              <label className="flex items-start gap-2 rounded-md border p-2 text-sm">
+                <Switch checked={cfg.abreNosFeriados} onCheckedChange={(v) => mudarCfg({ abreNosFeriados: v })} />
+                <span>
+                  A empresa abre nos feriados
+                  <span className="block text-xs text-muted-foreground">
+                    Ligado: no feriado trabalha quem a escala põe para trabalhar naquele dia (pagar em dobro ou dar outra folga na semana).
+                    Desligado: todo mundo folga no feriado. Não vale para a 12x36, que já segue o plantão.
+                  </span>
+                </span>
+              </label>
               <FeriadosLocais feriados={cfg.feriadosLocais} onChange={(f) => mudarCfg({ feriadosLocais: f })} />
               <label className="flex items-center gap-2 text-sm">
                 <Switch checked={cfg.incluirFacultativos} onCheckedChange={(v) => mudarCfg({ incluirFacultativos: v })} />
@@ -1324,6 +1358,7 @@ export function PlanejadorEscala({
               repousos={vigencia.repousosSemanais}
               viradaEm={viradaComFolgas ? virada?.inicio : undefined}
               unidades={unidades}
+              abreNosFeriados={cfg.abreNosFeriados}
               onChange={(p) => atualizar(linha.config.id, p)}
               onDias={(datas, acao) => diasDaPessoa(linha.config.id, datas, acao)}
               onFechar={() => setAberta(null)}
