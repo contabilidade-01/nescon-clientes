@@ -1639,9 +1639,16 @@ export function PlanejadorEscala({
               repousos={vigencia.repousosSemanais}
               ocultar={modelosImpraticaveis(cfg, vigencia.repousosSemanais)}
               viradaEm={viradaComFolgas ? virada?.inicio : undefined}
-              unidades={unidades}
+              unidades={unidadesDoTime}
               abreNosFeriados={cfg.abreNosFeriados}
-              onChange={(p) => atualizar(linha.config.id, p)}
+              onChange={(p) => {
+                // Unidade escolhida aqui vale como no quadro de times: muda o time e a grade.
+                if ("unidade" in p) {
+                  moverPessoa(linha.config.id, p.unidade ?? "");
+                  return true;
+                }
+                return atualizar(linha.config.id, p);
+              }}
               onDias={(datas, acao) => diasDaPessoa(linha.config.id, datas, acao)}
               onFechar={() => setAberta(null)}
             />
