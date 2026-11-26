@@ -79,6 +79,8 @@ import {
   diasDoMes,
   errosNovos,
   mesclarPlano,
+  mesAnteriorSalvo,
+  planoHerdado,
   aplicarTimes,
   modeloPadraoDoMes,
   normalizarConfigEmpresa,
@@ -231,6 +233,16 @@ export function PlanejadorEscala({
     queryFn: () => api.escalas.plano(mes, companyId),
     retry: false,
   });
+  // Mês sem escala salva herda a do último mês salvo antes dele (e o botão "Repetir" usa o mesmo).
+  const mesBase = mesAnteriorSalvo(planosQuery.data || [], mes);
+  const planoBaseQuery = useQuery({
+    queryKey: ["escala-plano", chave, mesBase],
+    queryFn: () => api.escalas.plano(mesBase!, companyId),
+    enabled: Boolean(mesBase),
+    retry: false,
+  });
+  const planoBase = planoBaseQuery.data?.dados as PlanoMes | undefined;
+  const temPlanoBase = Boolean(planoBase && Array.isArray(planoBase.configs));
 
   // O caminho guiado decide o passo inicial pela configuração: espera ela chegar ao estado.
   const [cfgPronta, setCfgPronta] = useState(false);
@@ -257,10 +269,9 @@ export function PlanejadorEscala({
     return extras.length ? [...pessoas, ...extras] : pessoas;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pessoas, chaveEmprestados]);
-  useEffect(() => {
-    if (planoQuery.isLoading || configQuery.isLoading) return;
-    const salvo = planoQuery.data?.dados as PlanoMes | undefined;
-    const plano = mesclarPlano(salvo && Array.isArray(salvo.configs) ? salvo : null, todasPessoas, modeloPadraoDoMes(mes, usa12x36Carregado), {
+  /** Monta a escala da tela a partir de um plano (salvo, herdado ou nenhum) e do quadro atual. */
+  function montarDoPlano(base: PlanoMes | null) {
+    const plano = mesclarPlano(base, todasPessoas, modeloPadraoDoMes(mes, usa12x36Carregado), {
       permite6x1: vigenciaEm(diasDoMes(mes).at(-1)!).repousosSemanais < 2,
       temAcordo: Boolean(cfgCarregada?.temAcordoColetivo),
     });
@@ -268,12 +279,28 @@ export function PlanejadorEscala({
     // Cargo: o marcado na tela vale; senão o do cadastro da folha.
     setConfigs(aplicarCargos(aplicarTimes(plano.configs, cfgCarregada), cfgCarregada?.cargos, new Map(todasPessoas.map((p) => [p.id, p.cargo]))));
     setAjustes(plano.ajustes);
+  }
+
+  /** Troca a escala deste mês pela do último mês salvo antes dele (ainda sem gravar). */
+  function repetirMesAnterior() {
+    if (!planoBase || !mesBase) return;
+    montarDoPlano(planoHerdado(planoBase));
+    setAlterado(true);
+    setCenarioAtual(null);
+    toast.success(`Escala de ${nomeMes(mesBase)} repetida em ${nomeMes(mes)}.`, { description: "Confira e salve a escala para gravar." });
+  }
+
+  useEffect(() => {
+    if (planoQuery.isLoading || configQuery.isLoading || planosQuery.isLoading || (mesBase && planoBaseQuery.isLoading)) return;
+    const salvo = planoQuery.data?.dados as PlanoMes | undefined;
+    const base = salvo && Array.isArray(salvo.configs) ? salvo : temPlanoBase ? planoHerdado(planoBase!) : null;
+    montarDoPlano(base);
     setAlterado(false);
     setCenarioAtual(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // Os trazidos de outra empresa entram pelo `todasPessoas` desta renderização; trazer ou
     // devolver alguém mexe nos `configs` direto, sem recarregar o mês (perderia o que não foi salvo).
-  }, [planoQuery.data, planoQuery.isLoading, configQuery.isLoading, pessoas, usa12x36Carregado]);
+  }, [planoQuery.data, planoQuery.isLoading, configQuery.isLoading, planosQuery.isLoading, planoBaseQuery.data, planoBaseQuery.isLoading, pessoas, usa12x36Carregado]);
 
   const salvar = useMutation({
     mutationFn: async () => {
@@ -1212,6 +1239,18 @@ export function PlanejadorEscala({
                     {nomeMes(p.mes)}
                   </Button>
                 ))}
+              </div>
+            )}
+            {mesBase && temPlanoBase && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={repetirMesAnterior}>
+                  Repetir a escala de {nomeMes(mesBase)}
+                </Button>
+                <span className="text-muted-foreground">
+                  {salvoEsteMes
+                    ? "Troca este mês pelas mesmas pessoas, modelos, horários e rodízio do mês salvo antes dele."
+                    : `Este mês ainda não foi salvo: já começa com a escala de ${nomeMes(mesBase)}, com o rodízio seguindo sem quebra.`}
+                </span>
               </div>
             )}
           </div>
