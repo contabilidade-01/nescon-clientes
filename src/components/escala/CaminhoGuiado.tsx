@@ -128,6 +128,7 @@ export function CaminhoGuiado({
   pode42h,
   onHorario,
   onTrocar,
+  unidades,
 }: {
   mes: string;
   cfg: ConfigEmpresa;
@@ -158,6 +159,8 @@ export function CaminhoGuiado({
   onHorario: (cenarioId: string, turno: Turno | null) => void;
   /** Arrastar um dia sobre outro na semana da equipe (mesma trava da grade). */
   onTrocar?: (e: DragEndEvent) => void;
+  /** Unidades da empresa: com elas, o nome pode ser arrastado para outra unidade. */
+  unidades?: string[];
 }) {
   // Empresa já respondida (por ela ou pelo escritório): abre no passo da escala.
   const [passo, setPasso] = useState<Passo>(cfg.atividadeDefinida ? 3 : 1);
@@ -244,6 +247,7 @@ export function CaminhoGuiado({
           pode42h={pode42h}
           onHorario={onHorario}
           onTrocar={onTrocar}
+          unidades={unidades}
           onAbrirPessoa={onAbrirPessoa}
           onVoltar={() => setPasso(2)}
         />
@@ -594,6 +598,7 @@ function PassoEscala({
   pode42h,
   onHorario,
   onTrocar,
+  unidades,
   onAbrirPessoa,
   onVoltar,
 }: {
@@ -619,6 +624,7 @@ function PassoEscala({
   /** Troca o horário de uma sugestão (null volta ao padrão). */
   onHorario: (cenarioId: string, turno: Turno | null) => void;
   onTrocar?: (e: DragEndEvent) => void;
+  unidades?: string[];
   onAbrirPessoa?: (id: string) => void;
   onVoltar: () => void;
 }) {
@@ -729,7 +735,7 @@ function PassoEscala({
         </Button>
       </section>
 
-      {linhas.length > 0 && <SemanaDaEquipe mes={mes} linhas={linhas} onTrocar={onTrocar} onAbrirPessoa={onAbrirPessoa} />}
+      {linhas.length > 0 && <SemanaDaEquipe mes={mes} linhas={linhas} onTrocar={onTrocar} unidades={unidades} onAbrirPessoa={onAbrirPessoa} />}
 
       <Button variant="ghost" onClick={onVoltar}>
         <ArrowLeft className="mr-1.5 h-4 w-4" /> Voltar para a equipe

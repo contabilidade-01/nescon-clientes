@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { diaDaSemana } from "@/lib/escala/datas";
 import type { Turno } from "@/lib/escala/modelos";
 import type { AvaliacaoPessoa } from "@/lib/escala/planejamento";
+import { AlvoUnidade, BarraDeUnidades, PegadorPessoa, ehArrasteDePessoa } from "@/components/escala/ArrastarPessoa";
 
 const DIAS_LETRA = ["D", "S", "T", "Q", "Q", "S", "S"];
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -40,13 +41,18 @@ export function SemanaDaEquipe({
   mes,
   linhas,
   onTrocar,
+  unidades,
   onAbrirPessoa,
 }: {
   mes: string;
   linhas: AvaliacaoPessoa[];
   onTrocar?: (e: DragEndEvent) => void;
+  /** Com as unidades, o nome ganha um pegador para levar a pessoa a outra unidade. */
+  unidades?: string[];
   onAbrirPessoa?: (id: string) => void;
 }) {
+  const [arrastando, setArrastando] = useState<string | null>(null);
+  const moverPessoa = Boolean(onTrocar && unidades);
   const semanas = useMemo(() => {
     const dias = linhas[0]?.diasComVizinhos.map((d) => d.data) ?? [];
     const out: string[][] = [];
@@ -111,11 +117,27 @@ export function SemanaDaEquipe({
             </>
           )}
           {cortada && "A semana passa da virada do mês: os dias do outro mês aparecem apagados e entram na conta, como a lei manda. "}
-          {onTrocar && "Arraste um dia sobre outro para trocar (na mesma pessoa, move a folga)."}
+          {onTrocar && "Arraste um dia sobre outro para trocar (na mesma pessoa, move a folga). "}
+          {onTrocar && unidades && "Para levar alguém a outra unidade, arraste pelo pegador ao lado do nome."}
         </p>
       </CardHeader>
       <CardContent className="overflow-x-auto p-0">
-        <DndContext sensors={sensors} onDragEnd={(e) => onTrocar?.(e)}>
+        <DndContext
+          sensors={sensors}
+          onDragStart={(e) => setArrastando(ehArrasteDePessoa(e.active.id) ? String(e.active.id).slice(7) : null)}
+          onDragCancel={() => setArrastando(null)}
+          onDragEnd={(e) => {
+            setArrastando(null);
+            onTrocar?.(e);
+          }}
+        >
+          {moverPessoa && (
+            <BarraDeUnidades
+              ativa={Boolean(arrastando)}
+              unidades={unidades ?? []}
+              atual={linhas.find((l) => l.config.id === arrastando)?.config.unidade}
+            />
+          )}
           <table className="w-full min-w-[520px] text-xs">
             <thead>
               <tr className="border-b">
@@ -142,19 +164,28 @@ export function SemanaDaEquipe({
                     {novaUnidade && linhas.some((x) => x.config.unidade) && (
                       <tr className="border-b bg-muted/50">
                         <td colSpan={9} className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          {unidade || "Sem unidade"}
+                          {moverPessoa ? (
+                            <AlvoUnidade chave={unidade} sufixo="semana" className="px-1">
+                              {unidade || "Sem unidade"}
+                            </AlvoUnidade>
+                          ) : (
+                            unidade || "Sem unidade"
+                          )}
                         </td>
                       </tr>
                     )}
                     <tr className="border-b last:border-0">
-                      <td className="max-w-[110px] p-2 font-medium sm:max-w-[200px]">
-                        <button
-                          type="button"
-                          className="block w-full truncate text-left hover:underline"
-                          onClick={() => onAbrirPessoa?.(l.config.id)}
-                        >
-                          {l.config.nome}
-                        </button>
+                      <td className="max-w-[130px] p-2 font-medium sm:max-w-[220px]">
+                        <span className="flex min-w-0 items-center gap-1">
+                          {moverPessoa && <PegadorPessoa id={l.config.id} nome={l.config.nome} />}
+                          <button
+                            type="button"
+                            className="block min-w-0 flex-1 truncate text-left hover:underline"
+                            onClick={() => onAbrirPessoa?.(l.config.id)}
+                          >
+                            {l.config.nome}
+                          </button>
+                        </span>
                       </td>
                       {semana.map((d) => (
                         <CelulaDia

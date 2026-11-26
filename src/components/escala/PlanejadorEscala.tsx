@@ -8,6 +8,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import { toast } from "sonner";
 import {
@@ -88,6 +89,7 @@ import {
   type PlanoMes,
 } from "@/lib/escala/planejamento";
 import { CaminhoGuiado } from "@/components/escala/CaminhoGuiado";
+import { AlvoUnidade, BarraDeUnidades, PegadorPessoa, destinoDoArraste, ehArrasteDePessoa } from "@/components/escala/ArrastarPessoa";
 import { BotoesBaixar } from "@/components/escala/BotoesBaixar";
 import { baixarEscalaPdf, baixarEscalaXlsx, type EscalaExportada } from "@/lib/escala/exportarEscala";
 import { SEGMENTOS, VIGENCIAS, mesInicialDaSimulacao, viradaNoMes, vigenciaEm } from "@/lib/escala/regras";
@@ -450,8 +452,24 @@ export function PlanejadorEscala({
     return true;
   }
 
+  /** Pessoa arrastada pelo pegador do nome (para outra unidade), para a barra de destinos. */
+  const [arrastando, setArrastando] = useState<string | null>(null);
+  const inicioDoArraste = (e: DragStartEvent) => setArrastando(ehArrasteDePessoa(e.active.id) ? String(e.active.id).slice(7) : null);
+
   function aoSoltar(e: DragEndEvent) {
-    if (!e.over || e.active.id === e.over.id) return;
+    setArrastando(null);
+    if (ehArrasteDePessoa(e.active.id)) {
+      const mv = destinoDoArraste(e);
+      if (!mv) return;
+      const c = configs.find((x) => x.id === mv.pessoa);
+      if (!c || (c.unidade || "") === mv.destino) return;
+      moverPessoa(mv.pessoa, mv.destino);
+      toast.success(
+        mv.destino === FORA ? `${c.nome} saiu da escala.` : `${c.nome} agora está ${mv.destino ? `na unidade ${mv.destino}` : "sem unidade"}.`,
+      );
+      return;
+    }
+    if (!e.over || e.active.id === e.over.id || String(e.over.id).startsWith("unidade:")) return;
     const [pa, da] = String(e.active.id).split("|");
     const [pb, db] = String(e.over.id).split("|");
     const ta = turnoEm(pa, da);
@@ -1034,6 +1052,7 @@ export function PlanejadorEscala({
           pode42h={cfg.bloqueio === "sem_hora_extra" ? false : cfg.temAcordoColetivo ? "acordo" : "hora_extra"}
           onHorario={mudarHorario}
           onTrocar={aoSoltar}
+          unidades={unidadesDoTime}
           onMaisOpcoes={() => {
             setModo("avancado");
             setEscolhendo(true);
@@ -1169,7 +1188,8 @@ export function PlanejadorEscala({
                   onPointerDown={iniciarPan}
                   className="overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:thin]"
                 >
-                <DndContext sensors={sensors} onDragEnd={aoSoltar}>
+                <DndContext sensors={sensors} onDragStart={inicioDoArraste} onDragCancel={() => setArrastando(null)} onDragEnd={aoSoltar}>
+                  <BarraDeUnidades ativa={Boolean(arrastando)} unidades={unidadesDoTime} atual={configs.find((c) => c.id === arrastando)?.unidade} />
                   <table className="w-full min-w-[960px] table-fixed border-collapse text-xs">
                     <colgroup>
                       <col className="w-[190px]" />
@@ -1236,7 +1256,9 @@ export function PlanejadorEscala({
                           {faixa && (
                             <tr className="border-t bg-primary/10">
                               <td colSpan={dias.length + 3} className="sticky left-0 px-2 py-1 text-xs font-semibold text-primary">
-                                Unidade {grupo} ({linhasVisiveis.filter((l) => (l.config.unidade || "Sem unidade") === grupo).length})
+                                <AlvoUnidade chave={c.unidade || ""} sufixo="grade" className="px-1">
+                                  Unidade {grupo} ({linhasVisiveis.filter((l) => (l.config.unidade || "Sem unidade") === grupo).length})
+                                </AlvoUnidade>
                               </td>
                             </tr>
                           )}
@@ -1527,6 +1549,7 @@ function LinhaConfig({
   return (
     <div className="space-y-1">
       <div className="flex min-w-0 items-center gap-1.5">
+        <PegadorPessoa id={c.id} nome={c.nome} />
         <Checkbox checked={selecionado} onCheckedChange={onSelecionar} aria-label={`Marcar ${c.nome}`} />
         {erros ? <XCircle className="h-3.5 w-3.5 shrink-0 text-destructive" /> : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
         <button
