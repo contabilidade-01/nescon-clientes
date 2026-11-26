@@ -9,6 +9,7 @@ import { MODOS_BLOQUEIO, type ModoBloqueio } from "./bloqueio";
 import { DEMANDA_VAZIA, type Demanda } from "./contingente";
 import type { FeriadoLocal } from "./feriados";
 import { SEGMENTOS, viradaNoMes, vigenciaEm, type PerfilJornada, type Segmento } from "./regras";
+import { nomeDeCargo, normalizarCargos } from "./cargos";
 import { mediasDa12x36, validarEscala, type Ocorrencia, type ResumoSemana } from "./validar";
 
 /**
@@ -188,6 +189,8 @@ export interface ConfigPessoa {
    * "Terra Preta". Só etiqueta e filtro da grade; vazio = sem unidade.
    */
   unidade?: string;
+  /** Cargo (cozinheiro, garçom…): etiqueta e conta de cobertura por cargo; vem do cadastro ou da tela. */
+  cargo?: string;
   /**
    * Sexo da pessoa: "F" aplica o domingo de folga a cada 2 semanas (art. 386 da CLT).
    * Vazio = sem a regra da mulher.
@@ -567,6 +570,10 @@ export interface ConfigEmpresa {
   unidades: string[];
   times: Record<string, string>;
   foraDaEscala: string[];
+  /** Cargo marcado na tela (id -> cargo), acima do cargo do cadastro; vale para todos os meses. */
+  cargos: Record<string, string>;
+  /** Pessoas de cada cargo necessárias por dia da semana (domingo a sábado). Só aviso. */
+  minimoPorCargo: Record<string, Demanda>;
 }
 
 /** A escala de um mês (escala_planejamentos). */
@@ -594,6 +601,8 @@ export function configEmpresaPadrao(): ConfigEmpresa {
     unidades: [],
     times: {},
     foraDaEscala: [],
+    cargos: {},
+    minimoPorCargo: {},
   };
 }
 
@@ -648,6 +657,7 @@ export function normalizarConfigEmpresa(raw: unknown): ConfigEmpresa {
     incluirFacultativos: Boolean(o.incluirFacultativos),
     abreNosFeriados: Boolean(o.abreNosFeriados),
     ...normalizarTimes(o),
+    ...normalizarCargos(o),
     feriadosLocais,
     demanda,
     horasPorDia: horas > 0 && horas <= 12 ? horas : base.horasPorDia,
@@ -687,6 +697,7 @@ export function normalizarConfigPessoa(raw: ConfigPessoa, padrao: ModeloChave): 
     turma: raw.turma === "B" ? "B" : "A",
     seisPorUmAteVirada: raw.seisPorUmAteVirada !== false,
     unidade: nomeDeUnidade(raw.unidade),
+    cargo: nomeDeCargo(raw.cargo),
     sexo: raw.sexo === "F" || raw.sexo === "M" ? raw.sexo : undefined,
   };
 }

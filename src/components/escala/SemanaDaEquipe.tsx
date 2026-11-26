@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 import { diaDaSemana } from "@/lib/escala/datas";
 import type { Turno } from "@/lib/escala/modelos";
 import type { AvaliacaoPessoa } from "@/lib/escala/planejamento";
+import { coberturaPorCargo } from "@/lib/escala/cargos";
+import type { Demanda } from "@/lib/escala/contingente";
 import { AlvoUnidade, BarraDeUnidades, PegadorPessoa, ehArrasteDePessoa } from "@/components/escala/ArrastarPessoa";
 
 const DIAS_LETRA = ["D", "S", "T", "Q", "Q", "S", "S"];
@@ -42,6 +44,7 @@ export function SemanaDaEquipe({
   linhas,
   onTrocar,
   unidades,
+  minimoPorCargo,
   onAbrirPessoa,
 }: {
   mes: string;
@@ -49,6 +52,8 @@ export function SemanaDaEquipe({
   onTrocar?: (e: DragEndEvent) => void;
   /** Com as unidades, o nome ganha um pegador para levar a pessoa a outra unidade. */
   unidades?: string[];
+  /** Mínimo de cada cargo por dia da semana: a semana mostra quantos de cada cargo trabalham. */
+  minimoPorCargo?: Record<string, Demanda>;
   onAbrirPessoa?: (id: string) => void;
 }) {
   const [arrastando, setArrastando] = useState<string | null>(null);
@@ -180,10 +185,11 @@ export function SemanaDaEquipe({
                           {moverPessoa && <PegadorPessoa id={l.config.id} nome={l.config.nome} />}
                           <button
                             type="button"
-                            className="block min-w-0 flex-1 truncate text-left hover:underline"
+                            className="block min-w-0 flex-1 text-left hover:underline"
                             onClick={() => onAbrirPessoa?.(l.config.id)}
                           >
-                            {l.config.nome}
+                            <span className="block truncate">{l.config.nome}</span>
+                            {l.config.cargo && <span className="block truncate text-[10px] font-normal text-muted-foreground">{l.config.cargo}</span>}
                           </button>
                         </span>
                       </td>
@@ -214,6 +220,32 @@ export function SemanaDaEquipe({
                   </Fragment>
                 );
               })}
+              {coberturaPorCargo(
+                linhas.map((l) => ({ config: l.config, dias: l.diasComVizinhos })),
+                semana,
+                minimoPorCargo,
+              ).map((cc, i) => (
+                <tr key={cc.cargo} className={cn("bg-muted/30", i === 0 && "border-t-2")}>
+                  <td className="truncate px-2 py-1 text-[11px] text-muted-foreground" title={`Quantos ${cc.cargo} trabalham no dia`}>
+                    {cc.cargo}
+                  </td>
+                  {semana.map((d) => {
+                    const n = cc.porDia.get(d) ?? 0;
+                    const min = cc.minimo[diaDaSemana(d)];
+                    return (
+                      <td
+                        key={d}
+                        className={cn("p-0.5 text-center text-[11px] tabular-nums", !d.startsWith(mes) && "opacity-40", n < min && "font-semibold text-destructive")}
+                        title={min ? `${n} de ${min} necessário(s)` : undefined}
+                      >
+                        {n}
+                        {min > 0 && <span className="text-[9px] text-muted-foreground">/{min}</span>}
+                      </td>
+                    );
+                  })}
+                  <td className="p-1 text-right text-[11px] text-muted-foreground">{cc.faltas.length ? <span className="font-semibold text-destructive">abaixo do mínimo</span> : ""}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </DndContext>
