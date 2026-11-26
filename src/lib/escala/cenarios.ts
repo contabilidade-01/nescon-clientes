@@ -320,6 +320,19 @@ export function avaliarEscalaAtual(
   );
 }
 
+/**
+ * Modelos que a empresa não consegue praticar e que saem das listas de escolha: a 6x1
+ * depois que a regra exige 2 folgas, a folga corrida onde o domingo precisa voltar em
+ * menos de 6 semanas e a 4x3 (10h por dia) sem acordo de compensação.
+ */
+export function modelosImpraticaveis(empresa: Pick<EmpresaCenario, "segmento" | "temAcordoColetivo">, repousos: number): ModeloChave[] {
+  const fora: ModeloChave[] = [];
+  if (repousos > 1) fora.push("6x1");
+  if (SEGMENTOS[empresa.segmento].domingoACadaSemanas < 6) fora.push("5x2_corrida");
+  if (!empresa.temAcordoColetivo) fora.push("4x3");
+  return fora;
+}
+
 /** Dias de trabalho por semana de cada modelo (12x36 fica de fora: é medida pela média). */
 export const DIAS_TRABALHO_SEMANA: Partial<Record<ModeloChave, number>> = {
   "6x1": 6,
