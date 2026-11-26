@@ -21,7 +21,7 @@ import { mediasDa12x36, validarEscala, type Ocorrencia } from "./validar";
  *   sempre dentro da semana de domingo a sábado; o ciclo tem 7 semanas.
  * - 5x2_quinzenal: 5x2 em ciclo de 4 semanas com o domingo de folga a cada 2 semanas
  *   (dom+seg, seg+ter, dom+sáb, qui+sex): serve a restaurante/comércio e a mulheres.
- * - 5x2_3semanas: 5x2 em ciclo de 3 semanas (dom+sáb, qui+sex, ter+qua): domingo de folga
+ * - 5x2_3semanas: 5x2 em ciclo de 3 semanas (dom+sex, qua+qui, seg+ter): domingo de folga
  *   a cada 3 semanas, o mínimo do comércio/restaurante.
  * - 4x3: 4 dias de 10h, folga no domingo e em mais 2 dias (compensação, exige acordo).
  * - 12x36: plantão dia sim, dia não.
@@ -305,17 +305,17 @@ export function folgasDaQuinzenal(grupo: number): number[] {
 }
 
 /**
- * Domingo a cada 3 semanas: ciclo dom+sáb, qui+sex, ter+qua (nessa ordem; ter+qua antes de
- * qui+sex daria 7 dias seguidos). Nenhum dia da semana fica sem
- * gente (cada dia folga em só 1 das 3 semanas) e nunca passam 6 dias seguidos de trabalho.
+ * Domingo a cada 3 semanas: ciclo dom+sex, qua+qui, seg+ter. Os trechos de trabalho ficam
+ * sempre entre 3 e 4 dias (4, 4, 3, 4), sem dia solto entre duas folgas; o sábado, dia mais
+ * cheio de restaurante e comércio, nunca é folga, e cada outro dia folga em só 1 das 3 semanas.
  */
 export const SEMANAS_3SEMANAS: number[][] = [
-  [0, 6],
-  [4, 5],
-  [2, 3],
+  [0, 5],
+  [3, 4],
+  [1, 2],
 ];
 
-/** Folgas da semana `grupo` do ciclo de 3 semanas (0 = dom+sáb). */
+/** Folgas da semana `grupo` do ciclo de 3 semanas (0 = dom+sex). */
 export function folgasDo3Semanas(grupo: number): number[] {
   const n = SEMANAS_3SEMANAS.length;
   return SEMANAS_3SEMANAS[((grupo % n) + n) % n];

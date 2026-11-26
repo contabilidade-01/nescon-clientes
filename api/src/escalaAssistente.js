@@ -42,7 +42,7 @@ Como trabalhar:
 
 const DIAS_DESC = "Dia da semana: 0 = domingo, 1 = segunda, ..., 6 = sábado.";
 const MODELOS_DESC =
-  "Modelos: '6x1' (só até 15/12/2026), '5x2' (folgas fixas), '5x2_rev' (5x2 com rodízio do domingo), '5x2_corrida' (as 2 folgas juntas andam um dia por semana, ciclo de 7 semanas), '5x2_quinzenal' (ciclo de 4 semanas dom+seg, seg+ter, dom+sáb, qui+sex: domingo de folga a cada 2 semanas), '5x2_3semanas' (ciclo de 3 semanas dom+sáb, qui+sex, ter+qua: domingo de folga a cada 3 semanas), '5x2_fechado' (folga fixa no dia em que a casa fecha + 1 escalonada), '4x3' (4 dias de 10h, exige acordo), '12x36' (plantões).";
+  "Modelos: '6x1' (só até 15/12/2026), '5x2' (folgas fixas), '5x2_rev' (5x2 com rodízio do domingo), '5x2_corrida' (as 2 folgas juntas andam um dia por semana, ciclo de 7 semanas), '5x2_quinzenal' (ciclo de 4 semanas dom+seg, seg+ter, dom+sáb, qui+sex: domingo de folga a cada 2 semanas), '5x2_3semanas' (ciclo de 3 semanas dom+sex, qua+qui, seg+ter: domingo de folga a cada 3 semanas, sábado nunca é folga), '5x2_fechado' (folga fixa no dia em que a casa fecha + 1 escalonada), '4x3' (4 dias de 10h, exige acordo), '12x36' (plantões).";
 
 /** Ferramentas: executadas no navegador (src/lib/escala/assistenteFerramentas.ts). */
 const FERRAMENTAS = [
@@ -112,7 +112,7 @@ const FERRAMENTAS = [
       MODELOS_DESC +
       " " +
       DIAS_DESC +
-      " Campos de folga: no 6x1 use folga_6x1; no 5x2 use folgas_5x2 (dois dias); no 5x2_rev, 5x2_fechado e 4x3 use folga_fixa (1-6); no 12x36 use turma ('A' ou 'B'); no 5x2_fechado use dia_fechado; no 5x2_corrida use grupo_corrida (0 = começa folgando seg+ter, 1 = ter+qua … 5 = dom+sáb, 6 = dom+seg); no 5x2_quinzenal use grupo_quinzenal (0 = começa dom+seg, 1 = seg+ter, 2 = dom+sáb, 3 = qui+sex); no 5x2_3semanas use grupo_3semanas (0 = começa dom+sáb, 1 = qui+sex, 2 = ter+qua). Use sexo 'F' para mulher: o domingo de folga passa a valer a cada 2 semanas (art. 386 da CLT). Restaurante e comércio: domingo a cada 3 semanas.",
+      " Campos de folga: no 6x1 use folga_6x1; no 5x2 use folgas_5x2 (dois dias); no 5x2_rev, 5x2_fechado e 4x3 use folga_fixa (1-6); no 12x36 use turma ('A' ou 'B'); no 5x2_fechado use dia_fechado; no 5x2_corrida use grupo_corrida (0 = começa folgando seg+ter, 1 = ter+qua … 5 = dom+sáb, 6 = dom+seg); no 5x2_quinzenal use grupo_quinzenal (0 = começa dom+seg, 1 = seg+ter, 2 = dom+sáb, 3 = qui+sex); no 5x2_3semanas use grupo_3semanas (0 = começa dom+sex, 1 = qua+qui, 2 = seg+ter). Use sexo 'F' para mulher: o domingo de folga passa a valer a cada 2 semanas (art. 386 da CLT). Restaurante e comércio: domingo a cada 3 semanas.",
     input_schema: {
       type: "object",
       properties: {
