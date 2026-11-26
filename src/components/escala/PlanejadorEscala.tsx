@@ -45,6 +45,8 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DEVOLVER, FORA, TimesPorUnidade, type PessoaDoTime } from "./TimesPorUnidade";
 import { TrazerDeOutraEmpresa, type EmpresaDoGrupo } from "./TrazerDeOutraEmpresa";
+import { ExcluirFuncionario, type ComoExcluir } from "./ExcluirFuncionario";
+import { NovaVaga } from "./NovaVaga";
 import { BarraLote, type AtalhoDias, type MarcarPessoas } from "@/components/escala/BarraLote";
 import { DialogoPessoa } from "@/components/escala/DialogoPessoa";
 import { agruparOcorrencias } from "@/lib/escala/ocorrencias";
@@ -197,6 +199,8 @@ export function PlanejadorEscala({
   const [timesAberto, setTimesAberto] = useState(true);
   const [cargosAberto, setCargosAberto] = useState(false);
   const [trazendo, setTrazendo] = useState(false);
+  const [excluindo, setExcluindo] = useState<string | null>(null);
+  const [criandoVaga, setCriandoVaga] = useState(false);
   // O cliente começa no caminho guiado; o escritório, nas abas completas. A escolha fica no navegador.
   const chaveModo = `escala-modo-${companyId ? "escritorio" : "portal"}`;
   const [modo, setModoEstado] = useState<Modo>(() => {
@@ -662,20 +666,29 @@ export function PlanejadorEscala({
     toast.success(`Cenário aplicado: ${c.nome}.`, { description: "Ajuste na grade; o que sair da regra é recusado." });
   }
 
+  const sugestaoVaga = `Vaga simulada ${configs.filter((c) => c.id.startsWith("vaga-")).length + 1}`;
+  /** Abre a caixa que pede o nome (de uma pessoa de verdade, se quiser) e a unidade. */
   function adicionarVaga() {
-    const n = configs.filter((c) => c.id.startsWith("vaga-")).length + 1;
+    setCriandoVaga(true);
+  }
+
+  function criarVaga({ nome, unidade: u }: { nome: string; unidade?: string }) {
+    setCriandoVaga(false);
     const i = configs.length;
+    const id = `vaga-${Date.now()}`;
     setConfigs((cs) => [
       ...cs,
       {
-        ...configPadrao(`vaga-${Date.now()}`, `Vaga simulada ${n}`, modeloPadrao),
+        ...configPadrao(id, nome, modeloPadrao),
         turma: i % 2 ? "B" : "A",
         folgaFixa: (i % 6) + 1,
         rodizio: i % 2,
-        unidade: filtroUnidade || undefined,
+        unidade: u,
       },
     ]);
+    if (u) salvarTimes({ ...cfg, times: { ...cfg.times, [id]: u } });
     setAlterado(true);
+    toast.success(`${nome} entrou na escala.`, { description: "Salve a escala para gravar." });
   }
 
   function confirmarAtividade(e: EscolhaAtividade) {
@@ -787,6 +800,42 @@ export function PlanejadorEscala({
     } catch (e) {
       toast.error(`${t.nome} entrou aqui, mas não consegui tirar da escala de ${t.empresa.name}.`, { description: (e as Error).message });
     }
+  }
+
+  /** Tira a pessoa da escala e dos times (sem marcar "fora": ela deixa a equipe). */
+  function tirarDaEquipe(id: string) {
+    const times = { ...cfg.times };
+    delete times[id];
+    const cargos = { ...cfg.cargos };
+    delete cargos[id];
+    salvarTimes({ ...cfg, times, cargos, foraDaEscala: cfg.foraDaEscala.filter((x) => x !== id) });
+    setConfigs((cs) => cs.filter((c) => c.id !== id));
+    setAjustes((aj) => Object.fromEntries(Object.entries(aj).filter(([k]) => k !== id)));
+    setSelPessoas(new Set());
+    setAlterado(true);
+  }
+
+  async function excluirPessoa(id: string, como: ComoExcluir) {
+    const nome = pessoasDoTime.find((p) => p.id === id)?.nome || "Funcionário";
+    if (id.startsWith("vaga-")) {
+      tirarDaEquipe(id);
+      setExcluindo(null);
+      return void toast.success(`${nome} saiu da escala.`, { description: "Salve a escala para gravar." });
+    }
+    try {
+      if (como === "inativar") await api.employees.update(id, { active: false });
+      else await api.employees.delete(id);
+    } catch (e) {
+      return void toast.error(`Não foi possível ${como === "inativar" ? "inativar" : "excluir"} ${nome}.`, { description: (e as Error).message });
+    }
+    const ajustado = alterado;
+    tirarDaEquipe(id);
+    setExcluindo(null);
+    // Sem edição pendente, recarrega a equipe; com edição, a lista só muda aqui para não perder o que não foi salvo.
+    if (!ajustado) qc.invalidateQueries({ queryKey: ["employees"] });
+    toast.success(como === "inativar" ? `${nome} foi inativado.` : `${nome} foi excluído.`, {
+      description: "Saiu da equipe e da escala. Salve a escala para gravar os meses.",
+    });
   }
 
   async function devolver(id: string) {
@@ -946,6 +995,24 @@ export function PlanejadorEscala({
           onNovaUnidade={novaUnidade}
           onMontar={montarTime}
           onTrazer={empresaAtual && outrasEmpresas?.length ? () => setTrazendo(true) : undefined}
+          onExcluir={setExcluindo}
+        />
+      )}
+      {criandoVaga && (
+        <NovaVaga
+          sugestao={sugestaoVaga}
+          unidades={unidadesDoTime}
+          unidadeInicial={filtroUnidade || undefined}
+          onFechar={() => setCriandoVaga(false)}
+          onCriar={criarVaga}
+        />
+      )}
+      {excluindo && (
+        <ExcluirFuncionario
+          nome={pessoasDoTime.find((p) => p.id === excluindo)?.nome || "funcionário"}
+          vaga={excluindo.startsWith("vaga-")}
+          onFechar={() => setExcluindo(null)}
+          onConfirmar={(como) => excluirPessoa(excluindo, como)}
         />
       )}
       {trazendo && empresaAtual && outrasEmpresas && (

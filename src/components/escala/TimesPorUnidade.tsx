@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { ChevronDown, ChevronUp, GripVertical, Plus, Users } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -39,6 +39,7 @@ export function TimesPorUnidade({
   onNovaUnidade,
   onMontar,
   onTrazer,
+  onExcluir,
 }: {
   pessoas: PessoaDoTime[];
   unidades: string[];
@@ -49,6 +50,8 @@ export function TimesPorUnidade({
   onMontar: (unidade: string) => void;
   /** Escritório: trazer um funcionário de outra empresa do grupo (outro CNPJ) para esta escala. */
   onTrazer?: () => void;
+  /** Excluir da equipe (inativar ou apagar o cadastro; vaga simulada só some). */
+  onExcluir?: (id: string) => void;
 }) {
   const [nova, setNova] = useState("");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -165,6 +168,17 @@ export function TimesPorUnidade({
                           <option value={FORA}>Fora da escala</option>
                           {p.origem && <option value={DEVOLVER}>Devolver a {p.origem}</option>}
                         </select>
+                        {onExcluir && !p.origem && (
+                          <button
+                            type="button"
+                            className="shrink-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => onExcluir(p.id)}
+                            aria-label={`Excluir ${p.nome}`}
+                            title="Excluir da equipe"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </li>
                     ))}
                     {!lista.length && <li className="text-[11px] text-muted-foreground">Ninguém</li>}
