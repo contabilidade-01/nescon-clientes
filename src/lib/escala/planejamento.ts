@@ -551,6 +551,14 @@ export interface ConfigEmpresa {
   atividadePeloEscritorio: boolean;
   /** O que o cliente respondeu "Não sei" (o sistema usou a regra mais segura): o escritório confere. */
   naoSabe: Array<"atividade" | "acordo">;
+  /**
+   * Times por unidade (lojas com o mesmo CNPJ), montados antes da escala e válidos para
+   * todos os meses: unidades criadas, em que unidade cada pessoa está (id -> unidade) e
+   * quem fica fora da escala (outra empresa, outro regime, afastado).
+   */
+  unidades: string[];
+  times: Record<string, string>;
+  foraDaEscala: string[];
 }
 
 /** A escala de um mês (escala_planejamentos). */
@@ -575,7 +583,35 @@ export function configEmpresaPadrao(): ConfigEmpresa {
     diasFechados: [],
     atividadePeloEscritorio: false,
     naoSabe: [],
+    unidades: [],
+    times: {},
+    foraDaEscala: [],
   };
+}
+
+function normalizarTimes(o: Record<string, unknown>): Pick<ConfigEmpresa, "unidades" | "times" | "foraDaEscala"> {
+  const times: Record<string, string> = {};
+  if (o.times && typeof o.times === "object" && !Array.isArray(o.times)) {
+    for (const [id, u] of Object.entries(o.times as Record<string, unknown>)) {
+      const nome = nomeDeUnidade(u);
+      if (nome) times[id] = nome;
+    }
+  }
+  const unidades = [...new Set([...(Array.isArray(o.unidades) ? o.unidades : []).map(nomeDeUnidade), ...Object.values(times)])].filter(
+    (u): u is string => Boolean(u),
+  );
+  const foraDaEscala = Array.isArray(o.foraDaEscala) ? [...new Set(o.foraDaEscala.filter((x): x is string => typeof x === "string" && x.length > 0))] : [];
+  return { unidades, times, foraDaEscala };
+}
+
+/**
+ * Os times da empresa alimentam a escala do mês: quem está fora da escala sai, e a unidade
+ * de cada pessoa vem do time (quem não está em time nenhum mantém a do mês).
+ */
+export function aplicarTimes(configs: ConfigPessoa[], empresa: Pick<ConfigEmpresa, "times" | "foraDaEscala"> | null | undefined): ConfigPessoa[] {
+  if (!empresa) return configs;
+  const fora = new Set(empresa.foraDaEscala);
+  return configs.filter((c) => !fora.has(c.id)).map((c) => (c.id in empresa.times ? { ...c, unidade: empresa.times[c.id] } : c));
 }
 
 /** Lê o JSON salvo sem confiar na forma: o que faltar ou vier torto volta ao padrão. */
@@ -603,6 +639,7 @@ export function normalizarConfigEmpresa(raw: unknown): ConfigEmpresa {
     bloqueio,
     incluirFacultativos: Boolean(o.incluirFacultativos),
     abreNosFeriados: Boolean(o.abreNosFeriados),
+    ...normalizarTimes(o),
     feriadosLocais,
     demanda,
     horasPorDia: horas > 0 && horas <= 12 ? horas : base.horasPorDia,

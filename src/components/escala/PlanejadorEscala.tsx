@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
@@ -42,6 +42,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FORA, TimesPorUnidade, type PessoaDoTime } from "./TimesPorUnidade";
 import { BarraLote, type AtalhoDias, type MarcarPessoas } from "@/components/escala/BarraLote";
 import { DialogoPessoa } from "@/components/escala/DialogoPessoa";
 import { agruparOcorrencias } from "@/lib/escala/ocorrencias";
@@ -74,6 +75,7 @@ import {
   diasDoMes,
   errosNovos,
   mesclarPlano,
+  aplicarTimes,
   modeloPadraoDoMes,
   normalizarConfigEmpresa,
   trocarCelulas,
@@ -181,6 +183,7 @@ export function PlanejadorEscala({
   const [aberta, setAberta] = useState<string | null>(null);
   /** Filtro da grade por unidade (loja/filial com o mesmo CNPJ); "" = todas. */
   const [unidade, setUnidade] = useState("");
+  const [timesAberto, setTimesAberto] = useState(true);
   // O cliente começa no caminho guiado; o escritório, nas abas completas. A escolha fica no navegador.
   const chaveModo = `escala-modo-${companyId ? "escritorio" : "portal"}`;
   const [modo, setModoEstado] = useState<Modo>(() => {
@@ -235,7 +238,8 @@ export function PlanejadorEscala({
       permite6x1: vigenciaEm(diasDoMes(mes).at(-1)!).repousosSemanais < 2,
       temAcordo: Boolean(cfgCarregada?.temAcordoColetivo),
     });
-    setConfigs(plano.configs);
+    // Os times da empresa (passo 1) mandam: quem está fora sai, e a unidade vem do time.
+    setConfigs(aplicarTimes(plano.configs, cfgCarregada));
     setAjustes(plano.ajustes);
     setAlterado(false);
     setCenarioAtual(null);
@@ -524,13 +528,13 @@ export function PlanejadorEscala({
     if (filtro === "nenhuma") return setSelPessoas(new Set());
     const passa = (c: ConfigPessoa) =>
       filtro === "todas" ? true : filtro === "turmaA" ? c.modelo === "12x36" && c.turma === "A" : filtro === "turmaB" ? c.modelo === "12x36" && c.turma === "B" : c.modelo === filtro;
-    setSelPessoas(new Set(configs.filter(passa).map((c) => c.id)));
+    setSelPessoas(new Set(configsDaUnidade.filter(passa).map((c) => c.id)));
   }
 
   function loteDias(acao: AcaoDia) {
     const datas = [...selDias].sort();
     if (!datas.length) return toast.error("Marque os dias clicando no cabeçalho da grade.");
-    const ids = selPessoas.size ? configs.filter((c) => selPessoas.has(c.id)).map((c) => c.id) : configs.map((c) => c.id);
+    const ids = selPessoas.size ? configs.filter((c) => selPessoas.has(c.id)).map((c) => c.id) : configsDaUnidade.map((c) => c.id);
     if (acao.tipo === "horario") {
       for (const id of ids) if (!liberado(id, acao.turno)) return;
     }
@@ -549,7 +553,7 @@ export function PlanejadorEscala({
 
   function lotePessoas(patch: Partial<ConfigPessoa>) {
     // Sem pessoa marcada, vale para todos (como nos dias).
-    const ids = selPessoas.size ? configs.filter((c) => selPessoas.has(c.id)).map((c) => c.id) : configs.map((c) => c.id);
+    const ids = selPessoas.size ? configs.filter((c) => selPessoas.has(c.id)).map((c) => c.id) : configsDaUnidade.map((c) => c.id);
     if (!ids.length) return toast.error("Nenhuma pessoa na escala.");
     const mudaModelo = CAMPOS_DO_MODELO.some((k) => k in patch);
     for (const id of ids) {
@@ -689,8 +693,64 @@ export function PlanejadorEscala({
   ];
   const salvos = planosQuery.data || [];
   const salvoEsteMes = salvos.find((p) => p.mes === mes);
+  const ordemUnidade = (u?: string) => (u ? unidades.indexOf(u) : unidades.length);
+  // Times por unidade (passo 1): valem para todos os meses e alimentam a escala.
+  const unidadesDoTime = [...new Set([...cfg.unidades, ...unidades])];
+  const pessoasDoTime: PessoaDoTime[] = [
+    ...pessoas.map((p) => ({ id: p.id, nome: p.name })),
+    ...configs.filter((c) => c.id.startsWith("vaga-")).map((c) => ({ id: c.id, nome: c.nome })),
+  ].map((p) => ({
+    ...p,
+    fora: cfg.foraDaEscala.includes(p.id),
+    unidade: configs.find((c) => c.id === p.id)?.unidade ?? cfg.times[p.id] ?? "",
+  }));
+
+  function salvarTimes(novo: ConfigEmpresa) {
+    setCfg(novo);
+    salvarAtividade.mutate(novo);
+  }
+
+  function moverPessoa(id: string, destino: string) {
+    const fora = destino === FORA;
+    const times = { ...cfg.times };
+    if (!fora && destino) times[id] = destino;
+    else delete times[id];
+    const foraDaEscala = fora ? [...new Set([...cfg.foraDaEscala, id])] : cfg.foraDaEscala.filter((x) => x !== id);
+    salvarTimes({ ...cfg, times, foraDaEscala });
+    const unidadeNova = fora ? undefined : destino || undefined;
+    setConfigs((cs) => {
+      if (fora) return cs.filter((c) => c.id !== id);
+      if (cs.some((c) => c.id === id)) return cs.map((c) => (c.id === id ? { ...c, unidade: unidadeNova } : c));
+      // Volta para a escala: entra no modelo padrão do mês, como quem chega sem escala salva.
+      const p = pessoas.find((x) => x.id === id);
+      if (!p) return cs;
+      return [...cs, { ...mesclarPlano(null, [p], modeloPadrao).configs[0], unidade: unidadeNova }];
+    });
+    if (fora) setAjustes((aj) => Object.fromEntries(Object.entries(aj).filter(([k]) => k !== id)));
+    setSelPessoas(new Set());
+    setAlterado(true);
+  }
+
+  function novaUnidade(nome: string) {
+    if (unidadesDoTime.includes(nome)) return toast.info(`A unidade ${nome} já existe.`);
+    salvarTimes({ ...cfg, unidades: [...cfg.unidades, nome] });
+  }
+
+  function montarTime(u: string) {
+    setUnidade(u);
+    setSelPessoas(new Set());
+    setModo("avancado");
+    setAba("cenarios");
+    setTimesAberto(false);
+  }
+
   /** Linhas da grade: a equipe toda ou só a unidade escolhida. As regras são por pessoa, então não mudam. */
-  const linhasVisiveis = filtroUnidade ? linhas.filter((l) => l.config.unidade === filtroUnidade) : linhas;
+  const linhasVisiveis = filtroUnidade
+    ? linhas.filter((l) => l.config.unidade === filtroUnidade)
+    : unidades.length
+      ? // Todas: agrupadas por unidade (na ordem das etiquetas), quem não tem unidade por último.
+        [...linhas].sort((a, b) => ordemUnidade(a.config.unidade) - ordemUnidade(b.config.unidade))
+      : linhas;
   const pessoasPorDia = (d: string) => linhasVisiveis.filter((l) => l.dias.find((x) => x.data === d)?.turno).length;
   const temDemanda = cfg.demanda.some((n) => n > 0);
 
@@ -745,6 +805,17 @@ export function PlanejadorEscala({
 
   return (
     <div className="space-y-4">
+      {configs.length + cfg.foraDaEscala.length > 1 && (
+        <TimesPorUnidade
+          pessoas={pessoasDoTime}
+          unidades={unidadesDoTime}
+          aberto={timesAberto}
+          onAbrir={setTimesAberto}
+          onMover={moverPessoa}
+          onNovaUnidade={novaUnidade}
+          onMontar={montarTime}
+        />
+      )}
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-3 border-b bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3">
           <div className="min-w-0 flex-1">
@@ -812,7 +883,10 @@ export function PlanejadorEscala({
                   size="sm"
                   variant={filtroUnidade === u ? "default" : "outline"}
                   className="h-7 px-2.5 text-xs"
-                  onClick={() => setUnidade(u)}
+                  onClick={() => {
+                    setUnidade(u);
+                    setSelPessoas(new Set());
+                  }}
                   aria-pressed={filtroUnidade === u}
                 >
                   {u || "Todas"} ({n})
@@ -1029,7 +1103,10 @@ export function PlanejadorEscala({
               <select
                 className="h-8 rounded-md border bg-background px-2 text-xs"
                 value={filtroUnidade}
-                onChange={(e) => setUnidade(e.target.value)}
+                onChange={(e) => {
+                  setUnidade(e.target.value);
+                  setSelPessoas(new Set());
+                }}
                 aria-label="Unidade"
                 title="Mostrar e baixar só a escala de uma unidade"
               >
@@ -1051,7 +1128,7 @@ export function PlanejadorEscala({
           {configs.length > 0 && (
             <BarraLote
               pessoas={selPessoas.size}
-              totalPessoas={configs.length}
+              totalPessoas={configsDaUnidade.length}
               dias={selDias.size}
               repousos={vigencia.repousosSemanais}
               onAtalho={atalhoDias}
@@ -1100,8 +1177,8 @@ export function PlanejadorEscala({
                         <th className="sticky left-0 z-10 bg-card p-2 text-left font-medium">
                           <label className="flex items-center gap-2">
                             <Checkbox
-                              checked={selPessoas.size === configs.length ? true : selPessoas.size ? "indeterminate" : false}
-                              onCheckedChange={(v) => setSelPessoas(v === true ? new Set(configs.map((c) => c.id)) : new Set())}
+                              checked={selPessoas.size && selPessoas.size === configsDaUnidade.length ? true : selPessoas.size ? "indeterminate" : false}
+                              onCheckedChange={(v) => setSelPessoas(v === true ? new Set(configsDaUnidade.map((c) => c.id)) : new Set())}
                               aria-label="Marcar todas as pessoas"
                             />
                             Pessoa e modelo
@@ -1141,10 +1218,22 @@ export function PlanejadorEscala({
                       </tr>
                     </thead>
                     <tbody>
-                      {linhasVisiveis.map(({ config: c, dias: ds, porDia, ocorrencias, horas, maiorSemana, limiteSemana, semanaAcima }) => {
+                      {linhasVisiveis.map(({ config: c, dias: ds, porDia, ocorrencias, horas, maiorSemana, limiteSemana, semanaAcima }, i) => {
                         const erros = ocorrencias.filter((o) => o.gravidade === "erro").length;
+                        // Com "Todas", a grade sai agrupada por unidade, com uma faixa no início de cada uma.
+                        const grupo = c.unidade || "Sem unidade";
+                        const anterior = i > 0 ? linhasVisiveis[i - 1].config.unidade || "Sem unidade" : null;
+                        const faixa = !filtroUnidade && unidades.length > 0 && grupo !== anterior;
                         return (
-                          <tr key={c.id} className="border-t">
+                          <Fragment key={c.id}>
+                          {faixa && (
+                            <tr className="border-t bg-primary/10">
+                              <td colSpan={dias.length + 3} className="sticky left-0 px-2 py-1 text-xs font-semibold text-primary">
+                                Unidade {grupo} ({linhasVisiveis.filter((l) => (l.config.unidade || "Sem unidade") === grupo).length})
+                              </td>
+                            </tr>
+                          )}
+                          <tr className="border-t">
                             <td className="sticky left-0 z-10 bg-card px-2 py-1 align-middle">
                               <LinhaConfig
                                 c={c}
@@ -1190,6 +1279,7 @@ export function PlanejadorEscala({
                               </span>
                             </td>
                           </tr>
+                          </Fragment>
                         );
                       })}
                       <tr className="border-t bg-muted/40">

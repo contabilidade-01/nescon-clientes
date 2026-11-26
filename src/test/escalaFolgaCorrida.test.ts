@@ -127,3 +127,25 @@ describe("empresa escolhe se abre nos feriados", () => {
     expect(normalizarConfigEmpresa(null).abreNosFeriados).toBe(false);
   });
 });
+
+describe("times por unidade (passo antes da escala)", () => {
+  it("o time da empresa manda na unidade e tira quem está fora da escala", async () => {
+    const { aplicarTimes } = await import("@/lib/escala/planejamento");
+    const cfg = normalizarConfigEmpresa({
+      unidades: ["Terra Preta", " ", 3],
+      times: { "1": "Q1 Matriz", "2": "  Terra   Preta ", "9": "" },
+      foraDaEscala: ["3", "3", 7],
+    });
+    expect(cfg.unidades).toEqual(["Terra Preta", "Q1 Matriz"]);
+    expect(cfg.times).toEqual({ "1": "Q1 Matriz", "2": "Terra Preta" });
+    expect(cfg.foraDaEscala).toEqual(["3"]);
+    const cs = ["1", "2", "3", "4"].map((id) => ({ ...configPadrao(id, `P${id}`, "5x2"), unidade: id === "4" ? "Antiga" : undefined }));
+    const r = aplicarTimes(cs, cfg);
+    expect(r.map((c) => [c.id, c.unidade])).toEqual([
+      ["1", "Q1 Matriz"],
+      ["2", "Terra Preta"],
+      ["4", "Antiga"],
+    ]);
+    expect(normalizarConfigEmpresa(null).times).toEqual({});
+  });
+});
