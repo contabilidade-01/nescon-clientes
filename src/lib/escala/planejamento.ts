@@ -815,6 +815,25 @@ export function mesclarPlano(
   return { configs, ajustes };
 }
 
+/**
+ * O último mês salvo antes de `mes` ('YYYY-MM'), de onde um mês novo herda a escala.
+ * Sem mês salvo antes, `null`.
+ */
+export function mesAnteriorSalvo(salvos: Array<{ mes: string }>, mes: string): string | null {
+  const antes = salvos.map((p) => p.mes).filter((m) => m < mes).sort();
+  return antes.at(-1) ?? null;
+}
+
+/**
+ * A escala de um mês salvo levada para o mês seguinte: as mesmas pessoas (vagas inclusive),
+ * unidades, modelos, horários e ponto do rodízio. O rodízio conta a partir de uma data fixa,
+ * então a sequência de folgas continua sem quebra na virada do mês. Ajustes de dias soltos
+ * e a 6x1 até a virada não passam adiante (são daquele mês).
+ */
+export function planoHerdado(anterior: PlanoMes): PlanoMes {
+  return { configs: (anterior.configs || []).map((c) => ({ ...c, seisPorUmAteVirada: false })), ajustes: {} };
+}
+
 /** O que a edição em lote faz em cada dia escolhido: folga, um horário ou voltar ao modelo. */
 export type AcaoDia = { tipo: "folga" } | { tipo: "horario"; turno: Turno } | { tipo: "modelo" };
 
