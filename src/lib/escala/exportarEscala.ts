@@ -65,9 +65,10 @@ const horas = (min: number) => {
   return m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
 };
 
-/** Texto da célula: "08:00–17:00" ou "Folga" (com o feriado, se houver). */
+/** Texto da célula: "08:00–17:00", "Folga" (com o feriado, se houver) ou "Licença". */
 export function textoDoDia(d: DiaEscala | undefined, feriado?: string): string {
   if (!d) return "";
+  if (d.licenca) return "Licença";
   if (!d.turno) return feriado ? `Folga (${feriado})` : "Folga";
   const t = `${d.turno.entrada}–${d.turno.saida}`;
   return feriado ? `${t} (feriado)` : t;
@@ -386,7 +387,7 @@ function tabelasDasSemanas(doc: DocComTabela, e: EscalaExportada, pessoas: Pesso
         ]),
       ],
       didParseCell: (c) => {
-        if (c.section === "body" && c.cell.raw === "Folga") {
+        if (c.section === "body" && (c.cell.raw === "Folga" || c.cell.raw === "Licença")) {
           c.cell.styles.fillColor = [232, 236, 242];
           c.cell.styles.textColor = 90;
         }

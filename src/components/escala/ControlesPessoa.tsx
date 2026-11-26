@@ -36,6 +36,34 @@ export function ControlesPessoa({
   const ate6x1 = ultimo ? `${ultimo.slice(8, 10)}/${ultimo.slice(5, 7)}` : "";
   return (
   <div className="flex flex-wrap items-center gap-1">
+      <label className="flex w-full flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+        Licença / afastamento de
+        <input
+          type="date"
+          className={sel}
+          value={c.licenca?.inicio ?? ""}
+          aria-label="Licença de"
+          onChange={(e) => {
+            const inicio = e.target.value;
+            onChange({ licenca: inicio ? { inicio, fim: c.licenca?.fim && c.licenca.fim >= inicio ? c.licenca.fim : inicio } : undefined });
+          }}
+        />
+        até
+        <input
+          type="date"
+          className={sel}
+          value={c.licenca?.fim ?? ""}
+          min={c.licenca?.inicio}
+          aria-label="Licença até"
+          disabled={!c.licenca}
+          onChange={(e) => c.licenca && e.target.value && onChange({ licenca: { inicio: c.licenca.inicio, fim: e.target.value >= c.licenca.inicio ? e.target.value : c.licenca.inicio } })}
+        />
+        {c.licenca && (
+          <button type="button" className="underline" onClick={() => onChange({ licenca: undefined })}>
+            tirar
+          </button>
+        )}
+      </label>
       {c.id.startsWith("vaga-") && (
         <label className="flex w-full items-center gap-1 text-[11px] text-muted-foreground">
           Nome

@@ -1525,6 +1525,7 @@ export function PlanejadorEscala({
                                 key={d.data}
                                 id={`${c.id}|${d.data}`}
                                 turno={d.turno}
+                                licenca={Boolean(d.licenca)}
                                 domingo={diaDaSemana(d.data) === 0}
                                 virada={d.data === virada?.inicio}
                                 gravidade={porDia.get(d.data)}
@@ -1870,6 +1871,7 @@ function LinhaConfig({
 function Celula({
   id,
   turno,
+  licenca,
   domingo,
   gravidade,
   ajustado,
@@ -1879,6 +1881,7 @@ function Celula({
 }: {
   id: string;
   turno: Turno | null;
+  licenca?: boolean;
   domingo: boolean;
   virada?: boolean;
   gravidade?: "erro" | "atencao";
@@ -1906,13 +1909,15 @@ function Celula({
           drag.isDragging && "opacity-70 shadow-lg",
           marcado && "ring-2 ring-primary ring-offset-1 ring-offset-background",
         )}
-        title={turno ? `${turno.entrada}–${turno.saida} (intervalo ${turno.intervaloMin}min)` : "Folga"}
+        title={turno ? `${turno.entrada}–${turno.saida} (intervalo ${turno.intervaloMin}min)` : licenca ? "Licença" : "Folga"}
       >
         {turno ? (
           <>
             <span>{horaCurta(turno.entrada)}</span>
             <span>{horaCurta(turno.saida)}</span>
           </>
+        ) : licenca ? (
+          <span className="text-xs font-semibold">L</span>
         ) : (
           <span className="text-xs font-semibold">F</span>
         )}

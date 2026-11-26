@@ -205,6 +205,12 @@ export interface ConfigPessoa {
   /** Cargo (cozinheiro, garçom…): etiqueta e conta de cobertura por cargo; vem do cadastro ou da tela. */
   cargo?: string;
   /**
+   * Licença ou afastamento (maternidade, INSS…), datas 'YYYY-MM-DD' inclusive. Nesses dias a
+   * pessoa não trabalha e a grade e o PDF mostram "Licença" em vez de folga. Passa para os
+   * meses seguintes junto com a escala; fora do período a pessoa segue o modelo.
+   */
+  licenca?: { inicio: string; fim: string };
+  /**
    * Sexo da pessoa: "F" aplica o domingo de folga a cada 2 semanas (art. 386 da CLT).
    * Vazio = sem a regra da mulher.
    */
@@ -432,6 +438,20 @@ export function modeloDaPessoa(c: ConfigPessoa, mes: string): ModeloEscala {
   return escala6x1(turno, c.folga6x1);
 }
 
+/** A data cai na licença ou no afastamento da pessoa? */
+export function emLicenca(c: Pick<ConfigPessoa, "licenca">, data: string): boolean {
+  const l = c.licenca;
+  return Boolean(l && l.inicio && l.fim && data >= l.inicio && data <= l.fim);
+}
+
+/** Licença com datas válidas ('YYYY-MM-DD', início até o fim) ou undefined. */
+export function licencaValida(v: unknown): ConfigPessoa["licenca"] {
+  const l = v as { inicio?: unknown; fim?: unknown } | null | undefined;
+  const ok = (x: unknown) => typeof x === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x);
+  if (!l || !ok(l.inicio) || !ok(l.fim) || (l.inicio as string) > (l.fim as string)) return undefined;
+  return { inicio: l.inicio as string, fim: l.fim as string };
+}
+
 /**
  * Dias da pessoa para VALIDAR: o mês inteiro mais o que faltar para fechar a primeira e
  * a última semana (domingo a sábado). Sem isso as semanas das pontas ficariam de fora da
@@ -456,6 +476,7 @@ export function diasParaValidar(
   const folgaNoFeriado = c.modelo !== "12x36" && !opcoes.abreNosFeriados;
   const ateVirada = diasAteAVirada(c, mes, de, ate);
   return gerarDias(modeloDaPessoa(c, mes), de, ate).map((d, i) => {
+    if (emLicenca(c, d.data)) return { data: d.data, turno: null, licenca: true };
     if (Object.prototype.hasOwnProperty.call(meus, d.data)) return { data: d.data, turno: meus[d.data] };
     if (folgaNoFeriado && feriados.has(d.data)) return { data: d.data, turno: null };
     return ateVirada?.[i] ?? d;
@@ -791,6 +812,7 @@ export function normalizarConfigPessoa(raw: ConfigPessoa, padrao: ModeloChave): 
     turma: raw.turma === "B" ? "B" : "A",
     seisPorUmAteVirada: raw.seisPorUmAteVirada !== false,
     folgaAnda: raw.folgaAnda === "tras" ? "tras" : "frente",
+    licenca: licencaValida(raw.licenca),
     unidade: nomeDeUnidade(raw.unidade),
     cargo: nomeDeCargo(raw.cargo),
     sexo: raw.sexo === "F" || raw.sexo === "M" ? raw.sexo : undefined,

@@ -413,7 +413,7 @@ export function CalendarioPessoa({
                           )}
                         >
                           <span className={cn("text-[10px]", feriados.has(d.data) && "font-semibold text-primary")}>{Number(d.data.slice(8))}</span>
-                          <span className="text-[9px]">{d.turno ? `${horaCurta(d.turno.entrada)}–${horaCurta(d.turno.saida)}` : "Folga"}</span>
+                          <span className="text-[9px]">{d.turno ? `${horaCurta(d.turno.entrada)}–${horaCurta(d.turno.saida)}` : d.licenca ? "Licença" : "Folga"}</span>
                         </button>
                       </td>
                     );
