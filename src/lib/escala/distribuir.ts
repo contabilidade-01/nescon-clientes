@@ -131,12 +131,16 @@ export function configsDoGrupo(
       break;
     }
     case "5x2": {
+      // Folga fixa não gira: se o segmento exige domingo de folga em poucas semanas
+      // (comércio e restaurante, a cada 3), o domingo precisa estar no par de cada pessoa.
+      const domingoSempre = SEGMENTOS[empresa.segmento].domingoACadaSemanas <= 5;
       if (fixa !== null) {
         // Folga fixa + a segunda folga espalhada (o domingo entra na roda para cumprir o mínimo).
-        const segundas = [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== fixa);
+        const segundas = domingoSempre && fixa !== 0 ? [0] : [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== fixa);
         espalhar(segundas, n, rnd).forEach((d, i) => (base[i].folgas5x2 = [fixa, d]));
       } else {
-        espalhar(PARES_5X2, n, rnd).forEach((par, i) => (base[i].folgas5x2 = [...par]));
+        const pares = domingoSempre ? PARES_5X2.filter((p) => p.includes(0)) : PARES_5X2;
+        espalhar(pares, n, rnd).forEach((par, i) => (base[i].folgas5x2 = [...par]));
       }
       break;
     }
@@ -157,6 +161,14 @@ export function configsDoGrupo(
     case "5x2_corrida": {
       // A folga anda sozinha; espalha a equipe pelos 7 pontos do ciclo.
       espalhar([0, 1, 2, 3, 4, 5, 6], n, rnd).forEach((r, i) => (base[i].rodizio = r));
+      break;
+    }
+    case "5x2_3semanas": {
+      espalhar([0, 1, 2], n, rnd).forEach((r, i) => (base[i].rodizio = r));
+      break;
+    }
+    case "5x2_quinzenal": {
+      espalhar([0, 1, 2, 3], n, rnd).forEach((r, i) => (base[i].rodizio = r));
       break;
     }
     case "5x2_fechado": {

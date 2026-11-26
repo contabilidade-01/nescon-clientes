@@ -309,17 +309,24 @@ export function PlanejadorEscala({
     [configs, mes, ajustes, feriadosSet, cfg.segmento, cfg.temAcordoColetivo],
   );
 
-  const equipe = useMemo(() => configs.map((c) => ({ id: c.id, nome: c.nome })), [configs]);
-  const equipeChave = equipe.map((p) => `${p.id}:${p.nome}`).join("|");
+  const unidades = unidadesDa(configs);
+  const filtroUnidade = unidade && unidades.includes(unidade) ? unidade : "";
+  /** Com uma unidade escolhida, a tela inteira (cenários, automática, por funcionário) trata a unidade como se fosse a empresa. */
+  const configsDaUnidade = useMemo(
+    () => (filtroUnidade ? configs.filter((c) => c.unidade === filtroUnidade) : configs),
+    [configs, filtroUnidade],
+  );
+  const equipe = useMemo(() => configsDaUnidade.map((c) => ({ id: c.id, nome: c.nome, sexo: c.sexo })), [configsDaUnidade]);
+  const equipeChave = equipe.map((p) => `${p.id}:${p.nome}:${p.sexo || ""}`).join("|");
   const cenarios = useMemo(
     () => simularCenarios(equipe, mes, cfg, feriadosSet, variacao, horarios),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [equipeChave, mes, feriadosSet, variacao, horarios, cfg.segmento, cfg.temAcordoColetivo, cfg.bloqueio, cfg.demanda, cfg.diasFechados],
   );
   const escalaAtual = useMemo(
-    () => avaliarEscalaAtual(configs, ajustes, mes, cfg, feriadosSet),
+    () => avaliarEscalaAtual(configsDaUnidade, ajustes, mes, cfg, feriadosSet),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [configs, ajustes, mes, feriadosSet, cfg.segmento, cfg.temAcordoColetivo, cfg.bloqueio, cfg.demanda, cfg.diasFechados],
+    [configsDaUnidade, ajustes, mes, feriadosSet, cfg.segmento, cfg.temAcordoColetivo, cfg.bloqueio, cfg.demanda, cfg.diasFechados],
   );
 
   function mudarHorario(id: string, t: Turno | null) {
@@ -586,8 +593,17 @@ export function PlanejadorEscala({
   }
 
   function aplicarCenario(c: ResultadoCenario, ficarNaTela = false) {
-    setConfigs(c.configs);
-    setAjustes({});
+    // O cenário só traz quem ele simulou: os demais (outras unidades) ficam como estão,
+    // e cada pessoa simulada mantém a unidade que já tinha.
+    const novos = new Map(c.configs.map((n) => [n.id, n]));
+    const antigos = new Map(configs.map((a) => [a.id, a]));
+    const aplicados = c.configs.map((n) => ({
+      ...n,
+      unidade: antigos.get(n.id)?.unidade ?? n.unidade,
+      sexo: antigos.get(n.id)?.sexo ?? n.sexo,
+    }));
+    setConfigs(filtroUnidade ? configs.map((a) => aplicados.find((n) => n.id === a.id) ?? a) : aplicados);
+    setAjustes((aj) => (filtroUnidade ? Object.fromEntries(Object.entries(aj).filter(([id]) => !novos.has(id))) : {}));
     setAlterado(true);
     setCenarioAtual(c.id);
     if (ficarNaTela) {
@@ -673,8 +689,6 @@ export function PlanejadorEscala({
   ];
   const salvos = planosQuery.data || [];
   const salvoEsteMes = salvos.find((p) => p.mes === mes);
-  const unidades = unidadesDa(configs);
-  const filtroUnidade = unidade && unidades.includes(unidade) ? unidade : "";
   /** Linhas da grade: a equipe toda ou só a unidade escolhida. As regras são por pessoa, então não mudam. */
   const linhasVisiveis = filtroUnidade ? linhas.filter((l) => l.config.unidade === filtroUnidade) : linhas;
   const pessoasPorDia = (d: string) => linhasVisiveis.filter((l) => l.dias.find((x) => x.data === d)?.turno).length;
@@ -806,7 +820,7 @@ export function PlanejadorEscala({
               );
             })}
             <span className="text-[11px] text-muted-foreground">
-              A grade, a contagem de pessoas por dia e o PDF/Excel seguem a unidade escolhida. Para trocar a unidade de alguém, clique no nome.
+              Com uma unidade escolhida, a tela toda (cenários, automática, grade, por funcionário e PDF/Excel) trata a unidade como se fosse uma empresa; as outras ficam intactas. Para trocar a unidade de alguém, clique no nome.
             </span>
           </div>
         )}
@@ -912,7 +926,7 @@ export function PlanejadorEscala({
           cfg={cfg}
           travadoPeloEscritorio={travadoPeloEscritorio}
           regime12x36Padrao={regime12x36Padrao}
-          linhas={linhas}
+          linhas={linhasVisiveis}
           cenarios={cenarios}
           escalaAtual={escalaAtual}
           cenarioAtual={cenarioAtual}
@@ -967,7 +981,7 @@ export function PlanejadorEscala({
         </TabsList>
 
         <TabsContent value="cenarios" className="mt-4">
-          {configs.length === 0 ? (
+          {configsDaUnidade.length === 0 ? (
             <SemEquipe onVaga={adicionarVaga} />
           ) : (
             <PainelCenarios
@@ -983,7 +997,7 @@ export function PlanejadorEscala({
         </TabsContent>
 
         <TabsContent value="automatica" className="mt-4">
-          {configs.length === 0 ? (
+          {configsDaUnidade.length === 0 ? (
             <SemEquipe onVaga={adicionarVaga} />
           ) : (
             <PainelDistribuicao
@@ -1049,7 +1063,7 @@ export function PlanejadorEscala({
             />
           )}
 
-          {configs.length === 0 ? (
+          {configsDaUnidade.length === 0 ? (
             <SemEquipe onVaga={adicionarVaga} />
           ) : (
             <Card>
@@ -1215,11 +1229,11 @@ export function PlanejadorEscala({
             </Card>
           )}
 
-          <ListaOcorrencias linhas={linhas.map((l) => ({ nome: l.config.nome, ocorrencias: l.ocorrencias }))} />
+          <ListaOcorrencias linhas={linhasVisiveis.map((l) => ({ nome: l.config.nome, ocorrencias: l.ocorrencias }))} />
         </TabsContent>
 
         <TabsContent value="pessoa" className="mt-4">
-          {configs.length === 0 ? (
+          {configsDaUnidade.length === 0 ? (
             <SemEquipe onVaga={adicionarVaga} />
           ) : (
             <PainelPorPessoa
@@ -1228,7 +1242,7 @@ export function PlanejadorEscala({
               empresa={cfg}
               feriados={feriados}
               feriadosSet={feriadosSet}
-              linhas={linhas}
+              linhas={linhasVisiveis}
               ajustes={ajustes}
               repousos={vigencia.repousosSemanais}
               viradaEm={viradaComFolgas ? virada?.inicio : undefined}
@@ -1246,7 +1260,7 @@ export function PlanejadorEscala({
             demanda={cfg.demanda}
             horasPorDia={cfg.horasPorDia}
             salarioMedio={cfg.salarioMedio}
-            quadroAtual={configs.length}
+            quadroAtual={configsDaUnidade.length}
             onChange={(p) => mudarCfg(p)}
           />
         </TabsContent>

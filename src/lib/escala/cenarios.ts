@@ -58,7 +58,7 @@ export interface ResultadoCenario extends Cenario {
 
 const NOMES_DIA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 
-type Pessoa = { id: string; nome: string };
+type Pessoa = { id: string; nome: string; sexo?: ConfigPessoa["sexo"] };
 
 /**
  * `variacao` muda quem folga em que dia sem mudar o modelo: o botão "outra variação"
@@ -86,7 +86,7 @@ export function montarCenarios(
     (modelo: ModeloChave, f: (c: ConfigPessoa, i: number) => Partial<ConfigPessoa> = () => ({})) =>
     (id: string) =>
       pessoas.map((p, i) => {
-        const c = configPadrao(p.id, p.nome, modelo);
+        const c = { ...configPadrao(p.id, p.nome, modelo), sexo: p.sexo };
         const h = horarios[id];
         return { ...c, ...f(c, i), ...(h ? { entrada: h.entrada, saida: h.saida, intervaloMin: h.intervaloMin } : {}) };
       });
@@ -151,6 +151,22 @@ export function montarCenarios(
         domingoACada < 6
           ? `O domingo de folga só volta depois de 5 semanas; em ${SEGMENTOS[empresa.segmento].nome.toLowerCase()} ele precisa cair a cada ${domingoACada}.`
           : undefined,
+    },
+    {
+      id: "5x2_quinzenal",
+      nome: "5x2 com domingo de folga a cada 2 semanas",
+      descricao:
+        "Abre todo dia. Ciclo de 4 semanas: dom+seg, seg+ter, dom+sáb, qui+sex. Cada pessoa folga 1 domingo a cada 2 semanas, o que cumpre a regra do comércio/restaurante (3 semanas) e a das mulheres (15 dias).",
+      modelo: "5x2_quinzenal",
+      configs: cada("5x2_quinzenal", (_, i) => ({ rodizio: (i + v) % 4 })),
+    },
+    {
+      id: "5x2_3semanas",
+      nome: "5x2 com domingo de folga a cada 3 semanas",
+      descricao:
+        "Abre todo dia. Ciclo de 3 semanas: dom+sáb, qui+sex, ter+qua. Cada pessoa folga 1 domingo a cada 3 semanas (mínimo do comércio/restaurante) e todo dia fica com 2/3 da equipe.",
+      modelo: "5x2_3semanas",
+      configs: cada("5x2_3semanas", (_, i) => ({ rodizio: (i + v) % 3 })),
     },
     {
       id: "4x3",
@@ -310,6 +326,8 @@ export const DIAS_TRABALHO_SEMANA: Partial<Record<ModeloChave, number>> = {
   "5x2": 5,
   "5x2_rev": 5,
   "5x2_corrida": 5,
+  "5x2_quinzenal": 5,
+  "5x2_3semanas": 5,
   "5x2_fechado": 5,
   "4x3": 4,
 };
