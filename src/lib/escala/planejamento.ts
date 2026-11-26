@@ -574,6 +574,43 @@ export interface ConfigEmpresa {
   cargos: Record<string, string>;
   /** Pessoas de cada cargo necessárias por dia da semana (domingo a sábado). Só aviso. */
   minimoPorCargo: Record<string, Demanda>;
+  /**
+   * Funcionários registrados em OUTRA empresa do grupo (outro CNPJ) que trabalham nesta
+   * escala (ex.: do Queijeiro 3 na unidade Terra Preta da Matriz). Entram como se fossem
+   * da equipe; a empresa de origem os põe "fora da escala" (ver `cedidos`).
+   */
+  emprestados: Emprestado[];
+  /** Na empresa de origem: quem foi cedido para a escala de outra empresa (id -> nome do destino). */
+  cedidos: Record<string, string>;
+}
+
+export interface Emprestado {
+  id: string;
+  nome: string;
+  cargo?: string;
+  origemId: string;
+  origemNome: string;
+}
+
+function normalizarEmprestimos(o: Record<string, unknown>): Pick<ConfigEmpresa, "emprestados" | "cedidos"> {
+  const texto = (v: unknown, n = 120) => (typeof v === "string" ? v.trim().slice(0, n) : "");
+  const vistos = new Set<string>();
+  const emprestados: Emprestado[] = [];
+  for (const e of Array.isArray(o.emprestados) ? o.emprestados : []) {
+    if (!e || typeof e !== "object") continue;
+    const r = e as Record<string, unknown>;
+    const id = texto(r.id, 64);
+    const nome = texto(r.nome);
+    const origemId = texto(r.origemId, 64);
+    if (!id || !nome || !origemId || vistos.has(id)) continue;
+    vistos.add(id);
+    emprestados.push({ id, nome, origemId, origemNome: texto(r.origemNome) || "outra empresa", cargo: texto(r.cargo, 40) || undefined });
+  }
+  const cedidos: Record<string, string> = {};
+  if (o.cedidos && typeof o.cedidos === "object" && !Array.isArray(o.cedidos)) {
+    for (const [id, d] of Object.entries(o.cedidos as Record<string, unknown>)) if (texto(d)) cedidos[id] = texto(d);
+  }
+  return { emprestados, cedidos };
 }
 
 /** A escala de um mês (escala_planejamentos). */
@@ -603,6 +640,8 @@ export function configEmpresaPadrao(): ConfigEmpresa {
     foraDaEscala: [],
     cargos: {},
     minimoPorCargo: {},
+    emprestados: [],
+    cedidos: {},
   };
 }
 
@@ -658,6 +697,7 @@ export function normalizarConfigEmpresa(raw: unknown): ConfigEmpresa {
     abreNosFeriados: Boolean(o.abreNosFeriados),
     ...normalizarTimes(o),
     ...normalizarCargos(o),
+    ...normalizarEmprestimos(o),
     feriadosLocais,
     demanda,
     horasPorDia: horas > 0 && horas <= 12 ? horas : base.horasPorDia,

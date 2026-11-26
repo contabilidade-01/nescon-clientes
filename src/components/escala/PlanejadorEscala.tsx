@@ -43,7 +43,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FORA, TimesPorUnidade, type PessoaDoTime } from "./TimesPorUnidade";
+import { DEVOLVER, FORA, TimesPorUnidade, type PessoaDoTime } from "./TimesPorUnidade";
+import { TrazerDeOutraEmpresa, type EmpresaDoGrupo } from "./TrazerDeOutraEmpresa";
 import { BarraLote, type AtalhoDias, type MarcarPessoas } from "@/components/escala/BarraLote";
 import { DialogoPessoa } from "@/components/escala/DialogoPessoa";
 import { agruparOcorrencias } from "@/lib/escala/ocorrencias";
@@ -159,8 +160,11 @@ export function PlanejadorEscala({
   regime12x36Padrao = false,
   companyId,
   empresaNome,
+  outrasEmpresas,
 }: {
   pessoas: Pessoa[];
+  /** Escritório: empresas do grupo de onde dá para trazer funcionário (outro CNPJ). */
+  outrasEmpresas?: EmpresaDoGrupo[];
   regime12x36Padrao?: boolean;
   /** Vai no cabeçalho e no nome do arquivo baixado. */
   empresaNome?: string;
@@ -192,6 +196,7 @@ export function PlanejadorEscala({
   const [unidade, setUnidade] = useState("");
   const [timesAberto, setTimesAberto] = useState(true);
   const [cargosAberto, setCargosAberto] = useState(false);
+  const [trazendo, setTrazendo] = useState(false);
   // O cliente começa no caminho guiado; o escritório, nas abas completas. A escolha fica no navegador.
   const chaveModo = `escala-modo-${companyId ? "escritorio" : "portal"}`;
   const [modo, setModoEstado] = useState<Modo>(() => {
@@ -239,20 +244,31 @@ export function PlanejadorEscala({
   // rodam no mesmo ciclo e o `cfg` ainda estaria no padrão (empresa 12x36 abria em 5x2).
   const cfgCarregada = configQuery.data ? normalizarConfigEmpresa(configQuery.data.dados) : null;
   const usa12x36Carregado = cfgCarregada?.atividadeDefinida ? cfgCarregada.usa12x36 : regime12x36Padrao;
+  // A equipe desta escala: os funcionários da empresa e os trazidos de outra empresa do grupo.
+  const emprestadosCarregados = cfgCarregada?.emprestados;
+  const chaveEmprestados = JSON.stringify(emprestadosCarregados ?? []);
+  const todasPessoas = useMemo<Pessoa[]>(() => {
+    const ids = new Set(pessoas.map((p) => p.id));
+    const extras = (emprestadosCarregados ?? []).filter((e) => !ids.has(e.id)).map((e) => ({ id: e.id, name: e.nome, cargo: e.cargo ?? null }));
+    return extras.length ? [...pessoas, ...extras] : pessoas;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pessoas, chaveEmprestados]);
   useEffect(() => {
     if (planoQuery.isLoading || configQuery.isLoading) return;
     const salvo = planoQuery.data?.dados as PlanoMes | undefined;
-    const plano = mesclarPlano(salvo && Array.isArray(salvo.configs) ? salvo : null, pessoas, modeloPadraoDoMes(mes, usa12x36Carregado), {
+    const plano = mesclarPlano(salvo && Array.isArray(salvo.configs) ? salvo : null, todasPessoas, modeloPadraoDoMes(mes, usa12x36Carregado), {
       permite6x1: vigenciaEm(diasDoMes(mes).at(-1)!).repousosSemanais < 2,
       temAcordo: Boolean(cfgCarregada?.temAcordoColetivo),
     });
     // Os times da empresa (passo 1) mandam: quem está fora sai, e a unidade vem do time.
     // Cargo: o marcado na tela vale; senão o do cadastro da folha.
-    setConfigs(aplicarCargos(aplicarTimes(plano.configs, cfgCarregada), cfgCarregada?.cargos, new Map(pessoas.map((p) => [p.id, p.cargo]))));
+    setConfigs(aplicarCargos(aplicarTimes(plano.configs, cfgCarregada), cfgCarregada?.cargos, new Map(todasPessoas.map((p) => [p.id, p.cargo]))));
     setAjustes(plano.ajustes);
     setAlterado(false);
     setCenarioAtual(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Os trazidos de outra empresa entram pelo `todasPessoas` desta renderização; trazer ou
+    // devolver alguém mexe nos `configs` direto, sem recarregar o mês (perderia o que não foi salvo).
   }, [planoQuery.data, planoQuery.isLoading, configQuery.isLoading, pessoas, usa12x36Carregado]);
 
   const salvar = useMutation({
@@ -725,13 +741,73 @@ export function PlanejadorEscala({
   // Times por unidade (passo 1): valem para todos os meses e alimentam a escala.
   const unidadesDoTime = [...new Set([...cfg.unidades, ...unidades])];
   const pessoasDoTime: PessoaDoTime[] = [
-    ...pessoas.map((p) => ({ id: p.id, nome: p.name })),
+    ...todasPessoas.map((p) => ({ id: p.id, nome: p.name })),
     ...configs.filter((c) => c.id.startsWith("vaga-")).map((c) => ({ id: c.id, nome: c.nome })),
   ].map((p) => ({
     ...p,
     fora: cfg.foraDaEscala.includes(p.id),
     unidade: configs.find((c) => c.id === p.id)?.unidade ?? cfg.times[p.id] ?? "",
+    origem: cfg.emprestados.find((e) => e.id === p.id)?.origemNome,
+    cedidoPara: cfg.cedidos[p.id],
   }));
+  const empresaAtual: EmpresaDoGrupo | undefined = companyId ? { id: companyId, name: empresaNome || "esta empresa" } : undefined;
+
+  /** Liga ou desliga a pessoa na escala da empresa de origem (fica lá "fora da escala"). */
+  async function marcarNaOrigem(origemId: string, id: string, cedidaPara: string | null) {
+    const atual = normalizarConfigEmpresa((await api.escalas.config(origemId)).dados);
+    const cedidos = { ...atual.cedidos };
+    const times = { ...atual.times };
+    let foraDaEscala = atual.foraDaEscala.filter((x) => x !== id);
+    if (cedidaPara) {
+      cedidos[id] = cedidaPara;
+      foraDaEscala = [...foraDaEscala, id];
+      delete times[id];
+    } else delete cedidos[id];
+    await api.escalas.salvarConfig({ ...atual, cedidos, foraDaEscala, times }, origemId);
+    qc.invalidateQueries({ queryKey: ["escala-config", origemId] });
+  }
+
+  async function trazer(t: { empresa: EmpresaDoGrupo; id: string; nome: string; cargo?: string; unidade: string }) {
+    setTrazendo(false);
+    if (cfg.emprestados.some((e) => e.id === t.id)) return toast.info(`${t.nome} já está nesta escala.`);
+    const times = { ...cfg.times };
+    if (t.unidade) times[t.id] = t.unidade;
+    else delete times[t.id];
+    const emprestados = [...cfg.emprestados, { id: t.id, nome: t.nome, cargo: nomeDeCargo(t.cargo), origemId: t.empresa.id, origemNome: t.empresa.name }];
+    salvarTimes({ ...cfg, emprestados, times, foraDaEscala: cfg.foraDaEscala.filter((x) => x !== t.id) });
+    setConfigs((cs) =>
+      cs.some((c) => c.id === t.id)
+        ? cs
+        : [...cs, { ...mesclarPlano(null, [{ id: t.id, name: t.nome }], modeloPadrao).configs[0], unidade: t.unidade || undefined, cargo: cfg.cargos[t.id] ?? nomeDeCargo(t.cargo) }],
+    );
+    setAlterado(true);
+    try {
+      await marcarNaOrigem(t.empresa.id, t.id, empresaNome || "outra empresa");
+      toast.success(`${t.nome} veio de ${t.empresa.name}.`, { description: "Na escala de lá fica como fora da escala. Salve esta escala para gravar os dias." });
+    } catch (e) {
+      toast.error(`${t.nome} entrou aqui, mas não consegui tirar da escala de ${t.empresa.name}.`, { description: (e as Error).message });
+    }
+  }
+
+  async function devolver(id: string) {
+    const e = cfg.emprestados.find((x) => x.id === id);
+    if (!e) return;
+    const times = { ...cfg.times };
+    delete times[id];
+    const cargos = { ...cfg.cargos };
+    delete cargos[id];
+    salvarTimes({ ...cfg, emprestados: cfg.emprestados.filter((x) => x.id !== id), times, cargos, foraDaEscala: cfg.foraDaEscala.filter((x) => x !== id) });
+    setConfigs((cs) => cs.filter((c) => c.id !== id));
+    setAjustes((aj) => Object.fromEntries(Object.entries(aj).filter(([k]) => k !== id)));
+    setSelPessoas(new Set());
+    setAlterado(true);
+    try {
+      await marcarNaOrigem(e.origemId, id, null);
+      toast.success(`${e.nome} voltou para ${e.origemNome}.`, { description: "Salve esta escala para tirar os dias dele daqui." });
+    } catch (err) {
+      toast.error(`Não consegui devolver ${e.nome} na escala de ${e.origemNome}.`, { description: (err as Error).message });
+    }
+  }
 
   function salvarTimes(novo: ConfigEmpresa) {
     setCfg(novo);
@@ -739,6 +815,7 @@ export function PlanejadorEscala({
   }
 
   function moverPessoa(id: string, destino: string) {
+    if (destino === DEVOLVER) return void devolver(id);
     const fora = destino === FORA;
     const times = { ...cfg.times };
     if (!fora && destino) times[id] = destino;
@@ -750,7 +827,7 @@ export function PlanejadorEscala({
       if (fora) return cs.filter((c) => c.id !== id);
       if (cs.some((c) => c.id === id)) return cs.map((c) => (c.id === id ? { ...c, unidade: unidadeNova } : c));
       // Volta para a escala: entra no modelo padrão do mês, como quem chega sem escala salva.
-      const p = pessoas.find((x) => x.id === id);
+      const p = todasPessoas.find((x) => x.id === id);
       if (!p) return cs;
       return [...cs, { ...mesclarPlano(null, [p], modeloPadrao).configs[0], unidade: unidadeNova }];
     });
@@ -764,7 +841,7 @@ export function PlanejadorEscala({
     if (cargo) cargos[id] = cargo;
     else delete cargos[id];
     salvarTimes({ ...cfg, cargos });
-    const doCadastro = pessoas.find((p) => p.id === id)?.cargo;
+    const doCadastro = todasPessoas.find((p) => p.id === id)?.cargo;
     setConfigs((cs) => cs.map((c) => (c.id === id ? { ...c, cargo: cargo ?? (nomeDeCargo(doCadastro) || undefined) } : c)));
     setAlterado(true);
   }
@@ -868,6 +945,17 @@ export function PlanejadorEscala({
           onMover={moverPessoa}
           onNovaUnidade={novaUnidade}
           onMontar={montarTime}
+          onTrazer={empresaAtual && outrasEmpresas?.length ? () => setTrazendo(true) : undefined}
+        />
+      )}
+      {trazendo && empresaAtual && outrasEmpresas && (
+        <TrazerDeOutraEmpresa
+          empresaAtual={empresaAtual}
+          empresas={outrasEmpresas}
+          unidades={unidadesDoTime}
+          jaNaEscala={new Set(configs.map((c) => c.id))}
+          onFechar={() => setTrazendo(false)}
+          onTrazer={trazer}
         />
       )}
       {configs.length > 0 && !(escolhendo && modo !== "simples") && (
@@ -1615,21 +1703,17 @@ function LinhaConfig({
         <button
           type="button"
           onClick={onAbrir}
-          className="truncate text-left text-xs font-medium hover:text-primary hover:underline"
+          className="min-w-0 flex-1 text-left text-xs font-medium hover:text-primary hover:underline"
           title={`Personalizar a escala de ${c.nome}`}
         >
-          {c.nome}
+          <span className="block truncate">{c.nome}</span>
+          {/* Cargo e unidade numa linha miúda embaixo do nome: o nome nunca perde espaço. */}
+          {(c.cargo || c.unidade) && (
+            <span className="block truncate text-[10px] font-normal text-muted-foreground" title={[c.cargo, c.unidade && `Unidade ${c.unidade}`].filter(Boolean).join(" · ")}>
+              {[c.cargo, c.unidade].filter(Boolean).join(" · ")}
+            </span>
+          )}
         </button>
-        {c.cargo && (
-          <Badge variant="secondary" className="max-w-[7rem] shrink-0 truncate px-1 py-0 text-[10px] font-normal" title={`Cargo: ${c.cargo}`}>
-            {c.cargo}
-          </Badge>
-        )}
-        {c.unidade && (
-          <Badge variant="outline" className="shrink-0 px-1 py-0 text-[10px] font-normal" title={`Unidade ${c.unidade}`}>
-            {c.unidade}
-          </Badge>
-        )}
         {onRemover && (
           <button type="button" className="ml-auto text-muted-foreground hover:text-destructive" onClick={onRemover} aria-label="Remover vaga">
             <Trash2 className="h-3.5 w-3.5" />

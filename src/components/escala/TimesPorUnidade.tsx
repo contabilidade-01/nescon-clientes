@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 
 /** Destino de uma pessoa no quadro de times: uma unidade, "" (sem unidade) ou fora da escala. */
 export const FORA = "__fora__";
+/** Destino especial de quem veio de outra empresa do grupo: volta para a empresa de origem. */
+export const DEVOLVER = "__devolver__";
 
 export interface PessoaDoTime {
   id: string;
@@ -17,6 +19,10 @@ export interface PessoaDoTime {
   /** Unidade em que a pessoa está hoje ("" = sem unidade). */
   unidade: string;
   fora: boolean;
+  /** Veio de outra empresa do grupo (nome da empresa de origem). */
+  origem?: string;
+  /** Foi cedido para a escala de outra empresa do grupo (nome do destino). */
+  cedidoPara?: string;
 }
 
 /**
@@ -32,6 +38,7 @@ export function TimesPorUnidade({
   onMover,
   onNovaUnidade,
   onMontar,
+  onTrazer,
 }: {
   pessoas: PessoaDoTime[];
   unidades: string[];
@@ -40,6 +47,8 @@ export function TimesPorUnidade({
   onMover: (id: string, destino: string) => void;
   onNovaUnidade: (nome: string) => void;
   onMontar: (unidade: string) => void;
+  /** Escritório: trazer um funcionário de outra empresa do grupo (outro CNPJ) para esta escala. */
+  onTrazer?: () => void;
 }) {
   const [nova, setNova] = useState("");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -100,6 +109,11 @@ export function TimesPorUnidade({
             <Button size="sm" variant="outline" className="h-8 gap-1" onClick={criar} disabled={!nomeDeUnidade(nova)}>
               <Plus className="h-3.5 w-3.5" /> Criar unidade
             </Button>
+            {onTrazer && (
+              <Button size="sm" variant="outline" className="h-8 gap-1" onClick={onTrazer}>
+                <Users className="h-3.5 w-3.5" /> Trazer de outra empresa
+              </Button>
+            )}
             <span className="text-xs text-muted-foreground">
               Para mudar alguém de time, arraste o nome para a outra coluna ou escolha o destino ao lado do nome.
             </span>
@@ -127,6 +141,15 @@ export function TimesPorUnidade({
                     {lista.map((p) => (
                       <li key={p.id} className="flex items-center gap-1 text-xs">
                         <Arrastavel id={p.id} nome={p.nome} />
+                        {(p.origem || p.cedidoPara) && (
+                          <Badge
+                            variant="outline"
+                            className="max-w-[6rem] shrink-0 truncate px-1 py-0 text-[9px] font-normal"
+                            title={p.origem ? `Registrado em ${p.origem}` : `Trabalha na escala de ${p.cedidoPara}`}
+                          >
+                            {p.origem ? `de ${p.origem}` : `em ${p.cedidoPara}`}
+                          </Badge>
+                        )}
                         <select
                           className="h-6 max-w-[9rem] rounded border bg-background px-1 text-[11px]"
                           value={p.fora ? FORA : p.unidade}
@@ -140,6 +163,7 @@ export function TimesPorUnidade({
                           ))}
                           <option value="">Sem unidade</option>
                           <option value={FORA}>Fora da escala</option>
+                          {p.origem && <option value={DEVOLVER}>Devolver a {p.origem}</option>}
                         </select>
                       </li>
                     ))}
