@@ -81,7 +81,7 @@ export function fraseDaPessoa(c: ConfigPessoa): string {
     case "5x2_corrida":
       return `Trabalha 5 dias; as 2 folgas andam um dia por semana (${listaDias(folgasDaCorrida(c.rodizio))} na 1ª semana do ciclo), ${horario}.`;
     case "5x2_domingo":
-      return `Trabalha 5 dias; folga todo domingo e mais 1 dia que anda um dia por semana (${listaDias(folgasDoDomingoFixo(c.rodizio))} na 1ª semana do ciclo), ${horario}.`;
+      return `Trabalha 5 dias; folga todo domingo e mais 1 dia que anda um dia por semana, ${c.folgaAnda === "tras" ? "de sexta para segunda" : "de segunda para sexta"} (${listaDias(folgasDoDomingoFixo(c.rodizio, c.folgaAnda))} na 1ª semana do ciclo), ${horario}.`;
     case "5x2_quinzenal":
       return `Trabalha 5 dias; folga no domingo a cada 2 semanas (${listaDias(folgasDaQuinzenal(c.rodizio))} na 1ª semana do ciclo), ${horario}.`;
     case "5x2_3semanas":
@@ -178,6 +178,12 @@ export interface ConfigPessoa {
   folgaFixa: number;
   /** 5x2 rodízio: em que semana do rodízio a pessoa começa (espalha os domingos). */
   rodizio: number;
+  /**
+   * 5x2 domingo fixo: para que lado a folga da semana anda. "frente" (padrão) = seg, ter, …
+   * sex; "tras" = sex, qui, … seg. Metade da equipe em cada sentido muda as duplas: duas
+   * pessoas só folgam juntas 1 semana a cada 5.
+   */
+  folgaAnda?: "frente" | "tras";
   /**
    * De quantas em quantas semanas a folga cai no domingo: 2 ou 3 no 5x2 rodízio; de 1 a 7
    * no 5x2 casa fechada (respeitando o mínimo do segmento).
@@ -305,10 +311,25 @@ export const SEMANAS_DOMINGO: number[][] = [
   [0, 5],
 ];
 
-/** Folgas da semana `grupo` do ciclo do domingo fixo (0 = dom+seg). */
-export function folgasDoDomingoFixo(grupo: number): number[] {
-  const n = SEMANAS_DOMINGO.length;
-  return SEMANAS_DOMINGO[((grupo % n) + n) % n];
+/** Semanas do ciclo do domingo fixo no sentido da pessoa (para trás: sex, qui, … seg). */
+export function semanasDoDomingoFixo(folgaAnda?: "frente" | "tras"): number[][] {
+  return folgaAnda === "tras" ? [...SEMANAS_DOMINGO].reverse() : SEMANAS_DOMINGO;
+}
+
+/** Folgas da semana `grupo` do ciclo do domingo fixo (0 = dom+seg; para trás, 0 = dom+sex). */
+export function folgasDoDomingoFixo(grupo: number, folgaAnda?: "frente" | "tras"): number[] {
+  const s = semanasDoDomingoFixo(folgaAnda);
+  const n = s.length;
+  return s[((grupo % n) + n) % n];
+}
+
+/**
+ * Posição da i-ésima pessoa no domingo fixo: alterna o sentido (pares para a frente, ímpares
+ * para trás) e anda o ponto do ciclo a cada duas. Com 10 pessoas ficam 2 de folga por dia, de
+ * segunda a sexta, e as duplas mudam toda semana (cada par coincide no máximo 1 semana em 5).
+ */
+export function espalharDomingoFixo(i: number): Pick<ConfigPessoa, "rodizio" | "folgaAnda"> {
+  return { rodizio: Math.floor(i / 2) % SEMANAS_DOMINGO.length, folgaAnda: i % 2 ? "tras" : "frente" };
 }
 
 /** Folgas da semana `grupo` do ciclo da folga corrida (0 = seg+ter). */
@@ -377,7 +398,7 @@ export function modeloDaPessoa(c: ConfigPessoa, mes: string): ModeloEscala {
   if (c.modelo === "5x2_domingo") {
     const n = SEMANAS_DOMINGO.length;
     const base = somarDias(BASE_RODIZIO, -7 * (((c.rodizio % n) + n) % n));
-    return { tipo: "rotativo", nome: "5x2 domingo fixo", turno, semanas: SEMANAS_DOMINGO, base };
+    return { tipo: "rotativo", nome: "5x2 domingo fixo", turno, semanas: semanasDoDomingoFixo(c.folgaAnda), base };
   }
   if (c.modelo === "5x2_quinzenal") {
     const n = SEMANAS_QUINZENAL.length;
@@ -769,6 +790,7 @@ export function normalizarConfigPessoa(raw: ConfigPessoa, padrao: ModeloChave): 
     folgas5x2: Array.isArray(raw.folgas5x2) ? raw.folgas5x2 : base.folgas5x2,
     turma: raw.turma === "B" ? "B" : "A",
     seisPorUmAteVirada: raw.seisPorUmAteVirada !== false,
+    folgaAnda: raw.folgaAnda === "tras" ? "tras" : "frente",
     unidade: nomeDeUnidade(raw.unidade),
     cargo: nomeDeCargo(raw.cargo),
     sexo: raw.sexo === "F" || raw.sexo === "M" ? raw.sexo : undefined,

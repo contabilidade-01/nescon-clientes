@@ -80,6 +80,7 @@ import {
   errosNovos,
   mesclarPlano,
   mesAnteriorSalvo,
+  espalharDomingoFixo,
   planoHerdado,
   aplicarTimes,
   modeloPadraoDoMes,
@@ -651,7 +652,7 @@ export function PlanejadorEscala({
       (c, aj) => {
         const i = posicao.get(c.id) ?? 0;
         const espalha: Partial<ConfigPessoa> = mudaModelo
-          ? { folgaFixa: (i % 6) + 1, rodizio: i, turma: i % 2 ? "B" : "A", diaFechado: c.diaFechado }
+          ? { folgaFixa: (i % 6) + 1, rodizio: i, turma: i % 2 ? "B" : "A", diaFechado: c.diaFechado, ...(patch.modelo === "5x2_domingo" ? espalharDomingoFixo(i) : {}) }
           : {};
         return { config: { ...c, ...espalha, ...patch }, ajustes: mudaModelo ? {} : aj };
       },

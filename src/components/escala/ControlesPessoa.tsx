@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { MODELOS, MODELOS_EXPLICADOS, SEMANAS_CORRIDA, SEMANAS_DOMINGO, SEMANAS_QUINZENAL, SEMANAS_3SEMANAS, configPadrao, nomeDeUnidade, proximaFolga, segundaFolga, ultimoDiaDa6x1, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
+import { MODELOS, MODELOS_EXPLICADOS, SEMANAS_CORRIDA, SEMANAS_DOMINGO, semanasDoDomingoFixo, SEMANAS_QUINZENAL, SEMANAS_3SEMANAS, configPadrao, nomeDeUnidade, proximaFolga, segundaFolga, ultimoDiaDa6x1, type ConfigPessoa, type ModeloChave } from "@/lib/escala/planejamento";
 import { PARES_5X2 } from "@/lib/escala/porPessoa";
 
 const NOMES_DIA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -224,13 +224,19 @@ export function ControlesPessoa({
         </select>
       )}
       {c.modelo === "5x2_domingo" && (
-        <select className={sel} value={((c.rodizio % SEMANAS_DOMINGO.length) + SEMANAS_DOMINGO.length) % SEMANAS_DOMINGO.length} onChange={(e) => onChange({ rodizio: Number(e.target.value) })} aria-label="Começa folgando">
-          {SEMANAS_DOMINGO.map((par, i) => (
-            <option key={i} value={i}>
-              Começa folgando {par.map(abrev).join("+")}
-            </option>
-          ))}
-        </select>
+        <>
+          <select className={sel} value={c.folgaAnda === "tras" ? "tras" : "frente"} onChange={(e) => onChange({ folgaAnda: e.target.value === "tras" ? "tras" : "frente" })} aria-label="A folga anda">
+            <option value="frente">Folga anda seg → sex</option>
+            <option value="tras">Folga anda sex → seg</option>
+          </select>
+          <select className={sel} value={((c.rodizio % SEMANAS_DOMINGO.length) + SEMANAS_DOMINGO.length) % SEMANAS_DOMINGO.length} onChange={(e) => onChange({ rodizio: Number(e.target.value) })} aria-label="Começa folgando">
+            {semanasDoDomingoFixo(c.folgaAnda).map((par, i) => (
+              <option key={i} value={i}>
+                Começa folgando {par.map(abrev).join("+")}
+              </option>
+            ))}
+          </select>
+        </>
       )}
       {c.modelo === "5x2_3semanas" && (
         <select className={sel} value={((c.rodizio % 3) + 3) % 3} onChange={(e) => onChange({ rodizio: Number(e.target.value) })} aria-label="Começa folgando">
